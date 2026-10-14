@@ -84,6 +84,13 @@ const useStyles = makeStyles((c) => ({
   phoneIconWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
   phoneInput: { flex: 1, fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, padding: 0, minHeight: 44 },
   clearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  // ── Device-first primary picker ──
+  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
+  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
+  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  orLine: { flex: 1, height: 1, backgroundColor: c.border },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
   // ── Quick entry controls ──
   quickRow: { flexDirection: "row", gap: spacing.sm },
   quickBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: c.surfaceTertiary, minHeight: 40 },
@@ -429,6 +436,26 @@ export default function CheckNumber() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.lg, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
+        {/* ── Device-First: Select from recent calls ── */}
+        <Pressable
+          testID="callguard-from-recent"
+          accessibilityRole="button"
+          accessibilityLabel="Select from recent calls"
+          onPress={handleFromRecentCalls}
+          style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
+        >
+          <UserRound size={22} color={colors.onBrandPrimary} />
+          <Text style={s.devicePickerText}>Select from recent calls</Text>
+          <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
+        </Pressable>
+
+        {/* ── Or divider ── */}
+        <View style={s.orDivider}>
+          <View style={s.orLine} />
+          <Text style={s.orText}>or enter manually</Text>
+          <View style={s.orLine} />
+        </View>
+
         {/* ── Phone Number Card ── */}
         <View style={s.phoneCard} testID="callguard-number-card">
           <Text style={s.phoneLabel}>Phone Number</Text>
@@ -458,10 +485,6 @@ export default function CheckNumber() {
 
         {/* ── Quick entry controls ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.quickRow}>
-          <Pressable testID="callguard-from-recent" accessibilityRole="button" onPress={handleFromRecentCalls} style={({ pressed }) => [s.quickBtn, { opacity: pressed ? 0.7 : 1 }]}>
-            <UserRound size={16} color={colors.onSurface} />
-            <Text style={s.quickText}>From recent calls</Text>
-          </Pressable>
           <Pressable testID="callguard-enter" accessibilityRole="button" onPress={handleEnterNumber} style={({ pressed }) => [s.quickBtn, { opacity: pressed ? 0.7 : 1 }]}>
             <PenLine size={16} color={colors.onSurface} />
             <Text style={s.quickText}>Enter number</Text>

@@ -861,7 +861,63 @@ export default function CheckEmail() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.lg, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Paste Area / Edit Area ── */}
+        {/* ── Device-First: Gmail Inbox Picker (primary action) ── */}
+        {gmailConnected ? (
+          <Pressable
+            testID="email-pick-inbox"
+            accessibilityRole="button"
+            accessibilityLabel="Select an email from your Gmail inbox"
+            onPress={() => void openInboxPicker()}
+            disabled={gmailBusy || scanBusy}
+            style={({ pressed }) => [s.gmailCard, { borderWidth: 2, borderColor: colors.brandPrimary, opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.gmailIconWell}>
+              <Inbox size={24} color="#2E7D32" />
+            </View>
+            <View style={s.gmailTextWrap}>
+              <Text style={s.gmailTitle}>Select from your Gmail</Text>
+              <Text style={s.gmailSub}>
+                Choose an email from your connected {gmailAccounts.length > 1 ? "accounts" : "account"} to check.
+              </Text>
+            </View>
+            <ChevronRight size={20} color={colors.muted} />
+          </Pressable>
+        ) : gmailConfigured ? (
+          <Pressable
+            testID="email-connect-gmail"
+            accessibilityRole="button"
+            accessibilityLabel="Connect Gmail to select emails"
+            onPress={() => void connectGmail()}
+            disabled={gmailBusy || !deviceId}
+            style={({ pressed }) => [s.gmailConnectCard, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.gmailConnectIconWell}>
+              <Mail size={24} color="#1D4ED8" />
+            </View>
+            <View style={s.gmailTextWrap}>
+              <Text style={s.gmailTitle}>Connect Gmail</Text>
+              <Text style={s.gmailSub}>
+                {gmailBusy ? "Opening Google\u2026" : "Read-only access. Select emails directly from your inbox to check."}
+              </Text>
+            </View>
+            {gmailBusy ? (
+              <ActivityIndicator size="small" color={colors.brand} />
+            ) : (
+              <ChevronRight size={20} color={colors.muted} />
+            )}
+          </Pressable>
+        ) : null}
+
+        {/* ── Or divider ── */}
+        {gmailConfigured ? (
+          <View style={s.orDivider}>
+            <View style={s.orLine} />
+            <Text style={s.orText}>or paste manually</Text>
+            <View style={s.orLine} />
+          </View>
+        ) : null}
+
+        {/* ── Paste Area / Edit Area (secondary) ── */}
         {!editing ? (
           <Pressable
             testID="email-paste-area"
@@ -921,67 +977,6 @@ export default function CheckEmail() {
             ) : null}
           </View>
         )}
-
-        {/* ── Gmail Inbox: Select email directly ── */}
-        {gmailConnected ? (
-          <>
-            <View style={s.orDivider}>
-              <View style={s.orLine} />
-              <Text style={s.orText}>or</Text>
-              <View style={s.orLine} />
-            </View>
-            <Pressable
-              testID="email-pick-inbox"
-              accessibilityRole="button"
-              accessibilityLabel="Select an email from your Gmail inbox"
-              onPress={() => void openInboxPicker()}
-              disabled={gmailBusy || scanBusy}
-              style={({ pressed }) => [s.gmailCard, { opacity: pressed ? 0.85 : 1 }]}
-            >
-              <View style={s.gmailIconWell}>
-                <Inbox size={24} color="#2E7D32" />
-              </View>
-              <View style={s.gmailTextWrap}>
-                <Text style={s.gmailTitle}>Select from your Gmail</Text>
-                <Text style={s.gmailSub}>
-                  Choose an email from your connected {gmailAccounts.length > 1 ? "accounts" : "account"} to check.
-                </Text>
-              </View>
-              <ChevronRight size={20} color={colors.muted} />
-            </Pressable>
-          </>
-        ) : gmailConfigured ? (
-          <>
-            <View style={s.orDivider}>
-              <View style={s.orLine} />
-              <Text style={s.orText}>or</Text>
-              <View style={s.orLine} />
-            </View>
-            <Pressable
-              testID="email-connect-gmail"
-              accessibilityRole="button"
-              accessibilityLabel="Connect Gmail to select emails"
-              onPress={() => void connectGmail()}
-              disabled={gmailBusy || !deviceId}
-              style={({ pressed }) => [s.gmailConnectCard, { opacity: pressed ? 0.85 : 1 }]}
-            >
-              <View style={s.gmailConnectIconWell}>
-                <Mail size={24} color="#1D4ED8" />
-              </View>
-              <View style={s.gmailTextWrap}>
-                <Text style={s.gmailTitle}>Connect Gmail</Text>
-                <Text style={s.gmailSub}>
-                  {gmailBusy ? "Opening Google\u2026" : "Read-only access. Select emails directly from your inbox to check."}
-                </Text>
-              </View>
-              {gmailBusy ? (
-                <ActivityIndicator size="small" color={colors.brand} />
-              ) : (
-                <ChevronRight size={20} color={colors.muted} />
-              )}
-            </Pressable>
-          </>
-        ) : null}
 
         {/* ── Button Row: Check email + Choose screenshot ── */}
         <View style={s.buttonRow}>

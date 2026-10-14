@@ -3,6 +3,8 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import X from "lucide-react-native/icons/x";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -56,6 +58,13 @@ const useStyles = makeStyles((c) => ({
   permRow: { gap: 4, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   sectionLine: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface },
   sectionHeading: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted, marginTop: spacing.xs },
+  // ── Device-first picker styles ──
+  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
+  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
+  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  orLine: { flex: 1, height: 1, backgroundColor: c.border },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
 }));
 
 function Section({ title, lines, styles: s, testID }: { title: string; lines: string[]; styles: ReturnType<typeof useStyles>; testID: string }) {
@@ -241,9 +250,34 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Text style={s.subtitle}>Enter an app name or pick from your installed apps.</Text>
+            <Text style={s.subtitle}>Pick an app from your device or enter the name to check.</Text>
+
+            {/* ── Device-First: Pick from installed apps (Android) ── */}
+            {canPickApps ? (
+              <Pressable
+                testID="app-pick-installed"
+                accessibilityRole="button"
+                accessibilityLabel="Pick from installed apps"
+                onPress={() => void openPicker()}
+                style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Smartphone size={22} color={colors.onBrandPrimary} />
+                <Text style={s.devicePickerText}>Pick from installed apps</Text>
+                <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
+              </Pressable>
+            ) : null}
+
+            {/* ── Or divider ── */}
+            {canPickApps ? (
+              <View style={s.orDivider}>
+                <View style={s.orLine} />
+                <Text style={s.orText}>or enter manually</Text>
+                <View style={s.orLine} />
+              </View>
+            ) : null}
+
+            {/* ── Manual app name entry (secondary) ── */}
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="App name" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
-            {canPickApps ? <Button testID="app-pick-installed" variant="secondary" label="Pick from installed apps" onPress={() => void openPicker()} /> : null}
             <Button testID="app-run" label={busy ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!canRun} />
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="app-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes ({[...new Set(recentLinked.map((e) => e.category))].join(", ")}). An app installed now will be assessed as part of that sequence.</Body></Card> : null}
             <Pressable testID="app-more-details" accessibilityRole="button" onPress={() => setShowMoreFields(!showMoreFields)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>

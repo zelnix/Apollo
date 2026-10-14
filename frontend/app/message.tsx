@@ -5,6 +5,8 @@ import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
 import ImageIcon from "lucide-react-native/icons/image";
 import X from "lucide-react-native/icons/x";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import MessageSquare from "lucide-react-native/icons/message-square";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -53,6 +55,15 @@ const useStyles = makeStyles((c) => ({
   stepNum: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
   preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
   progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  // ── Device-first picker styles ──
+  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
+  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
+  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
+  screenshotPickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1.5, borderColor: c.border, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
+  screenshotPickerText: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  orLine: { flex: 1, height: 1, backgroundColor: c.border },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
 }));
 
 export default function CheckMessage() {
@@ -235,14 +246,47 @@ export default function CheckMessage() {
         />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <Text style={s.subtitle}>{isEmail ? "Paste, share or screenshot the email to check it." : "Paste, share or screenshot any suspicious message."}</Text>
+        <Text style={s.subtitle}>{isEmail ? "Paste, share or screenshot the email to check it." : "Select a message from your device, take a screenshot, or paste text."}</Text>
+
+        {/* ── Device-First: Pick from inbox (SMS) ── */}
+        {canPickSms ? (
+          <Pressable
+            testID="message-pick-sms"
+            accessibilityRole="button"
+            accessibilityLabel="Pick a text from your inbox"
+            onPress={() => router.push("/message-picker")}
+            style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <MessageSquare size={22} color={colors.onBrandPrimary} />
+            <Text style={s.devicePickerText}>Select from your messages</Text>
+            <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
+          </Pressable>
+        ) : null}
+
+        {/* ── Screenshot picker (prominent secondary) ── */}
+        <Pressable
+          testID="message-screenshot"
+          accessibilityRole="button"
+          accessibilityLabel={busy === "reading" ? "Reading screenshot" : "Check a screenshot"}
+          onPress={() => void photoAccess.start()}
+          disabled={busy !== "idle"}
+          style={({ pressed }) => [s.screenshotPickerBtn, busy !== "idle" && { opacity: 0.5 }, { opacity: pressed && busy === "idle" ? 0.85 : 1 }]}
+        >
+          <ImageIcon size={20} color={colors.onSurface} />
+          <Text style={s.screenshotPickerText}>{busy === "reading" ? "Reading…" : "Check a screenshot"}</Text>
+        </Pressable>
+
+        {/* ── Or divider ── */}
+        <View style={s.orDivider}>
+          <View style={s.orLine} />
+          <Text style={s.orText}>or paste text</Text>
+          <View style={s.orLine} />
+        </View>
+
+        {/* ── Manual text input (secondary) ── */}
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
         {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
-        <View style={s.actions}>
-          <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
-          <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} disabled={busy !== "idle"} />
-        </View>
-        {canPickSms ? <Button testID="message-pick-sms" variant="ghost" label="Pick a text from your inbox" onPress={() => router.push("/message-picker")} /> : null}
+        <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} />
         <Pressable testID="message-more-details" accessibilityRole="button" onPress={() => setShowMore(!showMore)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
           <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showMore ? "Hide details" : "Add sender details"}</Text>
         </Pressable>

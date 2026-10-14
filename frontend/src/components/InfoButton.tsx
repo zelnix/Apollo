@@ -11,7 +11,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 export interface ScreenInfo { title: string; body: string | string[] }
 
 const useStyles = makeStyles((c) => ({
-  button: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
+  button: { width: 44, height: 44, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   paragraph: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
 }));
 
@@ -22,7 +22,7 @@ export function InfoButton({ info, testID }: { info: ScreenInfo; testID?: string
   return (
     <>
       <Pressable testID={testID ?? "screen-info-button"} accessibilityRole="button" accessibilityLabel={`About ${info.title}`} onPress={() => setOpen(true)} style={({ pressed }) => [s.button, { opacity: pressed ? 0.75 : 1 }]}>
-        <Info size={21} color={colors.onSurface} />
+        <Info size={10} color={colors.onSurfaceSecondary} />
       </Pressable>
       <Sheet visible={open} onClose={() => setOpen(false)} title={info.title} testID={`${testID ?? "screen-info"}-sheet`}>
         {paragraphs.map((p, i) => <Text key={i} style={s.paragraph}>{p}</Text>)}
