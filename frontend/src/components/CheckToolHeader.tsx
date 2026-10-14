@@ -65,16 +65,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: spacing.sm,
     gap: spacing.sm,
     minHeight: 48,
   },
   backBtn: {
-    width: 48,
+    width: 44,
     height: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingLeft: spacing.sm,
   },
   title: {
     flex: 1,
