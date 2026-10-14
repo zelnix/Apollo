@@ -16,7 +16,6 @@ import Link2 from "lucide-react-native/icons/link-2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
-import Settings from "lucide-react-native/icons/settings";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import User from "lucide-react-native/icons/user";
@@ -31,7 +30,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { InfoButton } from "@/src/components/InfoButton";
 import { Card, Pill } from "@/src/components/ui";
 import {
   buildProtectionAreas,
@@ -110,21 +108,6 @@ const useStyles = makeStyles((c) => ({
     fontSize: 24,
     color: c.onSurface,
   },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headerIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: c.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: c.border,
-  },
 
   // Status row
   statusRow: {
@@ -136,6 +119,14 @@ const useStyles = makeStyles((c) => ({
     fontSize: 15,
     lineHeight: 22,
     color: c.onSurfaceSecondary,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xs,
+  },
+  inlineHint: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 18,
+    color: c.muted,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.md,
   },
@@ -907,31 +898,6 @@ export default function ProtectionDetailsScreen() {
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
           <Text style={s.headerTitle}>{area.title}</Text>
-          <View style={s.headerActions}>
-            <InfoButton
-              info={{
-                title: `About ${area.title}`,
-                body: [
-                  content.shortDescription,
-                  `This category includes ${area.capabilities.length} protection ${area.capabilities.length === 1 ? "Gate" : "Gates"}.`,
-                  "Tap a Gate row to see its detailed settings and status.",
-                ],
-              }}
-              testID="protection-details-info"
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              testID="protection-details-settings"
-              onPress={() => router.push("/settings" as never)}
-              style={({ pressed }) => [
-                s.headerIconBtn,
-                { opacity: pressed ? 0.75 : 1 },
-              ]}
-            >
-              <Settings size={22} color={colors.onSurface} />
-            </Pressable>
-          </View>
         </View>
 
         {/* Status pill */}
@@ -939,8 +905,11 @@ export default function ProtectionDetailsScreen() {
           <Pill tone={tone} label={area.summaryStatus} />
         </View>
 
-        {/* Short description */}
+        {/* Short description + inline info */}
         <Text style={s.descriptionText}>{content.shortDescription}</Text>
+        <Text style={s.inlineHint}>
+          {`This category includes ${area.capabilities.length} protection ${area.capabilities.length === 1 ? "Gate" : "Gates"}. Tap a Gate to see its details and status.`}
+        </Text>
 
         {/* Tab bar */}
         <ProtectionTabBar activeTab={activeTab} onTabChange={setActiveTab} />
