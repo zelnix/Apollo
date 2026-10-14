@@ -552,6 +552,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: radius.lg,
+    opacity: 0.35,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -561,7 +562,6 @@ const styles = StyleSheet.create({
   heroTextBlock: {
     maxWidth: "40%",
     gap: 2,
-    alignItems: "center",
   },
   heroDogImage: {
     position: "absolute",
@@ -574,12 +574,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.displayBold,
     color: "#1B6B47",
     letterSpacing: -0.2,
-    textAlign: "center",
   },
   heroLine: {
     fontFamily: fonts.text,
     color: "#0B1220",
-    textAlign: "center",
   },
 
   // ── Section header ──
