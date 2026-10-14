@@ -1,60 +1,65 @@
 // Protection Dashboard — Screen A.
-// Shows the overall protection summary, Higgins guidance and a 2-column
-// category grid. Each card navigates to Protection Category Details (Screen B).
-//
-// Reuses existing Gate architecture, status models and protectionAreas data.
-// The category grid uses REAL gates and statuses — the mock-up's illustrative
-// eight categories are replaced by the five actual areas defined in the code.
+// Matches the approved mockup exactly: 2-column category grid, pale-green
+// overview card, Higgins tip, bottom Higgins guidance card.
+// Uses the 8 dashboard categories derived from the 10-Gate architecture.
 
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import CircleCheck from "lucide-react-native/icons/circle-check";
 import Globe from "lucide-react-native/icons/globe";
 import Grid2x2 from "lucide-react-native/icons/grid-2x2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import Settings from "lucide-react-native/icons/settings";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
+import User from "lucide-react-native/icons/user";
+import Wifi from "lucide-react-native/icons/wifi";
 import React, { useMemo } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Pill } from "@/src/components/ui";
+import { InfoButton } from "@/src/components/InfoButton";
 import {
-  buildProtectionAreas,
-  type ProtectionArea,
-  type ProtectionAreaId,
-} from "@/src/domain/protectionAreas";
-import { gateTone } from "@/src/domain/gates";
+  buildDashboardCategories,
+  type DashboardCategory,
+  type DashboardCategoryId,
+} from "@/src/domain/dashboardCategories";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
-// ── Icon map per area ───────────────────────────────────────────────────────
-const AREA_ICONS: Record<
-  ProtectionAreaId,
+// ── Icon map ────────────────────────────────────────────────────────────────
+const CATEGORY_ICONS: Record<
+  DashboardCategoryId,
   React.ComponentType<{ size?: number; color?: string }>
 > = {
-  websites_links: Globe,
-  messages_calls: MessageSquare,
-  email_accounts: Mail,
-  apps_files: Grid2x2,
-  device_internet: Smartphone,
+  internet: Globe,
+  messages: MessageSquare,
+  email: Mail,
+  apps: Grid2x2,
+  device: Smartphone,
+  network: Wifi,
+  identity: User,
+  calls: Phone,
 };
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
-  // Header with back button
+  // Header
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingBottom: 2,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
   },
   backBtn: {
     width: 44,
@@ -65,168 +70,191 @@ const useStyles = makeStyles((c) => ({
   headerTitle: {
     flex: 1,
     fontFamily: fonts.displayBold,
-    fontSize: 24,
+    fontSize: 26,
     color: c.onSurface,
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
 
+  // Scroll content
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
+    paddingBottom: spacing["2xl"],
+  },
   subtitle: {
     fontFamily: fonts.text,
     fontSize: 14,
     lineHeight: 20,
     color: c.onSurfaceSecondary,
-    marginBottom: 2,
-  },
-  content: {
-    paddingHorizontal: spacing.sm,
-    gap: spacing.sm,
-    paddingBottom: spacing.lg,
   },
 
-  // ── Pale green overview card ──
+  // Pale green overview card
   overviewCard: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     overflow: "hidden",
   },
   overviewTop: {
-    padding: spacing.sm,
-    paddingBottom: spacing.xs,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   overviewShield: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
   },
   overviewTextBlock: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   overviewTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 19,
+    lineHeight: 25,
   },
   overviewStatus: {
     fontFamily: fonts.text,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  overviewSub: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 21,
   },
 
-  // ── Higgins tip inside overview card ──
+  // Higgins tip inside overview card
   tipArea: {
-    marginHorizontal: spacing.sm,
-    marginBottom: spacing.sm,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    padding: spacing.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   tipAvatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: "hidden",
-    flexShrink: 0,
-  },
-  tipAvatar: { width: 40, height: 40 },
-  tipTextBlock: { flex: 1, gap: 1 },
-  tipTitle: {
-    fontFamily: fonts.displayBold,
-    fontSize: 13,
-    lineHeight: 17,
-  },
-  tipBody: {
-    fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-
-  // ── Category list (single column, full-width rows) ──
-  categoryList: {
-    gap: spacing.sm,
-  },
-  categoryCard: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    gap: spacing.sm,
-    minHeight: 56,
-  },
-  categoryIconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  categoryNameBlock: {
-    flex: 1,
-    flexShrink: 1,
-    gap: 3,
-    alignItems: "flex-start",
-  },
-  categoryName: {
-    fontFamily: fonts.displayBold,
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  categoryGateCount: {
-    fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-
-  // ── Bottom Higgins guidance card ──
-  guidanceCard: {
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    gap: spacing.sm,
-  },
-  guidanceTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  guidanceAvatarWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
     overflow: "hidden",
     flexShrink: 0,
   },
-  guidanceAvatar: { width: 44, height: 44 },
-  guidanceTextBlock: {
-    flex: 1,
-    gap: 1,
-  },
-  guidanceTitle: {
+  tipAvatar: { width: 44, height: 44 },
+  tipTextBlock: { flex: 1, gap: 2 },
+  tipName: {
     fontFamily: fonts.displayBold,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  tipBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  // 2-column category grid
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  categoryCard: {
+    width: "47.5%",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: spacing.sm,
+    minHeight: 130,
+  },
+  categoryTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  categoryIconWell: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryName: {
+    fontFamily: fonts.displayBold,
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  categoryGateCount: {
+    fontFamily: fonts.text,
     fontSize: 13,
     lineHeight: 17,
   },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+  },
+
+  // Bottom Higgins guidance card
+  guidanceCard: {
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  guidanceTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  guidanceAvatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  guidanceAvatar: { width: 48, height: 48 },
+  guidanceTextBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  guidanceTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 14,
+    lineHeight: 19,
+  },
   guidanceBody: {
     fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 18,
   },
   learnBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "flex-end",
@@ -234,107 +262,74 @@ const useStyles = makeStyles((c) => ({
   },
   learnBtnText: {
     fontFamily: fonts.textSemibold,
-    fontSize: 13,
+    fontSize: 14,
   },
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildOverviewText(areas: ProtectionArea[], checking: boolean) {
-  if (checking) {
-    return {
-      status: "Protection status is being checked.",
-      sub: "",
-      tipText: "Apollo is checking the current state of your protection.",
-    };
+function statusColor(tone: string): string {
+  switch (tone) {
+    case "good": return "#2E7D32";
+    case "limited": case "unverified": return "#E68A00";
+    case "action": return "#D32F2F";
+    case "off": case "unavailable": return "#757575";
+    default: return "#757575";
   }
-  const attention = areas.filter((a) => a.attentionCount > 0);
-  const allWatching = areas.every(
-    (a) => a.summaryTone === "good" || (a.automaticCount === 0 && a.summaryTone === "neutral"),
-  );
-  const limited = areas.filter((a) => a.summaryTone === "limited" || a.summaryTone === "unverified");
-
-  if (attention.length > 0) {
-    return {
-      status: "Some protection needs attention.",
-      sub: `${attention.length} ${attention.length === 1 ? "category requires" : "categories require"} action.`,
-      tipText: `${attention.map((a) => a.title).join(" and ")} ${attention.length === 1 ? "needs" : "need"} your attention. Tap to see details.`,
-    };
-  }
-  if (allWatching) {
-    return {
-      status: "Your protection is active.",
-      sub: "All categories are covered.",
-      tipText: "Tap a category to see what Apollo protects and how it works.",
-    };
-  }
-  if (limited.length > 0) {
-    return {
-      status: "Most categories are covered.",
-      sub: `${limited.length} ${limited.length === 1 ? "category has" : "categories have"} limited coverage.`,
-      tipText: "Tap a category to see details.",
-    };
-  }
-  return {
-    status: "Your protection is active.",
-    sub: "Tap a category to see details.",
-    tipText: "Tap a category to see what Apollo protects and how it works.",
-  };
 }
 
-// ── Category Card Component ─────────────────────────────────────────────────
+function buildOverviewText(categories: DashboardCategory[], checking: boolean) {
+  if (checking) return { status: "Protection status is being checked.", tipText: "Apollo is checking the current state of your protection." };
+  const attention = categories.filter((c) => c.summaryTone === "action");
+  const limited = categories.filter((c) => c.summaryTone === "limited" || c.summaryTone === "unverified");
+  const allGood = categories.every((c) => c.summaryTone === "good" || c.summaryTone === "neutral");
+  if (attention.length > 0) return { status: `Some protection needs attention.\n${attention.length} ${attention.length === 1 ? "category requires" : "categories require"} action.`, tipText: `${attention.map((c) => c.title).join(" and ")} ${attention.length === 1 ? "needs" : "need"} your attention. Tap to see details.` };
+  if (allGood) return { status: "Your protection is active.\nAll categories are covered.", tipText: "Tap a category to see what Apollo protects and how it works." };
+  if (limited.length > 0) return { status: `Most categories are covered.\n${limited.length} ${limited.length === 1 ? "category has" : "categories have"} limited coverage.`, tipText: "Tap a category to see details." };
+  return { status: "Your protection is active.\nTap a category to see details.", tipText: "Tap a category to see what Apollo protects and how it works." };
+}
 
-function CategoryCard({
-  area,
-}: {
-  area: ProtectionArea;
-}) {
+// ── Category Card ───────────────────────────────────────────────────────────
+
+function CategoryCard({ category }: { category: DashboardCategory }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
-  const Icon = AREA_ICONS[area.id];
-  const tone = gateTone(area.summaryTone);
+  const Icon = CATEGORY_ICONS[category.id];
+  const color = statusColor(category.summaryTone);
+  const isGood = category.summaryTone === "good" || category.summaryTone === "neutral";
+  const isWarning = category.summaryTone === "limited" || category.summaryTone === "unverified";
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${area.title}: ${area.summaryStatus}`}
-      testID={`protection-category-${area.id}`}
-      onPress={() =>
-        router.push(`/protection-details?category=${area.id}` as never)
-      }
-      style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
+      accessibilityLabel={`${category.title}: ${category.summaryStatus}`}
+      testID={`protection-cat-${category.id}`}
+      onPress={() => router.push(`/protection-details?category=${category.parentAreaId}` as never)}
+      style={({ pressed }) => [
+        s.categoryCard,
+        { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, opacity: pressed ? 0.82 : 1 },
+      ]}
     >
-      <View
-        style={[
-          s.categoryCard,
-          {
-            backgroundColor: colors.surfaceSecondary,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <View
-          style={[
-            s.categoryIconWell,
-            { backgroundColor: colors.surfaceTertiary },
-          ]}
-        >
-          <Icon size={20} color={colors.brand} />
+      <View style={s.categoryTopRow}>
+        <View style={[s.categoryIconWell, { backgroundColor: colors.surfaceTertiary }]}>
+          <Icon size={22} color={colors.brand} />
         </View>
-        <View style={s.categoryNameBlock}>
-          <Text style={[s.categoryName, { color: colors.onSurface }]}>
-            {area.title}
-          </Text>
-          <Text
-            style={[s.categoryGateCount, { color: colors.onSurfaceSecondary }]}
-          >
-            {area.capabilities.length}{" "}
-            {area.capabilities.length === 1 ? "Gate" : "Gates"}
-          </Text>
-          <Pill tone={tone} label={area.summaryStatus} />
-        </View>
-        <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+        <ChevronRight size={18} color={colors.muted} />
+      </View>
+      <Text style={[s.categoryName, { color: colors.onSurface }]}>{category.title}</Text>
+      <Text style={[s.categoryGateCount, { color: colors.onSurfaceSecondary }]}>
+        {category.gateCount} {category.gateCount === 1 ? "Gate" : "Gates"}
+      </Text>
+      <View style={s.statusRow}>
+        {isGood ? (
+          <CircleCheck size={16} color={color} />
+        ) : isWarning ? (
+          <CircleAlert size={16} color={color} />
+        ) : (
+          <View style={[s.statusDot, { backgroundColor: color }]} />
+        )}
+        <Text style={[s.statusText, { color }]}>{category.summaryStatus}</Text>
       </View>
     </Pressable>
   );
@@ -349,22 +344,22 @@ export default function ProtectionScreen() {
   const router = useRouter();
   const health = useProtectionHealth();
 
-  const areas = useMemo(
-    () => (health.checking ? [] : buildProtectionAreas(health.gates)),
+  const categories = useMemo(
+    () => (health.checking ? [] : buildDashboardCategories(health.gates)),
     [health.checking, health.gates],
   );
 
-  const { status, sub, tipText } = useMemo(
-    () => buildOverviewText(areas, health.checking),
-    [areas, health.checking],
+  const { status, tipText } = useMemo(
+    () => buildOverviewText(categories, health.checking),
+    [categories, health.checking],
   );
 
-  const hasAttention = areas.some((a) => a.attentionCount > 0);
+  const hasAttention = categories.some((c) => c.summaryTone === "action");
 
   return (
     <View style={s.root} testID="protection-screen">
-      {/* ── Header with back button ── */}
-      <View style={{ paddingTop: insets.top + spacing.xs }}>
+      {/* ── Header ── */}
+      <View style={{ paddingTop: insets.top + spacing.sm }}>
         <View style={s.headerRow}>
           <Pressable
             accessibilityRole="button"
@@ -376,139 +371,86 @@ export default function ProtectionScreen() {
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
           <Text style={s.headerTitle}>Protection</Text>
+          <View style={s.headerActions}>
+            <InfoButton
+              info={{
+                title: "About Protection",
+                body: [
+                  "The Protection dashboard shows what Apollo is protecting and how each category is performing.",
+                  "Tap a category to see its Gates, how they work, and what they cover.",
+                  "Statuses are calculated from real device capabilities and permissions.",
+                ],
+              }}
+              testID="protection-info"
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              testID="protection-settings"
+              onPress={() => router.push("/settings" as never)}
+              style={({ pressed }) => [s.headerIconBtn, { opacity: pressed ? 0.75 : 1 }]}
+            >
+              <Settings size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
         </View>
       </View>
 
       <ScrollView
         testID="protection-scroll"
-        contentContainerStyle={[
-          s.content,
-          { paddingBottom: insets.bottom + 90 },
-        ]}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 90 }]}
       >
         {/* Subtitle */}
-        <Text style={s.subtitle}>
-          See your protection categories and the Gates inside each one.
-        </Text>
+        <Text style={s.subtitle}>See your protection categories and the Gates inside each one.</Text>
 
         {/* ── Pale green overview card ── */}
         <View
-          style={[
-            s.overviewCard,
-            {
-              backgroundColor: hasAttention
-                ? "rgba(229,162,26,0.08)"
-                : "rgba(79,175,131,0.10)",
-            },
-          ]}
+          style={[s.overviewCard, { backgroundColor: hasAttention ? "rgba(229,162,26,0.08)" : "rgba(79,175,131,0.10)" }]}
           testID="protection-overview-card"
         >
           <View style={s.overviewTop}>
-            <View
-              style={[
-                s.overviewShield,
-                {
-                  backgroundColor: hasAttention
-                    ? "rgba(229,162,26,0.15)"
-                    : "rgba(79,175,131,0.18)",
-                },
-              ]}
-            >
-              <ShieldCheck
-                size={28}
-                color={hasAttention ? colors.ears_up : colors.resting}
-              />
+            <View style={[s.overviewShield, { backgroundColor: hasAttention ? "rgba(229,162,26,0.15)" : "rgba(79,175,131,0.18)" }]}>
+              <ShieldCheck size={28} color={hasAttention ? colors.ears_up : colors.resting} />
             </View>
             <View style={s.overviewTextBlock}>
-              <Text
-                style={[
-                  s.overviewTitle,
-                  {
-                    color: hasAttention
-                      ? colors.ears_upText
-                      : colors.restingText,
-                  },
-                ]}
-                testID="protection-overview-title"
-              >
+              <Text style={[s.overviewTitle, { color: hasAttention ? colors.ears_upText : colors.restingText }]} testID="protection-overview-title">
                 Protection overview
               </Text>
-              <Text
-                style={[
-                  s.overviewStatus,
-                  { color: colors.onSurface },
-                ]}
-                testID="protection-overview-status"
-              >
+              <Text style={[s.overviewStatus, { color: colors.onSurface }]} testID="protection-overview-status">
                 {status}
               </Text>
-              {sub ? (
-                <Text
-                  style={[
-                    s.overviewSub,
-                    { color: colors.onSurfaceSecondary },
-                  ]}
-                >
-                  {sub}
-                </Text>
-              ) : null}
             </View>
           </View>
 
           {/* Higgins tip */}
-          <View
-            style={[
-              s.tipArea,
-              {
-                backgroundColor: "rgba(255,255,255,0.75)",
-              },
-            ]}
-            testID="protection-higgins-tip"
-          >
+          <View style={[s.tipArea, { backgroundColor: "rgba(255,255,255,0.75)" }]} testID="protection-higgins-tip">
             <View style={s.tipAvatarWrap}>
               <Image source={higginsAvatar} style={s.tipAvatar} />
             </View>
             <View style={s.tipTextBlock}>
-              <Text style={[s.tipTitle, { color: colors.onSurface }]}>
-                Higgins&apos; tip
-              </Text>
-              <Text
-                style={[s.tipBody, { color: colors.onSurfaceSecondary }]}
-              >
-                {tipText}
-              </Text>
+              <Text style={[s.tipName, { color: colors.onSurface }]}>Higgins&apos; tip</Text>
+              <Text style={[s.tipBody, { color: colors.onSurfaceSecondary }]}>{tipText}</Text>
             </View>
           </View>
         </View>
 
-        {/* ── Single-column category list ── */}
-        <View style={s.categoryList}>
-          {areas.map((area) => (
-            <CategoryCard key={area.id} area={area} />
+        {/* ── 2-column category grid ── */}
+        <View style={s.grid}>
+          {categories.map((cat) => (
+            <CategoryCard key={cat.id} category={cat} />
           ))}
         </View>
 
         {/* ── Bottom Higgins guidance card ── */}
-        <View
-          style={[
-            s.guidanceCard,
-            { backgroundColor: colors.surfaceTertiary },
-          ]}
-          testID="protection-higgins-guidance"
-        >
+        <View style={[s.guidanceCard, { backgroundColor: colors.surfaceTertiary }]} testID="protection-higgins-guidance">
           <View style={s.guidanceTopRow}>
             <View style={s.guidanceAvatarWrap}>
               <Image source={higginsAvatar} style={s.guidanceAvatar} />
             </View>
             <View style={s.guidanceTextBlock}>
-              <Text style={[s.guidanceTitle, { color: colors.onSurface }]}>
-                Higgins can help explain your protection
-              </Text>
-              <Text
-                style={[s.guidanceBody, { color: colors.onSurfaceSecondary }]}
-              >
-                Tap a category to see what it does, how it works, and its Gate
-                status.
+              <Text style={[s.guidanceTitle, { color: colors.onSurface }]}>Higgins can help explain your protection</Text>
+              <Text style={[s.guidanceBody, { color: colors.onSurfaceSecondary }]}>
+                Tap a category to see what it does, how it works, and its Gate status.
               </Text>
             </View>
           </View>
@@ -517,17 +459,9 @@ export default function ProtectionScreen() {
             accessibilityLabel="Learn more about protection"
             testID="protection-learn-more"
             onPress={() => router.push("/(tabs)/ask" as never)}
-            style={({ pressed }) => [
-              s.learnBtn,
-              {
-                backgroundColor: colors.gold,
-                opacity: pressed ? 0.82 : 1,
-              },
-            ]}
+            style={({ pressed }) => [s.learnBtn, { backgroundColor: colors.gold, opacity: pressed ? 0.82 : 1 }]}
           >
-            <Text style={[s.learnBtnText, { color: colors.onBrand }]}>
-              Learn more
-            </Text>
+            <Text style={[s.learnBtnText, { color: colors.onBrand }]}>Learn more</Text>
           </Pressable>
         </View>
       </ScrollView>
