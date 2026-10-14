@@ -286,15 +286,14 @@ export default function ProtectionScreen() {
   );
 
   // ── Responsive hero dimensions ──
-  // Use the available card width (screen minus horizontal padding)
   const cardWidth = screenWidth - spacing.lg * 2;
-  // Aspect ratio ~16:9 for landscape background, clamped between 180–360px
-  const heroHeight = Math.max(180, Math.min(360, cardWidth * 0.56));
-  // Scale text/icon sizes relative to a 360px reference width
-  const scale = Math.max(0.85, Math.min(1.25, cardWidth / 360));
-  const titleFontSize = Math.round(20 * scale);
-  const lineFontSize = Math.round(13 * scale);
-  const heroPadding = Math.round(spacing.lg * scale);
+  // 16:10 aspect ratio clamped to sensible range — shorter on small phones
+  const heroHeight = Math.max(150, Math.min(280, cardWidth * 0.48));
+  // Scale text relative to a 340px reference card width
+  const scale = Math.max(0.82, Math.min(1.2, cardWidth / 340));
+  const titleFontSize = Math.round(18 * scale);
+  const lineFontSize = Math.round(12 * scale);
+  const heroPadding = Math.round(14 * scale);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surface }]} testID="protection-screen">
@@ -330,10 +329,13 @@ export default function ProtectionScreen() {
         </Text>
 
         {/* ── Hero card with responsive background image ── */}
-        <View style={styles.heroContainer} testID="protection-hero-card">
+        <View
+          style={[styles.heroContainer, { maxHeight: heroHeight }]}
+          testID="protection-hero-card"
+        >
           <ImageBackground
             source={heroBackground}
-            style={[styles.heroImageBg, { height: heroHeight }]}
+            style={styles.heroImageBg}
             imageStyle={styles.heroImageStyle}
             resizeMode="cover"
           >
@@ -341,35 +343,31 @@ export default function ProtectionScreen() {
             <View
               style={[
                 styles.heroOverlay,
-                {
-                  padding: heroPadding,
-                  paddingTop: heroPadding + spacing.sm,
-                },
+                { padding: heroPadding },
               ]}
             >
-              <View style={styles.heroContent}>
-                {/* Status text */}
-                <View style={[styles.heroLeftBlock, { maxWidth: cardWidth * 0.75 }]}>
+              <View style={styles.heroLeftBlock}>
+                <Text
+                  style={[
+                    styles.heroTitle,
+                    { fontSize: titleFontSize, lineHeight: titleFontSize + 4 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {heroTitle}
+                </Text>
+                {heroLines.map((line, i) => (
                   <Text
+                    key={i}
                     style={[
-                      styles.heroTitle,
-                      { fontSize: titleFontSize, lineHeight: titleFontSize + 6 },
+                      styles.heroLine,
+                      { fontSize: lineFontSize, lineHeight: lineFontSize + 5 },
                     ]}
+                    numberOfLines={1}
                   >
-                    {heroTitle}
+                    {line}
                   </Text>
-                  {heroLines.map((line, i) => (
-                    <Text
-                      key={i}
-                      style={[
-                        styles.heroLine,
-                        { fontSize: lineFontSize, lineHeight: lineFontSize + 6 },
-                      ]}
-                    >
-                      {line}
-                    </Text>
-                  ))}
-                </View>
+                ))}
               </View>
             </View>
           </ImageBackground>
@@ -495,23 +493,19 @@ const styles = StyleSheet.create({
   },
   heroImageBg: {
     width: "100%",
+    aspectRatio: 16 / 8,
     justifyContent: "flex-end",
   },
   heroImageStyle: {
     borderRadius: radius.lg,
   },
   heroOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.28)",
     justifyContent: "flex-end",
   },
-  heroContent: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
   heroLeftBlock: {
-    flex: 1,
-    gap: 3,
+    gap: 2,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
