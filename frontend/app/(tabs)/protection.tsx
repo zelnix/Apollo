@@ -35,7 +35,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Assets ──────────────────────────────────────────────────────────────────
-const heroBackground = require("@/assets/images/hero-bg-protection.jpg");
+const heroBackground = require("@/assets/images/hero-bg-protection.png");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // ── Icon map for the 5 protection areas ─────────────────────────────────────
@@ -287,13 +287,11 @@ export default function ProtectionScreen() {
 
   // ── Responsive hero dimensions ──
   const cardWidth = screenWidth - spacing.lg * 2;
-  // 16:10 aspect ratio clamped to sensible range — shorter on small phones
-  const heroHeight = Math.max(150, Math.min(280, cardWidth * 0.48));
   // Scale text relative to a 340px reference card width
   const scale = Math.max(0.82, Math.min(1.2, cardWidth / 340));
-  const titleFontSize = Math.round(18 * scale);
+  const titleFontSize = Math.round(16 * scale);
   const lineFontSize = Math.round(12 * scale);
-  const heroPadding = Math.round(14 * scale);
+  const heroPadding = Math.round(12 * scale);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surface }]} testID="protection-screen">
@@ -329,22 +327,16 @@ export default function ProtectionScreen() {
         </Text>
 
         {/* ── Hero card with responsive background image ── */}
-        <View
-          style={[styles.heroContainer, { maxHeight: heroHeight }]}
-          testID="protection-hero-card"
-        >
+        <View style={styles.heroContainer} testID="protection-hero-card">
           <ImageBackground
             source={heroBackground}
             style={styles.heroImageBg}
             imageStyle={styles.heroImageStyle}
             resizeMode="cover"
           >
-            {/* Semi-transparent overlay for text readability */}
+            {/* Light gradient at bottom for text readability */}
             <View
-              style={[
-                styles.heroOverlay,
-                { padding: heroPadding },
-              ]}
+              style={[styles.heroOverlay, { padding: heroPadding }]}
             >
               <View style={styles.heroLeftBlock}>
                 <Text
@@ -493,7 +485,7 @@ const styles = StyleSheet.create({
   },
   heroImageBg: {
     width: "100%",
-    aspectRatio: 16 / 8,
+    aspectRatio: 2.33,
     justifyContent: "flex-end",
   },
   heroImageStyle: {
@@ -501,19 +493,20 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.28)",
     justifyContent: "flex-end",
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
   heroLeftBlock: {
-    gap: 2,
+    gap: 1,
+    maxWidth: "65%",
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
-    color: "#FFFFFF",
+    color: "#1B5E20",
   },
   heroLine: {
     fontFamily: fonts.text,
-    color: "rgba(255,255,255,0.88)",
+    color: "#2E4A30",
   },
 
   // Section header
