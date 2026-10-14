@@ -830,6 +830,8 @@ function BottomHigginsCard({ area }: { area: ProtectionArea }) {
   const router = useRouter();
   const content = CATEGORY_CONTENT[area.id];
 
+  const askPrompt = `Tell me about my ${area.title} protection. What does it cover, how does it work, and is there anything I should do to improve it?`;
+
   return (
     <View
       style={[s.bottomCard, { backgroundColor: colors.surfaceTertiary }]}
@@ -848,9 +850,9 @@ function BottomHigginsCard({ area }: { area: ProtectionArea }) {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Learn with Higgins"
+        accessibilityLabel={`Ask Higgins about ${area.title} protection`}
         testID="protection-learn-with-higgins"
-        onPress={() => router.push("/(tabs)/ask" as never)}
+        onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: askPrompt } })}
         style={({ pressed }) => [
           s.learnBtn,
           {
@@ -860,7 +862,7 @@ function BottomHigginsCard({ area }: { area: ProtectionArea }) {
         ]}
       >
         <Text style={[s.learnBtnText, { color: colors.onBrand }]}>
-          Learn with Higgins
+          Ask Higgins about {area.title}
         </Text>
       </Pressable>
     </View>
