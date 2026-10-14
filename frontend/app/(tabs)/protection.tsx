@@ -379,8 +379,8 @@ export default function ProtectionScreen() {
                 style={[
                   styles.heroTitle,
                   {
-                    fontSize: Math.round(16 * scale),
-                    lineHeight: Math.round(20 * scale),
+                    fontSize: Math.round(17 * scale),
+                    lineHeight: Math.round(22 * scale),
                   },
                 ]}
                 numberOfLines={1}
@@ -393,11 +393,10 @@ export default function ProtectionScreen() {
                   style={[
                     styles.heroLine,
                     {
-                      fontSize: Math.round(11 * scale),
-                      lineHeight: Math.round(15 * scale),
+                      fontSize: Math.round(13 * scale),
+                      lineHeight: Math.round(18 * scale),
                     },
                   ]}
-                  numberOfLines={2}
                 >
                   {line}
                 </Text>
@@ -557,16 +556,15 @@ const styles = StyleSheet.create({
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
-    alignItems: "flex-start",
+    alignItems: "center",
   },
   heroTextBlock: {
-    maxWidth: "65%",
-    gap: 1,
+    maxWidth: "55%",
+    gap: 2,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: radius.md,
     padding: spacing.sm,
-    marginBottom: spacing.xs,
-    marginLeft: "8%",
+    marginBottom: spacing.sm,
   },
   heroDogImage: {
     position: "absolute",
@@ -578,6 +576,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontFamily: fonts.displayBold,
     color: "#FFFFFF",
+    letterSpacing: -0.2,
   },
   heroLine: {
     fontFamily: fonts.text,
