@@ -830,7 +830,8 @@ function BottomHigginsCard({ area }: { area: ProtectionArea }) {
   const router = useRouter();
   const content = CATEGORY_CONTENT[area.id];
 
-  const askPrompt = `Tell me about my ${area.title} protection. What does it cover, how does it work, and is there anything I should do to improve it?`;
+  const gateNames = area.capabilities.map((c) => c.gateName).join(", ");
+  const askPrompt = `Tell me about my ${area.title} protection. It includes these Gates: ${gateNames}. What does each Gate cover, how do they work together, and is there anything I should do to improve my ${area.title} protection?`;
 
   return (
     <View
