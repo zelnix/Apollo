@@ -8,10 +8,25 @@ import { enforceEgress } from "@/src/domain/privacy";
 import { requireImageSanitization, sanitizationMetadata } from "@/src/domain/imageSanitization";
 import type { CreateCase, DeviceProfile, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
 
+/** Generate a UUID key with robust fallback for environments where expo-crypto's randomUUID isn't available. */
+export function safeUUID(): string {
+  try {
+    const id = Crypto.randomUUID();
+    if (id && typeof id === "string" && id.length >= 8) return id;
+  } catch { /* fall through */ }
+  // Fallback: manual UUID v4 using Math.random
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string, signal?: AbortSignal): Promise<T> {
   const token = await getDeviceToken();
   if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": key }, body: JSON.stringify(enforceEgress("investigation", body)), signal });
+  // Ensure key is always a valid string
+  const safeKey = key && typeof key === "string" && key.length >= 8 ? key : safeUUID();
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": safeKey }, body: JSON.stringify(enforceEgress("investigation", body)), signal });
   if (!res.ok) {
     let message = res.statusText;
     try { const data = await res.json(); message = data?.error?.message ?? data?.detail ?? message; } catch { /* keep */ }
@@ -20,7 +35,7 @@ async function postWithKey<T>(path: string, body: Record<string, unknown>, key: 
   return (await res.json()) as T;
 }
 
-export function createCase(body: CreateCase, key = Crypto.randomUUID()) { return postWithKey<{ case: InvestigationCase; job?: Job }>("/investigations", body as unknown as Record<string, unknown>, key); }
+export function createCase(body: CreateCase, key = safeUUID()) { return postWithKey<{ case: InvestigationCase; job?: Job }>("/investigations", body as unknown as Record<string, unknown>, key); }
 export function getCase(caseId: string) { return apiGet<{ case: InvestigationCase }>(`/investigations/${caseId}`); }
 export function getJob(caseId: string, jobId: string) { return apiGet<{ job: Job; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}`); }
 export function listTurns(caseId: string) { return apiGet<{ items: TurnCommit[]; total: number }>(`/investigations/${caseId}/turns`); }
@@ -33,7 +48,7 @@ export function deleteCase(caseId: string) { return apiDelete<void>(`/investigat
 export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string, signal?: AbortSignal) {
   return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);
 }
-export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, Crypto.randomUUID()); }
+export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, safeUUID()); }
 export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string; outcome: "cancelled" | "completed" | "failed" | "superseded"; cancelled: boolean; cleanupStatus: string; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
 export function submitDeviceResult(caseId: string, result: DeviceResult) { return postWithKey<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, result as unknown as Record<string, unknown>, result.requestId); }
 export function addObservationEvidence(expectedRevision: number, caseId: string, deviceResult: DeviceResult) {

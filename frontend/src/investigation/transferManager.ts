@@ -1,4 +1,4 @@
-import * as Crypto from "expo-crypto";
+import { safeUUID } from "./client";
 
 import { disposePickerCopy } from "@/src/domain/fileCopyLifecycle";
 import * as api from "./client";
@@ -207,7 +207,7 @@ export function startManagedOperation(operationId: string, input: Omit<CreateCas
   const existing = requireOperation(operationId);
   if (existing) return execute(existing);
   const record: ManagedOperation = { operationId, submissionId: operationId, caseId: null, kind: "create", input, files: [...files], fileIndex: 0, handle: null,
-    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
+    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: safeUUID(), key: safeUUID(), message: input.question },
     phase: "reserved", error: null, caseData: null, job: null, expiresAt: new Date(Date.now() + LOCAL_OPERATION_LIFETIME_MS).toISOString(),
     generation: 1, controller: new AbortController(), running: null, sanitizationReceipts: new Map() };
   operations.set(operationId, record);
@@ -221,7 +221,7 @@ export function appendManagedOperation(operationId: string, caseData: Investigat
   if (existing) return execute(existing);
   if (operations.has(operationId)) return Promise.reject(new Error("Operation ownership conflict: this operation belongs to another investigation."));
   const record: ManagedOperation = { operationId, submissionId: operationId, caseId: caseData.id, kind: "append", input, files: [], fileIndex: 0, handle: null,
-    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
+    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: safeUUID(), key: safeUUID(), message: input.question },
     phase: "reserved", error: null, caseData, job: null, expiresAt: caseData.expiresAt, generation: 1,
     controller: new AbortController(), running: null, sanitizationReceipts: new Map() };
   operations.set(operationId, record);

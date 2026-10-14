@@ -1,11 +1,11 @@
 // Case-scoped UI projection. Application-owned create/upload/append operations live in transferManager and survive screens.
-import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
 import { forgetCase } from "./caseIndex";
 import * as api from "./client";
+import { safeUUID } from "./client";
 import { observe } from "./deviceBroker";
 import { appendManagedOperation, cancelManagedOperation, expireOperation, managedOperation, retryManagedOperation,
   settleManagedOperation, startManagedOperation, subscribeManagedOperation, type ManagedOperation } from "./transferManager";
@@ -151,7 +151,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     return unsubscribe;
   }, [boundOperationId, adoptManaged]);
 
-  const start = useCallback(async (input: Omit<CreateCase, "deviceProfile">, files: { uri: string; name: string; mediaType: string }[] = [], operationId = boundOperationId ?? Crypto.randomUUID()) => {
+  const start = useCallback(async (input: Omit<CreateCase, "deviceProfile">, files: { uri: string; name: string; mediaType: string }[] = [], operationId = boundOperationId ?? safeUUID()) => {
     stream.current?.abort(); generation.current += 1; followed.current = null; operationRef.current = operationId; caseRef.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
     setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted, operationId, phase: "creating", progress: ["Creating the investigation case."] }));
@@ -164,7 +164,7 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   const ask = useCallback(async (message: string) => {
     const caseData = caseRef.current ?? state.caseData; if (!caseData) return false;
-    const turn = pending.current?.message === message ? pending.current : { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message,
+    const turn = pending.current?.message === message ? pending.current : { turnId: safeUUID(), key: safeUUID(), message,
       answerTo: (caseRef.current?.response?.question ?? state.question)?.id ?? null };
     pending.current = turn;
     update({ phase: "working", error: null, notice: null, failure: null, progress: ["Sending your follow-up to Higgins."] });
@@ -177,7 +177,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     } catch (error: unknown) { if (live()) update({ phase: "failed", error: error instanceof Error ? error.message : "Higgins could not take this follow-up." }); return false; }
   }, [state.caseData, state.question, follow]);
 
-  const continueWith = useCallback(async (input: Omit<CreateCase, "deviceProfile">, operationId = boundOperationId ?? Crypto.randomUUID()) => {
+  const continueWith = useCallback(async (input: Omit<CreateCase, "deviceProfile">, operationId = boundOperationId ?? safeUUID()) => {
     const caseData = caseRef.current ?? state.caseData; if (!caseData || (caseData.activeJobId && !managedOperation(operationId, caseData.id))) return false;
     operationRef.current = operationId; followed.current = null;
     const unsubscribe = subscribeManagedOperation(operationId, adoptManaged);
