@@ -355,7 +355,7 @@ export default function GateDetailsScreen() {
             testID="gate-details-back"
             onPress={() =>
               router.push(
-                `/protection-details?category=${categoryId}` as never,
+                `/protection-details?category=${categoryId}&tab=gates` as never,
               )
             }
             style={s.backBtn}

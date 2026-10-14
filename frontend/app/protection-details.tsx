@@ -824,9 +824,11 @@ export default function ProtectionDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const health = useProtectionHealth();
-  const params = useLocalSearchParams<{ category?: string }>();
+  const params = useLocalSearchParams<{ category?: string; tab?: string }>();
 
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [activeTab, setActiveTab] = useState<DetailTab>(
+    (params.tab === "gates" || params.tab === "coverage") ? params.tab : "overview"
+  );
 
   const areas = useMemo(
     () => (health.checking ? [] : buildProtectionAreas(health.gates)),
