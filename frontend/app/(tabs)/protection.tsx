@@ -38,6 +38,7 @@ import { fonts, radius, spacing, useTheme } from "@/src/theme";
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.png");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+const apolloLogo = require("@/assets/images/logo.png");
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 const AREA_ICONS: Record<
@@ -302,6 +303,11 @@ export default function ProtectionScreen() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
+          <Image
+            source={apolloLogo}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
             Protection
           </Text>
@@ -473,6 +479,10 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerLogo: {
+    width: 32,
+    height: 32,
   },
   headerTitle: {
     flex: 1,
