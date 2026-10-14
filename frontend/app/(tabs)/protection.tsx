@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   heroTextBlock: {
-    maxWidth: "65%",
+    maxWidth: "70%",
     gap: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: radius.md,
