@@ -850,7 +850,7 @@ export default function ProtectionDetailsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Back"
               testID="protection-details-back"
-              onPress={() => goBackOrHome(router)}
+              onPress={() => router.push("/(tabs)/protection" as never)}
               style={s.backBtn}
             >
               <ChevronLeft size={24} color={colors.onSurface} />
@@ -894,7 +894,7 @@ export default function ProtectionDetailsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Back to Protection"
             testID="protection-details-back"
-            onPress={() => goBackOrHome(router)}
+            onPress={() => router.push("/(tabs)/protection" as never)}
             style={s.backBtn}
           >
             <ChevronLeft size={24} color={colors.onSurface} />
