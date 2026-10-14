@@ -64,19 +64,10 @@ const GATE_ICONS: Record<
   network: Wifi,
 };
 
-// ── Route for tapping a Gate row → navigates to Gate-specific screen ────────
-const GATE_ROUTES: Record<GateId, string> = {
-  site: "/(tabs)/guard?gate=site",
-  link: "/check",
-  text: "/text-guard",
-  call: "/call-guard",
-  email: "/email",
-  account: "/account-monitor",
-  file: "/file",
-  app: "/app-check",
-  device: "/device",
-  network: "/network",
-};
+// ── Gate Details route helper ────────────────────────────────────────────────
+function gateDetailsRoute(gateId: GateId, categoryId: ProtectionAreaId): string {
+  return `/gate-details?gate=${gateId}&category=${categoryId}`;
+}
 
 // ── Map gate categories to patrol category filters ──────────────────────────
 const AREA_TO_PATROL_CATEGORIES: Record<ProtectionAreaId, string[]> = {
@@ -613,6 +604,7 @@ function GatesContent({ area }: { area: ProtectionArea }) {
           <GateDetailRow
             key={cap.gateId}
             cap={cap}
+            areaId={area.id}
             isLast={idx === area.capabilities.length - 1}
           />
         ))}
@@ -624,9 +616,11 @@ function GatesContent({ area }: { area: ProtectionArea }) {
 /** Expanded gate row for the Gates tab — shows more detail including limitations. */
 function GateDetailRow({
   cap,
+  areaId,
   isLast,
 }: {
   cap: ProtectionAreaCapability;
+  areaId: ProtectionAreaId;
   isLast: boolean;
 }) {
   const s = useStyles();
@@ -635,7 +629,7 @@ function GateDetailRow({
   const Icon = GATE_ICONS[cap.gateId as GateId] ?? ShieldCheck;
   const tone = gateTone(cap.tone);
   const modeLabel = cap.mode === "automatic" ? "Automatic protection" : "Manual check";
-  const route = GATE_ROUTES[cap.gateId as GateId];
+  const route = gateDetailsRoute(cap.gateId as GateId, areaId);
 
   const content = (
     <>
@@ -662,9 +656,7 @@ function GateDetailRow({
               {modeLabel}
             </Text>
           </View>
-          {route ? (
-            <ChevronRight size={18} color={colors.onSurfaceSecondary} />
-          ) : null}
+          <ChevronRight size={18} color={colors.onSurfaceSecondary} />
         </View>
         <Text style={s.gatePurpose}>{cap.currentHelp}</Text>
         {cap.limitation ? (
@@ -688,20 +680,17 @@ function GateDetailRow({
     </>
   );
 
-  if (route) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${cap.label}: ${cap.statusLabel}`}
-        testID={`gate-detail-${cap.gateId}`}
-        onPress={() => router.push(route as never)}
-        style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-  return <View testID={`gate-detail-${cap.gateId}`}>{content}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${cap.label}: ${cap.statusLabel}`}
+      testID={`gate-detail-${cap.gateId}`}
+      onPress={() => router.push(route as never)}
+      style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
+    >
+      {content}
+    </Pressable>
+  );
 }
 
 // ── Coverage Tab / Section ──────────────────────────────────────────────────
