@@ -195,10 +195,10 @@ function GridCategoryCard({
   const isWarning = tone === "limited" || tone === "unverified";
   const gateCount = area.capabilities.length;
 
-  const iconSize = Math.round(40 * scale);
-  const iconInner = Math.round(22 * scale);
-  const iconRadius = Math.round(12 * scale);
-  const titleSize = Math.round(14 * scale);
+  const iconSize = Math.round(30 * scale);
+  const iconInner = Math.round(16 * scale);
+  const iconRadius = Math.round(9 * scale);
+  const titleSize = Math.round(13 * scale);
   const descSize = Math.round(11.5 * scale);
   const badgeSize = Math.round(12 * scale);
   const cardPad = Math.round(12 * scale);
@@ -243,7 +243,6 @@ function GridCategoryCard({
               styles.gridTitle,
               { color: colors.onSurface, fontSize: titleSize, lineHeight: titleSize + 5 },
             ]}
-            numberOfLines={1}
           >
             {area.title}
           </Text>
