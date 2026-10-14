@@ -207,63 +207,60 @@ function CategoryCard({ area }: { area: ProtectionArea }) {
         },
       ]}
     >
-      {/* Icon */}
-      <View
-        style={[
-          styles.categoryIconWell,
-          { backgroundColor: iconColors.well },
-        ]}
-      >
-        <Icon size={24} color={iconColors.icon} />
-      </View>
-
-      {/* Text content */}
-      <View style={styles.categoryTextBlock}>
-        <View style={styles.categoryTitleRow}>
-          <Text
-            style={[styles.categoryTitle, { color: colors.onSurface }]}
-            numberOfLines={1}
-          >
-            {area.title}
-          </Text>
-          <Text
-            style={[
-              styles.categoryGateCount,
-              { color: colors.onSurfaceSecondary },
-            ]}
-          >
-            {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
-          </Text>
+      {/* Top row: Icon + Title + Gates + Chevron */}
+      <View style={styles.categoryTopRow}>
+        <View
+          style={[
+            styles.categoryIconWell,
+            { backgroundColor: iconColors.well },
+          ]}
+        >
+          <Icon size={22} color={iconColors.icon} />
         </View>
         <Text
+          style={[styles.categoryTitle, { color: colors.onSurface }]}
+          numberOfLines={1}
+        >
+          {area.title}
+        </Text>
+        <Text
           style={[
-            styles.categoryDescription,
+            styles.categoryGateCount,
             { color: colors.onSurfaceSecondary },
           ]}
-          numberOfLines={3}
         >
-          {area.description}
+          {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
         </Text>
-        {/* Status badge */}
-        <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
-          {isGood ? (
-            <CircleCheck size={14} color={color} />
-          ) : isWarning ? (
-            <CircleAlert size={14} color={color} />
-          ) : (
-            <View
-              style={[styles.statusDot, { backgroundColor: color }]}
-            />
-          )}
-          <Text style={[styles.statusText, { color }]}>
-            {displayStatus(tone)}
-          </Text>
+        <View style={styles.categoryChevron}>
+          <ChevronRight size={18} color={colors.muted} />
         </View>
       </View>
 
-      {/* Chevron */}
-      <View style={styles.categoryChevron}>
-        <ChevronRight size={20} color={colors.muted} />
+      {/* Description — full width, fills the space under the icon */}
+      <Text
+        style={[
+          styles.categoryDescription,
+          { color: colors.onSurfaceSecondary },
+        ]}
+        numberOfLines={2}
+      >
+        {area.description}
+      </Text>
+
+      {/* Status badge */}
+      <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
+        {isGood ? (
+          <CircleCheck size={13} color={color} />
+        ) : isWarning ? (
+          <CircleAlert size={13} color={color} />
+        ) : (
+          <View
+            style={[styles.statusDot, { backgroundColor: color }]}
+          />
+        )}
+        <Text style={[styles.statusText, { color }]}>
+          {displayStatus(tone)}
+        </Text>
       </View>
     </Pressable>
   );
@@ -542,72 +539,65 @@ const styles = StyleSheet.create({
 
   // Category list
   categoryList: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   categoryCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     borderRadius: radius.lg,
     borderWidth: 1,
-    padding: spacing.lg,
-    gap: spacing.md,
-    minHeight: 100,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: 6,
+  },
+  categoryTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   categoryIconWell: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  categoryTextBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  categoryTitleRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: spacing.sm,
-  },
   categoryTitle: {
+    flex: 1,
     fontFamily: fonts.displayBold,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
   },
   categoryGateCount: {
     fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 16,
+    flexShrink: 0,
   },
   categoryDescription: {
     fontFamily: fonts.text,
     fontSize: 13,
     lineHeight: 18,
-    marginTop: 2,
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radius.pill,
-    marginTop: spacing.sm,
   },
   statusDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
   },
   statusText: {
     fontFamily: fonts.textSemibold,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 16,
   },
   categoryChevron: {
-    paddingTop: 14,
     flexShrink: 0,
   },
 
