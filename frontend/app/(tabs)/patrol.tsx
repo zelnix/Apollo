@@ -28,6 +28,7 @@ import { FlatList, Image, ImageBackground, Pressable, ScrollView, Text, useWindo
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Pill } from "@/src/components/ui";
+import { HowInvestigationsModal } from "@/src/components/HowInvestigationsModal";
 import {
   matchesPatrolFilter,
   projectPatrolOutcomes,
@@ -470,6 +471,7 @@ export default function Patrol() {
 
   const [activeChip, setActiveChip] = useState<ChipId>("all");
   const [handledExpanded, setHandledExpanded] = useState(false);
+  const [showHowModal, setShowHowModal] = useState(false);
 
   // Apply initial filter from URL params
   useEffect(() => {
@@ -653,7 +655,7 @@ export default function Patrol() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="How investigations work"
-                    onPress={() => {}}
+                    onPress={() => setShowHowModal(true)}
                     style={({ pressed }) => ({
                       flexDirection: "row", alignItems: "center", justifyContent: "center",
                       gap: spacing.xs, backgroundColor: "#FFFFFF", borderRadius: radius.pill,
@@ -817,6 +819,12 @@ export default function Patrol() {
             </View>
           ) : null
         }
+      />
+
+      {/* How Investigations Work modal */}
+      <HowInvestigationsModal
+        visible={showHowModal}
+        onClose={() => setShowHowModal(false)}
       />
     </View>
   );
