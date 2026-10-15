@@ -505,13 +505,15 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           </View>
           <Text style={s.statusTitle}>{gate.title}</Text>
         </View>
-        <View style={{ paddingLeft: 36, gap: 4 }}>
+        <View style={{ gap: 4 }}>
           <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
             <StatusIcon size={12} color={statusBadgeColor} />
             <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
           </View>
-          <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
-          {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+          <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
+            {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+            <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
+          </View>
         </View>
       </View>
 
