@@ -37,7 +37,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const heroBg = require("@/assets/images/hero-bg.png");
-const apolloDogImg = require("@/assets/images/apollo-dog.png");
+const apolloDogImg = require("@/assets/images/hero-characters.png");
 
 // ── Gate → friendly protection source label ─────────────────────────────────
 const SOURCE_LABEL: Record<PatrolCategory, string> = {
@@ -661,11 +661,11 @@ export default function Patrol() {
                 </View>
               </View>
 
-              {/* Apollo dog - bottom right */}
-              <View style={{ width: compact ? 70 : 90, alignSelf: "flex-end" }}>
+              {/* Right: Characters */}
+              <View style={{ width: compact ? 90 : 110, alignSelf: "flex-end" }}>
                 <Image
                   source={apolloDogImg}
-                  style={{ width: "100%", height: compact ? 80 : 100 }}
+                  style={{ width: "100%", height: compact ? 110 : 140 }}
                   resizeMode="contain"
                 />
               </View>
