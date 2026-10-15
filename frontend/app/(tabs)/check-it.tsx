@@ -225,7 +225,7 @@ const useStyles = makeStyles((c) => ({
     fontSize: 14,
     lineHeight: 20,
     color: "rgba(255,255,255,0.85)",
-    maxWidth: "60%",
+
   },
   heroCategoriesRow: {
     flexDirection: "row" as const,
@@ -451,7 +451,7 @@ export default function CheckItScreen() {
             <View style={s.heroContent}>
               <Text style={s.heroLabel}>APOLLO</Text>
               <Text style={s.heroHeading}>
-                Check. Stay{"\n"}<Text style={s.heroGold}>Safe.</Text>
+                Check. Check. Stay <Text style={s.heroGold}>Safe.</Text>
               </Text>
               <Text style={s.heroBody}>
                 Check messages, calls, links, files, apps and more. When in doubt, check it with Apollo, Higgins and Magnum DI.
