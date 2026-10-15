@@ -165,7 +165,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
           />
         ) : null}
 
-        {/* "What Apollo checked" — plain-English list; each item expandable to raw details. */}
+        {/* "What Apollo checked" — only shown for non-investigation results. */}
+        {!hasInvestigation ? (
         <Card style={{ gap: 0 }} testID="check-result-items">
           <Pressable
             accessibilityRole="button"
@@ -173,10 +174,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
             style={s.disclosureBtn}
             testID="check-result-items-toggle"
           >
-            <Text style={s.disclosureLabel}>{hasInvestigation ? "Magnum DI's initial assessment" : "What Apollo checked"}</Text>
-            {fullOpen || !hasInvestigation ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
+            <Text style={s.disclosureLabel}>What Apollo checked</Text>
+            {fullOpen ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
           </Pressable>
-          {fullOpen || !hasInvestigation ? (
+          {fullOpen ? (
             <>
               {result.items.length === 0 ? (
                 <Body>Apollo did not record any check items.</Body>
@@ -195,6 +196,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
             </>
           ) : null}
         </Card>
+        ) : null}
 
         {/* Progressive disclosure — full technical evidence. */}
         {!hasInvestigation && result.evidence.length > 0 ? (

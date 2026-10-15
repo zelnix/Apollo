@@ -224,7 +224,10 @@ export default function CheckLink() {
     if (liveEvent && (liveEvent.state === "biting" || liveEvent.state === "barking" || liveEvent.state === "growling" || liveEvent.state === "ears_up")) {
       actions.push({ testID: "check-verify-website", variant: "ghost", label: "Show me how to check the website", onPress: () => setVerify(true) });
     }
-    actions.push({ testID: "check-tech-details", variant: "ghost", label: liveEvent?.state === "biting" ? "What happened? / Deep technical details" : "Deep technical details", onPress: () => setTech(true) });
+    // Deep technical details — only shown when no Magnum DI investigation (Evidence tab covers this).
+    if (!liveEvent) {
+      actions.push({ testID: "check-tech-details", variant: "ghost", label: "Deep technical details", onPress: () => setTech(true) });
+    }
     if (liveEvent && liveEvent.state !== "resting") {
       actions.push({ testID: "check-report-mistake", variant: "ghost", label: "Report mistake", onPress: () => setReport(true) });
     }
