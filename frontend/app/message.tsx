@@ -69,12 +69,13 @@ const useStyles = makeStyles((c) => ({
   orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
 
   // ── Action cards row ──
-  actionCardsRow: { flexDirection: "row", gap: spacing.md },
-  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
-  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardsRow: { gap: spacing.md },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: c.border },
+  actionCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actionCardIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  actionCardChevron: { alignSelf: "flex-end" },
+  actionCardChevron: { marginLeft: "auto" },
 
   // ── Expandable enter text link ──
   expandLink: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
@@ -361,10 +362,12 @@ export default function CheckMessage() {
             onPress={() => canPickSms ? router.push("/message-picker") : showToast(Platform.OS === "ios" ? "Direct message access is not available on iOS. Use the share or screenshot options instead." : "Message access requires a native build with SMS permission.", "neutral")}
             style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={s.actionCardIconWell}><MessageSquare size={22} color={colors.onSurface} /></View>
-            <Text style={s.actionCardTitle}>Select from messages</Text>
+            <View style={s.actionCardHeader}>
+              <View style={s.actionCardIconWell}><MessageSquare size={20} color={colors.onSurface} /></View>
+              <Text style={s.actionCardTitle}>Select from messages</Text>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
             <Text style={s.actionCardSub}>Choose a message from your messaging app.</Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
 
           {/* Take a screenshot */}
@@ -376,10 +379,12 @@ export default function CheckMessage() {
             disabled={busy !== "idle"}
             style={({ pressed }) => [s.actionCard, busy !== "idle" && { opacity: 0.5 }, { opacity: pressed && busy === "idle" ? 0.85 : 1 }]}
           >
-            <View style={s.actionCardIconWell}><ImageIcon size={22} color={colors.onSurface} /></View>
-            <Text style={s.actionCardTitle}>Take a screenshot</Text>
+            <View style={s.actionCardHeader}>
+              <View style={s.actionCardIconWell}><ImageIcon size={20} color={colors.onSurface} /></View>
+              <Text style={s.actionCardTitle}>Take a screenshot</Text>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
         </View>
 

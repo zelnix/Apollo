@@ -97,12 +97,13 @@ const useStyles = makeStyles((c) => ({
   orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
 
   // Action cards row
-  actionCardsRow: { flexDirection: "row", gap: spacing.md },
-  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
-  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardsRow: { gap: spacing.md },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: c.border },
+  actionCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actionCardIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  actionCardChevron: { alignSelf: "flex-end" },
+  actionCardChevron: { marginLeft: "auto" },
   // Gmail M icon for action card
   gmailIconM: { fontFamily: fonts.displayBold, fontSize: 20, color: "#EA4335" },
 
@@ -737,16 +738,18 @@ export default function CheckEmail() {
             disabled={gmailBusy}
             style={({ pressed }) => [s.actionCard, gmailBusy && { opacity: 0.5 }, { opacity: pressed && !gmailBusy ? 0.85 : 1 }]}
           >
-            <View style={s.actionCardIconWell}>
-              {gmailBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Text style={s.gmailIconM}>M</Text>}
+            <View style={s.actionCardHeader}>
+              <View style={s.actionCardIconWell}>
+                {gmailBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Text style={s.gmailIconM}>M</Text>}
+              </View>
+              <Text style={s.actionCardTitle}>{gmailConnected ? "Select from Gmail" : "Connect Gmail"}</Text>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardTitle}>{gmailConnected ? "Select from Gmail" : "Connect Gmail"}</Text>
             <Text style={s.actionCardSub}>
               {gmailConnected
                 ? "Choose an email from your connected Gmail inbox."
                 : "Read-only access to select emails."}
             </Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
 
           {/* Take a screenshot */}
@@ -757,10 +760,12 @@ export default function CheckEmail() {
             onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "email" } })}
             style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={s.actionCardIconWell}><ImageIcon size={22} color={colors.onSurface} /></View>
-            <Text style={s.actionCardTitle}>Take a screenshot</Text>
+            <View style={s.actionCardHeader}>
+              <View style={s.actionCardIconWell}><ImageIcon size={20} color={colors.onSurface} /></View>
+              <Text style={s.actionCardTitle}>Take a screenshot</Text>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
         </View>
 

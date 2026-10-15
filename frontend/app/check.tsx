@@ -70,14 +70,15 @@ const useStyles = makeStyles((c) => ({
   orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
 
   // Action cards row
-  actionCardsRow: { flexDirection: "row", gap: spacing.md },
-  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
-  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  actionCardsRow: { gap: spacing.md },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: c.border },
+  actionCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actionCardIconWell: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   screenshotIconBg: { backgroundColor: "#E6F4EA" },
   inspectIconBg: { backgroundColor: "#DBEAFE" },
-  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  actionCardChevron: { alignSelf: "flex-end" },
+  actionCardChevron: { marginLeft: "auto" },
 
   // Recent links section
   recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
@@ -442,12 +443,12 @@ export default function CheckLink() {
             onPress={() => void photoAccess.start()}
             style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={[s.actionCardIconWell, s.screenshotIconBg]}>
-              <Camera size={22} color="#2E7D32" />
+            <View style={s.actionCardHeader}>
+              <View style={[s.actionCardIconWell, s.screenshotIconBg]}><Camera size={20} color="#2E7D32" /></View>
+              <Text style={s.actionCardTitle}>Take a screenshot</Text>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardTitle}>Take a screenshot</Text>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
 
           {/* Open link safely */}
@@ -459,12 +460,12 @@ export default function CheckLink() {
             disabled={!input.trim()}
             style={({ pressed }) => [s.actionCard, !input.trim() && { opacity: 0.5 }, { opacity: pressed && input.trim() ? 0.85 : 1 }]}
           >
-            <View style={[s.actionCardIconWell, s.inspectIconBg]}>
-              <ExternalLink size={22} color="#1D4ED8" />
+            <View style={s.actionCardHeader}>
+              <View style={[s.actionCardIconWell, s.inspectIconBg]}><ExternalLink size={20} color="#1D4ED8" /></View>
+              <Text style={s.actionCardTitle}>Open link safely</Text>
+              <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardTitle}>Open link safely</Text>
             <Text style={s.actionCardSub}>Apollo will open the link in a protected environment.</Text>
-            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
         </View>
 
