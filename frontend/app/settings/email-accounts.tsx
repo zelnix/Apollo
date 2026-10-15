@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Mail from "lucide-react-native/icons/mail";
 import Plus from "lucide-react-native/icons/plus";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -150,7 +150,7 @@ export default function EmailAccountsScreen() {
                     disabled={busy}
                     style={({ pressed }) => [s.disconnectBtn, { opacity: pressed ? 0.7 : 1 }]}
                   >
-                    <Trash2 size={18} color={colors.error} />
+                    <Trash size={18} color={colors.error} />
                   </Pressable>
                 </View>
               ))
