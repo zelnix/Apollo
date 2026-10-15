@@ -20,7 +20,7 @@ import User from "lucide-react-native/icons/user";
 import Link2 from "lucide-react-native/icons/link-2";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
+import { FlatList, ImageBackground, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Pill } from "@/src/components/ui";
@@ -32,6 +32,8 @@ import {
 } from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+
+const heroBg = require("@/assets/images/hero-bg.png");
 
 // ── Gate → friendly protection source label ─────────────────────────────────
 const SOURCE_LABEL: Record<PatrolCategory, string> = {
@@ -81,6 +83,9 @@ const FILTER_CHIPS: { id: ChipId; label: string }[] = [
 // ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+
+  // Hero background
+  heroBg: { overflow: "hidden" as const },
 
   // Header
   headerRow: {
@@ -528,7 +533,7 @@ export default function Patrol() {
   return (
     <View style={s.root} testID="threats-screen">
       {/* ── Fixed header area ── */}
-      <View style={{ paddingTop: insets.top + spacing.sm, backgroundColor: colors.surface }}>
+      <ImageBackground source={heroBg} resizeMode="cover" style={[s.heroBg, { paddingTop: insets.top + spacing.sm, backgroundColor: colors.surface }]}>
         {/* Title + Status */}
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>Threats</Text>
@@ -628,7 +633,7 @@ export default function Patrol() {
             </Pressable>
           </ScrollView>
         </View>
-      </View>
+      </ImageBackground>
 
       {/* ── Scrollable content ── */}
       <FlatList
