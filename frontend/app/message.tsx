@@ -4,7 +4,9 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Clock from "lucide-react-native/icons/clock";
 import ImageIcon from "lucide-react-native/icons/image";
 import MessageSquare from "lucide-react-native/icons/message-square";
@@ -74,6 +76,10 @@ const useStyles = makeStyles((c) => ({
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   actionCardChevron: { alignSelf: "flex-end" },
 
+  // ── Expandable enter text link ──
+  expandLink: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  expandLinkText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary, flex: 1 },
+
   // ── Recent messages section ──
   recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
   recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
@@ -133,6 +139,7 @@ export default function CheckMessage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
+  const [manualOpen, setManualOpen] = useState(false);
   const isEmail = params.source === "email";
   const canPickSms = !isEmail && PhonePickers.isSupported();
   const autoRan = useRef(false);
@@ -344,59 +351,6 @@ export default function CheckMessage() {
           Choose a message from your device, take a screenshot, or enter the text.{"\n"}Apollo will investigate it for possible scams.
         </Text>
 
-        {/* ── Message Card ── */}
-        <View style={s.messageCard} testID="message-card">
-          <View style={s.messageCardHeader}>
-            <View style={s.messageIconWell}>
-              <MessageSquare size={22} color="#1D4ED8" />
-            </View>
-            <Text style={s.messageCardLabel}>Enter message text</Text>
-          </View>
-          <TextInput
-            testID="message-text"
-            style={s.messageInput}
-            value={text}
-            onChangeText={setText}
-            placeholder="Enter or paste message text here"
-            placeholderTextColor={colors.muted}
-            multiline
-            autoCorrect={false}
-          />
-        </View>
-
-        {/* ── Screenshot preview ── */}
-        {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
-
-        {/* ── Gold CTA: Check message ── */}
-        <Pressable
-          testID="message-check"
-          accessibilityRole="button"
-          accessibilityLabel="Check message"
-          disabled={!text.trim() || busy !== "idle"}
-          onPress={() => void run()}
-          style={({ pressed }) => [s.goldBtn, (!text.trim() || busy !== "idle") && s.goldBtnDisabled, { opacity: pressed && text.trim() && busy === "idle" ? 0.85 : 1 }]}
-        >
-          <Search size={22} color={colors.onSurface} />
-          <Text style={s.goldBtnText}>{"Check message"}</Text>
-        </Pressable>
-
-        {/* ── Error ── */}
-        {error ? (
-          <View style={s.errorCard} testID="message-error">
-            <Text style={s.errorText}>{error}</Text>
-            <Button testID="message-retry" variant="secondary" label="Try again" onPress={() => void run()} />
-          </View>
-        ) : null}
-
-        {/* ── Progress handled by CheckingModal ── */}
-
-        {/* ── Or divider ── */}
-        <View style={s.orDivider}>
-          <View style={s.orLine} />
-          <Text style={s.orText}>or</Text>
-          <View style={s.orLine} />
-        </View>
-
         {/* ── Two action cards ── */}
         <View style={s.actionCardsRow}>
           {/* Select from messages */}
@@ -428,6 +382,60 @@ export default function CheckMessage() {
             <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
         </View>
+
+        {/* ── Enter message text (expandable) ── */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setManualOpen((v) => !v)}
+          style={s.expandLink}
+          testID="message-expand-text"
+        >
+          <View style={s.messageIconWell}>
+            <MessageSquare size={22} color="#1D4ED8" />
+          </View>
+          <Text style={s.expandLinkText}>Enter message text</Text>
+          {manualOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
+        </Pressable>
+        {manualOpen ? (
+          <View style={s.messageCard} testID="message-card">
+            <TextInput
+              testID="message-text"
+              style={s.messageInput}
+              value={text}
+              onChangeText={setText}
+              placeholder="Enter or paste message text here"
+              placeholderTextColor={colors.muted}
+              multiline
+              autoCorrect={false}
+            />
+          </View>
+        ) : null}
+
+        {/* ── Screenshot preview ── */}
+        {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
+
+        {/* ── Gold CTA: Check message ── */}
+        <Pressable
+          testID="message-check"
+          accessibilityRole="button"
+          accessibilityLabel="Check message"
+          disabled={!text.trim() || busy !== "idle"}
+          onPress={() => void run()}
+          style={({ pressed }) => [s.goldBtn, (!text.trim() || busy !== "idle") && s.goldBtnDisabled, { opacity: pressed && text.trim() && busy === "idle" ? 0.85 : 1 }]}
+        >
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>{"Check message"}</Text>
+        </Pressable>
+
+        {/* ── Error ── */}
+        {error ? (
+          <View style={s.errorCard} testID="message-error">
+            <Text style={s.errorText}>{error}</Text>
+            <Button testID="message-retry" variant="secondary" label="Try again" onPress={() => void run()} />
+          </View>
+        ) : null}
+
+        {/* ── Progress handled by CheckingModal ── */}
 
         {/* ── Recent Messages Section ── */}
         <View style={s.recentSection} testID="message-recent-section">
