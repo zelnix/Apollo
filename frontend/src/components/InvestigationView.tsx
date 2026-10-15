@@ -6,7 +6,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, ImageBackground, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
@@ -36,6 +36,7 @@ import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/acti
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
 
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+const heroBg = require("@/assets/images/hero-bg.png");
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,9 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
 
 const useStyles = makeStyles((c) => ({
   // ── Status Card ──
-  statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
+  statusCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" as const },
+  statusCardInner: { padding: spacing.lg, gap: spacing.sm },
+  statusCardBg: { borderRadius: radius.lg, overflow: "hidden" as const },
   statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm },
   statusIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
   statusInfo: { flex: 1, gap: 2 },
@@ -499,22 +502,26 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {showTabs ? <>
       {/* ── Status Card ── */}
       <View style={s.statusCard} testID="inv-status-card">
-        <View style={s.statusRow}>
-          <View style={[s.statusIconWrap, { backgroundColor: gate.iconBg }]}>
-            <gate.IconComponent size={16} color={gate.iconColor} />
+        <ImageBackground source={heroBg} resizeMode="cover" style={s.statusCardBg}>
+          <View style={s.statusCardInner}>
+            <View style={s.statusRow}>
+              <View style={[s.statusIconWrap, { backgroundColor: gate.iconBg }]}>
+                <gate.IconComponent size={16} color={gate.iconColor} />
+              </View>
+              <Text style={s.statusTitle}>{gate.title}</Text>
+            </View>
+            <View style={{ gap: 4 }}>
+              <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
+                <StatusIcon size={12} color={statusBadgeColor} />
+                <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
+              </View>
+              <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
+                {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+                <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
+              </View>
+            </View>
           </View>
-          <Text style={s.statusTitle}>{gate.title}</Text>
-        </View>
-        <View style={{ gap: 4 }}>
-          <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
-            <StatusIcon size={12} color={statusBadgeColor} />
-            <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
-          </View>
-          <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
-            {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
-            <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
-          </View>
-        </View>
+        </ImageBackground>
       </View>
 
       {/* ── Tab Navigation ── */}
