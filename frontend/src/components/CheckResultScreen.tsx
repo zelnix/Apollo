@@ -114,7 +114,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing["3xl"] }]}
         testID="check-result-scroll"
       >
-        {/* ── Quick context: Apollo's immediate finding ── */}
+        {/* ── Quick context: Apollo's immediate finding ──
+             Hidden when a Magnum DI investigation is active, because the unified
+             four-tab report (Status Card + Overview) now provides all context. */}
+        {!hasInvestigation ? (
         <Card style={{ gap: spacing.md }} testID="check-result-main">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
             <Pill tone={result.tone} label={result.checkType} testID="check-result-tone" />
@@ -122,12 +125,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
           </View>
           <Text style={s.headline} testID="check-result-headline">{result.headline}</Text>
 
-          {/* When Magnum DI is investigating, show the headline as brief context. 
-              When no investigation, show the full static explanation. */}
-          {!hasInvestigation || !investigationResolved ? (
+          {/* When no investigation, show the full static explanation. */}
             <>
               <View style={{ gap: spacing.xs }}>
-                <Text style={s.sectionLabel}>{hasInvestigation ? "MAGNUM DI'S INITIAL ASSESSMENT" : "WHY ACTION WAS TAKEN"}</Text>
+                <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
                 <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
               </View>
 
@@ -147,8 +148,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
                 </View>
               ) : null}
             </>
-          ) : null}
         </Card>
+        ) : null}
 
         {/* ── Magnum DI Investigation — the primary result experience ── */}
         {hasInvestigation ? (
