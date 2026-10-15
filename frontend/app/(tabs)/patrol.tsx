@@ -211,8 +211,8 @@ const useStyles = makeStyles((c) => ({
   patrolCard: {
     marginHorizontal: spacing.lg,
     borderRadius: radius.md,
-    padding: spacing.sm,
-    gap: spacing.xs,
+    padding: spacing.lg,
+    gap: spacing.sm,
     marginBottom: spacing.sm,
   },
   patrolHeader: {
@@ -558,21 +558,30 @@ export default function Patrol() {
         </Text>
 
         {/* Apollo's patrol summary */}
-        <ImageBackground source={heroBg} resizeMode="cover" style={[s.patrolCard, s.heroBg]} testID="threats-patrol-summary">
-          <View style={s.patrolHeader}>
-            <View
-              style={[
-                s.patrolIconWell,
-                { backgroundColor: "rgba(79,175,131,0.15)" },
-              ]}
-            >
-              <Dog size={22} color={colors.resting} />
+        <View style={{ marginHorizontal: spacing.lg, borderRadius: radius.md, overflow: "hidden", marginBottom: spacing.sm }} testID="threats-patrol-summary">
+          <ImageBackground
+            source={heroBg}
+            resizeMode="cover"
+            style={{ width: "100%", aspectRatio: 1672 / 941, justifyContent: "center" }}
+            imageStyle={{ borderRadius: radius.md }}
+          >
+            <View style={{ padding: spacing.lg, gap: spacing.sm }}>
+              <View style={s.patrolHeader}>
+                <View
+                  style={[
+                    s.patrolIconWell,
+                    { backgroundColor: "rgba(79,175,131,0.15)" },
+                  ]}
+                >
+                  <Dog size={22} color={colors.resting} />
+                </View>
+                <Text style={s.patrolTitle}>Apollo&apos;s patrol summary</Text>
+              </View>
+              <Text style={s.patrolBody}>{patrolSummary}</Text>
+              <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
             </View>
-            <Text style={s.patrolTitle}>Apollo&apos;s patrol summary</Text>
-          </View>
-          <Text style={s.patrolBody}>{patrolSummary}</Text>
-          <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
-        </ImageBackground>
+          </ImageBackground>
+        </View>
 
         {/* Filter chips */}
         <View style={s.filterBar}>
