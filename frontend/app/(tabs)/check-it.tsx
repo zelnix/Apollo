@@ -442,9 +442,7 @@ export default function CheckItScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Screen Title ── */}
-        <Text style={s.screenTitle}>
-          Check. Check. Stay <Text style={s.heroGold}>Safe.</Text>
-        </Text>
+        <Text style={s.screenTitle}>Check</Text>
 
         {/* ── Hero Card ── */}
         <View style={s.heroOuter} testID="check-hero-card">
@@ -455,6 +453,9 @@ export default function CheckItScreen() {
             imageStyle={{ borderRadius: radius.lg }}
           >
             <View style={s.heroContent}>
+              <Text style={s.heroHeading}>
+                Check. Stay <Text style={s.heroGold}>Safe.</Text>
+              </Text>
               <Text style={s.heroBody}>
                 Check messages, calls, links, files, apps and more. When in doubt, check it with Apollo, Higgins and Magnum DI.
               </Text>
