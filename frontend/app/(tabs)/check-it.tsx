@@ -371,13 +371,10 @@ export default function CheckItScreen() {
 
   // 2-column card width (10% narrower)
   const col2Width = (innerWidth - gap) / 2 * 0.9;
-  // 3-column card width (10% narrower)
-  const col3Width = (innerWidth - gap * 2) / 3 * 0.9;
 
   // Responsive: fall back to fewer columns on narrow screens
   const useNarrow = width < 320 || fontScale >= 1.5;
   const card2W = useNarrow ? innerWidth : col2Width;
-  const card3W = useNarrow ? innerWidth : col3Width;
 
   return (
     <View style={s.root} testID="check-it-screen">
@@ -441,11 +438,21 @@ export default function CheckItScreen() {
             </Text>
           </View>
           <View style={s.grid}>
-            {FILES_APPS_CODES.map((card) => (
+            {FILES_APPS_CODES.slice(0, 2).map((card) => (
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card3W}
+                cardWidth={card2W}
+                iconBg={ICON_BG.files}
+              />
+            ))}
+          </View>
+          <View style={s.grid}>
+            {FILES_APPS_CODES.slice(2).map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={innerWidth}
                 iconBg={ICON_BG.files}
               />
             ))}
@@ -491,11 +498,21 @@ export default function CheckItScreen() {
             </Text>
           </View>
           <View style={s.grid}>
-            {PROTECTION_ACCOUNTS.map((card) => (
+            {PROTECTION_ACCOUNTS.slice(0, 2).map((card) => (
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card3W}
+                cardWidth={card2W}
+                iconBg={ICON_BG.protection}
+              />
+            ))}
+          </View>
+          <View style={s.grid}>
+            {PROTECTION_ACCOUNTS.slice(2).map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={innerWidth}
                 iconBg={ICON_BG.protection}
               />
             ))}
