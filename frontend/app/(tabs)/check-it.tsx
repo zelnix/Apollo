@@ -449,7 +449,6 @@ export default function CheckItScreen() {
             imageStyle={{ borderRadius: radius.lg }}
           >
             <View style={s.heroContent}>
-              <Text style={s.heroLabel}>APOLLO</Text>
               <Text style={s.heroHeading}>
                 Check. Check. Stay <Text style={s.heroGold}>Safe.</Text>
               </Text>
