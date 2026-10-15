@@ -313,11 +313,11 @@ const useStyles = makeStyles((c) => ({
 
 function CheckCardItem({
   card,
-  cardWidth,
+  fullWidth,
   iconBg,
 }: {
   card: CheckCard;
-  cardWidth: number | string;
+  fullWidth?: boolean;
   iconBg: string;
 }) {
   const s = useStyles();
@@ -334,7 +334,10 @@ function CheckCardItem({
       onPress={() => router.push(card.route as never)}
       style={({ pressed }) => [
         s.card,
-        { width: cardWidth, opacity: pressed ? 0.78 : 1 },
+        fullWidth
+          ? { width: "100%" }
+          : { flexBasis: "48%", flexGrow: 1, maxWidth: "49.5%" },
+        { opacity: pressed ? 0.78 : 1 },
       ]}
     >
       <View style={s.cardTopRow}>
@@ -369,13 +372,8 @@ export default function CheckItScreen() {
   const innerWidth = width - padH - sectionPad;
   const gap = spacing.sm;
 
-  // Responsive: use 2 columns when cards fit, regardless of font scale
-  const useNarrow = innerWidth < 240; // Only go single-column on very narrow screens
-
-  // 2-column card width (floor to avoid sub-pixel overflow)
-  const col2Width = Math.floor((innerWidth - gap) / 2);
-  const card2W = useNarrow ? innerWidth : col2Width;
-  const quickCardW = useNarrow ? innerWidth : col2Width;
+  // Responsive: only go single-column on very narrow screens
+  const useNarrow = innerWidth < 240;
 
   return (
     <View style={s.root} testID="check-it-screen">
@@ -418,7 +416,6 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={quickCardW}
                 iconBg={ICON_BG.quick}
               />
             ))}
@@ -443,7 +440,6 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card2W}
                 iconBg={ICON_BG.files}
               />
             ))}
@@ -453,7 +449,7 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={innerWidth}
+                fullWidth
                 iconBg={ICON_BG.files}
               />
             ))}
@@ -478,7 +474,6 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card2W}
                 iconBg={ICON_BG.device}
               />
             ))}
@@ -503,7 +498,6 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card2W}
                 iconBg={ICON_BG.protection}
               />
             ))}
@@ -513,7 +507,7 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={innerWidth}
+                fullWidth
                 iconBg={ICON_BG.protection}
               />
             ))}
