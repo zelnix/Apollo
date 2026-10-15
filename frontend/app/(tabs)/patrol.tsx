@@ -633,7 +633,7 @@ export default function Patrol() {
       {/* ── Scrollable content ── */}
       <FlatList
         data={filteredOutcomes}
-        keyExtractor={(item) => item.outcomeId}
+        keyExtractor={(item, index) => `${item.outcomeId}-${index}`}
         testID="threats-list"
         contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
         ListHeaderComponent={
