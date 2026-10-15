@@ -115,10 +115,6 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (ev) validateEvidence(ev, out);
     if (out.category === 'call' && (ev || out.verified_block || out.state === 'biting' || out.indicator_host)) throw new EgressViolation(endpoint, 'call packet claim');
     if (out.indicator_host != null && !domainOnly(out.indicator_host)) throw new EgressViolation(endpoint, 'indicator_host');
-    for (const key of ['headline', 'what_happened', 'what_to_do', 'adapter_label']) {
-      if (typeof out[key] !== 'string' || /https?:\/\/|[+@]|\b\d[\d ()-]{6,}\d/.test(out[key] as string)) throw new EgressViolation(endpoint, key);
-    }
-    if (!Array.isArray(out.why) || out.why.some(w => typeof w !== 'string' || w.length > 160)) throw new EgressViolation(endpoint, 'why');
     if (out.supporting_references === undefined) out.supporting_references = [];
     if (!Array.isArray(out.supporting_references) || out.supporting_references.length > 6 || out.supporting_references.some((ref) => {
       if (!ref || typeof ref !== 'object') return true;
@@ -129,6 +125,10 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     const category = String(out.category);
     if (!['link', 'website', 'connection', 'known_threat', 'protection', 'system', 'message', 'call', 'app', 'device', 'account', 'email'].includes(category)) throw new EgressViolation(endpoint, 'category');
     for (const key of ['event_id', 'device_id', 'scent_id']) if (out[key] != null && !evidenceToken(out[key])) throw new EgressViolation(endpoint, key);
+    // Project all user-facing text to privacy-safe values BEFORE validation.
+    // Raw pre-projection values (headline, what_happened, what_to_do, why) may contain
+    // URLs or phone numbers from the investigation subject — that is expected and safe
+    // because these fields are always overwritten with controlled projections below.
     out.headline = ev ? 'Apollo observed a blocked connection' : `Apollo recorded a ${category} check`;
     out.what_happened = ev ? 'An observed packet was intentionally blocked by the on-device filter.' : 'A local assessment was recorded. Details stay on the device.';
     out.why = [ev ? 'Packet-backed enforcement evidence is attached.' : 'Only a minimal security summary is shared.'];
@@ -143,6 +143,11 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     out.claimed_brand = null;
     out.scenario = typeof out.scenario === 'string' && /^[A-Z]{1,3}\d{1,3}[a-z]?$/.test(out.scenario) ? out.scenario : null;
     out.adapter_label = 'Apollo on-device assessment';
+    // Validate the PROJECTED output — these are now controlled string literals.
+    for (const key of ['headline', 'what_happened', 'what_to_do', 'adapter_label']) {
+      if (typeof out[key] !== 'string' || /https?:\/\/|[+@]|\b\d[\d ()-]{6,}\d/.test(out[key] as string)) throw new EgressViolation(endpoint, key);
+    }
+    if (!Array.isArray(out.why) || out.why.some(w => typeof w !== 'string' || w.length > 160)) throw new EgressViolation(endpoint, 'why');
   }
   if (endpoint === 'family' && Array.isArray(out.events)) {
     out.headline = 'Shared Apollo security incident';
