@@ -6,6 +6,7 @@ import * as Crypto from "expo-crypto";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Clock from "lucide-react-native/icons/clock";
 import ImageIcon from "lucide-react-native/icons/image";
 import Inbox from "lucide-react-native/icons/inbox";
@@ -104,6 +105,10 @@ const useStyles = makeStyles((c) => ({
   actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   actionCardChevron: { marginLeft: "auto" },
+
+  // ── Expandable enter text link ──
+  expandLink: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  expandLinkText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary, flex: 1 },
   // Gmail M icon for action card
   gmailIconM: { fontFamily: fonts.displayBold, fontSize: 20, color: "#EA4335" },
 
@@ -228,6 +233,7 @@ export default function CheckEmail() {
   type InboxPreviewItem = { id: string; account: string; from: string; subject: string; date: string; snippet: string };
   const [recentInbox, setRecentInbox] = useState<InboxPreviewItem[]>([]);
   const [recentInboxLoading, setRecentInboxLoading] = useState(false);
+  const [emailTextOpen, setEmailTextOpen] = useState(false);
 
   const loadRecentInbox = useCallback(async () => {
     if (!deviceId || !gmailConnected) return;
@@ -685,48 +691,6 @@ export default function CheckEmail() {
           Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
-        {/* ── Email Card ── */}
-        <View style={s.emailCard} testID="email-card">
-          <View style={s.emailCardHeader}>
-            <View style={s.emailIconWell}>
-              <Mail size={22} color="#1D4ED8" />
-            </View>
-            <Text style={s.emailCardLabel}>Enter email text</Text>
-          </View>
-          <TextInput
-            testID="email-body"
-            style={s.emailInput}
-            value={raw}
-            onChangeText={setRaw}
-            placeholder="Paste email content here (sender, subject, message)"
-            placeholderTextColor={colors.muted}
-            multiline
-            textAlignVertical="top"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
-
-        {/* ── Gold CTA: Check email ── */}
-        <Pressable
-          testID="email-run"
-          accessibilityRole="button"
-          accessibilityLabel="Check email"
-          disabled={busy || !hasContent}
-          onPress={() => void run()}
-          style={({ pressed }) => [s.goldBtn, (busy || !hasContent) && s.goldBtnDisabled, { opacity: pressed && hasContent ? 0.85 : 1 }]}
-        >
-          <Search size={22} color={colors.onSurface} />
-          <Text style={s.goldBtnText}>{"Check email"}</Text>
-        </Pressable>
-
-        {/* ── Or divider ── */}
-        <View style={s.orDivider}>
-          <View style={s.orLine} />
-          <Text style={s.orText}>or</Text>
-          <View style={s.orLine} />
-        </View>
-
         {/* ── Two action cards ── */}
         <View style={s.actionCardsRow}>
           {/* Select from Gmail */}
@@ -852,13 +816,56 @@ export default function CheckEmail() {
           ) : (
             <View style={s.recentEmpty}>
               <Mail size={28} color={colors.muted} />
-              <Body>{gmailConfigured ? "Connect Gmail to see your recent emails here." : "Paste or forward an email above to check it."}</Body>
+              <Body>{gmailConfigured ? "Connect Gmail to see your recent emails here." : "Paste or forward an email below to check it."}</Body>
               {gmailConfigured && !gmailConnected ? (
                 <Button testID="email-connect-inline" variant="ghost" label={gmailBusy ? "Opening Google\u2026" : "Connect Gmail"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
               ) : null}
             </View>
           )}
         </View>
+
+        {/* ── Enter email text (expandable) ── */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setEmailTextOpen((v) => !v)}
+          style={s.expandLink}
+          testID="email-expand-text"
+        >
+          <View style={s.emailIconWell}>
+            <Mail size={22} color="#1D4ED8" />
+          </View>
+          <Text style={s.expandLinkText}>Enter email text</Text>
+          {emailTextOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
+        </Pressable>
+        {emailTextOpen ? (
+          <View style={s.emailCard} testID="email-card">
+            <TextInput
+              testID="email-body"
+              style={s.emailInput}
+              value={raw}
+              onChangeText={setRaw}
+              placeholder="Paste email content here (sender, subject, message)"
+              placeholderTextColor={colors.muted}
+              multiline
+              textAlignVertical="top"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+        ) : null}
+
+        {/* ── Gold CTA: Check email ── */}
+        <Pressable
+          testID="email-run"
+          accessibilityRole="button"
+          accessibilityLabel="Check email"
+          disabled={busy || !hasContent}
+          onPress={() => void run()}
+          style={({ pressed }) => [s.goldBtn, (busy || !hasContent) && s.goldBtnDisabled, { opacity: pressed && hasContent ? 0.85 : 1 }]}
+        >
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>{"Check email"}</Text>
+        </Pressable>
       </KeyboardAwareScrollView>
 
       {/* ══════════════════════════════════════════════════════════════════════
