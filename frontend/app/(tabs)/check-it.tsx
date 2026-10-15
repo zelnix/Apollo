@@ -191,6 +191,14 @@ const HERO_CATEGORIES: HeroCategory[] = [
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
+  // Screen title (outside hero card, matches other screens)
+  screenTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 28,
+    lineHeight: 34,
+    color: c.onSurface,
+  },
+
   // Hero card
   heroOuter: {
     marginHorizontal: spacing.md,
@@ -203,19 +211,6 @@ const useStyles = makeStyles((c) => ({
   heroContent: {
     padding: spacing.lg,
     gap: spacing.sm,
-  },
-  heroLabel: {
-    fontFamily: fonts.textSemibold,
-    fontSize: 11,
-    letterSpacing: 2,
-    textTransform: "uppercase" as const,
-    color: "rgba(255,255,255,0.7)",
-  },
-  heroHeading: {
-    fontFamily: fonts.displayBold,
-    fontSize: 28,
-    lineHeight: 34,
-    color: "#FFFFFF",
   },
   heroGold: {
     color: "#F5C842",
@@ -440,6 +435,11 @@ export default function CheckItScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Screen Title ── */}
+        <Text style={s.screenTitle}>
+          Check. Check. Stay <Text style={s.heroGold}>Safe.</Text>
+        </Text>
+
         {/* ── Hero Card ── */}
         <View style={s.heroOuter} testID="check-hero-card">
           <ImageBackground
@@ -449,9 +449,6 @@ export default function CheckItScreen() {
             imageStyle={{ borderRadius: radius.lg }}
           >
             <View style={s.heroContent}>
-              <Text style={s.heroHeading}>
-                Check. Check. Stay <Text style={s.heroGold}>Safe.</Text>
-              </Text>
               <Text style={s.heroBody}>
                 Check messages, calls, links, files, apps and more. When in doubt, check it with Apollo, Higgins and Magnum DI.
               </Text>
