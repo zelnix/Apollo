@@ -661,15 +661,6 @@ export default function CheckEmail() {
   };
 
   // ── Handle Gmail action card press ──
-  const handleGmailAction = () => {
-    if (gmailConnected) {
-      void openInboxPicker();
-    } else if (gmailConfigured) {
-      void connectGmail();
-    } else {
-      showToast("Gmail integration is not configured.", "neutral");
-    }
-  };
 
   return (
     <View style={s.root}>
@@ -710,7 +701,7 @@ export default function CheckEmail() {
             <View style={s.recentDropdownIconWell}>
               <Clock size={18} color={colors.onSurface} />
             </View>
-            <Text style={s.recentDropdownTitle}>Recent emails</Text>
+            <Text style={s.recentDropdownTitle}>Select recent emails</Text>
             {recentEmailsOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
           </Pressable>
 
@@ -795,31 +786,8 @@ export default function CheckEmail() {
           </> : null}
         </View>
 
-        {/* ── Two action cards ── */}
+        {/* ── Action card ── */}
         <View style={s.actionCardsRow}>
-          {/* Select from Gmail */}
-          <Pressable
-            testID="email-gmail-action"
-            accessibilityRole="button"
-            accessibilityLabel={gmailConnected ? "Select from Gmail" : "Connect Gmail"}
-            onPress={handleGmailAction}
-            disabled={gmailBusy}
-            style={({ pressed }) => [s.actionCard, gmailBusy && { opacity: 0.5 }, { opacity: pressed && !gmailBusy ? 0.85 : 1 }]}
-          >
-            <View style={s.actionCardHeader}>
-              <View style={s.actionCardIconWell}>
-                {gmailBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Text style={s.gmailIconM}>M</Text>}
-              </View>
-              <Text style={s.actionCardTitle}>{gmailConnected ? "Select from Gmail" : "Connect Gmail"}</Text>
-              <ChevronRight size={18} color={colors.muted} />
-            </View>
-            <Text style={s.actionCardSub}>
-              {gmailConnected
-                ? "Choose an email from your connected Gmail inbox."
-                : "Read-only access to select emails."}
-            </Text>
-          </Pressable>
-
           {/* Take a screenshot */}
           <Pressable
             testID="email-check-screenshot"

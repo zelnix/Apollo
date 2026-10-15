@@ -81,6 +81,12 @@ export default function SettingsScreen() {
         </Card>
       </View>
 
+      <View><SectionTitle>Connected accounts</SectionTitle>
+        <Card testID="settings-accounts">
+          <NavRow first label="Email accounts" hint="Connect or disconnect Gmail accounts for email checking" onPress={() => router.push("/settings/email-accounts")} testID="settings-email-accounts" />
+        </Card>
+      </View>
+
       <View><SectionTitle>App preferences</SectionTitle>
         <Card testID="settings-preferences">
           <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
