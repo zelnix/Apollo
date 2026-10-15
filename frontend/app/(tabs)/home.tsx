@@ -57,7 +57,7 @@ const useStyles = makeStyles((c) => ({
   // ── Branded header ──
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandTitle: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3 },
+  brandTitle: { fontFamily: fonts.displayBold, fontSize: 28, lineHeight: 34, color: c.onSurface },
   brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
   settingsBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
 
@@ -192,7 +192,7 @@ export default function Home() {
       <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
         <View style={s.headerRow}>
           <View>
-            <Text style={[s.brandTitle, compact && { fontSize: 19 }]} testID="home-brand-title">Apollo Scam Guard</Text>
+            <Text style={s.brandTitle} testID="home-brand-title">Apollo Scam Guard</Text>
             <Text style={s.brandSubtitle}>Safer People. Safer Tomorrows.</Text>
           </View>
           {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
