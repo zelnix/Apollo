@@ -520,9 +520,9 @@ export default function Patrol() {
   // Patrol summary
   const heroHeading = useMemo(() => {
     if (openCases > 0) {
-      return `${openCases} ${openCases === 1 ? "investigation needs" : "investigations need"} your attention`;
+      return `${openCases} ${openCases === 1 ? "threat needs" : "threats need"} your attention`;
     }
-    return "Your recent investigations are handled";
+    return "Your recent threats are handled";
   }, [openCases]);
 
   const patrolSummary = useMemo(() => {
