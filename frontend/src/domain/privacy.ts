@@ -111,6 +111,11 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (Array.isArray(out.values)) out.values = out.values.map(v => minimalIndicator(String(v)));
   }
   if (endpoint === 'patrol_sync') {
+    // Minimal case-link payload (only case_id) — no event content to validate.
+    if (out.case_id != null && out.category === undefined) {
+      if (typeof out.case_id !== 'string' || !evidenceToken(out.case_id)) throw new EgressViolation(endpoint, 'case_id');
+    } else {
+    // Full event sync — validate all fields and project to privacy-safe values.
     const ev = out.enforcement_evidence as Record<string, unknown> | null | undefined;
     if (ev) validateEvidence(ev, out);
     if (out.category === 'call' && (ev || out.verified_block || out.state === 'biting' || out.indicator_host)) throw new EgressViolation(endpoint, 'call packet claim');
@@ -148,6 +153,7 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
       if (typeof out[key] !== 'string' || /https?:\/\/|[+@]|\b\d[\d ()-]{6,}\d/.test(out[key] as string)) throw new EgressViolation(endpoint, key);
     }
     if (!Array.isArray(out.why) || out.why.some(w => typeof w !== 'string' || w.length > 160)) throw new EgressViolation(endpoint, 'why');
+    }
   }
   if (endpoint === 'family' && Array.isArray(out.events)) {
     out.headline = 'Shared Apollo security incident';
