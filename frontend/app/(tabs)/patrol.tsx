@@ -588,18 +588,19 @@ export default function Patrol() {
             style={{ width: "100%" }}
             imageStyle={{ borderRadius: radius.lg }}
           >
+            {/* Title row - full width across card */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, padding: spacing.md, paddingBottom: 0 }}>
+              <View style={{ width: compact ? 24 : 28, height: compact ? 24 : 28, borderRadius: compact ? 12 : 14, backgroundColor: "rgba(79,175,131,0.15)", alignItems: "center", justifyContent: "center" }}>
+                <Search size={compact ? 12 : 14} color="#1B6B47" />
+              </View>
+              <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#0B1220", flex: 1 }}>
+                {heroHeading}
+              </Text>
+            </View>
+
             <View style={{ flexDirection: "row" }}>
               {/* Left content */}
-              <View style={{ flex: 1, padding: spacing.md, gap: 6 }}>
-                {/* Title row with icon */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                  <View style={{ width: compact ? 24 : 28, height: compact ? 24 : 28, borderRadius: compact ? 12 : 14, backgroundColor: "rgba(79,175,131,0.15)", alignItems: "center", justifyContent: "center" }}>
-                    <Search size={compact ? 12 : 14} color="#1B6B47" />
-                  </View>
-                  <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#0B1220", flex: 1 }}>
-                    {heroHeading}
-                  </Text>
-                </View>
+              <View style={{ flex: 1, padding: spacing.md, paddingTop: 6, gap: 6 }}>
 
                 {/* Body text */}
                 <Text style={{ fontFamily: fonts.text, fontSize: compact ? 12 : 13, lineHeight: compact ? 17 : 19, color: "#52606D" }}>
