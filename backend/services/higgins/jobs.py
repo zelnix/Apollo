@@ -18,9 +18,9 @@ from services.higgins.contracts import Failure
 MAX_TRANSIENT_RETRIES = 2
 _tasks: set[asyncio.Task] = set()
 
-MESSAGES = {"rate_limited": "Higgins is briefly rate-limited and will retry shortly.", "provider_unavailable": "Higgins did not answer in time.",
-            "provider_configuration": "Higgins' AI service on this server is misconfigured or lacks a required capability. Operator attention is needed.",
-            "incomplete_output": "Higgins stopped before completing his answer.", "response_invalid": "Higgins' answer did not pass Apollo's interface checks after one repair.",
+MESSAGES = {"rate_limited": "Magnum DI is briefly rate-limited and will retry shortly.", "provider_unavailable": "Magnum DI did not answer in time.",
+            "provider_configuration": "Magnum DI's AI service on this server is misconfigured or lacks a required capability. Operator attention is needed.",
+            "incomplete_output": "Magnum DI stopped before completing the answer.", "response_invalid": "Magnum DI's answer did not pass Apollo's interface checks after one repair.",
             "budget_exhausted": "The evidence exceeds the model's context budget for a single pass.", "transport_interrupted": "The investigation was superseded before it could be committed.",
             "evidence_expired": "Temporary evidence expired before the investigation finished."}
 
@@ -116,7 +116,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
         while True:
             remaining = (repo.utc(job["deadline_at"]) - now_utc()).total_seconds()
             if remaining <= 5:
-                await _fail(owner, case, job, Failure(code="budget_exhausted", message="The work slice deadline was reached before Higgins finished. Retry to continue.", retryable=True), partial=True)
+                await _fail(owner, case, job, Failure(code="budget_exhausted", message="The work slice deadline was reached before Magnum DI finished. Retry to continue.", retryable=True), partial=True)
                 return
             try:
                 outcome = await asyncio.wait_for(coordinator.run_turn(owner, case, job, progress), timeout=remaining)
@@ -193,7 +193,7 @@ async def recover() -> None:
         if await repo.accepted_commit_for(job["owner_id"], case, job["turn_id"]):
             launch(job["owner_id"], job["case_id"], job["job_id"])  # run() repairs projections from the accepted commit
             continue
-        await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
+        await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Magnum DI finished. Retry to continue from the last completed step.", retryable=True), partial=True)
     # Device submissions interrupted after the claim (crash before storage or before resume): finish them idempotently.
     # "storing"/"resuming" are the fenced in-flight sub-states `_claim_submission_stage` uses for renewable ownership;
     # a submission stuck there past its staleness window is taken over by the same call, never left stranded.

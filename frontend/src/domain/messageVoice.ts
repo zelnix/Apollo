@@ -157,19 +157,19 @@ export function scrubMessage(text: string | null | undefined): string {
 }
 
 // --- Investigation status history (History Everywhere) -----------------------------------------------
-/** Plain-English "what Higgins has done so far", derived from the turns and current phase. */
+/** Plain-English "what Magnum DI has done so far", derived from the turns and current phase. */
 export function investigationHistory(args: {
   turns: { question: string; overview: string }[]; phase: string; completion?: string | null;
 }): HistoryEntry[] {
-  const entries: { text: string }[] = [{ text: "Higgins opened this investigation." }];
-  args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — Higgins answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
+  const entries: { text: string }[] = [{ text: "Magnum DI opened this investigation." }];
+  args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — Magnum DI answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
   const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Magnum DI is still investigating."
-    : args.phase === "waiting_user" ? "Higgins is waiting on your answer to continue."
-    : args.phase === "waiting_device" ? "Higgins is checking this device for a fresh observation."
+    : args.phase === "waiting_user" ? "Magnum DI is waiting on your answer to continue."
+    : args.phase === "waiting_device" ? "Magnum DI is checking this device for a fresh observation."
     : args.phase === "failed" || args.phase === "expired" ? "This investigation stopped before finishing."
-    : args.completion === "complete" ? "Higgins completed the investigation within scope."
-    : args.completion === "partial" ? "Higgins answered, with more still to examine."
-    : "Higgins has a question before it can finish.";
+    : args.completion === "complete" ? "Magnum DI completed the investigation within scope."
+    : args.completion === "partial" ? "Magnum DI answered, with more still to examine."
+    : "Magnum DI has a question before it can finish.";
   entries.push({ text: current });
   return entries.map((e) => ({ at: "", text: e.text }));
 }

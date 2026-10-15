@@ -87,7 +87,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
     <View testID={`${prefix}-uncertainty`} style={{ gap: spacing.sm }}><SectionTitle>What remains uncertain</SectionTitle>
       {assessment.higgins.could_not_establish.length ? assessment.higgins.could_not_establish.map((item, index) =>
         <Body key={index} testID={`${prefix}-uncertainty-${index}`}>• {item}</Body>) :
-        <Body testID={`${prefix}-uncertainty-none`}>{assessment.processing.higgins_source === 'gemini' ? 'No additional uncertainty was listed by Higgins. This does not establish universal safety.' : 'The Higgins investigation did not complete. Available local observations do not establish safety.'}</Body>}
+        <Body testID={`${prefix}-uncertainty-none`}>{assessment.processing.higgins_source === 'gemini' ? 'No additional uncertainty was listed by Magnum DI. This does not establish universal safety.' : 'The Magnum DI investigation did not complete. Available local observations do not establish safety.'}</Body>}
     </View>
     <Pressable testID={`${prefix}-more-details`} accessibilityRole="button" accessibilityState={{ expanded: details }} style={s.detailButton}
       onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDetails((value) => !value); }}>

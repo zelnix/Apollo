@@ -88,19 +88,19 @@ export function buildLinkCheckResult(args: {
         : "clear";
     items.push({
       id: "higgins:investigation",
-      name: "Higgins investigation",
+      name: "Magnum DI investigation",
       status,
       finding: outcome.assessment.higgins.action_kind
-        ? `Higgins recommended: ${outcome.assessment.higgins.action_kind.replace(/_/g, " ")}.`
-        : "Higgins reviewed the evidence and shared his assessment above.",
+        ? `Magnum DI recommended: ${outcome.assessment.higgins.action_kind.replace(/_/g, " ")}.`
+        : "Magnum DI reviewed the evidence and shared the assessment above.",
       raw: outcome.assessment as unknown as Record<string, unknown>,
     });
   } else if (outcome.investigationError) {
     items.push({
       id: "higgins:unavailable",
-      name: "Higgins investigation",
+      name: "Magnum DI investigation",
       status: "unavailable",
-      finding: `Higgins couldn't complete his investigation: ${outcome.investigationError}`,
+      finding: `Magnum DI couldn't complete the investigation: ${outcome.investigationError}`,
     });
   }
 

@@ -297,7 +297,7 @@ export default function CheckNumber() {
     if (investigationBusy) {
       callActions.push({ testID: "callguard-investigating", variant: "ghost", label: "Magnum DI is investigating…", onPress: () => {} });
     } else if (!investigationResult || !(higginsData?.exact_response)) {
-      callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Higgins investigation", onPress: () => void retryInvestigation() });
+      callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Magnum DI investigation", onPress: () => void retryInvestigation() });
     }
 
     callActions.push({

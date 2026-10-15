@@ -127,7 +127,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
           {!hasInvestigation || !investigationResolved ? (
             <>
               <View style={{ gap: spacing.xs }}>
-                <Text style={s.sectionLabel}>{hasInvestigation ? "APOLLO'S INITIAL ASSESSMENT" : "WHY ACTION WAS TAKEN"}</Text>
+                <Text style={s.sectionLabel}>{hasInvestigation ? "MAGNUM DI'S INITIAL ASSESSMENT" : "WHY ACTION WAS TAKEN"}</Text>
                 <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
               </View>
 

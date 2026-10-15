@@ -29,8 +29,8 @@ OUTPUT = Bound(int(os.getenv("HIGGINS_OUTPUT_TOKENS", "16384")), "tokens",
 SCHEMA_RESERVE = Bound(1024, "tokens", "Conservative role/tool-wrapper overhead not exposed by Developer API token counting", "reject; do not trim context")
 LIFETIME_SECONDS = 15 * 60  # hard ceiling for active-investigation work; never extended by retries
 TEMPORARY_RETENTION = "apollo_15_minute_temporary"
-WORK_SECONDS = 120
-CALL_SECONDS = 50
+WORK_SECONDS = 300
+CALL_SECONDS = 90
 
 # ── Two-Tier Retention Policy ──────────────────────────────────────────
 # Source evidence content (images, files, screenshots): delete within 24 hours of acquisition.

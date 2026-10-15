@@ -64,7 +64,7 @@ function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeo
 
 type TabId = "higgins" | "magnum" | "evidence";
 const TAB_LABELS: { id: TabId; label: string }[] = [
-  { id: "higgins", label: "Higgins" },
+  { id: "higgins", label: "Magnum DI" },
   { id: "magnum", label: "Magnum DI" },
   { id: "evidence", label: "Source Evidence" },
 ];
@@ -338,7 +338,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     </> : null}
 
     {/* ── Question from Higgins (outside tabs — transient) ── */}
-    {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Higgins asks: {scrubMessage(question.reasonNeeded)}</Text>
+    {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Magnum DI asks: {scrubMessage(question.reasonNeeded)}</Text>
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
       {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
 

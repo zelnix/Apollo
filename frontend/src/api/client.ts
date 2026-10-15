@@ -138,7 +138,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
         if (finished) continue;
         if (evt.delta) onDelta(evt.delta);
         if (evt.error) finish(evt.error);
-        if (evt.done) finish(evt.provider_complete === true && evt.finish_reason === 'STOP' ? undefined : 'Higgins did not confirm a complete provider answer. Retry this question.');
+        if (evt.done) finish(evt.provider_complete === true && evt.finish_reason === 'STOP' ? undefined : 'Magnum DI did not confirm a complete provider answer. Retry this question.');
       } catch { /* partial line */ }
     }
   };
@@ -150,7 +150,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); }
     else if (xhr.status === 403) finish("This device isn't allowed to do that.");
     else if (xhr.status >= 400) finish("I couldn't answer right now.");
-    else if (!finished) finish("The connection ended before Higgins completed this answer. Retry this question.");
+    else if (!finished) finish("The connection ended before Magnum DI completed this answer. Retry this question.");
   };
   xhr.onerror = () => { markBackendFailure("offline"); finish(FAILURE_MESSAGE.offline); };
   xhr.ontimeout = () => { markBackendFailure("timeout"); finish(FAILURE_MESSAGE.timeout); };

@@ -319,7 +319,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         if ctx.pending_request:
             return Outcome("waiting_device", request=ctx.pending_request)
     while True:
-        await progress("assess", "Higgins is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
+        await progress("assess", "Magnum DI is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
         result = await provider.generate(SYSTEM, contents, model=job_model, tools=[tool], capability="functions", purpose=provider.Purpose.INVESTIGATION)
         if pending_marks:  # inline evidence counts as examined only once Gemini has actually received it (R05)
             for evidence_id, start, end, total in pending_marks:
@@ -354,7 +354,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         response, errors = validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids, capability_ids=capability_ids,
                                     pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
     if response is None:
-        await progress("respond", "Repairing the structure of Higgins' answer.")
+        await progress("respond", "Repairing the structure of Magnum DI's answer.")
         contents.append(result.content)
         contents.append(types.Content(role="user", parts=[types.Part(text="Your response did not pass interface validation:\n- " + "\n- ".join(errors) +
                                                                           "\nReturn the corrected full JSON object only. Keep your assessment and explanation; fix only the listed problems.")]))
