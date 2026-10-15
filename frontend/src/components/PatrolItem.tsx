@@ -22,7 +22,7 @@ const useStyles = makeStyles((c) => ({
   rail: { width: 20, alignItems: "center" },
   line: { flex: 1, width: 2, backgroundColor: c.divider },
   dot: { width: 12, height: 12, borderRadius: 6, marginTop: 18, borderWidth: 2, borderColor: c.surface },
-  card: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.lg, marginBottom: spacing.md, gap: spacing.sm },
+  card: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, marginBottom: spacing.md, gap: spacing.sm },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm },
   chips: { flexDirection: "row", gap: spacing.xs, alignItems: "center", flexShrink: 1, flexWrap: "wrap" },
   time: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, flexShrink: 0 },

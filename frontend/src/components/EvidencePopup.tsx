@@ -22,7 +22,7 @@ const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.lg },
   sectionTitle: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface, marginBottom: spacing.xs },
   sectionSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.muted, marginBottom: spacing.sm },
-  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border, gap: spacing.sm },
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, borderWidth: 0.25, borderColor: c.border, gap: spacing.sm },
   imageContainer: { borderRadius: radius.sm, overflow: "hidden", alignItems: "center", backgroundColor: c.surfaceTertiary },
   evidenceImage: { width: "100%", aspectRatio: 4 / 3 },
   textContent: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },

@@ -67,7 +67,7 @@ export function capabilityTone(status: CapabilityStatus): Tone {
 }
 
 const useStyles = makeStyles((c) => ({
-  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, padding: spacing.lg },
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg },
   pill: { paddingHorizontal: spacing.md, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, alignSelf: "flex-start" },
   pillText: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.2 },
   dot: { width: 8, height: 8, borderRadius: 4 },

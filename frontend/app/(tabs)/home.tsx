@@ -84,7 +84,7 @@ const useStyles = makeStyles((c) => ({
   twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
   halfCard: {
     flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
-    borderWidth: 1,
+    borderWidth: 0.25,
   },
   halfCardIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   halfCardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
@@ -104,7 +104,7 @@ const useStyles = makeStyles((c) => ({
   // ── Priority alert card ──
   alertCard: {
     marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
-    backgroundColor: "rgba(217,83,79,0.06)", borderWidth: 1, borderColor: "rgba(217,83,79,0.18)",
+    backgroundColor: "rgba(217,83,79,0.06)", borderWidth: 0.25, borderColor: "rgba(217,83,79,0.18)",
   },
   alertTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   alertIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(217,83,79,0.14)", alignItems: "center", justifyContent: "center" },
@@ -114,7 +114,7 @@ const useStyles = makeStyles((c) => ({
   alertTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
   alertDesc: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
   alertBtn: {
-    borderRadius: radius.sm, borderWidth: 1, borderColor: c.barking,
+    borderRadius: radius.sm, borderWidth: 0.25, borderColor: c.barking,
     paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
     alignItems: "center", alignSelf: "flex-start", marginTop: spacing.xs,
   },
@@ -123,7 +123,7 @@ const useStyles = makeStyles((c) => ({
   // ── Activity row ──
   activityCard: {
     marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg,
-    backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceSecondary, borderWidth: 0.25, borderColor: c.border,
     flexDirection: "row", alignItems: "center", gap: spacing.md,
   },
   activityIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },

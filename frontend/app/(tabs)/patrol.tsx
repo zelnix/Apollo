@@ -266,7 +266,7 @@ const useStyles = makeStyles((c) => ({
   caseCard: {
     marginHorizontal: spacing.lg,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: 0.25,
     borderColor: c.border,
     backgroundColor: c.surfaceSecondary,
     padding: spacing.sm,

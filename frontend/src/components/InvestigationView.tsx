@@ -51,7 +51,7 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
 
 const useStyles = makeStyles((c) => ({
   // ── Status Card ──
-  statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
+  statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
   statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm },
   statusIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
   statusInfo: { flex: 1, gap: 2 },
@@ -78,7 +78,7 @@ const useStyles = makeStyles((c) => ({
   sectionHeader: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, marginTop: spacing.md },
 
   // ── Action cards ──
-  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.lg, flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md },
   actionIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center" as const, justifyContent: "center" as const },
   actionContent: { flex: 1, gap: 2 },
   actionTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },

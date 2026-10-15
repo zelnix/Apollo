@@ -12,7 +12,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { Body, Button } from "./ui";
 
 const useStyles = makeStyles((c) => ({
-  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.growling, padding: spacing.lg, gap: spacing.md },
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.growling, padding: spacing.lg, gap: spacing.md },
   head: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   title: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   actions: { flexDirection: "row", gap: spacing.sm },

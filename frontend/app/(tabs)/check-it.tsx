@@ -279,7 +279,7 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    borderWidth: 1,
+    borderWidth: 0.25,
     borderColor: c.border,
   },
   savedIcon: {

@@ -53,7 +53,7 @@ const useStyles = makeStyles((c) => ({
   description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
 
   // Website link card
-  linkCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
+  linkCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 0.25, borderColor: c.border },
   linkCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   linkIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
   linkCardLabel: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
@@ -71,7 +71,7 @@ const useStyles = makeStyles((c) => ({
 
   // Action cards row
   actionCardsRow: { gap: spacing.md },
-  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: c.border },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 0.25, borderColor: c.border },
   actionCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   actionCardIconWell: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   screenshotIconBg: { backgroundColor: "#E6F4EA" },
@@ -81,7 +81,7 @@ const useStyles = makeStyles((c) => ({
   actionCardChevron: { marginLeft: "auto" },
 
   // Recent links section
-  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, overflow: "hidden" },
   recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
   recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
