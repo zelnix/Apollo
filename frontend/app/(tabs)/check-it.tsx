@@ -369,12 +369,16 @@ export default function CheckItScreen() {
   const innerWidth = width - padH - sectionPad;
   const gap = spacing.sm;
 
-  // 2-column card width
-  const col2Width = (innerWidth - gap) / 2;
-
-  // Responsive: fall back to fewer columns on narrow screens
+  // Responsive: use 2 columns on wide-enough screens
+  const useWide = width >= 500 && fontScale < 1.5;
   const useNarrow = width < 320 || fontScale >= 1.5;
+
+  // 2-column card width (floor to avoid sub-pixel overflow)
+  const col2Width = Math.floor((innerWidth - gap) / 2);
   const card2W = useNarrow ? innerWidth : col2Width;
+
+  // For Quick Checks: on wide screens always 2-col, on narrow full-width
+  const quickCardW = useNarrow ? innerWidth : col2Width;
 
   return (
     <View style={s.root} testID="check-it-screen">
@@ -417,7 +421,7 @@ export default function CheckItScreen() {
               <CheckCardItem
                 key={card.id}
                 card={card}
-                cardWidth={card2W}
+                cardWidth={quickCardW}
                 iconBg={ICON_BG.quick}
               />
             ))}
