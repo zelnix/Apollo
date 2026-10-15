@@ -4,6 +4,7 @@
 //
 // Reuses existing investigation records, case lifecycle, and navigation.
 
+import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleCheck from "lucide-react-native/icons/circle-check";
 import Clock from "lucide-react-native/icons/clock";
@@ -468,6 +469,7 @@ export default function Patrol() {
   const params = useLocalSearchParams<{ filter?: string; category?: string }>();
 
   const [activeChip, setActiveChip] = useState<ChipId>("all");
+  const [handledExpanded, setHandledExpanded] = useState(false);
 
   // Apply initial filter from URL params
   useEffect(() => {
@@ -491,6 +493,19 @@ export default function Patrol() {
   const filteredOutcomes = useMemo(
     () => applyChipFilter(categoryFiltered, activeChip),
     [categoryFiltered, activeChip],
+  );
+
+  // Split into active (non-handled) and handled
+  const isHandled = (o: PatrolOutcome) =>
+    o.state === "resting" || o.event.status === "resolved" || o.event.status === "trusted";
+
+  const activeOutcomes = useMemo(
+    () => filteredOutcomes.filter((o) => !isHandled(o)),
+    [filteredOutcomes],
+  );
+  const handledOutcomes = useMemo(
+    () => filteredOutcomes.filter((o) => isHandled(o)),
+    [filteredOutcomes],
   );
 
   // Counts
@@ -730,7 +745,7 @@ export default function Patrol() {
 
       {/* ── Scrollable content ── */}
       <FlatList
-        data={filteredOutcomes}
+        data={activeOutcomes}
         keyExtractor={(item, index) => `${item.outcomeId}-${index}`}
         testID="threats-list"
         contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -741,11 +756,62 @@ export default function Patrol() {
           </View>
         }
         renderItem={renderCard}
+        ListFooterComponent={
+          handledOutcomes.length > 0 ? (
+            <View>
+              {/* Expandable Handled Threats card */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Handled threats, ${handledOutcomes.length} items`}
+                accessibilityState={{ expanded: handledExpanded }}
+                onPress={() => setHandledExpanded((prev) => !prev)}
+                style={[
+                  s.caseCard,
+                  {
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: colors.surfaceSecondary,
+                    paddingVertical: spacing.md,
+                    paddingHorizontal: spacing.lg,
+                  },
+                ]}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
+                    <CircleCheck size={16} color={colors.resting} />
+                  </View>
+                  <View>
+                    <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.onSurface }}>
+                      Handled threats
+                    </Text>
+                    <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.onSurfaceSecondary }}>
+                      {handledOutcomes.length} {handledOutcomes.length === 1 ? "item" : "items"}
+                    </Text>
+                  </View>
+                </View>
+                <ChevronDown
+                  size={20}
+                  color={colors.onSurfaceSecondary}
+                  style={{ transform: [{ rotate: handledExpanded ? "180deg" : "0deg" }] }}
+                />
+              </Pressable>
+
+              {/* Handled items (shown when expanded) */}
+              {handledExpanded &&
+                handledOutcomes.map((outcome, index) => (
+                  <InvestigationCard key={`handled-${outcome.outcomeId}-${index}`} outcome={outcome} />
+                ))}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={s.emptyContainer} testID="threats-empty">
-            <Text style={s.emptyTitle}>{emptyTitle}</Text>
-            <Text style={s.emptyBody}>{emptyBody}</Text>
-          </View>
+          handledOutcomes.length === 0 ? (
+            <View style={s.emptyContainer} testID="threats-empty">
+              <Text style={s.emptyTitle}>{emptyTitle}</Text>
+              <Text style={s.emptyBody}>{emptyBody}</Text>
+            </View>
+          ) : null
         }
       />
     </View>
