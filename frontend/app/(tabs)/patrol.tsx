@@ -21,7 +21,6 @@ import Smartphone from "lucide-react-native/icons/smartphone";
 import Wifi from "lucide-react-native/icons/wifi";
 import User from "lucide-react-native/icons/user";
 import Link2 from "lucide-react-native/icons/link-2";
-import ClipboardList from "lucide-react-native/icons/clipboard-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Image, ImageBackground, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
@@ -599,7 +598,7 @@ export default function Patrol() {
             </View>
 
             <View style={{ flexDirection: "row" }}>
-              {/* Left content */}
+              {/* Content */}
               <View style={{ flex: 1, padding: spacing.md, paddingTop: 6, gap: 6 }}>
 
                 {/* Body text */}
@@ -622,19 +621,6 @@ export default function Patrol() {
 
                   <View style={{ width: 1, height: compact ? 24 : 30, backgroundColor: "rgba(11,18,32,0.12)" }} />
 
-                  {/* Handled */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                    <View style={{ width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: compact ? 11 : 13, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <ClipboardList size={compact ? 11 : 13} color="#1B6B47" />
-                    </View>
-                    <View>
-                      <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#1B6B47" }}>{handledCases}</Text>
-                      <Text style={{ fontFamily: fonts.text, fontSize: compact ? 9 : 10, color: "#52606D" }}>handled</Text>
-                    </View>
-                  </View>
-
-                  <View style={{ width: 1, height: compact ? 24 : 30, backgroundColor: "rgba(11,18,32,0.12)" }} />
-
                   {/* Under review */}
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
                     <View style={{ width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: compact ? 11 : 13, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
@@ -647,38 +633,39 @@ export default function Patrol() {
                   </View>
                 </View>
 
-                {/* How investigations work button */}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="How investigations work"
-                  onPress={() => {}}
-                  style={({ pressed }) => ({
-                    flexDirection: "row", alignItems: "center", justifyContent: "center",
-                    gap: spacing.xs, backgroundColor: "#FFFFFF", borderRadius: radius.pill,
-                    paddingVertical: compact ? spacing.sm : spacing.sm + 2, paddingHorizontal: spacing.md,
-                    opacity: pressed ? 0.85 : 1, alignSelf: "flex-start", marginTop: 2,
-                  })}
-                >
-                  <Play size={compact ? 12 : 14} color="#0B1220" />
-                  <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 11 : 12, color: "#0B1220" }}>
-                    How investigations work
-                  </Text>
-                </Pressable>
+                {/* Bottom row: button + last updated */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: 2 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="How investigations work"
+                    onPress={() => {}}
+                    style={({ pressed }) => ({
+                      flexDirection: "row", alignItems: "center", justifyContent: "center",
+                      gap: spacing.xs, backgroundColor: "#FFFFFF", borderRadius: radius.pill,
+                      paddingVertical: compact ? spacing.sm : spacing.sm + 2, paddingHorizontal: spacing.md,
+                      opacity: pressed ? 0.85 : 1,
+                    })}
+                  >
+                    <Play size={compact ? 12 : 14} color="#0B1220" />
+                    <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 11 : 12, color: "#0B1220" }}>
+                      How investigations work
+                    </Text>
+                  </Pressable>
 
-                {/* Last updated */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: 2 }}>
-                  <Clock size={11} color="#7A8794" />
-                  <Text style={{ fontFamily: fonts.text, fontSize: compact ? 10 : 11, color: "#7A8794" }}>
-                    Last updated {lastUpdated}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                    <Clock size={11} color="#7A8794" />
+                    <Text style={{ fontFamily: fonts.text, fontSize: compact ? 10 : 11, color: "#7A8794" }}>
+                      Last updated {lastUpdated}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
-              {/* Right: Apollo dog */}
-              <View style={{ width: compact ? "25%" : "28%", justifyContent: "flex-end", alignItems: "center" }}>
+              {/* Apollo dog - bottom right */}
+              <View style={{ width: compact ? 70 : 90, alignSelf: "flex-end" }}>
                 <Image
                   source={apolloDogImg}
-                  style={{ width: "100%", height: "100%" }}
+                  style={{ width: "100%", height: compact ? 80 : 100 }}
                   resizeMode="contain"
                 />
               </View>
