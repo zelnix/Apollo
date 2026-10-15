@@ -85,7 +85,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
   // Hero background
-  heroBg: { overflow: "hidden" as const },
+  heroBg: { overflow: "hidden" as const, borderRadius: radius.md },
 
   // Header
   headerRow: {
@@ -533,7 +533,7 @@ export default function Patrol() {
   return (
     <View style={s.root} testID="threats-screen">
       {/* ── Fixed header area ── */}
-      <ImageBackground source={heroBg} resizeMode="cover" style={[s.heroBg, { paddingTop: insets.top + spacing.sm, backgroundColor: colors.surface }]}>
+      <View style={{ paddingTop: insets.top + spacing.sm, backgroundColor: colors.surface }}>
         {/* Title + Status */}
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>Threats</Text>
@@ -558,13 +558,7 @@ export default function Patrol() {
         </Text>
 
         {/* Apollo's patrol summary */}
-        <View
-          style={[
-            s.patrolCard,
-            { backgroundColor: "rgba(79,175,131,0.08)" },
-          ]}
-          testID="threats-patrol-summary"
-        >
+        <ImageBackground source={heroBg} resizeMode="cover" style={[s.patrolCard, s.heroBg]} testID="threats-patrol-summary">
           <View style={s.patrolHeader}>
             <View
               style={[
@@ -578,7 +572,7 @@ export default function Patrol() {
           </View>
           <Text style={s.patrolBody}>{patrolSummary}</Text>
           <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
-        </View>
+        </ImageBackground>
 
         {/* Filter chips */}
         <View style={s.filterBar}>
@@ -633,7 +627,7 @@ export default function Patrol() {
             </Pressable>
           </ScrollView>
         </View>
-      </ImageBackground>
+      </View>
 
       {/* ── Scrollable content ── */}
       <FlatList
