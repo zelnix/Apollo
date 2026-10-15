@@ -215,6 +215,12 @@ const useStyles = makeStyles((c) => ({
   heroGold: {
     color: "#F5C842",
   },
+  heroHeading: {
+    fontFamily: fonts.displayBold,
+    fontSize: 28,
+    lineHeight: 34,
+    color: "#FFFFFF",
+  },
   heroBody: {
     fontFamily: fonts.text,
     fontSize: 14,
@@ -449,6 +455,9 @@ export default function CheckItScreen() {
             imageStyle={{ borderRadius: radius.lg }}
           >
             <View style={s.heroContent}>
+              <Text style={s.heroHeading}>
+                Check. Stay <Text style={s.heroGold}>Safe.</Text>
+              </Text>
               <Text style={s.heroBody}>
                 Check messages, calls, links, files, apps and more. When in doubt, check it with Apollo, Higgins and Magnum DI.
               </Text>
