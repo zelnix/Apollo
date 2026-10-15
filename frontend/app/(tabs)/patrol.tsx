@@ -683,8 +683,8 @@ export default function Patrol() {
                   position: "absolute",
                   right: 0,
                   bottom: -35,
-                  width: compact ? 104 : 127,
-                  height: compact ? 127 : 161,
+                  width: compact ? 114 : 140,
+                  height: compact ? 140 : 177,
                 }}
                 resizeMode="contain"
               />
