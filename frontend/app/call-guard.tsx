@@ -2,7 +2,9 @@
 // Matches the approved mock-up exactly: header, description, phone card,
 // gold Check number CTA, "or" divider, recent calls section.
 import { useRouter } from "expo-router";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleX from "lucide-react-native/icons/circle-x";
 import Clock from "lucide-react-native/icons/clock";
@@ -82,10 +84,14 @@ const useStyles = makeStyles((c) => ({
   goldBtnDisabled: { opacity: 0.45 },
   goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
 
-  // ── Or divider ──
-  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
-  orLine: { flex: 1, height: 1, backgroundColor: c.border },
-  orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
+  // ── Or divider (removed) ──
+
+  // ── Recent calls dropdown ──
+  recentDropdown: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" as const },
+  recentDropdownToggle: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, padding: spacing.lg },
+  recentDropdownIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center" as const, justifyContent: "center" as const },
+  recentDropdownTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
+  recentDropdownSub: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
 
   // ── Recent calls section ──
   recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
@@ -148,6 +154,7 @@ export default function CheckNumber() {
 
   // Phone picker
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported();
 
   // Recent calls from call log (Android native)
@@ -249,30 +256,6 @@ export default function CheckNumber() {
     setError(null);
   };
 
-  const checkRecentNumber = (num: string) => {
-    setNumber(num);
-    // Auto-start investigation
-    setTimeout(() => {
-      setBusy(true);
-      setError(null);
-      setResult(null);
-      setInvestigationResult(null);
-      void (async () => {
-        try {
-          const riskResult = await checkNumberRisk(num.trim());
-          setResult(riskResult);
-          void recordCheck("call", { at: new Date().toISOString(), state: riskResult.decision === "avoid" ? "barking" : riskResult.decision === "review" ? "growling" : "resting", summary: riskResult.higgins?.headline ?? riskResult.number });
-          setInvestigationBusy(true);
-          try {
-            const inv = await apiPost<Record<string, unknown>>("/call/investigate", "call_investigate", { device_id: deviceId ?? "local", number: num.trim(), country: Localization.getLocales()[0]?.regionCode });
-            setInvestigationResult(inv);
-          } catch { /* preserved */ }
-          finally { setInvestigationBusy(false); }
-        } catch (e) { setError(e instanceof Error ? e.message : "Could not check this number."); }
-        finally { setBusy(false); }
-      })();
-    }, 100);
-  };
 
   // ── RESULT VIEW ──
   if (result) {
@@ -413,6 +396,73 @@ export default function CheckNumber() {
           Choose a number from your recent calls or enter one yourself.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
+        {/* ── Recent Calls Dropdown (above phone input) ── */}
+        <View style={s.recentDropdown} testID="callguard-recent-section">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setRecentOpen((v) => !v)}
+            style={s.recentDropdownToggle}
+            testID="callguard-recent-toggle"
+          >
+            <View style={s.recentDropdownIconWell}>
+              <Clock size={18} color={colors.onSurface} />
+            </View>
+            <Text style={s.recentDropdownTitle}>Select from recent calls</Text>
+            {recentOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
+          </Pressable>
+
+          {recentOpen ? <>
+            <Text style={s.recentDropdownSub}>Tap a number to check it with Apollo.</Text>
+
+            {recentCalls.length > 0 ? (
+              recentCalls.slice(0, 5).map((call) => {
+                const icon = callIcon(call);
+                const desc = callDescription(call);
+                const { datePart, timePart } = call.date ? formatCallDate(call.date) : { datePart: "", timePart: "" };
+                return (
+                  <Pressable
+                    key={`${call.number}-${call.date}`}
+                    testID={`callguard-recent-${call.number}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Check ${call.name || call.number}`}
+                    onPress={() => { setNumber(call.number); setRecentOpen(false); }}
+                    style={({ pressed }) => [s.callRow, { opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <View style={[s.callIconWell, icon === "alert" ? s.callAlertWell : icon === "contact" ? s.callContactWell : s.callUnknownWell]}>
+                      {icon === "alert" ? <CircleAlert size={22} color={colors.error} /> : icon === "contact" ? <PhoneIcon size={20} color="#4CAF50" /> : <User size={22} color={colors.muted} />}
+                    </View>
+                    <View style={s.callInfo}>
+                      <Text style={s.callNumber}>{call.number}</Text>
+                      <Text style={s.callDesc}>{call.name || desc}</Text>
+                    </View>
+                    <View style={s.callDateCol}>
+                      <Text style={s.callDate}>{datePart}</Text>
+                      <Text style={s.callTime}>{timePart}</Text>
+                    </View>
+                    <ChevronRight size={18} color={colors.muted} />
+                  </Pressable>
+                );
+              })
+            ) : (
+              <View style={s.recentEmpty}>
+                <PhoneIcon size={28} color={colors.muted} />
+                <Body>
+                  {Platform.OS === "android"
+                    ? "Recent calls will appear here when call-log permission is granted."
+                    : "Recent calls are not available on this platform. Enter or paste the number below."}
+                </Body>
+              </View>
+            )}
+
+            {recentCalls.length > 5 ? (
+              <Pressable accessibilityRole="button" onPress={handleSeeAll} style={[s.callRow, { justifyContent: "center" }]} hitSlop={8}>
+                <Text style={s.seeAllText}>See all</Text>
+                <ChevronRight size={16} color={colors.brand} />
+              </Pressable>
+            ) : null}
+          </> : null}
+        </View>
+
         {/* ── Phone Number Card ── */}
         <View style={s.phoneCard} testID="callguard-number-card">
           <View style={s.phoneCardHeader}>
@@ -462,76 +512,6 @@ export default function CheckNumber() {
             <Button testID="callguard-retry" variant="secondary" label="Try again" onPress={() => void runInvestigation()} />
           </View>
         ) : null}
-
-        {/* ── Or divider ── */}
-        <View style={s.orDivider}>
-          <View style={s.orLine} />
-          <Text style={s.orText}>or</Text>
-          <View style={s.orLine} />
-        </View>
-
-        {/* ── Recent Calls Section ── */}
-        <View style={s.recentSection} testID="callguard-recent-section">
-          {/* Header */}
-          <View style={s.recentHeader}>
-            <View style={s.recentHeaderTop}>
-              <View style={s.recentTitleRow}>
-                <View style={s.recentClockWell}>
-                  <Clock size={18} color={colors.onSurface} />
-                </View>
-                <Text style={s.recentTitle}>Select from recent calls</Text>
-              </View>
-              {recentCalls.length > 0 ? (
-                <Pressable accessibilityRole="button" onPress={handleSeeAll} style={s.seeAllRow} hitSlop={8}>
-                  <Text style={s.seeAllText}>See all</Text>
-                  <ChevronRight size={16} color={colors.brand} />
-                </Pressable>
-              ) : null}
-            </View>
-            <Text style={s.recentSub}>Tap a number to check it with Apollo.</Text>
-          </View>
-
-          {/* Call rows */}
-          {recentCalls.length > 0 ? (
-            recentCalls.slice(0, 5).map((call) => {
-              const icon = callIcon(call);
-              const desc = callDescription(call);
-              const { datePart, timePart } = call.date ? formatCallDate(call.date) : { datePart: "", timePart: "" };
-              return (
-                <Pressable
-                  key={`${call.number}-${call.date}`}
-                  testID={`callguard-recent-${call.number}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Check ${call.name || call.number}`}
-                  onPress={() => checkRecentNumber(call.number)}
-                  style={({ pressed }) => [s.callRow, { opacity: pressed ? 0.7 : 1 }]}
-                >
-                  <View style={[s.callIconWell, icon === "alert" ? s.callAlertWell : icon === "contact" ? s.callContactWell : s.callUnknownWell]}>
-                    {icon === "alert" ? <CircleAlert size={22} color={colors.error} /> : icon === "contact" ? <PhoneIcon size={20} color="#4CAF50" /> : <User size={22} color={colors.muted} />}
-                  </View>
-                  <View style={s.callInfo}>
-                    <Text style={s.callNumber}>{call.number}</Text>
-                    <Text style={s.callDesc}>{call.name || desc}</Text>
-                  </View>
-                  <View style={s.callDateCol}>
-                    <Text style={s.callDate}>{datePart}</Text>
-                    <Text style={s.callTime}>{timePart}</Text>
-                  </View>
-                  <ChevronRight size={18} color={colors.muted} />
-                </Pressable>
-              );
-            })
-          ) : (
-            <View style={s.recentEmpty}>
-              <PhoneIcon size={28} color={colors.muted} />
-              <Body>
-                {Platform.OS === "android"
-                  ? "Recent calls will appear here when call-log permission is granted."
-                  : "Recent calls are not available on this platform. Enter or paste the number above."}
-              </Body>
-            </View>
-          )}
-        </View>
       </KeyboardAwareScrollView>
 
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />
