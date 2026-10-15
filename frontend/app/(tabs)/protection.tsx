@@ -378,7 +378,7 @@ export default function ProtectionScreen() {
                     lineHeight: Math.round(22 * scale),
                   },
                 ]}
-                numberOfLines={1}
+                numberOfLines={2}
               >
                 {heroTitle}
               </Text>
@@ -554,7 +554,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroTextBlock: {
-    maxWidth: "50%",
+    maxWidth: "60%",
     gap: 2,
   },
   heroDogImage: {

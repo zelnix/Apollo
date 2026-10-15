@@ -55,7 +55,7 @@ const useStyles = makeStyles((c) => ({
   scroll: { paddingBottom: spacing["3xl"] },
 
   // ── Branded header ──
-  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   brandTitle: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3 },
   brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
@@ -63,25 +63,25 @@ const useStyles = makeStyles((c) => ({
 
   // ── Hero status card ──
   heroCard: {
-    marginHorizontal: spacing.xl, borderRadius: radius.lg, overflow: "hidden",
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, overflow: "hidden",
     minHeight: 160, backgroundColor: "#E8F5EE",
   },
   heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroOverlay: {
-    padding: spacing.xl, gap: spacing.md, flexDirection: "row",
+    padding: spacing.lg, gap: spacing.md, flexDirection: "row",
     alignItems: "flex-start",
   },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
   heroImage: { width: 90, height: 90 },
-  heroContent: { flex: 1, gap: spacing.xs, paddingRight: 60 },
+  heroContent: { flex: 1, gap: spacing.xs },
   heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47" },
   heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
 
   // ── Two side-by-side cards ──
-  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl, marginTop: spacing.md },
+  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
   halfCard: {
     flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
     borderWidth: 1,
@@ -97,13 +97,13 @@ const useStyles = makeStyles((c) => ({
   halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
 
   // ── Section headers ──
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginTop: spacing.md, marginBottom: spacing.sm },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.sm },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
   sectionLink: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 
   // ── Priority alert card ──
   alertCard: {
-    marginHorizontal: spacing.xl, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
     backgroundColor: "rgba(217,83,79,0.06)", borderWidth: 1, borderColor: "rgba(217,83,79,0.18)",
   },
   alertTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
@@ -122,7 +122,7 @@ const useStyles = makeStyles((c) => ({
 
   // ── Activity row ──
   activityCard: {
-    marginHorizontal: spacing.xl, borderRadius: radius.lg, padding: spacing.lg,
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg,
     backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border,
     flexDirection: "row", alignItems: "center", gap: spacing.md,
   },
@@ -228,12 +228,12 @@ export default function Home() {
                 testID="home-hero-gif"
               />
             </View>
-            <View style={[s.heroContent, compact && { paddingRight: 30 }]}>
+            <View style={s.heroContent}>
               <View style={s.heroStatusRow}>
                 <ShieldCheck size={compact ? 14 : 16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
                 <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
               </View>
-              <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5}>{voice.text}</Text>
+              <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]}>{voice.text}</Text>
             </View>
           </View>
         </Pressable>
@@ -355,7 +355,7 @@ export default function Home() {
         </View>
 
         {/* ── Utility banners (compact) ── */}
-        <View style={{ paddingHorizontal: spacing.xl, gap: spacing.sm, marginTop: spacing.md }}>
+        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm, marginTop: spacing.md }}>
           {identityReset ? (
             <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
               <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>Apollo needs to re-register this phone</Text>
@@ -370,7 +370,7 @@ export default function Home() {
 
         {/* Threat Scent clusters */}
         {scents.length ? (
-          <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Connected events</Text>
             </View>

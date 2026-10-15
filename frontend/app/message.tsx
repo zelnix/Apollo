@@ -43,10 +43,10 @@ import { PhonePickers, type RecentSms } from "@/src/security/phonePickers";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
+  top: { paddingHorizontal: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
 
   // ── Scroll content ──
-  content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
 
   // ── Description ──
   description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },

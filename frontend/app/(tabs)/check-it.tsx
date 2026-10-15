@@ -191,7 +191,7 @@ const useStyles = makeStyles((c) => ({
 
   // Scroll
   scrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     gap: spacing.lg,
   },
 
@@ -364,13 +364,13 @@ export default function CheckItScreen() {
   const router = useRouter();
   const { width, fontScale } = useWindowDimensions();
 
-  const padH = spacing.lg * 2;
+  const padH = spacing.md * 2;
   const sectionPad = spacing.md * 2;
   const innerWidth = width - padH - sectionPad;
   const gap = spacing.sm;
 
-  // 2-column card width (10% narrower)
-  const col2Width = (innerWidth - gap) / 2 * 0.9;
+  // 2-column card width
+  const col2Width = (innerWidth - gap) / 2;
 
   // Responsive: fall back to fewer columns on narrow screens
   const useNarrow = width < 320 || fontScale >= 1.5;
