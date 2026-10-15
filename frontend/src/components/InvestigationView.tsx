@@ -52,8 +52,8 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
 const useStyles = makeStyles((c) => ({
   // ── Status Card ──
   statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
-  statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md },
-  statusIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center" as const, justifyContent: "center" as const },
+  statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm },
+  statusIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
   statusInfo: { flex: 1, gap: 2 },
   statusTitle: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
   statusTimestamp: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
@@ -501,19 +501,18 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       <View style={s.statusCard} testID="inv-status-card">
         <View style={s.statusRow}>
           <View style={[s.statusIconWrap, { backgroundColor: gate.iconBg }]}>
-            <gate.IconComponent size={22} color={gate.iconColor} />
+            <gate.IconComponent size={16} color={gate.iconColor} />
           </View>
-          <View style={s.statusInfo}>
-            <Text style={s.statusTitle}>{gate.title}</Text>
-            {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+          <Text style={s.statusTitle}>{gate.title}</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
+        </View>
+        <View style={{ paddingLeft: 36, gap: 4 }}>
+          <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
+            <StatusIcon size={12} color={statusBadgeColor} />
+            <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
           </View>
-          <View style={{ alignItems: "flex-end" as const, gap: 4 }}>
-            <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
-              <StatusIcon size={12} color={statusBadgeColor} />
-              <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
-            </View>
-            <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
-          </View>
+          {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
         </View>
       </View>
 
