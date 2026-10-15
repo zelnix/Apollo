@@ -543,7 +543,7 @@ export default function Patrol() {
     if (openCases > 0) {
       return `Apollo has ${openCases} open ${openCases === 1 ? "case" : "cases"} that ${openCases === 1 ? "needs" : "need"} your attention. Tap a case below to review it.`;
     }
-    return "Apollo and Magnum DI have completed the recent investigations. There are no outstanding cases requiring your attention right now.";
+    return "Apollo, Higgins and Magnum DI have completed recent investigations. There are no outstanding cases requiring your attention right now.";
   }, [openCases]);
 
   const lastUpdated = useMemo(() => {
