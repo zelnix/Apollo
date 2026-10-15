@@ -346,7 +346,7 @@ export default function CheckLink() {
         <CheckToolHeader
           title="Check Website Link"
           info={{ title: "About website link checking", body: [
-            "Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.",
+            "Paste or share any URL and Magnum DI will inspect the destination page, check it against known threat databases, and have Higgins explain the result.",
             "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly.",
             "A completed check does not guarantee a website is safe. Results reflect what Apollo was able to verify at the time of the check.",
           ] }}
@@ -361,7 +361,7 @@ export default function CheckLink() {
       >
         {/* ── Description ── */}
         <Text style={s.description}>
-          Enter a website link, choose one from your recent links, or take a screenshot.{"\n"}Apollo will investigate it for possible scams.
+          Enter a website link, choose one from your recent links, or take a screenshot.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
         {/* ── Website Link Card ── */}

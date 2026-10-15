@@ -410,7 +410,7 @@ export default function CheckNumber() {
       >
         {/* ── Description ── */}
         <Text style={s.description}>
-          Choose a number from your recent calls or enter one yourself.{"\n"}Apollo will investigate it for possible scams.
+          Choose a number from your recent calls or enter one yourself.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
         {/* ── Phone Number Card ── */}

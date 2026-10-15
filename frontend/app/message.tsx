@@ -340,7 +340,7 @@ export default function CheckMessage() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title={params.source === "email" ? "Email monitoring" : "Check a message"}
-          info={{ title: params.source === "email" ? "About email monitoring" : "About message screening", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }}
+          info={{ title: params.source === "email" ? "About email monitoring" : "About message screening", body: ["Paste any message and Magnum DI will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }}
           testID="message"
         />
       </View>
@@ -348,7 +348,7 @@ export default function CheckMessage() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]} bottomOffset={24} testID="message-scroll">
         {/* ── Description ── */}
         <Text style={s.description}>
-          Choose a message from your device, take a screenshot, or enter the text.{"\n"}Apollo will investigate it for possible scams.
+          Choose a message from your device, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
         {/* ── Two action cards ── */}

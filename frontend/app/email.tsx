@@ -681,7 +681,7 @@ export default function CheckEmail() {
       >
         {/* ── Description ── */}
         <Text style={s.description}>
-          Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Apollo will investigate it for possible scams.
+          Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
         {/* ── Email Card ── */}
