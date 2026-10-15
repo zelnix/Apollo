@@ -1,6 +1,7 @@
 // Investigation report: three browser-style tabs — Higgins | Magnum DI | Source Evidence.
 // Default to Higgins. All tabs share the same case, evidence and state.
 import * as FileSystem from "expo-file-system";
+import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -44,6 +45,22 @@ const useStyles = makeStyles((c) => ({
   divider: { height: 1, backgroundColor: c.border, marginVertical: spacing.xs },
   evidenceCard: { gap: spacing.xs, borderColor: c.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
   evidenceLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.muted, textTransform: "uppercase", letterSpacing: 0.3 },
+  // ── Technical Error Details ──
+  diagSection: { gap: spacing.sm, marginTop: spacing.sm },
+  diagToggle: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs },
+  diagToggleText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.brandPrimary },
+  diagCard: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs, borderWidth: 1, borderColor: c.border },
+  diagRow: { flexDirection: "row", gap: spacing.sm },
+  diagLabel: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.muted, minWidth: 100 },
+  diagValue: { fontFamily: fonts.text, fontSize: 12, color: c.onSurface, flex: 1, flexShrink: 1 },
+  diagDivider: { height: 1, backgroundColor: c.border, marginVertical: spacing.xs },
+  retryEntry: { flexDirection: "row", gap: spacing.xs, paddingVertical: 2 },
+  retryBadge: { fontFamily: fonts.textMedium, fontSize: 11, color: c.muted },
+  retryText: { fontFamily: fonts.text, fontSize: 12, color: c.onSurface, flex: 1, flexShrink: 1 },
+  copyBtn: { marginTop: spacing.xs },
+  higginsExplanation: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderLeftWidth: 3, borderLeftColor: c.gold, gap: spacing.xs },
+  higginsExplainText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurface },
+  higginsExplainLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.3, color: c.gold, textTransform: "uppercase" },
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,6 +70,62 @@ export function attentionTone(attention: Attention): Tone { return attention ===
 
 function plain(markdown: string) {
   return scrubMessage(markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)"));
+}
+
+/** Build a copyable diagnostics record from failure data. */
+function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefined, caseId?: string): string {
+  if (!failure) return "No diagnostic information available.";
+  const lines: string[] = ["── Technical Error Details ──"];
+  const diag = (failure.diagnostics ?? {}) as Record<string, unknown>;
+  const addLine = (label: string, value: unknown) => { if (value !== null && value !== undefined && value !== "") lines.push(`${label}: ${String(value)}`); else lines.push(`${label}: Unavailable`); };
+  addLine("Failing component", diag.component);
+  addLine("Service/provider", diag.service);
+  addLine("Operation", diag.operation);
+  addLine("Original error code", diag.originalErrorCode ?? diag.original_error_code);
+  addLine("HTTP status", diag.httpStatus ?? diag.http_status);
+  addLine("Original error message", diag.originalMessage ?? diag.original_message);
+  addLine("Exception type", diag.exceptionType ?? diag.exception_type);
+  addLine("Timestamp", diag.timestamp);
+  const durMs = diag.durationMs ?? diag.duration_ms;
+  addLine("Duration", durMs ? `${durMs}ms` : undefined);
+  addLine("Case ID", caseId ?? diag.caseId ?? diag.case_id);
+  addLine("Job ID", diag.jobId ?? diag.job_id);
+  addLine("Request ID", diag.requestId ?? diag.request_id);
+  addLine("Final status", diag.finalStatus ?? diag.final_status);
+  addLine("Failure code", failure.code);
+  addLine("Retryable", failure.retryable);
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as Record<string, unknown>[];
+  if (history.length) {
+    lines.push("\n── Investigation Attempts ──");
+    for (const rh of history) {
+      const attempt = rh.attempt ?? "?";
+      const kind = rh.kind ?? "unknown";
+      const outcome = rh.outcome ?? "unknown";
+      const code = rh.failureCode ?? rh.failure_code ?? "";
+      const msg = rh.failureMessage ?? rh.failure_message ?? "";
+      const ts = rh.timestamp ?? "";
+      const dur = rh.durationMs ?? rh.duration_ms;
+      lines.push(`  Attempt ${attempt} (${String(kind).replace(/_/g, " ")}) → ${outcome}${code ? ` [${code}]` : ""}${msg ? `: ${String(msg).slice(0, 200)}` : ""}${ts ? ` at ${ts}` : ""}${dur ? ` (${dur}ms)` : ""}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Map failure to Higgins-style user-facing explanation. */
+function higginsExplanation(failure: Record<string, unknown> | null | undefined, isRetrying: boolean): string {
+  if (!failure) return "";
+  const code = String(failure.code ?? "");
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as unknown[];
+  if (isRetrying) {
+    if (code === "rate_limited") return "Magnum DI has temporarily reached the analysis service's request limit. It's waiting briefly before trying again.";
+    if (code === "provider_unavailable") return "Magnum DI's analysis service took longer than expected to respond. It's automatically trying again, so you don't need to do anything just yet.";
+    if (code === "budget_exhausted") return "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.";
+    return "Magnum DI encountered a temporary issue and is automatically retrying.";
+  }
+  if (code === "provider_configuration") return "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.";
+  if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
+  if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
+  return "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing.";
 }
 
 function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeof useStyles> }) {
@@ -88,6 +161,76 @@ function TabBar({ active, onChange, s }: { active: TabId; onChange: (id: TabId) 
       ))}
     </View>
   );
+}
+
+// ── Technical Error Details ──────────────────────────────────────────────────
+
+/** Single row in the diagnostic detail display. */
+function DiagRow({ label, value, s }: { label: string; value: unknown; s: ReturnType<typeof useStyles> }) {
+  const display = value !== null && value !== undefined && value !== "" ? String(value) : "Unavailable";
+  return <View style={s.diagRow}><Text style={s.diagLabel}>{label}</Text><Text style={s.diagValue}>{display}</Text></View>;
+}
+
+/** Expandable Technical Error Details section. */
+function TechnicalErrorDetails({ failure, caseId, s }: {
+  failure: Record<string, unknown> | null | undefined;
+  caseId?: string;
+  s: ReturnType<typeof useStyles>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copyNote, setCopyNote] = useState("");
+
+  if (!failure) return null;
+  const diag = (failure.diagnostics ?? {}) as Record<string, unknown>;
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as Record<string, unknown>[];
+  const hasDiag = Object.values(diag).some((v) => v !== null && v !== undefined && v !== "");
+
+  const kindLabel = (kind: string) => {
+    if (kind === "provider_retry") return "Provider retry";
+    if (kind === "job_resume") return "Auto-resume";
+    if (kind === "stream_reconnect") return "Reconnection";
+    if (kind === "manual_retry") return "Manual retry";
+    return kind.replace(/_/g, " ");
+  };
+
+  return <View style={s.diagSection} testID="inv-diag-section">
+    <Pressable style={s.diagToggle} onPress={() => setExpanded((v) => !v)} testID="inv-diag-toggle">
+      <Text style={s.diagToggleText}>{expanded ? "▼" : "▶"} Technical Error Details</Text>
+    </Pressable>
+    {expanded ? <View style={s.diagCard} testID="inv-diag-details">
+      {hasDiag ? <>
+        <DiagRow s={s} label="Component" value={diag.component} />
+        <DiagRow s={s} label="Service" value={diag.service} />
+        <DiagRow s={s} label="Operation" value={diag.operation} />
+        <View style={s.diagDivider} />
+        <DiagRow s={s} label="Error code" value={diag.originalErrorCode ?? diag.original_error_code} />
+        <DiagRow s={s} label="HTTP status" value={diag.httpStatus ?? diag.http_status} />
+        <DiagRow s={s} label="Error message" value={diag.originalMessage ?? diag.original_message} />
+        <DiagRow s={s} label="Exception" value={diag.exceptionType ?? diag.exception_type} />
+        <View style={s.diagDivider} />
+        <DiagRow s={s} label="Timestamp" value={diag.timestamp} />
+        <DiagRow s={s} label="Duration" value={(diag.durationMs ?? diag.duration_ms) ? `${diag.durationMs ?? diag.duration_ms}ms` : undefined} />
+        <DiagRow s={s} label="Case ID" value={caseId ?? diag.caseId ?? diag.case_id} />
+        <DiagRow s={s} label="Job ID" value={diag.jobId ?? diag.job_id} />
+        <DiagRow s={s} label="Request ID" value={diag.requestId ?? diag.request_id} />
+        <DiagRow s={s} label="Status" value={diag.finalStatus ?? diag.final_status} />
+      </> : <Text style={s.diagValue}>No detailed diagnostics were recorded for this failure.</Text>}
+      {history.length ? <>
+        <View style={s.diagDivider} />
+        <Text style={[s.diagLabel, { minWidth: 0 }]}>Investigation Attempts</Text>
+        {history.map((rh, i) => <View key={i} style={s.retryEntry}>
+          <Text style={s.retryBadge}>#{String(rh.attempt ?? i + 1)}</Text>
+          <Text style={s.retryText}>{kindLabel(String(rh.kind ?? "unknown"))} → {String(rh.outcome ?? "unknown")}{rh.failureCode ?? rh.failure_code ? ` [${rh.failureCode ?? rh.failure_code}]` : ""}{rh.failureMessage ?? rh.failure_message ? `: ${String(rh.failureMessage ?? rh.failure_message).slice(0, 150)}` : ""}</Text>
+        </View>)}
+      </> : null}
+      <View style={s.copyBtn}>
+        <Button testID="inv-diag-copy" variant="ghost" label={copyNote || "Copy Diagnostics"} onPress={() => {
+          const text = buildDiagnosticsCopy(failure, caseId);
+          void Clipboard.setStringAsync(text).then(() => { setCopyNote("Copied to clipboard"); setTimeout(() => setCopyNote(""), 3000); }).catch(() => setCopyNote("Copy failed"));
+        }} />
+      </View>
+    </View> : null}
+  </View>;
 }
 
 // ── Main Component ──────────────────────────────────────────────────────────
@@ -342,11 +485,29 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
       {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
 
-    {/* ── Errors and notices (outside tabs — transient) ── */}
+    {/* ── Errors, Higgins explanations and diagnostics (outside tabs — transient) ── */}
     {failure && phase !== "failed" ? <Text style={s.muted} testID="inv-partial-reason">Incomplete: {failure.message}</Text> : null}
     {state.notice ? <Card style={s.card} testID="inv-lifecycle-notice"><Body>{state.notice}</Body></Card> : null}
-    {error && (phase === "failed" || phase === "expired") ? <Card style={s.card} testID="inv-error"><Text style={[s.text, { color: colors.barkingText }]}>{error}</Text>
-      {phase === "failed" && caseData ? <Button testID="inv-retry" label="Retry this turn" onPress={onRetry} /> : null}</Card> : null}
+    {error && (phase === "failed" || phase === "expired") ? <Card style={s.card} testID="inv-error">
+      {/* Higgins explanation */}
+      <View style={s.higginsExplanation}>
+        <Text style={s.higginsExplainLabel}>Higgins</Text>
+        <Text style={s.higginsExplainText}>{higginsExplanation(failure as Record<string, unknown> | null, false)}</Text>
+      </View>
+      {/* Technical Error Details */}
+      <TechnicalErrorDetails failure={failure as Record<string, unknown> | null} caseId={caseData?.id} s={s} />
+      {/* Retry button */}
+      {phase === "failed" && caseData ? <Button testID="inv-retry" label="Retry investigation" onPress={onRetry} /> : null}
+    </Card> : null}
+
+    {/* ── Retrying state — show Higgins explanation during auto-retry ── */}
+    {phase === "retry_wait" ? <Card style={s.card} testID="inv-retry-progress">
+      <View style={s.row}><ActivityIndicator color={colors.gold} /><Body>Investigation continuing</Body></View>
+      <View style={s.higginsExplanation}>
+        <Text style={s.higginsExplainLabel}>Higgins</Text>
+        <Text style={s.higginsExplainText}>{higginsExplanation(failure as Record<string, unknown> | null, true)}</Text>
+      </View>
+    </Card> : null}
 
     {/* ── Evidence popup (shared across all tabs) ── */}
     {caseData ? <EvidencePopup visible={evidencePopupVisible} onClose={() => setEvidencePopupVisible(false)}

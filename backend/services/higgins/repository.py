@@ -22,7 +22,7 @@ from services.higgins.capacity import (
     EVIDENCE_RETENTION_SECONDS, REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES, SAVED_RETENTION,
 )
 from services.higgins.contracts import (Coverage, EvidenceItem, EvidenceProvenance, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
-                                        SourceReference, TurnCommit, failure_body)
+                                        RetryAttempt, SourceReference, TurnCommit, failure_body)
 from services.higgins.encryption import decrypt, encrypt
 
 CHUNK_BYTES = 1024 * 1024
@@ -730,7 +730,9 @@ async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payl
            "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "checkpoint_revision": 0,
            "provider_model": provider.TEXT_MODEL,
            "consumed_device_request_ids": [],
-           "expires_at": utc(case["expires_at"])}
+           "expires_at": utc(case["expires_at"]),
+           "auto_resume_count": 0,
+           "retry_history": []}
     await db.investigation_jobs.insert_one(dict(doc))
     return doc
 
@@ -743,9 +745,13 @@ async def get_job(owner: str, case_id: str, job_id: str) -> dict:
 
 
 def job_view(doc: dict) -> Job:
+    failure = Failure.model_validate(doc["failure"]) if doc.get("failure") else None
+    # Merge retry_history from job document into the failure if present
+    if failure and doc.get("retry_history"):
+        failure.retry_history = [RetryAttempt.model_validate(rh) if isinstance(rh, dict) else rh for rh in doc["retry_history"]]
     return Job(id=doc["job_id"], case_id=doc["case_id"], turn_id=doc["turn_id"], status=doc["status"], started_at=utc(doc["started_at"]) if doc.get("started_at") else None,
                deadline_at=utc(doc["deadline_at"]), retry_at=utc(doc["retry_at"]) if doc.get("retry_at") else None, attempt=doc["attempt"],
-               last_event_sequence=doc.get("last_sequence", 0), failure=Failure.model_validate(doc["failure"]) if doc.get("failure") else None)
+               last_event_sequence=doc.get("last_sequence", 0), failure=failure)
 
 
 async def acquire_lease(owner: str, job_id: str) -> Optional[dict]:

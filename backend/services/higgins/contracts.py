@@ -196,12 +196,42 @@ class InvestigationCase(Wire):
     cleanup_status: Literal["not_due", "pending", "complete", "failed"] = "not_due"
 
 
+class RetryAttempt(Wire):
+    """One recovery attempt in the investigation's retry history."""
+    attempt: int
+    kind: Literal["provider_retry", "job_resume", "stream_reconnect", "manual_retry"]
+    failure_code: Optional[str] = None
+    failure_message: Optional[str] = None
+    timestamp: Optional[str] = None
+    duration_ms: Optional[int] = None
+    outcome: Literal["retrying", "recovered", "exhausted", "failed", "cancelled"]
+
+
+class DiagnosticDetail(Wire):
+    """Original service/component diagnostic info — sanitised for display."""
+    component: Optional[str] = None          # magnum_di, provider_adapter, gemini, investigation_storage, transport
+    service: Optional[str] = None            # Gemini, Google AI Studio, etc.
+    operation: Optional[str] = None          # investigation, evidence_retrieval, response_generation, validation, storage
+    original_error_code: Optional[str] = None
+    http_status: Optional[int] = None
+    original_message: Optional[str] = None   # provider response, safely redacted
+    exception_type: Optional[str] = None
+    timestamp: Optional[str] = None          # ISO 8601
+    duration_ms: Optional[int] = None
+    request_id: Optional[str] = None         # provider correlation reference
+    case_id: Optional[str] = None
+    job_id: Optional[str] = None
+    final_status: Optional[str] = None       # retrying, recovered, exhausted, failed, cancelled
+
+
 class Failure(Wire):
     code: FailureCode
     message: str
     retryable: bool = False
     retry_after_seconds: Optional[int] = None
     missing_evidence_ids: list[str] = Field(default_factory=list)
+    diagnostics: Optional[DiagnosticDetail] = None
+    retry_history: list[RetryAttempt] = Field(default_factory=list)
 
 
 class Job(Wire):

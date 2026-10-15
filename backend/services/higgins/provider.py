@@ -39,10 +39,28 @@ _model_limits: dict[str, tuple[int, int]] = {}
 
 
 class ProviderFailure(RuntimeError):
-    def __init__(self, code: str, *, retryable: bool = False, finish_reason: str | None = None):
+    def __init__(self, code: str, *, retryable: bool = False, finish_reason: str | None = None,
+                 http_status: int | None = None, original_message: str | None = None,
+                 exception_type: str | None = None, operation: str | None = None):
         self.code, self.retryable, self.finish_reason = code, retryable, finish_reason
+        self.http_status = http_status
+        self.original_message = _sanitise_diagnostic(original_message) if original_message else None
+        self.exception_type = exception_type
+        self.operation = operation or "response_generation"
         # Never include SDK exception text (may contain input, URLs or credentials).
         super().__init__(code)
+
+
+def _sanitise_diagnostic(text: str) -> str:
+    """Redact API keys, tokens and sensitive data from diagnostic text."""
+    import re
+    text = re.sub(r'(key|token|secret|password|auth)[=:]\s*\S+', r'\1=<REDACTED>', text, flags=re.IGNORECASE)
+    text = re.sub(r'AIza[A-Za-z0-9_-]{30,}', '<REDACTED_KEY>', text)
+    text = re.sub(r'AQ\.[A-Za-z0-9_-]{20,}', '<REDACTED_KEY>', text)
+    text = re.sub(r'sk-[A-Za-z0-9_-]{20,}', '<REDACTED_KEY>', text)
+    text = re.sub(r'Bearer\s+\S+', 'Bearer <REDACTED>', text, flags=re.IGNORECASE)
+    # Truncate to avoid leaking large payloads
+    return text[:500] if len(text) > 500 else text
 
 
 def client() -> genai.Client:
@@ -178,15 +196,34 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     try:
         response = await asyncio.wait_for(invoke(), timeout=timeout)
     except asyncio.TimeoutError as exc:
-        raise ProviderFailure("provider_unavailable", retryable=True) from exc
+        raise ProviderFailure("provider_unavailable", retryable=True,
+                              operation="response_generation",
+                              original_message=f"Gemini API call timed out after {timeout}s") from exc
     except ProviderFailure:
         raise
     except Exception as exc:
         code = getattr(exc, "code", None)
+        status_code = getattr(exc, "status_code", code)  # some SDK exceptions use status_code
+        exc_message = str(exc)[:300] if str(exc) else None
+        exc_type = type(exc).__name__
+        if code == 402:
+            raise ProviderFailure("provider_configuration", retryable=False,
+                                  http_status=402,
+                                  original_message=exc_message,
+                                  exception_type=exc_type,
+                                  operation="response_generation") from exc
         if code in (400, 401, 403, 404):
-            raise ProviderFailure("provider_configuration") from exc
-        raise ProviderFailure("rate_limited" if code == 429 else "provider_unavailable",
-                              retryable=code in (429, 500, 502, 503, 504) or code is None) from exc
+            raise ProviderFailure("provider_configuration", http_status=code,
+                                  original_message=exc_message,
+                                  exception_type=exc_type,
+                                  operation="response_generation") from exc
+        failure_code = "rate_limited" if code == 429 else "provider_unavailable"
+        raise ProviderFailure(failure_code,
+                              retryable=code in (429, 500, 502, 503, 504) or code is None,
+                              http_status=code if isinstance(code, int) else None,
+                              original_message=exc_message,
+                              exception_type=exc_type,
+                              operation="response_generation") from exc
     candidates = response.candidates or []
     if not candidates or not candidates[0].content:
         raise ProviderFailure("incomplete_output")
