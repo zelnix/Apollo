@@ -591,20 +591,15 @@ export default function Patrol() {
             <View style={{ flexDirection: "row" }}>
               {/* Left content */}
               <View style={{ flex: 1, padding: spacing.md, gap: 6 }}>
-                {/* Top label */}
+                {/* Title row with icon */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
                   <View style={{ width: compact ? 24 : 28, height: compact ? 24 : 28, borderRadius: compact ? 12 : 14, backgroundColor: "rgba(79,175,131,0.15)", alignItems: "center", justifyContent: "center" }}>
                     <Search size={compact ? 12 : 14} color="#1B6B47" />
                   </View>
-                  <Text style={{ fontFamily: fonts.textSemibold, fontSize: compact ? 9 : 10, color: "#0B1220", letterSpacing: 0.8, textTransform: "uppercase" }}>
-                    Higgins Investigation Briefing
+                  <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#0B1220", flex: 1 }}>
+                    {heroHeading}
                   </Text>
                 </View>
-
-                {/* Heading */}
-                <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 17 : 20, lineHeight: compact ? 22 : 26, color: "#0B1220" }}>
-                  {heroHeading}
-                </Text>
 
                 {/* Body text */}
                 <Text style={{ fontFamily: fonts.text, fontSize: compact ? 12 : 13, lineHeight: compact ? 17 : 19, color: "#52606D" }}>
