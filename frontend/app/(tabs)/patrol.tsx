@@ -4,7 +4,6 @@
 //
 // Reuses existing investigation records, case lifecycle, and navigation.
 
-import ArrowRight from "lucide-react-native/icons/arrow-right";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleCheck from "lucide-react-native/icons/circle-check";
 import Clock from "lucide-react-native/icons/clock";
@@ -582,7 +581,7 @@ export default function Patrol() {
         </Text>
 
         {/* ── Higgins Investigation Briefing Hero Card ── */}
-        <View style={{ marginHorizontal: spacing.lg, borderRadius: radius.lg, overflow: "hidden", marginBottom: spacing.sm }} testID="threats-patrol-summary">
+        <View style={{ marginHorizontal: spacing.md, borderRadius: radius.lg, overflow: "hidden", marginBottom: spacing.sm }} testID="threats-patrol-summary">
           <ImageBackground
             source={heroBg}
             resizeMode="cover"
@@ -591,125 +590,102 @@ export default function Patrol() {
           >
             <View style={{ flexDirection: "row" }}>
               {/* Left content */}
-              <View style={{ flex: 1, padding: compact ? spacing.md : spacing.lg, gap: spacing.sm }}>
+              <View style={{ flex: 1, padding: spacing.md, gap: 6 }}>
                 {/* Top label */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(79,175,131,0.15)", alignItems: "center", justifyContent: "center" }}>
-                    <Search size={16} color="#1B6B47" />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                  <View style={{ width: compact ? 24 : 28, height: compact ? 24 : 28, borderRadius: compact ? 12 : 14, backgroundColor: "rgba(79,175,131,0.15)", alignItems: "center", justifyContent: "center" }}>
+                    <Search size={compact ? 12 : 14} color="#1B6B47" />
                   </View>
-                  <Text style={{ fontFamily: fonts.textSemibold, fontSize: compact ? 10 : 11, color: "#0B1220", letterSpacing: 0.8, textTransform: "uppercase" }}>
+                  <Text style={{ fontFamily: fonts.textSemibold, fontSize: compact ? 9 : 10, color: "#0B1220", letterSpacing: 0.8, textTransform: "uppercase" }}>
                     Higgins Investigation Briefing
                   </Text>
                 </View>
 
                 {/* Heading */}
-                <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 20 : 24, lineHeight: compact ? 26 : 30, color: "#0B1220" }}>
+                <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 17 : 20, lineHeight: compact ? 22 : 26, color: "#0B1220" }}>
                   {heroHeading}
                 </Text>
 
                 {/* Body text */}
-                <Text style={{ fontFamily: fonts.text, fontSize: compact ? 13 : 14, lineHeight: compact ? 18 : 20, color: "#52606D" }}>
+                <Text style={{ fontFamily: fonts.text, fontSize: compact ? 12 : 13, lineHeight: compact ? 17 : 19, color: "#52606D" }}>
                   {patrolSummary}
                 </Text>
 
                 {/* Stats row */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? spacing.sm : spacing.md, marginTop: 2 }}>
                   {/* Needs action */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <CircleCheck size={14} color="#1B6B47" />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <View style={{ width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: compact ? 11 : 13, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
+                      <CircleCheck size={compact ? 11 : 13} color="#1B6B47" />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, color: "#1B6B47" }}>{openCases}</Text>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 10, color: "#52606D" }}>needs action</Text>
+                      <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#1B6B47" }}>{openCases}</Text>
+                      <Text style={{ fontFamily: fonts.text, fontSize: compact ? 9 : 10, color: "#52606D" }}>needs action</Text>
                     </View>
                   </View>
 
-                  {/* Divider */}
-                  <View style={{ width: 1, height: 32, backgroundColor: "rgba(11,18,32,0.12)" }} />
+                  <View style={{ width: 1, height: compact ? 24 : 30, backgroundColor: "rgba(11,18,32,0.12)" }} />
 
                   {/* Handled */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <ClipboardList size={14} color="#1B6B47" />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <View style={{ width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: compact ? 11 : 13, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
+                      <ClipboardList size={compact ? 11 : 13} color="#1B6B47" />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, color: "#1B6B47" }}>{handledCases}</Text>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 10, color: "#52606D" }}>handled</Text>
+                      <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#1B6B47" }}>{handledCases}</Text>
+                      <Text style={{ fontFamily: fonts.text, fontSize: compact ? 9 : 10, color: "#52606D" }}>handled</Text>
                     </View>
                   </View>
 
-                  {/* Divider */}
-                  <View style={{ width: 1, height: 32, backgroundColor: "rgba(11,18,32,0.12)" }} />
+                  <View style={{ width: 1, height: compact ? 24 : 30, backgroundColor: "rgba(11,18,32,0.12)" }} />
 
                   {/* Under review */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
-                      <Clock size={14} color="#1B6B47" />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <View style={{ width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: compact ? 11 : 13, backgroundColor: "rgba(79,175,131,0.12)", alignItems: "center", justifyContent: "center" }}>
+                      <Clock size={compact ? 11 : 13} color="#1B6B47" />
                     </View>
                     <View>
-                      <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, color: "#1B6B47" }}>{underReviewCases}</Text>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 10, color: "#52606D" }}>under review</Text>
+                      <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 15 : 17, color: "#1B6B47" }}>{underReviewCases}</Text>
+                      <Text style={{ fontFamily: fonts.text, fontSize: compact ? 9 : 10, color: "#52606D" }}>under review</Text>
                     </View>
                   </View>
                 </View>
 
-                {/* Buttons row */}
-                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="View investigations"
-                    onPress={() => setActiveChip("all")}
-                    style={({ pressed }) => ({
-                      flexDirection: "row", alignItems: "center", justifyContent: "center",
-                      gap: spacing.sm, backgroundColor: "#0B1220", borderRadius: radius.pill,
-                      paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg,
-                      opacity: pressed ? 0.85 : 1, flex: 1,
-                    })}
-                  >
-                    <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 12 : 13, color: "#FFFFFF" }}>
-                      View investigations
-                    </Text>
-                    <ArrowRight size={16} color="#FFFFFF" />
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="How investigations work"
-                    onPress={() => {}}
-                    style={({ pressed }) => ({
-                      flexDirection: "row", alignItems: "center", justifyContent: "center",
-                      gap: spacing.xs, backgroundColor: "#FFFFFF", borderRadius: radius.pill,
-                      paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
-                      opacity: pressed ? 0.85 : 1, flex: 1,
-                    })}
-                  >
-                    <Play size={14} color="#0B1220" />
-                    <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 11 : 12, color: "#0B1220" }}>
-                      How investigations work
-                    </Text>
-                  </Pressable>
-                </View>
+                {/* How investigations work button */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="How investigations work"
+                  onPress={() => {}}
+                  style={({ pressed }) => ({
+                    flexDirection: "row", alignItems: "center", justifyContent: "center",
+                    gap: spacing.xs, backgroundColor: "#FFFFFF", borderRadius: radius.pill,
+                    paddingVertical: compact ? spacing.sm : spacing.sm + 2, paddingHorizontal: spacing.md,
+                    opacity: pressed ? 0.85 : 1, alignSelf: "flex-start", marginTop: 2,
+                  })}
+                >
+                  <Play size={compact ? 12 : 14} color="#0B1220" />
+                  <Text style={{ fontFamily: fonts.displayBold, fontSize: compact ? 11 : 12, color: "#0B1220" }}>
+                    How investigations work
+                  </Text>
+                </Pressable>
 
                 {/* Last updated */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs }}>
-                  <Clock size={12} color="#7A8794" />
-                  <Text style={{ fontFamily: fonts.text, fontSize: 11, color: "#7A8794" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: 2 }}>
+                  <Clock size={11} color="#7A8794" />
+                  <Text style={{ fontFamily: fonts.text, fontSize: compact ? 10 : 11, color: "#7A8794" }}>
                     Last updated {lastUpdated}
                   </Text>
                 </View>
               </View>
 
               {/* Right: Apollo dog */}
-              {!compact && (
-                <View style={{ width: "30%", justifyContent: "flex-end", alignItems: "center" }}>
-                  <Image
-                    source={apolloDogImg}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="contain"
-                  />
-                </View>
-              )}
+              <View style={{ width: compact ? "25%" : "28%", justifyContent: "flex-end", alignItems: "center" }}>
+                <Image
+                  source={apolloDogImg}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
           </ImageBackground>
         </View>
