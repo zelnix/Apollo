@@ -786,17 +786,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {/* ━━━━ TAB 4: HISTORY — Investigation Timeline ━━━━ */}
       {activeTab === "history" ? (
         <View style={{ gap: spacing.md }} testID="inv-tab-history-content">
-          {/* Timeline header */}
-          <Card style={[s.card, { gap: spacing.md }]}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.xs }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" }}><Clock size={22} color="#1E3A5F" /></View>
-              <View>
-                <Text style={{ fontFamily: fonts.displayBold, fontSize: 17, color: colors.onSurface }}>History</Text>
-                <Text style={{ fontFamily: fonts.text, fontSize: 13, color: colors.onSurfaceSecondary }}>The timeline of this investigation</Text>
-              </View>
-            </View>
-            <Body>This tab shows the key stages of this investigation from creation to completion or failure.</Body>
-          </Card>
 
           {/* Timeline */}
           <Card style={[s.card, { gap: spacing.md }]} testID="inv-history-timeline">
@@ -825,19 +814,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           {/* Investigation history from domain (phase-based) */}
           {response ? <Card style={[s.card, { gap: spacing.xs }]}>
             <Text style={s.sectionTitle}>INVESTIGATION PROGRESS</Text>
-            {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-progress-history-${i}`}>\u2022 {h.text}</Text>)}
+            {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-progress-history-${i}`}>{"\u2022"} {h.text}</Text>)}
           </Card> : null}
-
-          {/* What this history includes */}
-          <View style={[s.infoCard, { backgroundColor: "rgba(22,34,53,0.06)" }]} testID="inv-history-info">
-            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.info, alignItems: "center", justifyContent: "center", marginTop: 2 }}><Info size={16} color="#FFFFFF" /></View>
-            <View style={{ flex: 1, gap: spacing.sm }}>
-              <Text style={s.infoTitle}>What this history includes</Text>
-              <Text style={s.infoBody}>{"\u2022"} Shows the significant stages of this investigation.</Text>
-              <Text style={s.infoBody}>{"\u2022"} Includes automatic retries and manual retry attempts.</Text>
-              <Text style={s.infoBody}>{"\u2022"} Sensitive technical details remain available in the Evidence tab.</Text>
-            </View>
-          </View>
         </View>
       ) : null}
     </> : null}
