@@ -682,7 +682,7 @@ export default function Patrol() {
                 style={{
                   position: "absolute",
                   right: 0,
-                  bottom: -30,
+                  bottom: -35,
                   width: compact ? 90 : 110,
                   height: compact ? 110 : 140,
                 }}
