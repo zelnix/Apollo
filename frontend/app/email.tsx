@@ -109,6 +109,13 @@ const useStyles = makeStyles((c) => ({
   // ── Expandable enter text link ──
   expandLink: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
   expandLinkText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary, flex: 1 },
+
+  // ── Recent emails dropdown ──
+  recentDropdown: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" as const },
+  recentDropdownToggle: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, padding: spacing.lg },
+  recentDropdownIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center" as const, justifyContent: "center" as const },
+  recentDropdownTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
+  recentDropdownSub: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   // Gmail M icon for action card
   gmailIconM: { fontFamily: fonts.displayBold, fontSize: 20, color: "#EA4335" },
 
@@ -234,6 +241,7 @@ export default function CheckEmail() {
   const [recentInbox, setRecentInbox] = useState<InboxPreviewItem[]>([]);
   const [recentInboxLoading, setRecentInboxLoading] = useState(false);
   const [emailTextOpen, setEmailTextOpen] = useState(false);
+  const [recentEmailsOpen, setRecentEmailsOpen] = useState(false);
 
   const loadRecentInbox = useCallback(async () => {
     if (!deviceId || !gmailConnected) return;
@@ -691,6 +699,102 @@ export default function CheckEmail() {
           Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
 
+        {/* ── Recent Emails Dropdown (above action cards) ── */}
+        <View style={s.recentDropdown} testID="email-recent-section">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setRecentEmailsOpen((v) => !v)}
+            style={s.recentDropdownToggle}
+            testID="email-recent-toggle"
+          >
+            <View style={s.recentDropdownIconWell}>
+              <Clock size={18} color={colors.onSurface} />
+            </View>
+            <Text style={s.recentDropdownTitle}>Recent emails</Text>
+            {recentEmailsOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
+          </Pressable>
+
+          {recentEmailsOpen ? <>
+            <Text style={s.recentDropdownSub}>Tap an email to check it with Apollo.</Text>
+            {/* Account filter pills */}
+            {allAccounts.length > 1 ? (
+              <View style={[s.accountFilterRow, { paddingHorizontal: spacing.lg }]}>
+                <Pressable accessibilityRole="button" onPress={() => setAccountSheetOpen(true)} style={s.accountPill}>
+                  <Text style={s.accountPillText} numberOfLines={1}>{selectedAccount ?? "All accounts"}</Text>
+                  <ChevronDown size={14} color={colors.muted} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => setManageSheetOpen(true)} hitSlop={8}>
+                  <Text style={s.accountPillManage}>Manage</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {/* Email rows */}
+            {gmailConnected && recentInbox.length > 0 ? (
+              recentInbox.slice(0, 5).map((msg, i) => {
+                const name = senderDisplayName(msg.from);
+                const emailOnly = isEmailOnly(msg.from);
+                return (
+                  <Pressable
+                    key={`${msg.account}-${msg.id}`}
+                    testID={`email-recent-${i}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Check email from ${name}`}
+                    onPress={() => selectRecentInboxEmail(msg)}
+                    disabled={!!pickerFetchBusy}
+                    style={({ pressed }) => [s.emailRow, { opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    {pickerFetchBusy === msg.id ? (
+                      <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
+                        <ActivityIndicator size="small" color={colors.brand} />
+                      </View>
+                    ) : emailOnly ? (
+                      <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
+                        <User size={22} color={colors.muted} />
+                      </View>
+                    ) : (
+                      <View style={[s.emailRowIconWell, s.emailRowContactWell, { backgroundColor: initialColor(name) }]}>
+                        <Text style={s.emailRowInitial}>{name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <View style={s.emailRowInfo}>
+                      <Text style={s.emailRowSender} numberOfLines={1}>{name}</Text>
+                      <Text style={s.emailRowSubject} numberOfLines={1}>{msg.subject || "(no subject)"}</Text>
+                    </View>
+                    <Text style={s.emailRowDate}>{formatEmailDate(msg.date)}</Text>
+                    <ChevronRight size={18} color={colors.muted} />
+                  </Pressable>
+                );
+              })
+            ) : recentInboxLoading ? (
+              <View style={s.recentEmpty}>
+                <ActivityIndicator size="small" color={colors.brand} />
+                <Body>Loading recent emails\u2026</Body>
+              </View>
+            ) : gmailConnected ? (
+              <View style={s.recentEmpty}>
+                <Inbox size={28} color={colors.muted} />
+                <Body>No recent emails found.</Body>
+              </View>
+            ) : (
+              <View style={s.recentEmpty}>
+                <Mail size={28} color={colors.muted} />
+                <Body>{gmailConfigured ? "Connect Gmail to see your recent emails here." : "Paste or forward an email below to check it."}</Body>
+                {gmailConfigured && !gmailConnected ? (
+                  <Button testID="email-connect-inline" variant="ghost" label={gmailBusy ? "Opening Google\u2026" : "Connect Gmail"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+                ) : null}
+              </View>
+            )}
+
+            {gmailConnected && recentInbox.length > 5 ? (
+              <Pressable accessibilityRole="button" onPress={() => void openInboxPicker()} style={[s.emailRow, { justifyContent: "center" }]} hitSlop={8}>
+                <Text style={s.seeAllText}>See all</Text>
+                <ChevronRight size={16} color={colors.brand} />
+              </Pressable>
+            ) : null}
+          </> : null}
+        </View>
+
         {/* ── Two action cards ── */}
         <View style={s.actionCardsRow}>
           {/* Select from Gmail */}
@@ -731,97 +835,6 @@ export default function CheckEmail() {
             </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
           </Pressable>
-        </View>
-
-        {/* ── Recent Emails Section ── */}
-        <View style={s.recentSection} testID="email-recent-section">
-          {/* Header */}
-          <View style={s.recentHeader}>
-            <View style={s.recentHeaderTop}>
-              <View style={s.recentTitleRow}>
-                <View style={s.recentClockWell}>
-                  <Clock size={18} color={colors.onSurface} />
-                </View>
-                <Text style={s.recentTitle}>Recent emails</Text>
-              </View>
-              {(gmailConnected && recentInbox.length > 0) ? (
-                <Pressable accessibilityRole="button" onPress={() => void openInboxPicker()} style={s.seeAllRow} hitSlop={8}>
-                  <Text style={s.seeAllText}>See all</Text>
-                  <ChevronRight size={16} color={colors.brand} />
-                </Pressable>
-              ) : null}
-            </View>
-            <Text style={s.recentSub}>Tap an email to check it with Apollo.</Text>
-            {/* Account filter pills */}
-            {allAccounts.length > 1 ? (
-              <View style={s.accountFilterRow}>
-                <Pressable accessibilityRole="button" onPress={() => setAccountSheetOpen(true)} style={s.accountPill}>
-                  <Text style={s.accountPillText} numberOfLines={1}>{selectedAccount ?? "All accounts"}</Text>
-                  <ChevronDown size={14} color={colors.muted} />
-                </Pressable>
-                <Pressable accessibilityRole="button" onPress={() => setManageSheetOpen(true)} hitSlop={8}>
-                  <Text style={s.accountPillManage}>Manage</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Email rows */}
-          {gmailConnected && recentInbox.length > 0 ? (
-            recentInbox.slice(0, 5).map((msg, i) => {
-              const name = senderDisplayName(msg.from);
-              const emailOnly = isEmailOnly(msg.from);
-              return (
-                <Pressable
-                  key={`${msg.account}-${msg.id}`}
-                  testID={`email-recent-${i}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Check email from ${name}`}
-                  onPress={() => selectRecentInboxEmail(msg)}
-                  disabled={!!pickerFetchBusy}
-                  style={({ pressed }) => [s.emailRow, { opacity: pressed ? 0.7 : 1 }]}
-                >
-                  {pickerFetchBusy === msg.id ? (
-                    <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
-                      <ActivityIndicator size="small" color={colors.brand} />
-                    </View>
-                  ) : emailOnly ? (
-                    <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
-                      <User size={22} color={colors.muted} />
-                    </View>
-                  ) : (
-                    <View style={[s.emailRowIconWell, s.emailRowContactWell, { backgroundColor: initialColor(name) }]}>
-                      <Text style={s.emailRowInitial}>{name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                  )}
-                  <View style={s.emailRowInfo}>
-                    <Text style={s.emailRowSender} numberOfLines={1}>{name}</Text>
-                    <Text style={s.emailRowSubject} numberOfLines={1}>{msg.subject || "(no subject)"}</Text>
-                  </View>
-                  <Text style={s.emailRowDate}>{formatEmailDate(msg.date)}</Text>
-                  <ChevronRight size={18} color={colors.muted} />
-                </Pressable>
-              );
-            })
-          ) : recentInboxLoading ? (
-            <View style={s.recentEmpty}>
-              <ActivityIndicator size="small" color={colors.brand} />
-              <Body>Loading recent emails\u2026</Body>
-            </View>
-          ) : gmailConnected ? (
-            <View style={s.recentEmpty}>
-              <Inbox size={28} color={colors.muted} />
-              <Body>No recent emails found.</Body>
-            </View>
-          ) : (
-            <View style={s.recentEmpty}>
-              <Mail size={28} color={colors.muted} />
-              <Body>{gmailConfigured ? "Connect Gmail to see your recent emails here." : "Paste or forward an email below to check it."}</Body>
-              {gmailConfigured && !gmailConnected ? (
-                <Button testID="email-connect-inline" variant="ghost" label={gmailBusy ? "Opening Google\u2026" : "Connect Gmail"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
-              ) : null}
-            </View>
-          )}
         </View>
 
         {/* ── Enter email text (expandable) ── */}
