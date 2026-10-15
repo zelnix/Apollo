@@ -5,10 +5,12 @@
 import Bookmark from "lucide-react-native/icons/bookmark";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileSearch from "lucide-react-native/icons/file-search";
+import Globe from "lucide-react-native/icons/globe";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
+import Phone from "lucide-react-native/icons/phone";
 import PhoneIncoming from "lucide-react-native/icons/phone-incoming";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
@@ -16,6 +18,7 @@ import Smartphone from "lucide-react-native/icons/smartphone";
 import Wifi from "lucide-react-native/icons/wifi";
 import React from "react";
 import {
+  ImageBackground,
   Pressable,
   ScrollView,
   Text,
@@ -26,6 +29,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+
+const checkHeroBg = require("@/assets/images/check-hero-bg.png");
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,27 +171,85 @@ const PROTECTION_ACCOUNTS: CheckCard[] = [
   },
 ];
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// ── Hero card quick-access categories ───────────────────────────────────────
+interface HeroCategory {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+  bg: string;
+  route: string;
+}
+
+const HERO_CATEGORIES: HeroCategory[] = [
+  { id: "web",     label: "Websites &\nLinks",     icon: Globe,    bg: "#2E9E6B", route: "/check" },
+  { id: "comms",   label: "Messages &\nCalls",     icon: Phone,    bg: "#7C5CBF", route: "/message" },
+  { id: "email",   label: "Email &\nAccounts",     icon: Mail,     bg: "#3B82C4", route: "/email" },
+  { id: "apps",    label: "Apps &\nFiles",          icon: FileSearch, bg: "#E09430", route: "/app-check" },
+  { id: "device",  label: "Device &\nInternet",    icon: Smartphone, bg: "#1A8D8D", route: "/device" },
+];
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
-  // Header
-  headerContainer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
+  // Hero card
+  heroOuter: {
+    marginHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    overflow: "hidden" as const,
   },
-  headerTitle: {
+  heroBg: {
+    width: "100%",
+  },
+  heroContent: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  heroLabel: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: "uppercase" as const,
+    color: "rgba(255,255,255,0.7)",
+  },
+  heroHeading: {
     fontFamily: fonts.displayBold,
-    fontSize: 30,
-    color: c.onSurface,
-    paddingBottom: spacing.sm,
+    fontSize: 28,
+    lineHeight: 34,
+    color: "#FFFFFF",
   },
-  headerIntro: {
+  heroGold: {
+    color: "#F5C842",
+  },
+  heroBody: {
     fontFamily: fonts.text,
     fontSize: 14,
-    lineHeight: 21,
-    color: c.onSurfaceSecondary,
+    lineHeight: 20,
+    color: "rgba(255,255,255,0.85)",
+    maxWidth: "60%",
+  },
+  heroCategoriesRow: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    paddingTop: spacing.md,
+  },
+  heroCatItem: {
+    alignItems: "center" as const,
+    gap: 6,
+    flex: 1,
+  },
+  heroCatIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  heroCatLabel: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 10,
+    lineHeight: 13,
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center" as const,
   },
 
   // Scroll
@@ -365,39 +428,59 @@ export default function CheckItScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { width, fontScale } = useWindowDimensions();
-
-  const padH = spacing.md * 2;
-  const sectionPad = spacing.md * 2;
-  const innerWidth = width - padH - sectionPad;
-  const gap = spacing.sm;
-
-  // Responsive: only go single-column on very narrow screens
-  const useNarrow = innerWidth < 240;
 
   return (
     <View style={s.root} testID="check-it-screen">
-      {/* ── Header ── */}
-      <View style={{ paddingTop: insets.top + spacing.md }}>
-        <View style={s.headerContainer}>
-          <Text style={s.headerTitle}>Check</Text>
-          <Text style={s.headerIntro}>
-            Check messages, calls, links, files, apps and more. Spot scams,
-            phishing and risky content before you click, open or share. When in
-            doubt, check it with Apollo.
-          </Text>
-        </View>
-      </View>
-
       {/* ── Scrollable content ── */}
       <ScrollView
         testID="check-it-scroll"
         contentContainerStyle={[
           s.scrollContent,
-          { paddingBottom: insets.bottom + 110 },
+          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + 110 },
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Hero Card ── */}
+        <View style={s.heroOuter} testID="check-hero-card">
+          <ImageBackground
+            source={checkHeroBg}
+            resizeMode="cover"
+            style={s.heroBg}
+            imageStyle={{ borderRadius: radius.lg }}
+          >
+            <View style={s.heroContent}>
+              <Text style={s.heroLabel}>APOLLO</Text>
+              <Text style={s.heroHeading}>
+                Check. Stay{"\n"}<Text style={s.heroGold}>Safe.</Text>
+              </Text>
+              <Text style={s.heroBody}>
+                Check messages, calls, links, files, apps and more. When in doubt, check it with Apollo, Higgins and Magnum DI.
+              </Text>
+
+              {/* Category quick-access icons */}
+              <View style={s.heroCategoriesRow}>
+                {HERO_CATEGORIES.map((cat) => {
+                  const CatIcon = cat.icon;
+                  return (
+                    <Pressable
+                      key={cat.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={cat.label.replace("\n", " ")}
+                      onPress={() => router.push(cat.route as never)}
+                      style={({ pressed }) => [s.heroCatItem, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <View style={[s.heroCatIcon, { backgroundColor: cat.bg }]}>
+                        <CatIcon size={22} color="#FFFFFF" />
+                      </View>
+                      <Text style={s.heroCatLabel}>{cat.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </ImageBackground>
+        </View>
+
         {/* ── Section A: Quick Checks ── */}
         <View
           style={[
