@@ -612,9 +612,9 @@ export default function Patrol() {
               </Text>
             </View>
 
-            <View style={{ flexDirection: "row" }}>
+            <View style={{ flexDirection: "row", position: "relative" }}>
               {/* Content */}
-              <View style={{ flex: 1, padding: spacing.md, paddingTop: 6, gap: 6 }}>
+              <View style={{ flex: 1, padding: spacing.md, paddingTop: 6, paddingRight: compact ? 90 : 110, gap: 6 }}>
 
                 {/* Body text */}
                 <Text style={{ fontFamily: fonts.text, fontSize: compact ? 12 : 13, lineHeight: compact ? 17 : 19, color: "#52606D" }}>
@@ -676,14 +676,18 @@ export default function Patrol() {
                 </View>
               </View>
 
-              {/* Right: Characters */}
-              <View style={{ width: compact ? 90 : 110, alignSelf: "flex-end" }}>
-                <Image
-                  source={apolloDogImg}
-                  style={{ width: "100%", height: compact ? 110 : 140 }}
-                  resizeMode="contain"
-                />
-              </View>
+              {/* Right: Characters — pinned to bottom-right edge */}
+              <Image
+                source={apolloDogImg}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  bottom: 0,
+                  width: compact ? 90 : 110,
+                  height: compact ? 110 : 140,
+                }}
+                resizeMode="contain"
+              />
             </View>
           </ImageBackground>
         </View>
