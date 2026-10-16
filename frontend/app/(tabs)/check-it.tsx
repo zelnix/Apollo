@@ -400,7 +400,7 @@ function CheckCardItem({
         s.card,
         fullWidth
           ? { width: "100%" }
-          : { flexBasis: "48%", flexGrow: 1, maxWidth: "49.5%" },
+          : { flexBasis: "48%", flexGrow: 1 },
         { opacity: pressed ? 0.78 : 1 },
       ]}
     >
