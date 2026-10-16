@@ -169,8 +169,7 @@ class GmailMessagePreview(BaseModel):
     date: str = ""
     snippet: str = ""
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
 
 class GmailMessagesOut(BaseModel):
@@ -206,7 +205,7 @@ async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), li
             listing = listed.json()
             next_token = listing.get("nextPageToken")
             for item in listing.get("messages", []):
-                got = await http.get(f"{gmail_service.GMAIL_API}/messages/{item['id']}", params={"format": "metadata", "metadataHeaders": "From,Subject,Date"}, headers=auth)
+                got = await http.get(f"{gmail_service.GMAIL_API}/messages/{item['id']}", params={"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]}, headers=auth)
                 if got.status_code != 200:
                     continue
                 msg = got.json()
@@ -230,8 +229,7 @@ class GmailMessageDetail(BaseModel):
     date: str = ""
     body: str = ""
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
 
 @router.get("/gmail/message/{message_id}", response_model=GmailMessageDetail)
