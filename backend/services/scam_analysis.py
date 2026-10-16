@@ -222,6 +222,7 @@ async def _run_model(prompt: str) -> dict | None:
             model=ADVISORY_MODEL,
             capability="text",
             purpose=Purpose.PUBLIC_ADVISORY_ANALYSIS,
+            correlation_id="scam-analysis",
         )
         return result
     except ProviderFailure as exc:

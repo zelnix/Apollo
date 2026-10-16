@@ -9,6 +9,8 @@ import asyncio
 import json
 import os
 import re
+import time
+import uuid
 import logging as _logging
 from dataclasses import dataclass
 from typing import Any
@@ -20,6 +22,7 @@ from google.genai import types
 from core.config import GEMINI_API_KEY
 from services.higgins.capacity import CALL_SECONDS, OUTPUT, SCHEMA_RESERVE
 from services.higgins.llm_boundary import Purpose, enforce_boundary, strip_credentials, validate_outbound_payload
+from services.gemini_usage import record_usage as _record_usage
 
 load_dotenv()
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
@@ -128,11 +131,33 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
                    response_schema: Any | None = None,
-                   purpose: Purpose) -> GeminiResult:
+                   purpose: Purpose,
+                   correlation_id: str | None = None) -> GeminiResult:
     """Single authoritative Gemini gateway. Every AI inference request MUST use this function."""
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
     require_capability(model, capability)
+
+    call_id = str(uuid.uuid4())
+    call_type = "generate_json" if json_output else "generate_text"
+    t0 = time.monotonic()
+
+    async def _track(success: bool, usage: dict | None = None, failure_code: str | None = None):
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        try:
+            await _record_usage(
+                record_id=call_id,
+                correlation_id=correlation_id,
+                model=model,
+                purpose=purpose.value if hasattr(purpose, "value") else str(purpose),
+                call_type=call_type,
+                success=success,
+                failure_code=failure_code,
+                usage_metadata=usage,
+                duration_ms=elapsed_ms,
+            )
+        except Exception:
+            _gateway_log.warning("gemini_usage: failed to persist usage record %s", call_id, exc_info=True)
 
     has_binary = _contains_binary(contents)
     if has_binary and purpose not in _BINARY_AUTHORISED_PURPOSES:
@@ -180,10 +205,12 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     try:
         response = await asyncio.wait_for(invoke(), timeout=timeout)
     except asyncio.TimeoutError as exc:
+        await _track(False, failure_code="timeout")
         raise ProviderFailure("provider_unavailable", retryable=True,
                               operation="response_generation",
                               original_message=f"Gemini API call timed out after {timeout}s") from exc
-    except ProviderFailure:
+    except ProviderFailure as exc:
+        await _track(False, failure_code=exc.code)
         raise
     except Exception as exc:
         code = getattr(exc, "code", None)
@@ -191,12 +218,14 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         exc_message = str(exc)[:300] if str(exc) else None
         exc_type = type(exc).__name__
         if code in (400, 401, 402, 403, 404):
+            await _track(False, failure_code=f"http_{code}")
             raise ProviderFailure("provider_configuration", retryable=False,
                                   http_status=code,
                                   original_message=exc_message,
                                   exception_type=exc_type,
                                   operation="response_generation") from exc
         failure_code = "rate_limited" if code == 429 else "provider_unavailable"
+        await _track(False, failure_code=failure_code)
         raise ProviderFailure(failure_code,
                               retryable=code in (429, 500, 502, 503, 504) or code is None,
                               http_status=code if isinstance(code, int) else None,
@@ -218,6 +247,10 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     usage = response.usage_metadata.model_dump(mode='json', exclude_none=True) if response.usage_metadata else {}
     usage['admission_input_tokens'] = input_count
     usage['admission_method'] = 'complete content plus system/schema surrogate; wrapper reserve'
+
+    # Track successful usage
+    await _track(True, usage=usage)
+
     return GeminiResult(text, candidate.content, finish, usage,
                         candidate.grounding_metadata.model_dump(mode="json", exclude_none=True) if candidate.grounding_metadata else None, model)
 

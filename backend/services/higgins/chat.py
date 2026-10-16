@@ -111,7 +111,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                          "selectedPatrolRecordId": selected_patrol_record_id, "selectedReportId": selected_report_id,
                          "conversationRule": "ordinary_chat_only",
                          "instruction": "Use context tools selectively when named Apollo state, history, Patrol, preferences, capabilities, Gates or government alerts would improve the answer."}, ensure_ascii=False)
-    first = await provider.generate(SYSTEM, prompt, capability="functions", tools=context_tools.TOOLS, purpose=provider.Purpose.ORDINARY_CHAT)
+    first = await provider.generate(SYSTEM, prompt, capability="functions", tools=context_tools.TOOLS, purpose=provider.Purpose.ORDINARY_CHAT, correlation_id=f"chat-{owner[:8]}")
     calls = _calls(getattr(first, "content", None)); uses: list[ContextUse] = []
     if calls:
         conversation: list[types.Content] = [types.Content(role="user", parts=[types.Part(text=prompt)]), first.content]
@@ -123,7 +123,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
             responses.append(types.Part.from_function_response(name=name, response=result))
         conversation.append(types.Content(role="user", parts=responses))
         conversation.append(types.Content(role="user", parts=[types.Part(text="Using only the registered results above, return the required final JSON without requesting another tool.")]))
-        final = await provider.generate(SYSTEM, conversation, capability="json", json_output=True, response_schema=ModelChatReply, purpose=provider.Purpose.ORDINARY_CHAT)
+        final = await provider.generate(SYSTEM, conversation, capability="json", json_output=True, response_schema=ModelChatReply, purpose=provider.Purpose.ORDINARY_CHAT, correlation_id=f"chat-{owner[:8]}")
     else:
         final = first
     try:
@@ -135,7 +135,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                                     recommend_investigation=bool(legacy.get("action")), destination=(legacy.get("action") or {}).get("destination"))
         except (ValueError, KeyError, TypeError):
             final = await provider.generate(SYSTEM, [types.Content(role="user", parts=[types.Part(text=prompt)]),
-                types.Content(role="user", parts=[types.Part(text="Return the required final JSON now without tools.")])], capability="json", json_output=True, response_schema=ModelChatReply, purpose=provider.Purpose.ORDINARY_CHAT)
+                types.Content(role="user", parts=[types.Part(text="Return the required final JSON now without tools.")])], capability="json", json_output=True, response_schema=ModelChatReply, purpose=provider.Purpose.ORDINARY_CHAT, correlation_id=f"chat-repair-{owner[:8]}")
             parsed = ModelChatReply.model_validate_json(final.text)
     investigation_available = parsed.recommend_investigation or parsed.destination is not None
     actions = []

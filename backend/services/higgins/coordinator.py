@@ -320,7 +320,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             return Outcome("waiting_device", request=ctx.pending_request)
     while True:
         await progress("assess", "Magnum DI is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
-        result = await provider.generate(SYSTEM, contents, model=job_model, tools=[tool], capability="functions", purpose=provider.Purpose.INVESTIGATION)
+        result = await provider.generate(SYSTEM, contents, model=job_model, tools=[tool], capability="functions", purpose=provider.Purpose.INVESTIGATION, correlation_id=f"case-{case['case_id']}")
         if pending_marks:  # inline evidence counts as examined only once Gemini has actually received it (R05)
             for evidence_id, start, end, total in pending_marks:
                 await ev.mark_examined(owner, case["case_id"], evidence_id, start, end, total)
@@ -339,7 +339,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             return Outcome("waiting_device", request=ctx.pending_request)
         if rounds >= MAX_TOOL_ROUNDS:
             contents.append(types.Content(role="user", parts=[types.Part(text="Tool budget for this turn is exhausted. Return the final JSON now; mark completion 'partial' if material evidence remains.")]))
-            result = await provider.generate(SYSTEM, contents, model=job_model, capability="text", purpose=provider.Purpose.INVESTIGATION)
+            result = await provider.generate(SYSTEM, contents, model=job_model, capability="text", purpose=provider.Purpose.INVESTIGATION, correlation_id=f"case-{case['case_id']}")
             break
     rows = await repo.list_evidence(owner, case["case_id"])
     evidence_ids = {row["evidence_id"] for row in rows}
@@ -358,7 +358,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         contents.append(result.content)
         contents.append(types.Content(role="user", parts=[types.Part(text="Your response did not pass interface validation:\n- " + "\n- ".join(errors) +
                                                                           "\nReturn the corrected full JSON object only. Keep your assessment and explanation; fix only the listed problems.")]))
-        result = await provider.generate(SYSTEM, contents, model=job_model, json_output=True, capability="json", purpose=provider.Purpose.INVESTIGATION)
+        result = await provider.generate(SYSTEM, contents, model=job_model, json_output=True, capability="json", purpose=provider.Purpose.INVESTIGATION, correlation_id=f"case-{case['case_id']}")
         data = _json_object(result.text)
         response, errors = (None, ["no JSON object"]) if data is None else validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids,
                                                                                     capability_ids=capability_ids, pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)

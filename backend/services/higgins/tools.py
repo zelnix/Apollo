@@ -117,7 +117,7 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
 
     prompt = json.dumps({"question": sanitised_question, "entities": sanitised_entities, "preferredDomains": domain_page})
     try:
-        result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search", purpose=provider.Purpose.RESEARCH)
+        result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search", purpose=provider.Purpose.RESEARCH, correlation_id="research")
     except provider.ProviderFailure as exc:
         return {"status": "unavailable", "failure": exc.code, "retryable": exc.retryable}
     registered = []

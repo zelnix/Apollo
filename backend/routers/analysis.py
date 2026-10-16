@@ -256,7 +256,7 @@ async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_h
             processed = rendered.getvalue()
         data, provider_metadata = await generate_json(PAGE_EXTRACT_PROMPT,
             [types.Part.from_bytes(data=processed, mime_type="image/jpeg"), types.Part(text=f"Extract page observations.{hint}")],
-            model=VISION_MODEL, capability="vision", purpose=Purpose.PAGE_SIGNAL_EXTRACTION)
+            model=VISION_MODEL, capability="vision", purpose=Purpose.PAGE_SIGNAL_EXTRACTION, correlation_id="page-extract")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -349,7 +349,7 @@ async def page_crawl(body: PageCrawlIn):
                f"Form field types present: {', '.join(page.forms) or 'none'}\nButton/submit labels: {', '.join(page.buttons) or 'none'}\n"
                f"Outbound link hostnames sample: {', '.join(page.links_sample) or 'none'}\nFinal address after redirects: {page.final_url}")
     try:
-        data, provider_metadata = await generate_json(PAGE_CRAWL_EXTRACT_PROMPT, content, purpose=Purpose.INVESTIGATION)
+        data, provider_metadata = await generate_json(PAGE_CRAWL_EXTRACT_PROMPT, content, purpose=Purpose.INVESTIGATION, correlation_id="page-crawl")
     except Exception as exc:  # noqa: BLE001
         logger.warning("page crawl-extract failed: %s", type(exc).__name__)
         return {"error": "extract_failed", "detail": CRAWL_ERROR_DETAIL["extract_failed"], "signals": None, "higgins_note": None, "final_url": page.final_url, "gemini_used": False}
@@ -795,6 +795,7 @@ async def vision_investigate(
                     VISION_INVESTIGATE_PROMPT, parts,
                     model=VISION_MODEL, capability="vision",
                     purpose=Purpose.VISION_INVESTIGATION,
+                    correlation_id="vision-investigate",
                 )
                 gemini_used = True
             except HTTPException:
