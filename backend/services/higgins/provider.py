@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
+import logging as _logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,9 +25,8 @@ load_dotenv()
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
 VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", TEXT_MODEL)
 RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
-ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", TEXT_MODEL)  # Consolidated: advisory uses Flash
+ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", TEXT_MODEL)
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
-# Register exact documented capabilities. Unknown selections fail closed, not by name heuristics.
 CAPABILITIES = {
     "gemini-3.5-flash": _TEXT_CAPS,
     "gemini-3.8-flash": _TEXT_CAPS,
@@ -37,6 +38,8 @@ CAPABILITIES = {
 _client: genai.Client | None = None
 _model_limits: dict[str, tuple[int, int]] = {}
 
+_gateway_log = _logging.getLogger("apollo.gateway")
+
 
 class ProviderFailure(RuntimeError):
     def __init__(self, code: str, *, retryable: bool = False, finish_reason: str | None = None,
@@ -47,19 +50,16 @@ class ProviderFailure(RuntimeError):
         self.original_message = _sanitise_diagnostic(original_message) if original_message else None
         self.exception_type = exception_type
         self.operation = operation or "response_generation"
-        # Never include SDK exception text (may contain input, URLs or credentials).
         super().__init__(code)
 
 
 def _sanitise_diagnostic(text: str) -> str:
     """Redact API keys, tokens and sensitive data from diagnostic text."""
-    import re
     text = re.sub(r'(key|token|secret|password|auth)[=:]\s*\S+', r'\1=<REDACTED>', text, flags=re.IGNORECASE)
     text = re.sub(r'AIza[A-Za-z0-9_-]{30,}', '<REDACTED_KEY>', text)
     text = re.sub(r'AQ\.[A-Za-z0-9_-]{20,}', '<REDACTED_KEY>', text)
     text = re.sub(r'sk-[A-Za-z0-9_-]{20,}', '<REDACTED_KEY>', text)
     text = re.sub(r'Bearer\s+\S+', 'Bearer <REDACTED>', text, flags=re.IGNORECASE)
-    # Truncate to avoid leaking large payloads
     return text[:500] if len(text) > 500 else text
 
 
@@ -103,16 +103,11 @@ class GeminiResult:
         return value
 
 
-import logging as _logging
-
-_gateway_log = _logging.getLogger("apollo.gateway")
-
 # Purposes that are authorised for binary (image/audio) content transmission.
-# All other purposes MUST NOT send binary to Gemini.
 _BINARY_AUTHORISED_PURPOSES = frozenset({
-    Purpose.VISION_PREFLIGHT,           # Image admission check (the screening mechanism itself)
-    Purpose.PAGE_SIGNAL_EXTRACTION,     # Privacy-gated screenshot → signal extraction
-    Purpose.INVESTIGATION,              # Owner-authorised investigation evidence
+    Purpose.VISION_PREFLIGHT,
+    Purpose.PAGE_SIGNAL_EXTRACTION,
+    Purpose.INVESTIGATION,
 })
 
 
@@ -134,29 +129,19 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
                    response_schema: Any | None = None,
                    purpose: Purpose) -> GeminiResult:
-    """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
-
-    `purpose` is REQUIRED — no default. Every caller must explicitly declare their processing
-    purpose so the correct privacy controls are applied. A missing purpose produces a TypeError.
-    """
+    """Single authoritative Gemini gateway. Every AI inference request MUST use this function."""
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
     require_capability(model, capability)
 
-    # ── Binary content authorisation: verify purpose permits binary ──
     has_binary = _contains_binary(contents)
     if has_binary and purpose not in _BINARY_AUTHORISED_PURPOSES:
-        raise ProviderFailure("privacy_violation",
-                              retryable=False)
-
+        raise ProviderFailure("privacy_violation", retryable=False)
     if has_binary:
         _gateway_log.info("gateway_binary: purpose=%s model=%s capability=%s", purpose.value, model, capability)
 
-    # ── LLM Evidence Boundary: enforce before any external call ──
-    # Strip credentials from the system prompt.
     if system:
         system = strip_credentials(system)
-    # Enforce boundary on all text contents with purpose-specific controls.
     if isinstance(contents, str):
         contents = enforce_boundary(purpose, contents)
     elif isinstance(contents, list):
@@ -164,7 +149,6 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
             if isinstance(content_item, types.Content) and content_item.parts:
                 for part in content_item.parts:
                     if part.text:
-                        # Full purpose-aware enforcement on every text part, not just credential stripping.
                         part.text = enforce_boundary(purpose, part.text)
             elif isinstance(content_item, types.Part) and content_item.text:
                 content_item.text = enforce_boundary(purpose, content_item.text)
@@ -175,6 +159,7 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         response_schema=response_schema,
         tools=tools, automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
     input_count = None
+
     async def invoke():
         nonlocal input_count
         if model not in _model_limits:
@@ -184,8 +169,6 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
             _model_limits[model] = (info.input_token_limit, info.output_token_limit)
         input_limit, output_limit = _model_limits[model]
         config.max_output_tokens = min(OUTPUT.value, output_limit)
-        # Developer API rejects CountTokensConfig.system_instruction/tools (Vertex-only).
-        # Tokenise their complete text as a surrogate Part, with an explicit wrapper reserve.
         schemas = json.dumps([tool.model_dump(mode='json', exclude_none=True) for tool in tools or []])
         count_contents = [types.Part(text=(system or '') + '\n' + schemas), *(contents if isinstance(contents, list) else [contents])]
         counted = await client().aio.models.count_tokens(model=model, contents=count_contents)
@@ -193,6 +176,7 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         if input_count is None or input_count + config.max_output_tokens + SCHEMA_RESERVE.value > input_limit:
             raise ProviderFailure('budget_exhausted')
         return await client().aio.models.generate_content(model=model, contents=contents, config=config)
+
     try:
         response = await asyncio.wait_for(invoke(), timeout=timeout)
     except asyncio.TimeoutError as exc:
@@ -203,17 +187,12 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         raise
     except Exception as exc:
         code = getattr(exc, "code", None)
-        status_code = getattr(exc, "status_code", code)  # some SDK exceptions use status_code
+        status_code = getattr(exc, "status_code", code)
         exc_message = str(exc)[:300] if str(exc) else None
         exc_type = type(exc).__name__
-        if code == 402:
+        if code in (400, 401, 402, 403, 404):
             raise ProviderFailure("provider_configuration", retryable=False,
-                                  http_status=402,
-                                  original_message=exc_message,
-                                  exception_type=exc_type,
-                                  operation="response_generation") from exc
-        if code in (400, 401, 403, 404):
-            raise ProviderFailure("provider_configuration", http_status=code,
+                                  http_status=code,
                                   original_message=exc_message,
                                   exception_type=exc_type,
                                   operation="response_generation") from exc
@@ -224,6 +203,7 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                               original_message=exc_message,
                               exception_type=exc_type,
                               operation="response_generation") from exc
+
     candidates = response.candidates or []
     if not candidates or not candidates[0].content:
         raise ProviderFailure("incomplete_output")
@@ -247,14 +227,16 @@ async def generate_json(system: str, prompt: Any, **kwargs: Any) -> tuple[dict, 
     return result.object(), result.metadata
 
 
+async def generate_text(system: str, prompt: Any, **kwargs: Any) -> GeminiResult:
+    return await generate(system, prompt, json_output=False, **kwargs)
+
+
 def configuration() -> dict:
     models = {"investigation": TEXT_MODEL, "vision": VISION_MODEL,
               "recovery": RECOVERY_MODEL or None}
     return {"provider": "Gemini", "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
-            "accountAccess": "Apollo-managed paid API tier (not the user's personal Google account)",
-            "providerRetention": "Apollo uses the paid Gemini API tier. "
-                                 "According to Google's published API terms, customer data sent via the paid API is not used for model training. "
-                                 "Apollo's request-scoped processing copies are closed immediately after completion and never retained beyond 15 minutes. "
-                                 "Google's own data retention and processing practices are governed by their published API terms, which Apollo does not control or independently verify.",
-            "dataFlow": "Device -> Apollo service -> Google Gemini paid API. No user Google account involved."}
+            "accountAccess": "Direct Google AI Studio API key",
+            "providerRetention": "Apollo uses the Gemini API directly via google-genai SDK. "
+                                 "Request-scoped processing copies are closed immediately after completion.",
+            "dataFlow": "Device -> Apollo service -> Google Gemini API."}
