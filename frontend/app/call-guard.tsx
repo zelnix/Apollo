@@ -277,10 +277,23 @@ export default function CheckNumber() {
     const askPrompt = `About the number I just checked: ${result.number}. ${enhancedModel.headline} Can you walk me through what Apollo found and what I should do?`;
     const callActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
 
+    // Determine investigation status
+    const invProcessing = inv?.processing as Record<string, unknown> | undefined;
+    const failureReason = invProcessing?.failure_reason as string | undefined;
+    const isRetryable = invProcessing?.retryable !== false;
+
     if (investigationBusy) {
       callActions.push({ testID: "callguard-investigating", variant: "ghost", label: "Magnum DI is investigating…", onPress: () => {} });
     } else if (!investigationResult || !(higginsData?.exact_response)) {
-      callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Magnum DI investigation", onPress: () => void retryInvestigation() });
+      if (failureReason) {
+        // Show the failure reason — only offer retry if the failure is retryable
+        callActions.push({ testID: "callguard-failure-info", variant: "ghost", label: failureReason, onPress: () => {} });
+        if (isRetryable) {
+          callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Magnum DI investigation", onPress: () => void retryInvestigation() });
+        }
+      } else {
+        callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Magnum DI investigation", onPress: () => void retryInvestigation() });
+      }
     }
 
     callActions.push({

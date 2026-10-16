@@ -440,6 +440,7 @@ async def investigate_phone_number(*, number: str, country: Optional[str] = None
     failures, metadata = [], {}
     attempts = 0
     higgins, findings, risk = incomplete_status(), [], "uncertain"
+    retryable = True  # Track whether the failure is worth retrying
     
     correction = ""
     for attempt in range(2):
@@ -464,6 +465,7 @@ async def investigate_phone_number(*, number: str, country: Optional[str] = None
             break
         except ProviderFailure as exc:
             failures.append(exc.code)
+            retryable = getattr(exc, "retryable", True)
             break
         except (ValueError, TypeError, KeyError):
             failures.append("response_invalid")
@@ -471,6 +473,16 @@ async def investigate_phone_number(*, number: str, country: Optional[str] = None
     
     complete = bool(higgins.exact_response)
     gaps = [s.source_id for s in sources if s.status == "unavailable"]
+    # Map failure codes to user-facing explanations
+    FAILURE_REASONS: dict[str, str] = {
+        "provider_configuration": "Magnum DI\u2019s analysis service is temporarily unavailable. The reputation data above is still valid.",
+        "budget_exhausted": "The investigation timed out. The reputation data above is still valid.",
+        "rate_limited": "Too many investigations running. Please wait a moment before retrying.",
+        "provider_unavailable": "Magnum DI\u2019s analysis service is temporarily unreachable. Try again shortly.",
+    }
+    failure_reason = ""
+    if failures and not complete:
+        failure_reason = FAILURE_REASONS.get(failures[-1], "Investigation could not complete. The reputation data above is still valid.")
     processing = {
         "raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
         "maximum_processing_retention_minutes": 15, "provider": "Gemini",
@@ -481,6 +493,8 @@ async def investigate_phone_number(*, number: str, country: Optional[str] = None
         "coverage": {"numberResults": 1 if risk_result else 0, "unavailableSourceIds": gaps},
         "capacityPolicy": policy()["version"], "provider_metadata": metadata,
         "completed_at": checked_now() if complete else None,
+        "failure_reason": failure_reason,
+        "retryable": retryable if not complete else True,
     }
     
     return InvestigationResult(
