@@ -13,6 +13,7 @@ import type { PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useRouter } from "expo-router";
 import { useApollo } from "@/src/store/ApolloContext";
+import { APP_VERSION, NATIVE_BUILD_NUMBER, buildLabel } from "@/src/config/buildInfo";
 
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
@@ -85,6 +86,13 @@ const useStyles = makeStyles((c) => ({
     color: c.onSurfaceSecondary,
     textAlign: "center",
     paddingVertical: spacing.md,
+  },
+  buildInfo: {
+    fontFamily: fonts.text,
+    fontSize: 11,
+    color: c.onSurfaceTertiary,
+    textAlign: "center",
+    paddingBottom: spacing.md,
   },
   // Briefing text
   briefingHeadline: {
@@ -257,7 +265,8 @@ export function OverviewTab({
       ) : null}
 
       {/* Footer */}
-      <Text style={s.footer}>Together, Apollo and Higgins help you stay safer. \uD83D\uDC99</Text>
+      <Text style={s.footer}>Together, Apollo and Higgins help you stay safer. 💙</Text>
+      <Text style={s.buildInfo}>v{APP_VERSION} · {buildLabel()}</Text>
     </View>
   );
 }
