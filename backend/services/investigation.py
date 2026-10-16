@@ -234,6 +234,7 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
     failures, metadata = [], {}
     attempts = 0
     higgins, findings, risk = incomplete_status(), [], "uncertain"
+    retryable = True  # Track whether the failure is worth retrying
     if use_model:
         correction = ""
         for attempt in range(2):
@@ -259,6 +260,7 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
                 break
             except ProviderFailure as exc:
                 failures.append(exc.code)
+                retryable = getattr(exc, "retryable", True)
                 break  # transport/config failures aren't semantic-repair attempts
             except (ValueError, TypeError, KeyError):
                 failures.append("response_invalid")
@@ -268,6 +270,17 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
     complete = bool(higgins.exact_response)
     gaps = [source.source_id for source in sources if source.status == "unavailable"]
     partial_pages = [index for index, page in enumerate(pages) if page.get("coverage", {}).get("status") == "partial"]
+    # Map failure codes to user-facing explanations
+    FAILURE_REASONS: dict[str, str] = {
+        "provider_configuration": "Magnum DI\u2019s analysis service is temporarily unavailable. Apollo\u2019s initial observations are shown above.",
+        "budget_exhausted": "The investigation timed out. Apollo\u2019s initial observations are shown above.",
+        "rate_limited": "Too many investigations running. Please wait a moment before retrying.",
+        "provider_unavailable": "Magnum DI\u2019s analysis service is temporarily unreachable. Try again shortly.",
+        "model_disabled": "",
+    }
+    failure_reason = ""
+    if failures and not complete:
+        failure_reason = FAILURE_REASONS.get(failures[-1], "Investigation could not complete. Apollo\u2019s initial observations are shown above.")
     processing = {"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
         "maximum_processing_retention_minutes": 15, "provider": "Gemini", "model_used": complete,
         "temporary_copy_policy": TEMPORARY_COPY_POLICY,
@@ -279,7 +292,9 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
                      "externalResearch": "not_yet_available"},
         "capacityPolicy": policy()["version"], "provider_metadata": metadata,
         "provider_note": "Request copies are discarded after processing. The AI provider account retention settings have not been independently verified.",
-        "completed_at": checked_now() if complete else None}
+        "completed_at": checked_now() if complete else None,
+        "failure_reason": failure_reason,
+        "retryable": retryable if not complete else True}
     return InvestigationResult(assessment_id=str(uuid.uuid4()), risk=risk, entities=entities, findings=findings,
         sources=sources, higgins=higgins, technical_summary=["Static page reads and configured reputation only; no full research coordinator yet."], processing=processing)
 
