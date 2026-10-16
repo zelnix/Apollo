@@ -27,10 +27,13 @@ export function hasLocalEvidence(e: PatrolEvent): boolean {
  *  When evidence exists, Higgins directs: tells the user exactly what to do. */
 export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
   const incomplete = !hasLocalEvidence(e);
+  // Server-projected investigations with real findings should be narrated from their data,
+  // not dismissed as unavailable evidence.
+  const hasInvestigationData = !!e.investigation_case_id && !!(e.what_happened && e.what_happened.length > 30);
   const chunks: NarrationChunk[] = [
     { id: "state", label: "Apollo's finding", text: `Higgins here. Apollo found something. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
   ];
-  if (incomplete) {
+  if (incomplete && !hasInvestigationData) {
     chunks.push({ id: "what", label: "What happened", text: "The full evidence for this finding is only available on the device where it happened. I can't give you a specific instruction without seeing the evidence." });
     chunks.push({ id: "why", label: "Why this matters", text: "The reason Apollo flagged this is recorded on the originating device." });
     chunks.push({ id: "todo", label: "What to do", text: "Open this on the device where the check happened. I'll guide you through the next steps from there." });

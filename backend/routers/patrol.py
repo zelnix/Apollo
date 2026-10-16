@@ -172,9 +172,11 @@ async def upsert_event(body: PatrolEventIn):
     await _append_authoritative_record(await db.patrol_events.find_one({"_id": result.inserted_id}))
     if event.state in ("barking", "biting"):
         asyncio.create_task(notify_guardians(event))
-        if event.background:
+        # Push to owner for background events, OR for investigation-based findings
+        # (e.g. a manual email check that produced high-risk results still warrants notification)
+        if event.background or event.investigation_case_id:
             asyncio.create_task(push_owner_alert(event))
-    elif event.state == "growling" and event.background:
+    elif event.state == "growling" and (event.background or event.investigation_case_id):
         asyncio.create_task(push_owner_alert(event))  # respects quiet hours
     return event
 

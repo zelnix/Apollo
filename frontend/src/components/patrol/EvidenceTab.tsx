@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 
 import { Body, Card } from "@/src/components/ui";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
+import { scrubMessage } from "@/src/domain/messageVoice";
 import { contextFromEvent, gateForCategory, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 import { caseForEvent } from "@/src/investigation/caseIndex";
 import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
@@ -258,6 +259,63 @@ function EvidenceRow({
   );
 }
 
+/** Maps raw effective_reason codes to plain-English descriptions. */
+function humanReadableReason(reason: string | undefined | null): string {
+  if (!reason) return "";
+  return scrubMessage(reason);
+}
+
+/** Maps enforcement mechanism codes to readable descriptions. */
+function humanReadableMechanism(mechanism: string | undefined | null): string {
+  if (!mechanism) return "";
+  const MAP: Record<string, string> = {
+    dns_sinkhole: "DNS-level block (prevented the connection at network level)",
+    content_policy: "Content policy filter (blocked by content safety rules)",
+    firewall_rule: "Firewall rule (network traffic was filtered)",
+    browser_interstitial: "Browser warning page (shown before the site loaded)",
+    app_block: "App-level block (the app prevented the action)",
+    packet_drop: "Network packet drop (connection was silently blocked)",
+  };
+  return MAP[mechanism] ?? mechanism.replace(/_/g, " ");
+}
+
+/** Maps enforcement action codes to readable descriptions. */
+function humanReadableAction(action: string | undefined | null): string {
+  if (!action) return "";
+  const MAP: Record<string, string> = {
+    blocked: "The connection or action was blocked",
+    warned: "A warning was shown before proceeding",
+    quarantined: "The item was quarantined for review",
+    redirected: "The request was redirected to a safe destination",
+    logged: "The event was logged for review",
+  };
+  return MAP[action] ?? action.replace(/_/g, " ");
+}
+
+/** Maps enforcement result codes to readable descriptions. */
+function humanReadableResult(result: string | undefined | null): string {
+  if (!result) return "";
+  const MAP: Record<string, string> = {
+    success: "Successfully enforced",
+    partial: "Partially enforced — some elements may have loaded",
+    failed: "Enforcement was attempted but did not complete",
+    bypassed: "The block was bypassed by the user",
+  };
+  return MAP[result] ?? result.replace(/_/g, " ");
+}
+
+/** Maps confidence values to readable descriptions. */
+function humanReadableConfidence(confidence: string | undefined | null): string {
+  if (!confidence) return "";
+  const MAP: Record<string, string> = {
+    high: "High confidence — supported by multiple evidence sources",
+    medium: "Medium confidence — based on available indicators",
+    low: "Low confidence — limited evidence available",
+    verified: "Verified — independently confirmed",
+  };
+  return MAP[confidence] ?? confidence.replace(/_/g, " ");
+}
+
 export function EvidenceTab({ event }: { event: PatrolEvent }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -305,7 +363,7 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
               {headline}
             </Text>
             <Text style={s.alertBody}>
-              {record?.effectiveReason ?? event.what_happened ?? ""}
+              {humanReadableReason(record?.effectiveReason) || scrubMessage(event.what_happened) || ""}
             </Text>
           </View>
         </View>
@@ -355,7 +413,9 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
         {/* Scenario context — merged from Additional details */}
         {hasScenario ? (
           <>
-            <EvidenceRow label="Scenario" value={scenario?.scenario} />
+            {scenario?.scenario && scenario.scenario !== "shared_investigation" ? (
+              <EvidenceRow label="Investigation scope" value={scrubMessage(scenario.scenario)} />
+            ) : null}
             <EvidenceRow label="Claimed brand" value={scenario?.claimedBrand} />
             {/* Only show host if different from indicator_host already shown */}
             {scenario?.indicatorHost && scenario.indicatorHost !== event.indicator_host ? (
@@ -364,13 +424,13 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
           </>
         ) : null}
 
-        {/* Enforcement details */}
+        {/* Enforcement details — human-readable */}
         {hasEnforcement && event.enforcement_evidence ? (
           <>
-            <EvidenceRow label="Mechanism" value={event.enforcement_evidence.mechanism} />
-            <EvidenceRow label="Action taken" value={event.enforcement_evidence.enforced_action} />
-            <EvidenceRow label="Result" value={event.enforcement_evidence.result} />
-            <EvidenceRow label="Confidence" value={event.enforcement_evidence.confidence} />
+            <EvidenceRow label="Detection method" value={humanReadableMechanism(event.enforcement_evidence.mechanism)} />
+            <EvidenceRow label="Action taken" value={humanReadableAction(event.enforcement_evidence.enforced_action)} />
+            <EvidenceRow label="Outcome" value={humanReadableResult(event.enforcement_evidence.result)} />
+            <EvidenceRow label="Confidence explained" value={humanReadableConfidence(event.enforcement_evidence.confidence)} />
           </>
         ) : null}
 
@@ -436,7 +496,7 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
         <View style={s.alertContent}>
           <Text style={s.infoTitle}>What this means</Text>
           <Text style={s.alertBody}>
-            {record?.summary ?? event.what_happened ?? ""}
+            {scrubMessage(record?.summary || briefing?.meaning || event.what_happened || "")}
           </Text>
         </View>
       </View>

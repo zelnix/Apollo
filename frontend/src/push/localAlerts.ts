@@ -6,7 +6,16 @@ import type { LocalAlert } from "./notifications";
 
 export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
   if (event.status === "resolved" || event.status === "trusted") return null;
-  if (!event.background && event.category !== "connection") return null;
+
+  // Allow notifications for:
+  // 1. All background events (existing behaviour)
+  // 2. Connection-category events regardless of background flag (existing behaviour)
+  // 3. Investigation-based events with actionable findings (barking/biting) — these represent
+  //    high-risk email or message investigations that warrant notification even when the check
+  //    was initiated manually.
+  const isInvestigationFinding = !!event.investigation_case_id && (event.state === "barking" || event.state === "biting");
+  if (!event.background && event.category !== "connection" && !isInvestigationFinding) return null;
+
   // Deep-link straight to this specific Patrol event (focus=alert pre-selects it so Higgins can answer
   // about exactly this finding) — never a generic tab (standing message requirement).
   const actionUrl = `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`;

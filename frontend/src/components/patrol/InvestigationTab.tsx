@@ -9,6 +9,7 @@ import Settings from "lucide-react-native/icons/settings";
 import { Body, Card, toneColor, toneText } from "@/src/components/ui";
 import { EventActions } from "@/src/components/EventActions";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
+import { scrubMessage } from "@/src/domain/messageVoice";
 import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
 import type { PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -162,6 +163,19 @@ export function InvestigationTab({
   const record: PatrolRecord | undefined = event.patrol_record ?? undefined;
   const risk = riskLabel(event.state);
   const headline = event.headline ?? "Finding detected";
+  const briefing = record?.higginsBriefing;
+
+  // Use scrubbed versions of effective reason and impact
+  const effectiveReason = scrubMessage(record?.effectiveReason);
+  const impactText = effectiveReason && effectiveReason !== "synced from another device"
+    ? effectiveReason
+    : briefing?.meaning || "";
+
+  // Build findings list from investigation data
+  const findingsList: string[] = [];
+  if (event.why?.length) {
+    findingsList.push(...event.why.map(w => scrubMessage(w)));
+  }
 
   return (
     <View style={s.content}>
@@ -178,28 +192,35 @@ export function InvestigationTab({
           </View>
         </View>
 
-        {/* Investigation description */}
-        <Body>{shownWhatHappened}</Body>
+        {/* Investigation description — use briefing when available */}
+        {briefing ? (
+          <>
+            <Text style={s.sectionTitle}>{briefing.investigated}</Text>
+            <Body>{briefing.established}</Body>
+          </>
+        ) : (
+          <Body>{shownWhatHappened}</Body>
+        )}
 
         {/* Investigation Result alert */}
         <View
           style={[
             s.alertBanner,
-            { backgroundColor: colors.barkingTint },
+            { backgroundColor: event.state === "resting" ? colors.restingTint : colors.barkingTint },
           ]}
           testID="investigation-result-alert"
         >
-          <View style={[s.alertIcon, { backgroundColor: colors.barking }]}>
+          <View style={[s.alertIcon, { backgroundColor: event.state === "resting" ? colors.resting : colors.barking }]}>
             <CircleAlert size={16} color="#FFFFFF" />
           </View>
           <View style={s.alertContent}>
             <Text style={s.sub}>Probe result</Text>
-            <Text style={[s.alertTitle, { color: colors.barkingText }]}>
+            <Text style={[s.alertTitle, { color: event.state === "resting" ? colors.restingText : colors.barkingText }]}>
               {headline}
             </Text>
-            <Text style={s.alertBody}>
-              {record?.effectiveReason ?? outcome?.resultBasis ?? ""}
-            </Text>
+            {impactText ? (
+              <Text style={s.alertBody}>{impactText}</Text>
+            ) : null}
           </View>
         </View>
       </Card>
@@ -223,32 +244,46 @@ export function InvestigationTab({
           </View>
         </View>
 
-        {record?.effectiveReason ? (
+        {impactText ? (
           <View style={s.tableRow}>
             <Text style={s.tableLabel}>Impact</Text>
-            <Text style={s.tableValue}>{record.effectiveReason}</Text>
+            <Text style={s.tableValue}>{impactText}</Text>
           </View>
         ) : null}
 
-        {(outcome?.whyThisRating ?? event.why).length > 0 ? (
+        {findingsList.length > 0 ? (
           <View style={s.tableRow}>
-            <Text style={s.tableLabel}>Compromise</Text>
+            <Text style={s.tableLabel}>Details</Text>
             <Text style={s.tableValue}>
-              {(outcome?.whyThisRating ?? event.why).join(". ")}
+              {findingsList.join(". ")}
             </Text>
           </View>
         ) : null}
 
-        {record?.scenarioContext?.scenario ? (
+        {event.indicator_host ? (
+          <View style={s.tableRow}>
+            <Text style={s.tableLabel}>Domain</Text>
+            <Text style={s.tableValue}>{event.indicator_host}</Text>
+          </View>
+        ) : null}
+
+        {event.claimed_brand ? (
+          <View style={s.tableRow}>
+            <Text style={s.tableLabel}>Claimed brand</Text>
+            <Text style={s.tableValue}>{event.claimed_brand}</Text>
+          </View>
+        ) : null}
+
+        {record?.scenarioContext?.scenario && record.scenarioContext.scenario !== "shared_investigation" ? (
           <View style={s.tableRowLast}>
-            <Text style={s.tableLabel}>Related finding</Text>
-            <Text style={s.tableValue}>{record.scenarioContext.scenario}</Text>
+            <Text style={s.tableLabel}>Scope</Text>
+            <Text style={s.tableValue}>{scrubMessage(record.scenarioContext.scenario)}</Text>
           </View>
         ) : null}
       </Card>
 
       {/* Conclusion */}
-      {record?.summary ? (
+      {(record?.summary || briefing?.meaning) ? (
         <Card
           style={{ gap: spacing.md }}
           testID="investigation-conclusion"
@@ -264,7 +299,7 @@ export function InvestigationTab({
               <Info size={16} color="#FFFFFF" />
             </View>
             <View style={s.alertContent}>
-              <Body>{record.summary}</Body>
+              <Body>{scrubMessage(record?.summary || briefing?.meaning || "")}</Body>
             </View>
           </View>
         </Card>

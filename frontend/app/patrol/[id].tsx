@@ -135,7 +135,14 @@ export default function EventDetail() {
   }, [event?.patrol_record?.recordId]);
 
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
-  const isIncomplete = event && !hasLocalEvidence(event);
+
+  // An event is truly incomplete only when it has no usable evidence AND no investigation data.
+  // Server-projected investigations contain real findings from Magnum DI — treat them as complete.
+  const hasInvestigation = !!event?.investigation_case_id || !!event?.patrol_record?.investigationCaseId;
+  const hasSubstantiveData = !!(event?.what_happened && event.what_happened.length > 30);
+  const hasBriefing = !!event?.patrol_record?.higginsBriefing;
+  const isIncomplete = event && !hasLocalEvidence(event) && !hasInvestigation && !hasSubstantiveData && !hasBriefing;
+
   const shownWhatHappened = isIncomplete
     ? "The full evidence for this check is only available on the device where it happened."
     : event?.what_happened;
@@ -144,7 +151,9 @@ export default function EventDetail() {
     event?.what_to_do &&
     !looksLikeInternalCode(event.what_to_do)
       ? event.what_to_do
-      : "Open this on the device where it happened for the recommended action.";
+      : isIncomplete
+        ? "Open this on the device where it happened for the recommended action."
+        : event?.patrol_record?.higginsBriefing?.action || "Review the investigation details for recommended next steps.";
 
   // Investigation reference ID
   const refId = event?.patrol_record?.recordId

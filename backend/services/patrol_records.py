@@ -43,7 +43,10 @@ def _effective(event: PatrolEventIn, verified: bool) -> tuple[str, str]:
         return ("blocked", "fresh_packet_drop_evidence") if verified else ("danger", "unverified_block_claim_rejected")
     if event.status in {"resolved", "trusted"}:
         return "resolved", "recorded_resolution"
-    return DISPLAY[event.state], "server_projection_of_recorded_outcome"
+    # Use a human-readable reason for the effective state
+    if event.investigation_case_id:
+        return DISPLAY[event.state], "Based on Magnum DI\u2019s investigation findings"
+    return DISPLAY[event.state], "Based on Apollo\u2019s assessment of the available evidence"
 
 
 def _wire(row: dict[str, Any]) -> dict[str, Any]:

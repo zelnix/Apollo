@@ -56,6 +56,25 @@ import type { HealthTrigger } from "@/src/protection/healthTypes";
 import { APP_VERSION } from "@/src/config/buildInfo";
 import { isVerifiedDesktopFlowDrop } from "@/src/security/desktopEvidence";
 
+// ── Privacy-safe notification diagnostic logger ──────────────────────────
+// Records notification failures with enough detail to distinguish permission,
+// registration and scheduling issues — without exposing email content or PII.
+type NotifFailKind = "permission" | "registration" | "scheduling" | "unknown";
+function logNotifDiagnostic(kind: NotifFailKind, error: unknown, context?: string): void {
+  const message = error instanceof Error ? error.message : String(error);
+  // Strip any potential PII / email content — keep only the failure classification
+  const safeMsg = message.replace(/[\w.-]+@[\w.-]+/g, "[redacted-email]").slice(0, 200);
+  const tag = `[Apollo notification ${kind}]`;
+  if (__DEV__) {
+    console.warn(`${tag} ${safeMsg}${context ? ` (context: ${context})` : ""}`);
+  }
+  // In production, this could be sent to a privacy-safe telemetry endpoint.
+  // For now, store the last failure locally for diagnostics.
+  void storage.setItem("apollo.notif.lastFailure", JSON.stringify({
+    kind, message: safeMsg, at: new Date().toISOString(), context: context ?? null,
+  })).catch(() => undefined);
+}
+
 const deviceMeta = () => ({
   platform: Platform.OS,
   adapter_mode: securityAdapter.kind,
@@ -606,12 +625,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const age = Date.now() - Date.parse(event.occurred_at);
       if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
       const alert = eventLocalAlert(event);
-      if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch(() => undefined);
+      if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
       // Defect 7: Wire protection-work notification builders (completed checks, protection updates)
       const checkAlert = completedCheckAlert(event);
-      if (checkAlert && (checkAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(checkAlert).catch(() => undefined);
+      if (checkAlert && (checkAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(checkAlert).catch((e) => logNotifDiagnostic("scheduling", e, "completed-check"));
       const updateAlert = protectionUpdateAlert(event);
-      if (updateAlert && (updateAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(updateAlert).catch(() => undefined);
+      if (updateAlert && (updateAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(updateAlert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-update"));
     }
     if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
   }, [ready, events]);
@@ -624,7 +643,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     lastObservedProtection.current = protection;
     if (previous) {
       const alert = protectionLocalAlert(previous, protection);
-      if (alert) void scheduleLocalAlert(alert).catch(() => undefined);
+      if (alert) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-status"));
       // Note: recoveryAlert from protectionAlerts.ts is NOT dispatched here to avoid
       // duplicate notifications — protectionLocalAlert already handles recovery.
     }
@@ -650,9 +669,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setSetupDone(true);
     await verifyNow();
     // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
-    try { await enableNotifications(); } catch { /* local alert permission never blocks setup */ }
+    try { await enableNotifications(); } catch (e) { logNotifDiagnostic("permission", e, "setup-flow"); }
     // Register for remote push delivery after notification permission is granted.
-    void registerRemotePush().catch(() => undefined);
+    void registerRemotePush().catch((e) => logNotifDiagnostic("registration", e, "setup-push"));
   }, [verifyNow, enableNotifications]);
 
   // Remote Patrol + trust merge — uses the extracted pure mergeLocalAndRemoteEvents function

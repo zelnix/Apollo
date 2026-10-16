@@ -7,7 +7,7 @@ import Settings from "lucide-react-native/icons/settings";
 
 import { EventActions } from "@/src/components/EventActions";
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
-import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { looksLikeInternalCode, scrubMessage } from "@/src/domain/messageVoice";
 import type { HigginsBriefing, PatrolEvent } from "@/src/domain/types";
 import type { PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -167,7 +167,7 @@ export function OverviewTab({
                 Current outcome: Resolved
               </Text>
               <Text style={[s.bannerBody, { color: colors.onSurfaceSecondary }]}>
-                {outcome?.resultBasis ??
+                {scrubMessage(outcome?.resultBasis) ??
                   `This was marked resolved on ${event.resolved_at ? new Date(event.resolved_at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "an earlier date"}.`}
               </Text>
             </View>
@@ -184,10 +184,10 @@ export function OverviewTab({
             </View>
             <View style={s.bannerContent}>
               <Text style={[s.bannerTitle, { color: colors.barkingText }]}>
-                Current outcome: {outcome?.result ?? "Needs attention"}
+                Current outcome: {scrubMessage(outcome?.result) ?? "Needs attention"}
               </Text>
               <Text style={[s.bannerBody, { color: colors.onSurfaceSecondary }]}>
-                {outcome?.resultBasis ?? "This finding has not been resolved yet."}
+                {scrubMessage(outcome?.resultBasis) ?? "This finding has not been resolved yet."}
               </Text>
             </View>
           </View>
