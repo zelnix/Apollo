@@ -9,7 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet } from "@/src/api/client";
-import { getDeviceToken } from "@/src/auth/deviceIdentity";
+import { getDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { Body, Card, SectionTitle } from "@/src/components/ui";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -51,7 +51,7 @@ export default function EmailAccountsScreen() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => { void getDeviceToken().then(setDeviceId); }, []);
+  useEffect(() => { void getDeviceIdentity().then((id) => setDeviceId(id?.deviceId ?? null)); }, []);
 
   const loadAccounts = useCallback(async () => {
     if (!deviceId) return;
