@@ -103,7 +103,8 @@ async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None
 def _account_state(row: dict) -> dict:
     lease_active = bool(row.get("monitor_lease_until") and row["monitor_lease_until"].replace(tzinfo=timezone.utc) > now_utc())
     state = "off" if not row.get("monitoring_enabled") else "checking" if lease_active else "needs_attention" if row.get("monitor_last_error_at") and not row.get("monitor_last_success_at") else "ready"
-    return {"email": row.get("email"), "monitoring_enabled": bool(row.get("monitoring_enabled")),
+    created = row.get("created_at")
+    return {"email": row.get("email"), "connected_at": created.isoformat() if created else None, "monitoring_enabled": bool(row.get("monitoring_enabled")),
             "monitor_last_checked_at": row.get("monitor_last_checked_at"), "monitor_last_error_at": row.get("monitor_last_error_at"),
             "monitor_last_success_at": row.get("monitor_last_success_at"), "monitor_last_assessment_at": row.get("monitor_last_assessment_at"),
             "monitor_last_attempt_at": row.get("monitor_last_attempt_at"), "monitor_state": state,

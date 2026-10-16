@@ -3276,3 +3276,41 @@ agent_communication:
   - agent: "testing"
     message: "TASK 1 & TASK 2 VERIFICATION COMPLETE (2026-10-16). BACKEND TESTS: All specified backend tests from review request executed successfully. (1) investigation_projector.py imports correctly and _extract_indicators() extracts indicator_host, claimed_brand, scenario from investigation response ✅ (2) patrol_records._effective() returns human-readable reasons without internal codes ✅ (3) patrol.py router imports correctly and push notification eligibility includes investigation-based events ✅ (4) Backend health endpoint 200 OK ✅. FRONTEND TESTS: TypeScript compilation verification completed. (1) All modified files (patrol/[id].tsx, InvestigationTab.tsx, EvidenceTab.tsx, OverviewTab.tsx, higginsNarration.ts, localAlerts.ts, ApolloContext.tsx) compile without TypeScript errors ✅ (2) Code inspection confirms: isIncomplete logic fixed, scrubMessage() usage added, investigation details preserved, notification eligibility expanded, logNotifDiagnostic() replaces silent catches ✅. EXISTING TYPESCRIPT ERRORS: 18 TypeScript errors found in 8 OTHER files (protection.tsx, check.tsx, email.tsx, learning.tsx, protection-details.tsx, CheckingModal.tsx, emailCheckResultAdapter.ts, mockThreatPreview.ts) - these are PRE-EXISTING and NOT related to TASK 1 or TASK 2 changes. PYTEST RESULTS: Backend pytest suite shows 2 failures in push notification tests (test_iter7_quiet_and_phone.py::test_growling_bg_false_no_push_attempt, test_iter6_push.py::test_03_patrol_event_and_fanout) - these appear to be pre-existing test issues, not regressions from TASK 1/TASK 2 changes. 34 patrol-related tests passed. LIMITATION: Full UI and notification behavior testing requires native build (cannot be performed in web preview). RECOMMENDATION: Main agent should address the 18 pre-existing TypeScript errors in unrelated files. TASK 1 and TASK 2 backend and frontend changes are working correctly."
 
+
+
+## 2026-10-16 Finalize Email Accounts Settings Logic
+
+backend:
+  - task: "GET /api/gmail/status returns connected accounts with connected_at field; DELETE /api/gmail/connection disconnects accounts by email; POST /api/gmail/monitoring toggles monitoring; POST /api/gmail/scan triggers manual scan"
+    implemented: true
+    working: true
+    file: "backend/routers/gmail.py, backend/services/gmail.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Backend routes existed from previous session. Added connected_at field (from created_at) to _account_state() response so frontend can display connection date."
+
+frontend:
+  - task: "Settings > Email Accounts screen: fetches connected Gmail accounts from GET /api/gmail/status, displays empty state or account list, Connect Gmail button triggers OAuth flow, Disconnect button with confirmation dialog, Monitoring toggle switch, Scan now button, About section"
+    implemented: true
+    working: true
+    file: "frontend/app/settings/email-accounts.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Fixed 3 bugs from incomplete previous session rewrite: (1) lucide icon imports used old names alert-circle/check-circle → fixed to circle-alert/circle-check matching project convention; (2) apiPost calls missing required EgressEndpoint parameter → added 'gmail_monitor' and 'gmail_scan'; (3) disconnect sent query param 'account' but backend expects 'email' → fixed. Also fixed: unicode escapes in JSX text (\\u2026 rendered literally → replaced with actual chars), infinite loading spinner when deviceId is null (added deviceLoaded state tracking). Screen verified rendering in web preview with correct empty state."
+
+test_plan:
+  current_focus:
+    - "Email Accounts Settings screen - frontend rendering and backend API integration"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Please verify the Email Accounts settings screen. FRONTEND: Navigate to /settings/email-accounts and verify: (1) Page loads without errors, (2) Back button navigates properly, (3) Empty state shows 'No email accounts connected' with mail icon, (4) 'Connect Gmail account' button is visible, (5) About email access section is rendered. BACKEND: Test (1) GET /api/gmail/status?device_id=<valid_id> returns proper JSON with accounts array, connected, configured, monitoring_enabled, monitor_state fields; (2) DELETE /api/gmail/connection?device_id=<valid_id> returns 204; (3) POST /api/gmail/monitoring with body {device_id, enabled} works; (4) POST /api/gmail/scan with body {device_id} works. Note: Web preview has no registered device, so API calls will fail with 401 'device credential' — this is expected. Auth testing requires registering a device first via POST /api/devices/register. No user accounts — Apollo uses anonymous device IDs. Backend runs on port 8001 (/api prefix)."
