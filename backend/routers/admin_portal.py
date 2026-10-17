@@ -649,6 +649,94 @@ async def reconciliation(request: Request):
             except Exception:
                 pass
 
+    # ── Source/trigger classification by correlation_id pattern ──
+    def _classify_corr(cid: str) -> str:
+        """Determine what code path created this correlation_id."""
+        if not cid or cid == "NULL":
+            return "unknown (no correlation_id)"
+        if cid.startswith("case-"):
+            return "coordinator (Magnum DI job)"
+        if cid.startswith("msg-check-"):
+            return "message check (investigation.py)"
+        if cid.startswith("phone-check-"):
+            return "phone check (investigation.py)"
+        if cid == "health-check":
+            return "health check probe"
+        if cid == "research":
+            return "research/grounding"
+        if cid.startswith("chat-"):
+            return "chat"
+        if cid == "scam-analysis":
+            return "scam analysis"
+        return f"other ({cid[:20]})"
+
+    source_buckets: dict[str, dict] = {}
+    for g in inv_groups:
+        cid = str(g["_id"] or "NULL")
+        cat = _classify_corr(cid)
+        b = source_buckets.setdefault(cat, {"calls": 0, "input": 0, "output": 0, "thinking": 0, "cost": 0.0, "unique_ids": 0})
+        b["calls"] += g["calls"]
+        b["input"] += g["input_tokens"]
+        b["output"] += g["output_tokens"]
+        b["thinking"] += g["thinking_tokens"]
+        b["cost"] += g["cost"]
+        b["unique_ids"] += 1
+
+    source_tbody = ""
+    for cat in sorted(source_buckets.keys(), key=lambda k: source_buckets[k]["cost"], reverse=True):
+        b = source_buckets[cat]
+        avg = b["input"] / b["calls"] if b["calls"] > 0 else 0
+        source_tbody += f"""<tr>
+            <td>{html_mod.escape(cat)}</td>
+            <td style="text-align:right;">{b['unique_ids']:,}</td>
+            <td style="text-align:right;">{b['calls']:,}</td>
+            <td style="text-align:right;">{b['input']:,}</td>
+            <td style="text-align:right;">{b['output']:,}</td>
+            <td style="text-align:right;">{b['thinking']:,}</td>
+            <td style="text-align:right;">${b['cost']:.4f}</td>
+            <td style="text-align:right;">{avg:,.0f}</td>
+        </tr>"""
+
+    source_html = f"""
+    <h2>2b. Investigation Calls by Source/Trigger</h2>
+    <div class="alert alert-warning">
+        <strong>Key question:</strong> How many of the investigation-labelled calls were user-initiated vs automated?<br/>
+        Correlation IDs starting with <code>case-*</code> come from the Magnum DI coordinator (could be user OR mailbox-monitor triggered).<br/>
+        <code>msg-check-*</code> = message analysis API, <code>phone-check-*</code> = phone analysis API,
+        <code>health-check</code> = system health probe.<br/>
+        <strong>The mailbox monitor creates <code>case-*</code> jobs automatically every 15 minutes for each monitored email.</strong>
+    </div>
+    <table>
+        <thead><tr><th>Source Category</th><th>Unique IDs</th><th>Calls</th><th>Input Tokens</th>
+        <th>Output</th><th>Thinking</th><th>Est Cost</th><th>Avg Input/Call</th></tr></thead>
+        <tbody>{source_tbody or '<tr><td colspan="8" style="color:var(--muted);">No data</td></tr>'}</tbody>
+    </table>
+    """
+
+    # ── Check mailbox-related investigation jobs ──
+    mailbox_receipts = await db.mailbox_assessment_receipts.count_documents({"state": {"$in": ["submitted", "complete"]}, "updated_at": {"$gte": today_start}})
+    mailbox_jobs_today = 0
+    try:
+        mailbox_jobs_today = await db.investigation_jobs.count_documents({
+            "created_at": {"$gte": today_start},
+            "idempotency_key": {"$regex": "^mailbox:"}
+        })
+    except Exception:
+        pass
+
+    mailbox_html = f"""
+    <h2>2c. Mailbox Monitor Activity (Today)</h2>
+    <div class="stats-grid">
+        {_stat_card(str(mailbox_receipts), 'Assessment receipts (today)')}
+        {_stat_card(str(mailbox_jobs_today), 'Jobs with mailbox: key (today)')}
+    </div>
+    <p style="font-size:0.88em;color:var(--muted);">
+        The mailbox monitor scans Gmail every 15 min and creates investigation jobs for each email.
+        Each job generates up to 12 Gemini calls (10 tool rounds + forced conclusion + validation repair).
+        If {mailbox_receipts} emails were assessed today, they could account for up to {mailbox_receipts * 12:,} investigation calls.
+    </p>
+    """
+
     # Build reconciliation table rows
     recon_tbody = ""
     running_calls = 0
@@ -665,16 +753,14 @@ async def reconciliation(request: Request):
         types = ", ".join(g["call_types"][:3])
 
         # Determine source/trigger
-        source = "unknown"
+        cat = _classify_corr(corr_id)
+        source = cat
         rpt = report_map.get(corr_id)
         ext = extra_matches.get(corr_id)
         if rpt:
-            source = f"report ({rpt.get('status', '?')})"
+            source = f"{cat} → report ({rpt.get('status', '?')})"
         elif ext:
-            source = f"{ext.get('collection', '?')} ({ext.get('status', ext.get('type', '?'))})"
-
-        # Compaction check: sample one record from this correlation
-        compaction_label = "?"
+            source = f"{cat} → {ext.get('collection', '?')} ({ext.get('status', ext.get('type', '?'))})"
 
         running_calls += g["calls"]
         running_input += g["input_tokens"]
@@ -812,6 +898,80 @@ async def reconciliation(request: Request):
     </div>
     """
 
+    # ── 6b. Cost gap analysis ──
+    # Count research calls for grounding cost estimation
+    research_count_today = await db.gemini_usage.count_documents({
+        "timestamp": {"$gte": today_start}, "purpose": "research", "success": True
+    })
+    grounding_est = research_count_today * 0.035  # $35/1k queries = $0.035/query
+    total_estimated = total_inv_cost + sum(r["cost"] for r in purpose_rows if r["_id"]["success"])
+
+    # Aggregate output+thinking tokens across ALL today's successful calls
+    output_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}, "success": True}},
+        {"$group": {
+            "_id": None,
+            "total_output": {"$sum": {"$ifNull": ["$tokens.output", 0]}},
+            "total_thinking": {"$sum": {"$ifNull": ["$tokens.thinking", 0]}},
+            "total_cached": {"$sum": {"$ifNull": ["$tokens.cached_input", 0]}},
+        }}
+    ]
+    output_data = (await db.gemini_usage.aggregate(output_pipeline).to_list(1)) or [{}]
+    od = output_data[0] if output_data else {}
+
+    cost_gap_html = f"""
+    <h2>6b. Cost Gap Analysis (Estimated vs Actual)</h2>
+    <div class="alert alert-warning">
+        <strong>Why Apollo's estimate may be lower than actual Google billing:</strong>
+    </div>
+    <table>
+        <thead><tr><th>Component</th><th>Value</th><th>Estimated Impact</th></tr></thead>
+        <tbody>
+            <tr>
+                <td>Apollo estimated cost (all purposes, success-only)</td>
+                <td colspan="2" style="text-align:right;font-weight:700;">${total_estimated:.4f}</td>
+            </tr>
+            <tr>
+                <td>Google Search grounding ({research_count_today} research calls &times; ~$0.035/query)</td>
+                <td style="text-align:right;">{research_count_today} calls</td>
+                <td style="text-align:right;color:var(--red);">+${grounding_est:.2f}</td>
+            </tr>
+            <tr>
+                <td>Output tokens today</td>
+                <td style="text-align:right;">{od.get('total_output', 0):,}</td>
+                <td style="color:var(--muted);">Included in estimate</td>
+            </tr>
+            <tr>
+                <td>Thinking tokens today</td>
+                <td style="text-align:right;">{od.get('total_thinking', 0):,}</td>
+                <td style="color:var(--muted);">Included in estimate</td>
+            </tr>
+            <tr>
+                <td>Cached input tokens today</td>
+                <td style="text-align:right;">{od.get('total_cached', 0):,}</td>
+                <td style="color:var(--muted);">Discounted in estimate</td>
+            </tr>
+            <tr>
+                <td>Pricing table drift (hardcoded rates may not match current Google pricing)</td>
+                <td></td>
+                <td style="text-align:right;color:var(--red);">+$1&ndash;3 (variable)</td>
+            </tr>
+            <tr style="font-weight:700;background:var(--card);">
+                <td>Adjusted estimate</td>
+                <td></td>
+                <td style="text-align:right;">${total_estimated + grounding_est:.2f} + pricing drift</td>
+            </tr>
+        </tbody>
+    </table>
+    <p style="font-size:0.85em;color:var(--muted);margin-top:8px;">
+        <strong>count_tokens() API calls:</strong> Apollo calls <code>count_tokens()</code> before every
+        <code>generate_content()</code> for admission control. These calls are <strong>free</strong>
+        (not billed by Google) but do add to API call volume.<br/>
+        <strong>Failed calls (402):</strong> HTTP 402 billing failures do not consume tokens or incur charges.
+    </p>
+    """
+
+
     # ── 7. Historical comparison ──
     week_ago = now - timedelta(days=7)
     daily_pipeline = [
@@ -941,10 +1101,13 @@ async def reconciliation(request: Request):
     </div>
     {boundary_html}
     {purpose_html}
+    {source_html}
+    {mailbox_html}
     {recon_html}
     {top_html}
     {fail_html}
     {compaction_html}
+    {cost_gap_html}
     {history_html}
     {reports_html}
     {recon_check_html}
