@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from services.gemini_usage import get_usage_report, MODEL_PRICING, PRICING_VERSION
+from services.gemini_usage import get_usage_report, get_investigation_trace, MODEL_PRICING, PRICING_VERSION
 
 router = APIRouter(tags=["usage"])
 
@@ -47,3 +47,15 @@ async def gemini_pricing():
                       "Actual Google billing charges may differ.",
         "rates_usd_per_million_tokens": MODEL_PRICING,
     }
+
+
+@router.get("/usage/gemini/trace/{correlation_id}")
+async def gemini_trace(correlation_id: str):
+    """Per-call trace for a single investigation/correlation.
+
+    Returns every Gemini call in chronological order with token counts,
+    payload audit (content rounds, text chars, binary parts), and
+    cumulative totals — the data needed to build a Round table.
+    """
+    report = await get_investigation_trace(correlation_id)
+    return report

@@ -135,7 +135,7 @@ def estimate_cost_usd(model: str, tokens: dict[str, int | None]) -> float:
 def _extract_tokens(usage_metadata: dict[str, Any] | None) -> dict[str, int | None]:
     """Extract token counts from Gemini usage_metadata, preserving None for missing values."""
     if not usage_metadata:
-        return {"input": None, "output": None, "total": None, "thinking": None, "cached_input": None}
+        return {"input": None, "output": None, "total": None, "thinking": None, "cached_input": None, "admission_input": None}
 
     return {
         "input": usage_metadata.get("prompt_token_count") or usage_metadata.get("input_tokens"),
@@ -143,6 +143,7 @@ def _extract_tokens(usage_metadata: dict[str, Any] | None) -> dict[str, int | No
         "total": usage_metadata.get("total_token_count") or usage_metadata.get("total_tokens"),
         "thinking": usage_metadata.get("thoughts_token_count") or usage_metadata.get("thinking_tokens"),
         "cached_input": usage_metadata.get("cached_content_token_count") or usage_metadata.get("cached_tokens"),
+        "admission_input": usage_metadata.get("admission_input_tokens"),
     }
 
 
@@ -295,6 +296,101 @@ async def get_usage_report(
             "calls_without_usage_data": without_usage,
         },
         "by_model_and_purpose": breakdowns,
+    }
+
+
+async def get_investigation_trace(correlation_id: str) -> dict[str, Any]:
+    """Per-call chronological trace for a single investigation/correlation.
+
+    Returns every Gemini call with token breakdown, payload audit,
+    and cumulative totals — directly suitable for building the
+    Round | Reason | Input | Output | Cumulative | Content table.
+    """
+    rows = await db[COLLECTION].find(
+        {"correlation_id": correlation_id},
+        {"_id": 0}
+    ).sort("timestamp", 1).to_list(200)
+
+    calls = []
+    cumulative_input = 0
+    cumulative_output = 0
+    cumulative_thinking = 0
+    cumulative_cost = 0.0
+
+    for idx, row in enumerate(rows):
+        tokens = row.get("tokens", {})
+        inp = tokens.get("input") or tokens.get("admission_input") or 0
+        out = tokens.get("output") or 0
+        thinking = tokens.get("thinking") or 0
+        cached = tokens.get("cached_input") or 0
+        cost = row.get("estimated_cost_usd") or 0.0
+
+        cumulative_input += inp
+        cumulative_output += out
+        cumulative_thinking += thinking
+        cumulative_cost += cost
+
+        audit = (row.get("extra") or {}).get("payload_audit", {})
+        content_summary = []
+        for r in audit.get("rounds", []):
+            label = r.get("role", "?")
+            parts = []
+            if r.get("text_chars"):
+                parts.append(f"{r['text_chars']:,} chars")
+            if r.get("binary_parts"):
+                parts.append(f"{r['binary_parts']} image(s)")
+            if r.get("fn_calls"):
+                parts.append(f"{r['fn_calls']} fn_call(s)")
+            if r.get("fn_responses"):
+                parts.append(f"{r['fn_responses']} fn_response(s)")
+            content_summary.append(f"{label}: {', '.join(parts) or 'empty'}")
+
+        calls.append({
+            "call_number": idx + 1,
+            "call_type": row.get("call_type"),
+            "purpose": row.get("purpose"),
+            "model": row.get("model"),
+            "success": row.get("success"),
+            "failure_code": row.get("failure_code"),
+            "timestamp": row.get("timestamp").isoformat() if row.get("timestamp") else None,
+            "duration_ms": row.get("duration_ms"),
+            "tokens": {
+                "input": inp,
+                "output": out,
+                "thinking": thinking,
+                "cached_input": cached,
+                "admission_input": tokens.get("admission_input"),
+            },
+            "estimated_cost_usd": round(cost, 6),
+            "cumulative": {
+                "input_tokens": cumulative_input,
+                "output_tokens": cumulative_output,
+                "thinking_tokens": cumulative_thinking,
+                "estimated_cost_usd": round(cumulative_cost, 6),
+            },
+            "payload_audit": {
+                "system_chars": audit.get("system_chars"),
+                "system_est_tokens": audit.get("system_est_tokens"),
+                "content_rounds": audit.get("content_rounds"),
+                "total_text_chars": audit.get("total_text_chars"),
+                "total_est_tokens": audit.get("total_est_tokens"),
+                "total_binary_parts": audit.get("total_binary_parts"),
+                "total_function_calls": audit.get("total_function_calls"),
+                "total_function_responses": audit.get("total_function_responses"),
+            } if audit else None,
+            "content_summary": content_summary or None,
+        })
+
+    return {
+        "correlation_id": correlation_id,
+        "total_calls": len(calls),
+        "totals": {
+            "input_tokens": cumulative_input,
+            "output_tokens": cumulative_output,
+            "thinking_tokens": cumulative_thinking,
+            "estimated_cost_usd": round(cumulative_cost, 6),
+        },
+        "calls": calls,
     }
 
 

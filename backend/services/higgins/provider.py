@@ -127,6 +127,70 @@ def _contains_binary(contents: Any) -> bool:
     return False
 
 
+def _audit_payload(system: str, contents: Any, tools: list[types.Tool] | None) -> dict:
+    """Non-blocking audit of what is being sent to Gemini for cost attribution.
+
+    Returns a lightweight breakdown of the payload composition without copying content.
+    Token estimates use ~4 chars/token as a rough heuristic (actual tokenisation happens
+    separately via count_tokens).
+    """
+    audit: dict[str, Any] = {
+        "system_chars": len(system) if system else 0,
+        "system_est_tokens": len(system) // 4 if system else 0,
+        "tool_declarations": len(tools[0].function_declarations) if tools and hasattr(tools[0], 'function_declarations') and tools[0].function_declarations else 0,
+    }
+    # Decompose contents into rounds with per-role character counts
+    rounds: list[dict] = []
+    total_text_chars = 0
+    total_binary_parts = 0
+    total_function_calls = 0
+    total_function_responses = 0
+
+    items = contents if isinstance(contents, list) else [contents]
+    for item in items:
+        if isinstance(item, types.Content):
+            role = item.role or "unknown"
+            text_chars = 0
+            binary_count = 0
+            fn_calls = 0
+            fn_responses = 0
+            for part in (item.parts or []):
+                if part.text:
+                    text_chars += len(part.text)
+                if part.inline_data:
+                    binary_count += 1
+                if part.function_call:
+                    fn_calls += 1
+                if part.function_response:
+                    fn_responses += 1
+            total_text_chars += text_chars
+            total_binary_parts += binary_count
+            total_function_calls += fn_calls
+            total_function_responses += fn_responses
+            rounds.append({
+                "role": role, "text_chars": text_chars, "est_tokens": text_chars // 4,
+                "binary_parts": binary_count, "fn_calls": fn_calls, "fn_responses": fn_responses,
+            })
+        elif isinstance(item, str):
+            total_text_chars += len(item)
+            rounds.append({"role": "user", "text_chars": len(item), "est_tokens": len(item) // 4})
+        elif isinstance(item, types.Part):
+            chars = len(item.text) if item.text else 0
+            total_text_chars += chars
+            if item.inline_data:
+                total_binary_parts += 1
+            rounds.append({"role": "part", "text_chars": chars, "est_tokens": chars // 4, "binary_parts": 1 if item.inline_data else 0})
+
+    audit["content_rounds"] = len(rounds)
+    audit["total_text_chars"] = total_text_chars
+    audit["total_est_tokens"] = (audit["system_chars"] + total_text_chars) // 4
+    audit["total_binary_parts"] = total_binary_parts
+    audit["total_function_calls"] = total_function_calls
+    audit["total_function_responses"] = total_function_responses
+    audit["rounds"] = rounds[:20]  # Cap to avoid bloating the record
+    return audit
+
+
 async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
@@ -142,6 +206,11 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     call_type = "generate_json" if json_output else "generate_text"
     t0 = time.monotonic()
 
+    # ── Payload composition audit ──────────────────────────────────────
+    # Captures what is being sent to Gemini so per-call costs can be attributed
+    # to system prompt, evidence, tool results, conversation rounds, etc.
+    payload_audit = _audit_payload(system, contents, tools)
+
     async def _track(success: bool, usage: dict | None = None, failure_code: str | None = None):
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         try:
@@ -155,6 +224,7 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                 failure_code=failure_code,
                 usage_metadata=usage,
                 duration_ms=elapsed_ms,
+                extra={"payload_audit": payload_audit},
             )
         except Exception:
             _gateway_log.warning("gemini_usage: failed to persist usage record %s", call_id, exc_info=True)
