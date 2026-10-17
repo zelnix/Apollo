@@ -1,0 +1,74 @@
+{
+  "timestamp": "2026-10-17T10:41:29.441046+00:00",
+  "device_id": "c9f3d838e68b4091b665a3942e9ac082",
+  "total_calls": 8,
+  "total_input_tokens": 56240,
+  "total_output_tokens": 4424,
+  "total_estimated_cost_usd": 0.058307,
+  "scenarios": [
+    {
+      "id": "simple_text",
+      "status": "timeout",
+      "case_id": "6473fabb-4b40-4490-964f-a3e5146a06c9",
+      "gemini_calls": 4,
+      "input_tokens": 26173,
+      "output_tokens": 1890,
+      "estimated_cost_usd": 0.027925,
+      "evidence_issues": [
+        "No response in case detail"
+      ]
+    },
+    {
+      "id": "multi_source",
+      "status": "timeout",
+      "case_id": "99545214-9649-47a1-8b01-25842f80df24",
+      "gemini_calls": 4,
+      "input_tokens": 30067,
+      "output_tokens": 2534,
+      "estimated_cost_usd": 0.030382,
+      "evidence_issues": [
+        "No response in case detail"
+      ]
+    },
+    {
+      "id": "multi_round",
+      "status": "exception",
+      "case_id": null,
+      "gemini_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0,
+      "evidence_issues": []
+    },
+    {
+      "id": "contradictory",
+      "status": "exception",
+      "case_id": null,
+      "gemini_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0,
+      "evidence_issues": []
+    },
+    {
+      "id": "vision_image",
+      "status": "exception",
+      "case_id": null,
+      "gemini_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0,
+      "evidence_issues": []
+    },
+    {
+      "id": "multi_turn",
+      "status": "exception",
+      "case_id": null,
+      "gemini_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "estimated_cost_usd": 0,
+      "evidence_issues": []
+    }
+  ]
+}

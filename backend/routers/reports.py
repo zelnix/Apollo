@@ -82,3 +82,12 @@ async def gemini_usage_investigation_report():
     if not md_file.exists():
         return HTMLResponse("<h1>Report not found</h1>", status_code=404)
     return HTMLResponse(_render(md_file, "Gemini API Usage Investigation — Root Cause Analysis"))
+
+
+@router.get("/reports/gemini-usage-tracking", response_class=HTMLResponse)
+async def gemini_usage_tracking_report():
+    """Public HTML view of the live Gemini usage tracking report."""
+    md_file = _REPORT_DIR / "GEMINI_USAGE_TRACKING_REPORT.md"
+    if not md_file.exists():
+        return HTMLResponse("<h1>Report not found</h1>", status_code=404)
+    return HTMLResponse(_render(md_file, "Gemini Usage Tracking Report"))
