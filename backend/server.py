@@ -41,7 +41,7 @@ from services import gemini_usage
 from services import gmail as gmail_service
 from services import family_assist
 from services.threat_revalidation import ensure_indexes as ensure_threat_indexes, migrate_blocklist_entries
-from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, reports, usage
+from routers import admin, admin_portal, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, usage
 from routers.family_weekly import weekly_checkin_loop
 from services.seed_learning_images import router as seed_images_router
 
@@ -75,6 +75,7 @@ async def lifespan(_: FastAPI):
         pass
     await ensure_maintenance_indexes()
     await gemini_usage.ensure_indexes()
+    await db.admin_sessions.create_index("expires_at", expireAfterSeconds=0)
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()
     await family_assist.ensure_indexes()
@@ -223,7 +224,7 @@ app.include_router(seed_images_router, prefix="/api", tags=["learning-seed"])
 # Learning images are public (no auth needed for serving cached images)
 app.include_router(learning_router.public_router, prefix="/api", tags=["learning-public"])
 app.include_router(usage.router, prefix="/api", tags=["usage"])
-app.include_router(reports.router, prefix="/api", tags=["reports"])
+app.include_router(admin_portal.router, prefix="/api", tags=["admin"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router
