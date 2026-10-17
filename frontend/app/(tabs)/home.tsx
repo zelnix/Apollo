@@ -69,16 +69,16 @@ const useStyles = makeStyles((c) => ({
   heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroOverlay: {
     padding: spacing.lg, gap: spacing.md, flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "flex-start", flexShrink: 1, overflow: "hidden",
   },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
   heroImage: { width: 90, height: 90 },
-  heroContent: { flex: 1, gap: spacing.xs },
-  heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  heroContent: { flex: 1, flexShrink: 1, gap: spacing.xs },
+  heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
   heroShield: { marginRight: 2 },
-  heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47" },
-  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
+  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, flexShrink: 1 },
 
   // ── Two side-by-side cards ──
   twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
