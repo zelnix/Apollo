@@ -181,11 +181,191 @@ def _json_object(text: str) -> Optional[dict]:
     return None
 
 
+# ── Fix 1: Compact completed tool rounds ─────────────────────────────────
+# After the model has processed a tool result and responded, the full tool
+# text is no longer needed in every subsequent Gemini call.  Replace verbose
+# results with compact factual representations retaining evidence IDs,
+# source IDs, indicators, verdicts, URLs, confidence and coverage.
+# Full content is preserved in the evidence store and accessible via
+# read_evidence.
+
+_COMPACT_PREVIEW = 800   # chars of answer/text kept in the compact version
+_COMPACT_URL_PREVIEW = 500
+
+
+def _compact_tool_result(name: str, result: dict) -> dict:
+    """Extract material findings from a tool result into a compact representation.
+
+    Small/structured results (reputation, breach, register_clue, device observation,
+    ask_user) are returned unchanged — they are already compact.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    if name in ("research_public_sources", "research_application", "research_settings"):
+        return _compact_research(result)
+    if name == "inspect_url":
+        return _compact_url_inspect(result)
+    if name == "read_evidence":
+        return _compact_read_evidence(result)
+    if name == "continue_document":
+        return _compact_continue_document(result)
+    # lookup_reputation, lookup_breach, register_clue, ask_user,
+    # request_device_observation, continue_clues — already compact
+    return result
+
+
+def _compact_research(result: dict) -> dict:
+    """Compact a research_public_sources result.
+
+    Preserves: status, all source references (sourceId, title, host, authority),
+    evidence ID, provider completeness, answer preview for reasoning continuity.
+    Drops: full answer text (stored as evidence, accessible via read_evidence).
+    """
+    answer = result.get("answer", "")
+    evidence_id = result.get("answerEvidenceId", "")
+    return {
+        "_compacted": True,
+        "status": result.get("status"),
+        "answerEvidenceId": evidence_id,
+        "answerCharacters": result.get("answerCharacters", len(answer)),
+        "answer_preview": answer[:_COMPACT_PREVIEW] + (f" [...{len(answer) - _COMPACT_PREVIEW} chars compacted; stored as evidence {evidence_id}]" if len(answer) > _COMPACT_PREVIEW else ""),
+        "truncatedInline": result.get("truncatedInline"),
+        "sources": result.get("sources", []),
+        "providerComplete": result.get("providerComplete"),
+        "inputCoverage": result.get("inputCoverage"),
+        "match": result.get("match"),
+        "note": result.get("note", "") + (" Full answer stored as evidence; use read_evidence to re-examine." if evidence_id else ""),
+    }
+
+
+def _compact_url_inspect(result: dict) -> dict:
+    """Compact an inspect_url result.
+
+    Preserves: status, redirect chain, final URL, title, forms, buttons, link hosts,
+    source and snapshot IDs, coverage, text preview for reasoning continuity.
+    Drops: full page text (stored as source snapshot evidence).
+    """
+    text = result.get("text", "")
+    snapshot_id = result.get("sourceSnapshotId", "")
+    return {
+        "_compacted": True,
+        "status": result.get("status"),
+        "sourceId": result.get("sourceId"),
+        "sourceSnapshotId": snapshot_id,
+        "originalUrl": result.get("originalUrl"),
+        "redirectChain": result.get("redirectChain"),
+        "finalUrl": result.get("finalUrl"),
+        "title": result.get("title"),
+        "forms": result.get("forms", []),
+        "buttons": result.get("buttons", []),
+        "linkHosts": result.get("linkHosts", []),
+        "text_preview": text[:_COMPACT_URL_PREVIEW] + (f" [...{len(text) - _COMPACT_URL_PREVIEW} chars compacted; snapshot {snapshot_id}]" if len(text) > _COMPACT_URL_PREVIEW else ""),
+        "nextCursor": result.get("nextCursor"),
+        "coverage": result.get("coverage"),
+        "note": result.get("note", "") if not snapshot_id else f"Full page text stored as source snapshot {snapshot_id}; use read_evidence to re-examine.",
+    }
+
+
+def _compact_read_evidence(result: dict) -> dict:
+    """Compact a read_evidence result.
+
+    Preserves: evidence ID, total length, range read, hasMore flag, page inventory,
+    content preview for reasoning continuity.
+    Drops: full content text (accessible via read_evidence with range parameters).
+    """
+    content = result.get("content", "")
+    evidence_id = result.get("evidenceId", "")
+    return {
+        "_compacted": True,
+        "evidenceId": evidence_id,
+        "kind": result.get("kind"),
+        "totalCharacters": result.get("totalCharacters"),
+        "start": result.get("start"),
+        "end": result.get("end"),
+        "hasMore": result.get("hasMore"),
+        "content_preview": content[:_COMPACT_PREVIEW] + (f" [...{len(content) - _COMPACT_PREVIEW} chars compacted; use read_evidence({evidence_id}) to re-examine]" if len(content) > _COMPACT_PREVIEW else ""),
+        "pages": result.get("pages"),
+        "pageInventory": result.get("pageInventory"),
+        "note": result.get("note"),
+    }
+
+
+def _compact_continue_document(result: dict) -> dict:
+    """Compact a continue_document result.
+
+    These are metadata-heavy (page ranges, visual IDs) not text-heavy.
+    Keep the structure intact; only drop replayed delivery confirmation.
+    """
+    compact = dict(result)
+    compact["_compacted"] = True
+    # The 'delivery' field is operational, not evidence; safe to simplify.
+    return compact
+
+
+def _compact_completed_rounds(contents: list[types.Content]) -> None:
+    """In-place replacement of verbose tool responses in earlier rounds.
+
+    The LAST tool-response Content is preserved in full (model hasn't processed it yet).
+    Earlier tool-response Contents are replaced with compact factual representations
+    retaining evidence IDs, source IDs, URLs, indicators, verdicts and previews.
+
+    The initial evidence Content (contents[0]) and all model Contents are unchanged.
+    Image/binary parts from earlier rounds are replaced with text references since
+    the model has already examined them.
+    """
+    # Find all indices of tool-response Contents (contain at least one function_response part)
+    tool_indices = []
+    for i, content in enumerate(contents):
+        if i == 0:
+            continue                           # Never touch initial evidence
+        if content.role != "user":
+            continue                           # Model responses are small; keep them
+        if any(p.function_response for p in (content.parts or [])):
+            tool_indices.append(i)
+
+    if len(tool_indices) <= 1:
+        return  # 0 or 1 tool-response rounds — nothing to compact
+
+    # Compact all EXCEPT the last one (which the model hasn't processed yet)
+    for idx in tool_indices[:-1]:
+        content = contents[idx]
+        compacted_parts: list[types.Part] = []
+        for part in (content.parts or []):
+            if part.function_response:
+                fn = part.function_response
+                name = fn.name or "unknown"
+                original = (fn.response or {}).get("result", {})
+                # Drop _pendingMark — already consumed by the coordinator after the Gemini call that saw this result
+                if isinstance(original, dict):
+                    original.pop("_pendingMark", None)
+                compact = _compact_tool_result(name, original)
+                compacted_parts.append(types.Part.from_function_response(
+                    name=name, response={"result": compact}))
+            elif part.inline_data:
+                # Binary image from continue_document — model already examined it; replace with reference
+                compacted_parts.append(types.Part(
+                    text="[Visual evidence was delivered and examined in this round; images are registered as case evidence.]"))
+            elif part.text:
+                # Text annotation (e.g. "CONTINUED PDF VISUAL EVIDENCE...") — keep but cap
+                if len(part.text) > 600:
+                    compacted_parts.append(types.Part(
+                        text=part.text[:600] + " [compacted; full content in evidence store]"))
+                else:
+                    compacted_parts.append(part)
+            else:
+                compacted_parts.append(part)
+        contents[idx] = types.Content(role="user", parts=compacted_parts)
+
+
 async def _brief(owner: str, case: dict, payload: dict, device: Optional[dict]) -> tuple[list[types.Part], dict[str, Any]]:
     rows = await repo.list_evidence(owner, case["case_id"])
     parts, inventory, marks = await ev.model_parts(owner, case, rows)
     turns = await repo.accepted_turns(owner, case)
-    history = [{"turnId": t.turn_id, "question": t.question, "answerOverview": t.response.overview, "answerExplanation": t.response.explanation_markdown,
+    # Fix 3: Send overview + assessment only, not the full explanation markdown.
+    # The full explanation is many paragraphs; overview (2-4 sentences) carries the
+    # material findings.  User questions, corrections and factual outcomes are preserved.
+    history = [{"turnId": t.turn_id, "question": t.question, "answerOverview": t.response.overview,
                 "assessment": t.response.assessment, "completion": t.response.completion,
                 "question_asked": t.response.question.wire() if t.response.question else None} for t in turns]
     sources = await repo.sources(owner, case["case_id"])
@@ -320,6 +500,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             return Outcome("waiting_device", request=ctx.pending_request)
     while True:
         await progress("assess", "Magnum DI is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
+        if rounds > 0:
+            _compact_completed_rounds(contents)
         result = await provider.generate(SYSTEM, contents, model=job_model, tools=[tool], capability="functions", purpose=provider.Purpose.INVESTIGATION, correlation_id=f"case-{case['case_id']}")
         if pending_marks:  # inline evidence counts as examined only once Gemini has actually received it (R05)
             for evidence_id, start, end, total in pending_marks:
@@ -338,6 +520,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         if ctx.pending_request:
             return Outcome("waiting_device", request=ctx.pending_request)
         if rounds >= MAX_TOOL_ROUNDS:
+            _compact_completed_rounds(contents)
             contents.append(types.Content(role="user", parts=[types.Part(text="Tool budget for this turn is exhausted. Return the final JSON now; mark completion 'partial' if material evidence remains.")]))
             result = await provider.generate(SYSTEM, contents, model=job_model, capability="text", purpose=provider.Purpose.INVESTIGATION, correlation_id=f"case-{case['case_id']}")
             break
@@ -355,6 +538,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                                     pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
     if response is None:
         await progress("respond", "Repairing the structure of Magnum DI's answer.")
+        _compact_completed_rounds(contents)
         contents.append(result.content)
         contents.append(types.Content(role="user", parts=[types.Part(text="Your response did not pass interface validation:\n- " + "\n- ".join(errors) +
                                                                           "\nReturn the corrected full JSON object only. Keep your assessment and explanation; fix only the listed problems.")]))

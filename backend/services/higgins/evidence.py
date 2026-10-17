@@ -25,7 +25,7 @@ MAX_PAGES = 200
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_EXPANDED = 64 * 1024 * 1024
 INLINE_TEXT_CHARS = 24_000  # longer text is read by range through read_evidence
-READ_CHARS = 30_000
+READ_CHARS = 12_000  # Fix 2: capped from 30K; full text accessible via range pagination
 SUPPORTED = {"application/pdf": "document", "image/png": "image", "image/jpeg": "image", "text/plain": "text",
              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document"}
 URL_RE = re.compile(r"https?://[^\s<>\"')\]]+", re.I)

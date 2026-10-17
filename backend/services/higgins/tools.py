@@ -140,11 +140,11 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
                                     label=f"research: {question[:60]}", coverage=ev.Coverage(status="examined", unit="characters", total=len(result.text), examined=len(result.text)),
                                     meta={"sourceIds": [e["sourceId"] for e in registered]})
     next_cursor = cursor + len(entity_page) if len(entities) > cursor + len(entity_page) else None
-    return {"status": "ok", "answer": result.text[:8000], "answerEvidenceId": snapshot.id, "answerCharacters": len(result.text),
-            "truncatedInline": len(result.text) > 8000, "sources": registered, "providerComplete": result.finish_reason == "STOP",
+    return {"status": "ok", "answer": result.text[:4000], "answerEvidenceId": snapshot.id, "answerCharacters": len(result.text),
+            "truncatedInline": len(result.text) > 4000, "sources": registered, "providerComplete": result.finish_reason == "STOP",
             "inputCoverage": {"entitiesTotal": len(entities), "entitiesExamined": len(entity_page), "entityCursor": cursor,
                               "nextCursor": next_cursor, "preferredDomainsTotal": len(preferred), "preferredDomainsUsed": len(domain_page)},
-            "note": ("Full answer stored as evidence; use read_evidence for the rest. " if len(result.text) > 8000 else "") +
+            "note": ("Full answer stored as evidence; use read_evidence for the rest. " if len(result.text) > 4000 else "") +
                     ("Search results are leads; a source's own claims are not verification. Authority labels are hints from the publisher domain, not conclusions." if registered else "No grounded sources were returned; treat the answer as model recollection only.")}
 
 
@@ -171,7 +171,7 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
             snapshot = await repo.get_evidence(ctx.owner, ctx.case_id, snapshot_id)
             snapshot_meta = await repo.evidence_meta(snapshot)
             text = (await repo.read_bytes(ctx.owner, ctx.case_id, snapshot_id)).decode("utf-8", errors="replace")
-            end = min(len(text), offset + 6000)
+            end = min(len(text), offset + 4000)
             return {"status": "fetched", "sourceId": snapshot_meta.get("sourceId"), "sourceSnapshotId": snapshot_id,
                     "originalUrl": url, "redirectChain": snapshot_meta.get("redirectChain", [url]), "finalUrl": snapshot_meta.get("finalUrl", url),
                     "title": snapshot_meta.get("title"), "forms": snapshot_meta.get("forms", []), "buttons": snapshot_meta.get("buttons", []),
@@ -201,7 +201,7 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
         await repo.update_evidence(ctx.owner, ctx.case_id, snapshot.id, {"$set": {"meta_ciphertext": repo.enc_json(snapshot_meta)}})
         url_meta.update({"sourceSnapshotId": snapshot.id, "sourceId": source.id})
         await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"meta_ciphertext": repo.enc_json(url_meta)}})
-        end = min(len(text), offset + 6000)
+        end = min(len(text), offset + 4000)
         await ev.mark_examined(ctx.owner, ctx.case_id, args["urlEvidenceId"], 0, 1, 1)
         return {"status": "fetched", "sourceId": source.id, "sourceSnapshotId": snapshot.id, "originalUrl": url, "redirectChain": chain,
                 "finalUrl": page.final_url, "title": page.title, "forms": page.forms, "buttons": page.buttons, "linkHosts": page.links_sample,
