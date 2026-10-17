@@ -43,16 +43,17 @@ _SESSIONS = "admin_sessions"
 # ── Nav items ────────────────────────────────────────────────────────────────
 
 NAV = [
-    ("Dashboard",     "/api/admin/portal",        "&#9632;"),
-    ("Protection",    "/api/admin/protection",     "&#128737;"),
-    ("Magnum DI",     "/api/admin/magnum-di",      "&#128270;"),
-    ("Integrations",  "/api/admin/integrations",   "&#128279;"),
-    ("Usage & Costs", "/api/admin/usage",          "&#128176;"),
-    ("System",        "/api/admin/system",         "&#9881;"),
-    ("Releases",      "/api/admin/releases",       "&#128230;"),
-    ("Diagnostics",   "/api/admin/diagnostics",    "&#128295;"),
-    ("Audit",         "/api/admin/audit-log",      "&#128220;"),
-    ("Admin",         "/api/admin/settings",       "&#128100;"),
+    ("Dashboard",       "/api/admin/portal",          "&#9632;"),
+    ("Protection",      "/api/admin/protection",       "&#128737;"),
+    ("Magnum DI",       "/api/admin/magnum-di",        "&#128270;"),
+    ("Integrations",    "/api/admin/integrations",     "&#128279;"),
+    ("Usage & Costs",   "/api/admin/usage",            "&#128176;"),
+    ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
+    ("System",          "/api/admin/system",           "&#9881;"),
+    ("Releases",        "/api/admin/releases",         "&#128230;"),
+    ("Diagnostics",     "/api/admin/diagnostics",      "&#128295;"),
+    ("Audit",           "/api/admin/audit-log",        "&#128220;"),
+    ("Admin",           "/api/admin/settings",         "&#128100;"),
 ]
 
 REPORTS = {
@@ -471,6 +472,603 @@ async def usage_costs(request: Request):
     </p>
     """
     return _shell("Usage & Costs", "/api/admin/usage", body, admin=adm)
+
+
+
+# ── Reconciliation ───────────────────────────────────────────────────────────
+
+@router.get("/admin/reconciliation", response_class=HTMLResponse)
+async def reconciliation(request: Request):
+    """Full usage reconciliation: traces every gemini_usage record, cross-references
+    with investigation_reports, and surfaces timestamp-boundary discrepancies."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+
+    now = now_utc()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    rolling_24h = now - timedelta(hours=24)
+
+    # ── 1. Timestamp boundary analysis ──
+    total_all_time = await db.gemini_usage.count_documents({})
+    total_today = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}})
+    total_today_ok = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}, "success": True})
+    total_today_fail = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}, "success": False})
+    total_rolling = await db.gemini_usage.count_documents({"timestamp": {"$gte": rolling_24h}})
+
+    inv_reports_24h = await db.investigation_reports.count_documents({"created_at": {"$gte": rolling_24h}})
+    inv_reports_today = await db.investigation_reports.count_documents({"created_at": {"$gte": today_start}})
+    inv_reports_all = await db.investigation_reports.count_documents({})
+
+    earliest_rec = await db.gemini_usage.find_one({}, {"timestamp": 1}, sort=[("timestamp", 1)])
+    latest_rec = await db.gemini_usage.find_one({}, {"timestamp": 1}, sort=[("timestamp", -1)])
+    earliest_ts = str(earliest_rec["timestamp"])[:19] if earliest_rec else "N/A"
+    latest_ts = str(latest_rec["timestamp"])[:19] if latest_rec else "N/A"
+
+    boundary_html = f"""
+    <h2>1. Timestamp Boundary Analysis</h2>
+    <div class="alert alert-warning">
+        <strong>Key insight:</strong> "Cost Today" uses <code>gemini_usage.timestamp &ge; midnight UTC</code>
+        (calendar-day, success=True only). "Investigations in last 24h" uses
+        <code>investigation_reports.created_at &ge; now &minus; 24h</code> (rolling window, different collection).
+        These query <strong>different data</strong>: individual API calls vs completed investigation reports.
+    </div>
+    <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+            <tr><td>Report generated at (UTC)</td><td><code>{now.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
+            <tr><td>"Today" boundary (midnight UTC)</td><td><code>{today_start.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
+            <tr><td>Rolling 24h cutoff</td><td><code>{rolling_24h.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
+            <tr><td>Earliest gemini_usage record</td><td><code>{earliest_ts}</code></td></tr>
+            <tr><td>Latest gemini_usage record</td><td><code>{latest_ts}</code></td></tr>
+        </tbody>
+    </table>
+    <div class="stats-grid">
+        {_stat_card(f'{total_all_time:,}', 'All-time API calls')}
+        {_stat_card(f'{total_today:,}', 'Calls since midnight')}
+        {_stat_card(f'{total_today_ok:,}', 'Successful (today)')}
+        {_stat_card(f'{total_today_fail:,}', 'Failed (today)')}
+        {_stat_card(f'{total_rolling:,}', 'Rolling 24h calls')}
+    </div>
+    <div class="stats-grid">
+        {_stat_card(f'{inv_reports_all:,}', 'Investigation reports (all)')}
+        {_stat_card(f'{inv_reports_today:,}', 'Reports since midnight')}
+        {_stat_card(f'{inv_reports_24h:,}', 'Reports in rolling 24h')}
+    </div>
+    """
+
+    # ── 2. Calls by purpose (today) ──
+    purpose_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}}},
+        {"$group": {
+            "_id": {"purpose": "$purpose", "success": "$success"},
+            "calls": {"$sum": 1},
+            "input_tokens": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+            "output_tokens": {"$sum": {"$ifNull": ["$tokens.output", 0]}},
+            "thinking_tokens": {"$sum": {"$ifNull": ["$tokens.thinking", 0]}},
+            "cached_tokens": {"$sum": {"$ifNull": ["$tokens.cached_input", 0]}},
+            "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}},
+            "first": {"$min": "$timestamp"},
+            "last": {"$max": "$timestamp"},
+        }},
+        {"$sort": {"_id.purpose": 1, "_id.success": -1}}
+    ]
+    purpose_rows = await db.gemini_usage.aggregate(purpose_pipeline).to_list(100)
+
+    purpose_tbody = ""
+    for r in purpose_rows:
+        s_label = "Yes" if r["_id"]["success"] else "No"
+        s_cls = "color:var(--green);" if r["_id"]["success"] else "color:var(--red);"
+        purpose_tbody += f"""<tr>
+            <td>{html_mod.escape(str(r['_id']['purpose'] or 'N/A'))}</td>
+            <td style="{s_cls}">{s_label}</td>
+            <td style="text-align:right;">{r['calls']:,}</td>
+            <td style="text-align:right;">{r['input_tokens']:,}</td>
+            <td style="text-align:right;">{r['output_tokens']:,}</td>
+            <td style="text-align:right;">{r['thinking_tokens']:,}</td>
+            <td style="text-align:right;">{r['cached_tokens']:,}</td>
+            <td style="text-align:right;">${r['cost']:.4f}</td>
+            <td>{str(r['first'])[:19]}</td>
+            <td>{str(r['last'])[:19]}</td>
+        </tr>"""
+
+    purpose_html = f"""
+    <h2>2. Calls by Purpose (Today, since midnight UTC)</h2>
+    <table>
+        <thead><tr><th>Purpose</th><th>Success</th><th>Calls</th><th>Input Tokens</th>
+        <th>Output</th><th>Thinking</th><th>Cached</th><th>Est Cost</th>
+        <th>First Call</th><th>Last Call</th></tr></thead>
+        <tbody>{purpose_tbody or '<tr><td colspan="10" style="color:var(--muted);">No records found for today</td></tr>'}</tbody>
+    </table>
+    """
+
+    # ── 3. Investigation calls grouped by correlation_id ──
+    inv_corr_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}, "purpose": "investigation"}},
+        {"$group": {
+            "_id": "$correlation_id",
+            "calls": {"$sum": 1},
+            "ok": {"$sum": {"$cond": ["$success", 1, 0]}},
+            "fail": {"$sum": {"$cond": ["$success", 0, 1]}},
+            "input_tokens": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+            "output_tokens": {"$sum": {"$ifNull": ["$tokens.output", 0]}},
+            "thinking_tokens": {"$sum": {"$ifNull": ["$tokens.thinking", 0]}},
+            "cached_tokens": {"$sum": {"$ifNull": ["$tokens.cached_input", 0]}},
+            "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}},
+            "first_call": {"$min": "$timestamp"},
+            "last_call": {"$max": "$timestamp"},
+            "models": {"$addToSet": "$model"},
+            "call_types": {"$addToSet": "$call_type"},
+        }},
+        {"$sort": {"cost": -1}}
+    ]
+    inv_groups = await db.gemini_usage.aggregate(inv_corr_pipeline).to_list(500)
+
+    unique_corr = len(inv_groups)
+    total_inv_calls = sum(g["calls"] for g in inv_groups)
+    total_inv_input = sum(g["input_tokens"] for g in inv_groups)
+    total_inv_cost = sum(g["cost"] for g in inv_groups)
+    avg_input_per_call = total_inv_input / total_inv_calls if total_inv_calls > 0 else 0
+
+    # Cross-reference with investigation_reports
+    corr_ids = [g["_id"] for g in inv_groups if g["_id"]]
+    report_map: dict[str, dict] = {}
+    if corr_ids:
+        for field in ["case_id", "correlation_id", "_id"]:
+            try:
+                found = await db.investigation_reports.find(
+                    {field: {"$in": corr_ids}},
+                    {"_id": 1, "case_id": 1, "correlation_id": 1, "status": 1,
+                     "created_at": 1, "category": 1, "subject": 1}
+                ).to_list(500)
+                for f in found:
+                    key = str(f.get(field, f.get("_id")))
+                    if key not in report_map:
+                        report_map[key] = f
+            except Exception:
+                pass
+
+    # Also check any cases-like collections
+    all_colls = await db.list_collection_names()
+    case_colls = [c for c in all_colls if any(k in c.lower() for k in ["case", "invest", "magnum"])]
+
+    extra_matches: dict[str, dict] = {}
+    for coll_name in case_colls:
+        if coll_name in ("gemini_usage", "investigation_reports"):
+            continue
+        for field in ["case_id", "correlation_id"]:
+            try:
+                found = await db[coll_name].find(
+                    {field: {"$in": corr_ids[:100]}},
+                    {"_id": 1, "case_id": 1, "correlation_id": 1, "status": 1,
+                     "created_at": 1, "type": 1, "source": 1}
+                ).to_list(200)
+                for f in found:
+                    key = str(f.get(field, f.get("_id")))
+                    extra_matches[key] = {"collection": coll_name, **{k: v for k, v in f.items() if k != "_id"}}
+            except Exception:
+                pass
+
+    # Build reconciliation table rows
+    recon_tbody = ""
+    running_calls = 0
+    running_input = 0
+    running_output = 0
+    running_thinking = 0
+    running_cached = 0
+    running_cost = 0.0
+
+    for idx, g in enumerate(inv_groups):
+        corr_id = str(g["_id"] or "NULL")
+        short_corr = corr_id[:32] + "..." if len(corr_id) > 35 else corr_id
+        models = ", ".join(g["models"][:2])
+        types = ", ".join(g["call_types"][:3])
+
+        # Determine source/trigger
+        source = "unknown"
+        rpt = report_map.get(corr_id)
+        ext = extra_matches.get(corr_id)
+        if rpt:
+            source = f"report ({rpt.get('status', '?')})"
+        elif ext:
+            source = f"{ext.get('collection', '?')} ({ext.get('status', ext.get('type', '?'))})"
+
+        # Compaction check: sample one record from this correlation
+        compaction_label = "?"
+
+        running_calls += g["calls"]
+        running_input += g["input_tokens"]
+        running_output += g["output_tokens"]
+        running_thinking += g["thinking_tokens"]
+        running_cached += g["cached_tokens"]
+        running_cost += g["cost"]
+
+        recon_tbody += f"""<tr>
+            <td>{idx + 1}</td>
+            <td title="{html_mod.escape(corr_id)}" style="font-size:0.78em;word-break:break-all;max-width:180px;"><code>{html_mod.escape(short_corr)}</code></td>
+            <td style="text-align:right;">{g['calls']:,}</td>
+            <td style="text-align:right;">{g['ok']:,}</td>
+            <td style="text-align:right;">{g['fail']:,}</td>
+            <td style="text-align:right;">{g['input_tokens']:,}</td>
+            <td style="text-align:right;">{g['output_tokens']:,}</td>
+            <td style="text-align:right;">{g['thinking_tokens']:,}</td>
+            <td style="text-align:right;">{g['cached_tokens']:,}</td>
+            <td style="text-align:right;">${g['cost']:.4f}</td>
+            <td style="font-size:0.82em;">{str(g['first_call'])[:19]}</td>
+            <td style="font-size:0.82em;">{str(g['last_call'])[:19]}</td>
+            <td style="font-size:0.82em;">{html_mod.escape(models)}</td>
+            <td style="font-size:0.82em;">{html_mod.escape(source)}</td>
+        </tr>"""
+
+    # Totals row
+    recon_tbody += f"""<tr style="font-weight:700;background:var(--card);">
+        <td colspan="2" style="text-align:right;">TOTALS ({unique_corr} unique IDs)</td>
+        <td style="text-align:right;">{running_calls:,}</td>
+        <td></td><td></td>
+        <td style="text-align:right;">{running_input:,}</td>
+        <td style="text-align:right;">{running_output:,}</td>
+        <td style="text-align:right;">{running_thinking:,}</td>
+        <td style="text-align:right;">{running_cached:,}</td>
+        <td style="text-align:right;">${running_cost:.4f}</td>
+        <td colspan="4"></td>
+    </tr>"""
+
+    recon_html = f"""
+    <h2>3. Investigation Calls — Reconciliation Table</h2>
+    <div class="stats-grid">
+        {_stat_card(f'{unique_corr:,}', 'Unique correlation IDs')}
+        {_stat_card(f'{total_inv_calls:,}', 'Total investigation calls')}
+        {_stat_card(f'{total_inv_input:,}', 'Total input tokens')}
+        {_stat_card(f'${total_inv_cost:.4f}', 'Total est cost')}
+        {_stat_card(f'{avg_input_per_call:,.0f}', 'Avg input tokens/call')}
+        {_stat_card(f'{len(report_map):,}', 'Matched in inv_reports')}
+    </div>
+    <div style="overflow-x:auto;">
+    <table style="font-size:0.82em;">
+        <thead><tr><th>#</th><th>Correlation ID</th><th>Calls</th><th>OK</th><th>Fail</th>
+        <th>Input</th><th>Output</th><th>Thinking</th><th>Cached</th><th>Est Cost</th>
+        <th>First Call</th><th>Last Call</th><th>Model(s)</th><th>Source / Trigger</th></tr></thead>
+        <tbody>{recon_tbody}</tbody>
+    </table>
+    </div>
+    """
+
+    # ── 4. Top consumers ──
+    top_html = ""
+    if inv_groups:
+        top_html = "<h2>4. Top 10 Highest-Consuming Correlation IDs</h2>"
+        for idx, g in enumerate(inv_groups[:10]):
+            corr_id = str(g["_id"] or "NULL")
+            avg = g["input_tokens"] / g["calls"] if g["calls"] > 0 else 0
+            pct = (g["input_tokens"] / total_inv_input * 100) if total_inv_input > 0 else 0
+            top_html += f"""<div class="s-card" style="margin-bottom:8px;">
+                <div class="s-card-head"><strong>#{idx+1}</strong> &nbsp; <code style="font-size:0.82em;word-break:break-all;">{html_mod.escape(corr_id)}</code></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:8px;">
+                    <div><span style="color:var(--muted);font-size:0.78em;">Calls</span><br/><strong>{g['calls']:,}</strong></div>
+                    <div><span style="color:var(--muted);font-size:0.78em;">Input tokens</span><br/><strong>{g['input_tokens']:,}</strong></div>
+                    <div><span style="color:var(--muted);font-size:0.78em;">Avg input/call</span><br/><strong>{avg:,.0f}</strong></div>
+                    <div><span style="color:var(--muted);font-size:0.78em;">Est cost</span><br/><strong>${g['cost']:.4f}</strong></div>
+                    <div><span style="color:var(--muted);font-size:0.78em;">% of total input</span><br/><strong>{pct:.1f}%</strong></div>
+                    <div><span style="color:var(--muted);font-size:0.78em;">Model(s)</span><br/><strong style="font-size:0.88em;">{html_mod.escape(', '.join(g['models']))}</strong></div>
+                </div>
+                <div style="font-size:0.8em;color:var(--muted);margin-top:6px;">
+                    First: {str(g['first_call'])[:19]} &mdash; Last: {str(g['last_call'])[:19]}
+                </div>
+            </div>"""
+
+    # ── 5. Failure analysis ──
+    fail_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}, "success": False}},
+        {"$group": {
+            "_id": {"purpose": "$purpose", "failure_code": "$failure_code"},
+            "count": {"$sum": 1},
+            "first": {"$min": "$timestamp"},
+            "last": {"$max": "$timestamp"},
+        }},
+        {"$sort": {"count": -1}}
+    ]
+    failures = await db.gemini_usage.aggregate(fail_pipeline).to_list(50)
+
+    fail_tbody = ""
+    for f in failures:
+        fail_tbody += f"""<tr>
+            <td>{html_mod.escape(str(f['_id']['purpose'] or 'N/A'))}</td>
+            <td><code>{html_mod.escape(str(f['_id']['failure_code'] or 'N/A'))}</code></td>
+            <td style="text-align:right;">{f['count']:,}</td>
+            <td>{str(f['first'])[:19]}</td>
+            <td>{str(f['last'])[:19]}</td>
+        </tr>"""
+
+    fail_html = f"""
+    <h2>5. Failure Analysis (Today)</h2>
+    <table>
+        <thead><tr><th>Purpose</th><th>Failure Code</th><th>Count</th><th>First</th><th>Last</th></tr></thead>
+        <tbody>{fail_tbody or '<tr><td colspan="5" style="color:var(--muted);">No failures recorded today</td></tr>'}</tbody>
+    </table>
+    """
+
+    # ── 6. Compaction status ──
+    compaction_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}, "purpose": "investigation"}},
+        {"$group": {
+            "_id": None,
+            "with_flag": {"$sum": {"$cond": [{"$gt": ["$extra.compaction_active", None]}, 1, 0]}},
+            "flag_true": {"$sum": {"$cond": [{"$eq": ["$extra.compaction_active", True]}, 1, 0]}},
+            "flag_false": {"$sum": {"$cond": [{"$eq": ["$extra.compaction_active", False]}, 1, 0]}},
+            "with_audit": {"$sum": {"$cond": [{"$gt": ["$extra.payload_audit", None]}, 1, 0]}},
+        }}
+    ]
+    comp_data = (await db.gemini_usage.aggregate(compaction_pipeline).to_list(1)) or [{}]
+    cd = comp_data[0] if comp_data else {}
+
+    compaction_html = f"""
+    <h2>6. Compaction & Payload Audit Status</h2>
+    <div class="stats-grid">
+        {_stat_card(str(cd.get('with_flag', 0)), 'With compaction flag')}
+        {_stat_card(str(cd.get('flag_true', 0)), 'compaction_active=true')}
+        {_stat_card(str(cd.get('flag_false', 0)), 'compaction_active=false')}
+        {_stat_card(str(total_inv_calls - cd.get('with_flag', 0)), 'No compaction flag (legacy)')}
+        {_stat_card(str(cd.get('with_audit', 0)), 'With payload audit data')}
+    </div>
+    """
+
+    # ── 7. Historical comparison ──
+    week_ago = now - timedelta(days=7)
+    daily_pipeline = [
+        {"$match": {"timestamp": {"$gte": week_ago}}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}},
+            "calls": {"$sum": 1},
+            "ok": {"$sum": {"$cond": ["$success", 1, 0]}},
+            "fail": {"$sum": {"$cond": ["$success", 0, 1]}},
+            "input_tokens": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+            "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}},
+        }},
+        {"$sort": {"_id": 1}}
+    ]
+    daily = await db.gemini_usage.aggregate(daily_pipeline).to_list(10)
+
+    daily_tbody = ""
+    for d in daily:
+        daily_tbody += f"""<tr>
+            <td>{d['_id']}</td>
+            <td style="text-align:right;">{d['calls']:,}</td>
+            <td style="text-align:right;">{d['ok']:,}</td>
+            <td style="text-align:right;">{d['fail']:,}</td>
+            <td style="text-align:right;">{d['input_tokens']:,}</td>
+            <td style="text-align:right;">${d['cost']:.4f}</td>
+        </tr>"""
+
+    history_html = f"""
+    <h2>7. Historical Comparison (Last 7 Days)</h2>
+    <table>
+        <thead><tr><th>Date</th><th>Total Calls</th><th>Successful</th><th>Failed</th><th>Input Tokens</th><th>Est Cost</th></tr></thead>
+        <tbody>{daily_tbody or '<tr><td colspan="6" style="color:var(--muted);">No historical data</td></tr>'}</tbody>
+    </table>
+    """
+
+    # ── 8. investigation_reports inspection ──
+    latest_reports = await db.investigation_reports.find(
+        {}, {"_id": 1, "case_id": 1, "correlation_id": 1, "status": 1, "created_at": 1}
+    ).sort("created_at", -1).limit(20).to_list(20)
+
+    reports_tbody = ""
+    for r in latest_reports:
+        reports_tbody += f"""<tr>
+            <td style="font-size:0.82em;"><code>{html_mod.escape(str(r.get('_id', '')))}</code></td>
+            <td style="font-size:0.82em;"><code>{html_mod.escape(str(r.get('case_id', r.get('correlation_id', ''))))}</code></td>
+            <td>{html_mod.escape(str(r.get('status', '')))}</td>
+            <td>{str(r.get('created_at', ''))[:19]}</td>
+        </tr>"""
+
+    schema_sample = await db.investigation_reports.find_one({})
+    schema_keys = list(schema_sample.keys()) if schema_sample else []
+
+    reports_html = f"""
+    <h2>8. investigation_reports Collection Inspection</h2>
+    <p style="color:var(--muted);font-size:0.88em;">Schema fields: <code>{html_mod.escape(', '.join(schema_keys) if schema_keys else 'empty collection')}</code></p>
+    <table>
+        <thead><tr><th>_id</th><th>Case / Correlation ID</th><th>Status</th><th>Created At</th></tr></thead>
+        <tbody>{reports_tbody or '<tr><td colspan="4" style="color:var(--muted);">No investigation reports found</td></tr>'}</tbody>
+    </table>
+    """
+
+    # ── 9. Dashboard reconciliation check ──
+    success_by_purpose = [
+        {"$match": {"timestamp": {"$gte": today_start}, "success": True}},
+        {"$group": {"_id": "$purpose",
+                    "calls": {"$sum": 1},
+                    "input": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+                    "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}}}},
+        {"$sort": {"cost": -1}}
+    ]
+    by_purp = await db.gemini_usage.aggregate(success_by_purpose).to_list(20)
+    total_ok_calls = sum(r["calls"] for r in by_purp)
+    total_ok_input = sum(r["input"] for r in by_purp)
+    total_ok_cost = sum(r["cost"] for r in by_purp)
+
+    recon_check_tbody = ""
+    for r in by_purp:
+        recon_check_tbody += f"""<tr>
+            <td>{html_mod.escape(str(r['_id'] or 'other'))}</td>
+            <td style="text-align:right;">{r['calls']:,}</td>
+            <td style="text-align:right;">{r['input']:,}</td>
+            <td style="text-align:right;">${r['cost']:.4f}</td>
+        </tr>"""
+    recon_check_tbody += f"""<tr style="font-weight:700;background:var(--card);">
+        <td>TOTAL (success-only, matches dashboard query)</td>
+        <td style="text-align:right;">{total_ok_calls:,}</td>
+        <td style="text-align:right;">{total_ok_input:,}</td>
+        <td style="text-align:right;">${total_ok_cost:.4f}</td>
+    </tr>"""
+
+    recon_check_html = f"""
+    <h2>9. Dashboard Reconciliation Check</h2>
+    <p style="color:var(--muted);font-size:0.88em;">
+        Dashboard "Cost Today" filter: <code>gemini_usage.timestamp &ge; {today_start.strftime('%Y-%m-%d %H:%M:%S')} UTC</code>,
+        <code>success = true</code>
+    </p>
+    <table>
+        <thead><tr><th>Purpose</th><th>Calls</th><th>Input Tokens</th><th>Est Cost</th></tr></thead>
+        <tbody>{recon_check_tbody}</tbody>
+    </table>
+    <p style="margin-top:12px;font-size:0.88em;">
+        Compare these DB-queried totals against the dashboard snapshot values.
+        Minor differences are expected if new calls were recorded between the snapshot and this report.
+    </p>
+    """
+
+    # ── Related collections inventory ──
+    related_html = f"""
+    <h2>10. Related Collections</h2>
+    <p style="color:var(--muted);font-size:0.88em;">Collections matching case/investigation/magnum patterns:</p>
+    <ul style="font-size:0.88em;padding-left:20px;">
+    """
+    for cn in sorted(case_colls):
+        try:
+            cnt = await db[cn].count_documents({})
+            related_html += f"<li><code>{html_mod.escape(cn)}</code> &mdash; {cnt:,} documents</li>"
+        except Exception:
+            related_html += f"<li><code>{html_mod.escape(cn)}</code> &mdash; error</li>"
+    if not case_colls:
+        related_html += "<li style='color:var(--muted);'>No case/investigation-related collections found</li>"
+    related_html += "</ul>"
+
+    body = f"""
+    <div class="topbar-row">
+        <span style="font-size:0.88em;color:var(--muted);">Generated {now.strftime('%Y-%m-%d %H:%M:%S')} UTC</span>
+        <a href="/api/admin/reconciliation/pdf" class="btn btn-sm">Download PDF</a>
+    </div>
+    {boundary_html}
+    {purpose_html}
+    {recon_html}
+    {top_html}
+    {fail_html}
+    {compaction_html}
+    {history_html}
+    {reports_html}
+    {recon_check_html}
+    {related_html}
+    """
+    extra_css = "table { table-layout: auto; } td, th { white-space: nowrap; } td code { word-break: break-all; white-space: normal; }"
+    await _audit_log(adm.get("email", ""), "view_reconciliation", f"investigation calls={total_inv_calls}")
+    return _shell("Reconciliation", "/api/admin/reconciliation", body, admin=adm, extra_css=extra_css)
+
+
+@router.get("/admin/reconciliation/pdf")
+async def reconciliation_pdf(request: Request):
+    """Download the reconciliation report as PDF."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+
+    now = now_utc()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Gather same data as the HTML page
+    total_today_ok = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}, "success": True})
+    total_today_fail = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}, "success": False})
+    inv_reports_24h = await db.investigation_reports.count_documents({"created_at": {"$gte": now - timedelta(hours=24)}})
+
+    # Purpose breakdown
+    purpose_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}}},
+        {"$group": {
+            "_id": {"purpose": "$purpose", "success": "$success"},
+            "calls": {"$sum": 1},
+            "input_tokens": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+            "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}},
+        }},
+        {"$sort": {"_id.purpose": 1}}
+    ]
+    purpose_rows = await db.gemini_usage.aggregate(purpose_pipeline).to_list(100)
+
+    purpose_tbody = ""
+    for r in purpose_rows:
+        s = "Yes" if r["_id"]["success"] else "No"
+        purpose_tbody += f"<tr><td>{r['_id']['purpose'] or 'N/A'}</td><td>{s}</td><td>{r['calls']:,}</td><td>{r['input_tokens']:,}</td><td>${r['cost']:.4f}</td></tr>"
+
+    # Investigation correlation groups
+    inv_corr_pipeline = [
+        {"$match": {"timestamp": {"$gte": today_start}, "purpose": "investigation"}},
+        {"$group": {
+            "_id": "$correlation_id",
+            "calls": {"$sum": 1},
+            "ok": {"$sum": {"$cond": ["$success", 1, 0]}},
+            "fail": {"$sum": {"$cond": ["$success", 0, 1]}},
+            "input_tokens": {"$sum": {"$ifNull": ["$tokens.input", 0]}},
+            "output_tokens": {"$sum": {"$ifNull": ["$tokens.output", 0]}},
+            "thinking_tokens": {"$sum": {"$ifNull": ["$tokens.thinking", 0]}},
+            "cached_tokens": {"$sum": {"$ifNull": ["$tokens.cached_input", 0]}},
+            "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}},
+            "first_call": {"$min": "$timestamp"},
+            "last_call": {"$max": "$timestamp"},
+            "models": {"$addToSet": "$model"},
+        }},
+        {"$sort": {"cost": -1}}
+    ]
+    inv_groups = await db.gemini_usage.aggregate(inv_corr_pipeline).to_list(500)
+
+    recon_tbody = ""
+    r_calls = r_input = r_output = r_thinking = r_cached = 0
+    r_cost = 0.0
+    for idx, g in enumerate(inv_groups):
+        corr_id = str(g["_id"] or "NULL")[:30]
+        models = ", ".join(g["models"][:2])
+        r_calls += g["calls"]
+        r_input += g["input_tokens"]
+        r_output += g["output_tokens"]
+        r_thinking += g["thinking_tokens"]
+        r_cached += g["cached_tokens"]
+        r_cost += g["cost"]
+        recon_tbody += (f"<tr><td>{idx+1}</td><td style='font-size:8px;'>{corr_id}</td>"
+                        f"<td>{g['calls']}</td><td>{g['ok']}</td><td>{g['fail']}</td>"
+                        f"<td>{g['input_tokens']:,}</td><td>{g['output_tokens']:,}</td>"
+                        f"<td>{g['thinking_tokens']:,}</td><td>{g['cached_tokens']:,}</td>"
+                        f"<td>${g['cost']:.4f}</td>"
+                        f"<td style='font-size:8px;'>{str(g['first_call'])[:19]}</td>"
+                        f"<td style='font-size:8px;'>{str(g['last_call'])[:19]}</td>"
+                        f"<td style='font-size:8px;'>{models}</td></tr>")
+
+    recon_tbody += (f"<tr style='font-weight:bold;'><td colspan='2'>TOTALS ({len(inv_groups)} IDs)</td>"
+                    f"<td>{r_calls:,}</td><td></td><td></td>"
+                    f"<td>{r_input:,}</td><td>{r_output:,}</td>"
+                    f"<td>{r_thinking:,}</td><td>{r_cached:,}</td>"
+                    f"<td>${r_cost:.4f}</td><td colspan='3'></td></tr>")
+
+    pdf_body = f"""
+    <h2>Timestamp Boundaries</h2>
+    <p>Report: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC<br/>
+    "Today" boundary: {today_start.strftime('%Y-%m-%d %H:%M:%S')} UTC (midnight)<br/>
+    gemini_usage today: {total_today_ok + total_today_fail:,} ({total_today_ok:,} ok, {total_today_fail:,} fail)<br/>
+    investigation_reports (24h): {inv_reports_24h:,}</p>
+
+    <h2>Calls by Purpose (Today)</h2>
+    <table><thead><tr><th>Purpose</th><th>Success</th><th>Calls</th><th>Input Tokens</th><th>Est Cost</th></tr></thead>
+    <tbody>{purpose_tbody or '<tr><td colspan="5">No data</td></tr>'}</tbody></table>
+
+    <h2>Investigation Reconciliation Table</h2>
+    <table style="font-size:8px;"><thead><tr>
+    <th>#</th><th>Correlation ID</th><th>Calls</th><th>OK</th><th>Fail</th>
+    <th>Input</th><th>Output</th><th>Thinking</th><th>Cached</th><th>Cost</th>
+    <th>First</th><th>Last</th><th>Model</th></tr></thead>
+    <tbody>{recon_tbody}</tbody></table>
+    """
+
+    full_html = _pdf_html("Usage Reconciliation Report", pdf_body)
+
+    from xhtml2pdf import pisa
+    pdf_buffer = io.BytesIO()
+    pisa.CreatePDF(io.StringIO(full_html), dest=pdf_buffer)
+    pdf_buffer.seek(0)
+
+    await _audit_log(adm.get("email", ""), "download_reconciliation_pdf", "")
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="apollo_reconciliation_{now.strftime("%Y%m%d_%H%M")}.pdf"'},
+    )
+
 
 
 # ── System ───────────────────────────────────────────────────────────────────
