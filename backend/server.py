@@ -218,13 +218,13 @@ async def deployment_health():
 for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(family_assist_router.ws_router, prefix="/api")
+app.include_router(admin_portal.router, prefix="/api", tags=["admin-portal"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(seed_images_router, prefix="/api", tags=["learning-seed"])
 # Learning images are public (no auth needed for serving cached images)
 app.include_router(learning_router.public_router, prefix="/api", tags=["learning-public"])
 app.include_router(usage.router, prefix="/api", tags=["usage"])
-app.include_router(admin_portal.router, prefix="/api", tags=["admin"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router
