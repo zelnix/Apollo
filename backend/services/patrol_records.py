@@ -28,7 +28,24 @@ def _digest(value: str) -> str:
 
 
 def _issue_key(event: PatrolEventIn) -> str:
-    anchor = event.investigation_case_id or event.scent_id or event.indicator_digest or event.indicator_host or event.claimed_brand or event.scenario or event.event_id
+    """Derive a stable logical issue key for correlation.
+
+    Priority (from the instructions):
+      1. same investigation/case → same finding
+      2. same explicit correlation/scent → same finding
+      3. same verified underlying indicator (digest) → potentially same finding
+      4. otherwise → separate finding
+
+    We deliberately exclude indicator_host, claimed_brand and scenario as anchors
+    because they can merge unrelated threats (e.g. two independent phishing sites
+    that both claim to be the same brand are NOT the same finding).
+    """
+    anchor = (
+        event.investigation_case_id   # same investigation = same finding
+        or event.scent_id             # same explicit correlation = same finding
+        or event.indicator_digest     # same verified indicator = potentially same finding
+        or event.event_id             # otherwise separate finding
+    )
     return _digest(f"{event.device_id}:{event.category}:{anchor}")
 
 
@@ -111,8 +128,16 @@ async def append(event: PatrolEventIn, verified: bool) -> dict[str, Any]:
     # Classify new records at write time
     record_class = classify_record(row)
     row["record_class"] = record_class
-    row["higgins_briefing"] = generate_higgins_briefing(row, record_class)
-    row["higgins_briefing"]["generated_at"] = now_utc().isoformat()
+    # For investigation findings, the Magnum DI result IS the authoritative finding —
+    # don't pre-generate a second Higgins narrative merely because a Patrol record was written.
+    # Higgins can explain the investigation result conversationally when asked.
+    # For deterministic Apollo findings, a plain briefing is appropriate.
+    if event.investigation_case_id:
+        row["higgins_briefing"] = None
+    else:
+        row["higgins_briefing"] = generate_higgins_briefing(row, record_class)
+        if row["higgins_briefing"]:
+            row["higgins_briefing"]["generated_at"] = now_utc().isoformat()
     try:
         await db.patrol_records.insert_one(dict(row))
     except Exception:

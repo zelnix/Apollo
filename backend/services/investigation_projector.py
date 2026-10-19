@@ -1,12 +1,17 @@
 """Idempotent, model-free projection of committed Higgins responses into Patrol.
 
-Fix: preserve indicator_host, claimed_brand, scenario from response findings
-when available. Set evidence_provenance so the frontend can distinguish between
-server-projected investigations (with real data) and truly incomplete events.
+One finding, one patrol record.  The projector takes a completed Magnum DI
+investigation and ensures a single authoritative patrol event exists for it.
+
+Indicators (indicator_host, claimed_brand, scenario) come exclusively from:
+  1. The case's source_metadata captured at intake, or
+  2. The ORIGINAL patrol event linked via client_submission_id.
+
+We never extract metadata from Gemini's prose via regex.  If Apollo did not
+record an indicator from actual intake/evidence, Patrol does not manufacture one.
 """
 from __future__ import annotations
 
-import re
 import uuid
 
 from core.db import db, now_utc
@@ -24,54 +29,45 @@ def _dog_state(response) -> str:
     return "growling"
 
 
-# ── Extract indicators from the investigation response ──────────────────────
-# The response findings, overview and scope may contain domain names, email
-# subjects, senders and claimed brands.  We extract these so the frontend can
-# display "what was investigated" concretely.
+async def _resolve_intake_metadata(case: dict) -> dict:
+    """Resolve indicator metadata from real intake data — NOT from Gemini's prose.
 
-_DOMAIN_RE = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|io|co|au|uk|gov|edu|info|biz|app|dev|me|xyz|online)\b", re.I)
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_BRAND_KEYWORDS = re.compile(r"\b(?:posing as|impersonat|claiming to be|pretending to be|brand(?: name)?:)\s+[\"']?(\w[\w\s&'.,-]{1,60})[\"']?", re.I)
+    Priority:
+      1. case.source_metadata  (set at investigation creation from the original submission)
+      2. The original patrol event (linked via client_submission_id)
+      3. Null — don't guess.
+    """
+    meta: dict = {"indicator_host": None, "claimed_brand": None, "scenario": None}
 
+    # 1. Case-level source_metadata (captured at intake)
+    source = case.get("source_metadata") or {}
+    if source.get("indicator_host"):
+        meta["indicator_host"] = source["indicator_host"]
+    if source.get("claimed_brand"):
+        meta["claimed_brand"] = source["claimed_brand"]
+    if source.get("scenario"):
+        meta["scenario"] = source["scenario"]
 
-def _extract_indicators(response, gate: str) -> dict:
-    """Extract indicator_host, claimed_brand and scenario from the investigation response."""
-    all_text = " ".join([
-        response.overview or "",
-        response.scope or "",
-        *(f.text for f in (response.findings or [])[:8]),
-        *((a.instruction or "") for a in (response.actions or [])[:3]),
-    ])
+    # 2. Fall back to the original patrol event that triggered this investigation
+    sub_id = case.get("client_submission_id")
+    if sub_id and not meta["indicator_host"]:
+        original = await db.patrol_events.find_one(
+            {"event_id": sub_id, "deleted_at": None},
+            {"_id": 0, "indicator_host": 1, "claimed_brand": 1, "scenario": 1},
+        )
+        if original:
+            meta["indicator_host"] = meta["indicator_host"] or original.get("indicator_host")
+            meta["claimed_brand"] = meta["claimed_brand"] or original.get("claimed_brand")
+            meta["scenario"] = meta["scenario"] or original.get("scenario")
 
-    # Extract domains
-    domains = _DOMAIN_RE.findall(all_text)
-    # Filter out common non-indicator domains
-    skip = {"gmail.com", "google.com", "outlook.com", "yahoo.com", "hotmail.com",
-            "example.com", "microsoft.com", "apple.com", "icloud.com"}
-    indicator_domains = [d.lower() for d in domains if d.lower() not in skip]
-    indicator_host = indicator_domains[0] if indicator_domains else None
-
-    # Extract claimed brand
-    brand_match = _BRAND_KEYWORDS.search(all_text)
-    claimed_brand = brand_match.group(1).strip().rstrip(".,") if brand_match else None
-
-    # Build a useful scenario from the investigation scope
-    scenario = None
-    if response.scope:
-        scenario = redact_investigation_secrets(response.scope)[:200]
-
-    return {
-        "indicator_host": indicator_host,
-        "claimed_brand": claimed_brand,
-        "scenario": scenario or "shared_investigation",
-    }
+    return meta
 
 
 async def project_committed_cases(limit: int = 100) -> int:
     query = {"deleted": False, "response_revision": {"$gt": 0}, "$expr": {"$gt": ["$response_revision", {"$ifNull": ["$patrol_projected_revision", 0]}]}}
     rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1,
                                                        "response_revision": 1, "accepted_commits": 1, "created_at": 1, "updated_at": 1,
-                                                       "client_submission_id": 1}).limit(limit).to_list(limit)
+                                                       "client_submission_id": 1, "source_metadata": 1}).limit(limit).to_list(limit)
     projected = 0
     for case in rows:
         turns = await repo.accepted_turns(case["owner_id"], case)
@@ -88,8 +84,8 @@ async def project_committed_cases(limit: int = 100) -> int:
         action = response.actions[0].instruction if response.actions else "Review the investigation details in Patrol."
         overview = redact_investigation_secrets(response.overview)
 
-        # Extract indicators from the investigation response
-        indicators = _extract_indicators(response, gate)
+        # Resolve indicators from actual intake data — never from Gemini's prose
+        indicators = await _resolve_intake_metadata(case)
 
         history_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-history:{case['owner_id']}:{case['case_id']}"))
         await db.higgins_investigation_history.update_one(
@@ -104,12 +100,12 @@ async def project_committed_cases(limit: int = 100) -> int:
             "status": "resolved" if state == "resting" else "active", "headline": overview[:160],
             "what_happened": overview[:600], "why": findings or [redact_investigation_secrets(response.scope)[:400]],
             "what_to_do": redact_investigation_secrets(action)[:400],
-            # Preserve indicators extracted from the investigation when available
+            # Real intake metadata only — never manufactured from Gemini's prose
             "indicator_host": indicators["indicator_host"],
             "indicator_digest": None,
             "local_indicator": None,
             "verified_block": False,
-            "adapter_label": "Higgins investigation",
+            "adapter_label": "Magnum DI investigation",
             "occurred_at": latest.committed_at, "resolved_at": latest.committed_at if state == "resting" else None,
             "trust_allowed": False,
             "claimed_brand": indicators["claimed_brand"],
