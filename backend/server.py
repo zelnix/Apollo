@@ -143,7 +143,18 @@ async def lifespan(_: FastAPI):
     await db.family_audio_cleanup.create_index("cleanup_id", unique=True)
     await db.incident_notes.create_index([("guardian_device_id", 1), ("protected_device_id", 1), ("submission_id", 1)], unique=True,
                                          partialFilterExpression={"submission_id": {"$type": "string"}})
-    # SEED_BLOCKLIST population disabled — no new entries written to db.blocklist
+    # ── Background loops — Stage 12 audit ────────────────────────────────────
+    # Each loop has a single clear purpose. No two loops perform the same job.
+    #
+    # 1. weekly_checkin_loop       — Device-check-in reminder (weekly cadence).
+    # 2. supervise_mailbox_monitor — Connected email account monitoring (per-account schedule).
+    # 3. government_alert_loop     — Scam Alerts ingestion + shared learning-feed refresh (15 min).
+    #    Calls government_alerts.refresh_all() which also invokes learning_feeds.refresh_due().
+    #    Each learning feed has its own refresh_interval_minutes — Learn weekly publishing is
+    #    NOT run every 15 minutes; it only checks whether each feed's individual interval has elapsed.
+    # 4. family_assist_loop        — Family Help session/media maintenance (15 s heartbeat).
+    # 5. push_receipt_loop         — Expo push receipt reconciliation (5 min).
+    # 6. supervise_maintenance     — Evidence/case cleanup, worker heartbeat (own schedule).
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(supervise_mailbox_monitor(), name="apollo-mailbox-supervisor")
     async def government_alert_loop():

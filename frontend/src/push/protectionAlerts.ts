@@ -15,22 +15,22 @@ import type { ProtectionStatus } from "../security/SecurityPlatformAdapter";
 import type { DailyActivity } from "../domain/dailyActivity";
 import type { LocalAlert } from "./notifications";
 
-/** Notification for a completed background security check with meaningful results. */
+/** Notification for a completed background security check with meaningful results.
+ *  Stage 12: routine resting/resolved checks are plumbing — only notify when the
+ *  check produced an investigation-level finding the person needs to act on. */
 export function completedCheckAlert(event: PatrolEvent): LocalAlert | null {
-  if (!event.background) return null; // Only notify for background (automatic) checks
-  if (event.state === "resting" && event.category === "protection") return null; // Skip routine protection heartbeats
-
-  // Completed check with no concerns
-  if (event.state === "resting" || event.status === "resolved") {
-    const actionUrl = `/patrol/${encodeURIComponent(event.event_id)}`;
+  if (!event.background) return null;
+  // A completed Magnum DI investigation that returned to the device while the person
+  // was away: this is genuinely meaningful — they asked for it or it escalated from triage.
+  if (event.investigation_case_id && event.status === "resolved" && (event.state === "ears_up" || event.state === "growling" || event.state === "barking")) {
     return {
-      title: "Apollo completed a security check",
-      body: event.headline || "No concerns were found in the areas examined.",
+      title: "Apollo completed an investigation",
+      body: event.headline || "Review the investigation result in Patrol.",
       channel: "apollo_alerts",
-      actionUrl,
+      actionUrl: `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`,
     };
   }
-
+  // Routine resting/resolved background checks are plumbing — no notification.
   return null;
 }
 
@@ -44,22 +44,6 @@ export function protectionUpdateAlert(event: PatrolEvent): LocalAlert | null {
     body: event.headline || "Apollo successfully installed updated website security rules.",
     channel: "default",
     actionUrl: `/patrol/${encodeURIComponent(event.event_id)}`,
-  };
-}
-
-/** Notification for verified recovery — protection was interrupted and is now restored.
- *  Only fires after actual observed recovery, never during fluctuation. */
-export function recoveryAlert(previous: ProtectionStatus, current: ProtectionStatus): LocalAlert | null {
-  // Only notify when transitioning from non-operational to operational
-  if (previous.operational || !current.operational) return null;
-  // Must be running and verified
-  if (!current.running || !current.lastVerified) return null;
-
-  return {
-    title: "Apollo has restored protection",
-    body: "Website protection is working again for supported connections.",
-    channel: "default",
-    actionUrl: "/(tabs)/protection",
   };
 }
 

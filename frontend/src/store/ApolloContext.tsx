@@ -338,7 +338,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       await syncDnsThreatObservations().catch(deliveryFailure);
       return observed;
     } catch {
-      if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); setCapabilities([]); }
+      // Stage 12 failure domain separation: a health-check failure does not mean native
+      // protection has stopped. Keep last-known capabilities and protection state; only
+      // mark the observation as stale (unavailable) so the UI shows "checking..." rather
+      // than falsely implying protection is off. Capabilities are adapter-provided and
+      // remain valid regardless of network/backend availability.
+      if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); }
       return null;
     } finally { await hold; setRefreshing(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -594,10 +599,28 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       }
       wasReachable = h.reachable;
     });
+    // Stage 12: Track when the app entered background so foreground return can decide
+    // whether a full refresh is warranted. Brief tab-switches (< 60s) should not trigger
+    // a full health-check cycle or flash protection as "unavailable".
+    let backgroundAt: number | null = null;
     const sub = AppState.addEventListener("change", (st) => {
-      if (st === 'active') { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); void refresh(0, "foreground"); }
-      else { ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); }
-      if (st === "active" && getBackendHealth().reachable === false) void probeBackend();
+      if (st === 'active') {
+        const away = backgroundAt ? Date.now() - backgroundAt : Infinity;
+        backgroundAt = null;
+        if (away > 60_000) {
+          // Meaningful absence (> 60s): full refresh, protection may be stale.
+          void refresh(0, "foreground");
+        } else {
+          // Brief absence (< 60s): protection observation is still fresh — skip full refresh.
+          // The periodic timer will pick up the next check on schedule.
+        }
+        if (getBackendHealth().reachable === false) void probeBackend();
+      } else {
+        backgroundAt = Date.now();
+        // Cancel any in-flight observation so it doesn't land after we return and overwrite
+        // a fresh foreground result. Don't blank protection — native protection is still running.
+        ++probeGeneration.current;
+      }
     });
     return () => { off(); sub.remove(); if (timer) clearInterval(timer); };
   }, [lowPower, qc, refresh]);
@@ -628,6 +651,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // Observe accepted Patrol updates downstream of enforcement; neither this effect nor its alerts
   // may promote an event to Biting. Historical records are seeded above and old syncs stay silent.
+  //
+  // Stage 12 — one finding → one notification: for each event state change, select the SINGLE
+  // most relevant notification. Priority: threat alert > completed check > protection update.
+  // This prevents one real finding from producing separate Gate/Patrol/Home/Higgins notifications.
   useEffect(() => {
     if (!ready) return;
     for (const event of events) {
@@ -635,13 +662,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       alertedStates.current.set(event.event_id, event.state);
       const age = Date.now() - Date.parse(event.occurred_at);
       if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
-      const alert = eventLocalAlert(event);
+      // Pick the single most specific notification for this event change.
+      const alert = eventLocalAlert(event) ?? completedCheckAlert(event) ?? protectionUpdateAlert(event);
       if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
-      // Defect 7: Wire protection-work notification builders (completed checks, protection updates)
-      const checkAlert = completedCheckAlert(event);
-      if (checkAlert && (checkAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(checkAlert).catch((e) => logNotifDiagnostic("scheduling", e, "completed-check"));
-      const updateAlert = protectionUpdateAlert(event);
-      if (updateAlert && (updateAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(updateAlert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-update"));
     }
     if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
   }, [ready, events]);
@@ -655,8 +678,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (previous) {
       const alert = protectionLocalAlert(previous, protection);
       if (alert) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-status"));
-      // Note: recoveryAlert from protectionAlerts.ts is NOT dispatched here to avoid
-      // duplicate notifications — protectionLocalAlert already handles recovery.
     }
   }, [ready, protection]);
 
