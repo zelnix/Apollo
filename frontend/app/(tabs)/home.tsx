@@ -31,7 +31,6 @@ import {
   threatCaseStatus,
   STATUS_LABELS,
   STATUS_COLORS,
-  categoryLabel,
   formatDateTime,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
@@ -74,7 +73,7 @@ function threatTitle(e: PatrolEvent): string {
   if (e.headline && !looksLikeInternalCode(e.headline)) return e.headline;
   if (meta?.preview) return meta.preview.length > 50 ? meta.preview.slice(0, 50) + "…" : meta.preview;
   if (e.indicator_host) return e.indicator_host;
-  return categoryLabel(e.category) + " threat";
+  return "Recorded finding";
 }
 
 function threatIdentity(e: PatrolEvent): string {
@@ -87,6 +86,7 @@ function threatIdentity(e: PatrolEvent): string {
 }
 
 function threatReason(e: PatrolEvent): string {
+  // Consume authoritative finding only — never generate synthetic threat wording.
   const briefing = e.patrol_record?.higginsBriefing;
   if (briefing?.established && briefing.established.length > 10) {
     return briefing.established.length > 80 ? briefing.established.slice(0, 80) + "…" : briefing.established;
@@ -94,11 +94,7 @@ function threatReason(e: PatrolEvent): string {
   if (e.what_happened && !looksLikeInternalCode(e.what_happened) && e.what_happened.length > 10) {
     return e.what_happened.length > 80 ? e.what_happened.slice(0, 80) + "…" : e.what_happened;
   }
-  // Build a specific reason from category + state
-  const cat = categoryLabel(e.category);
-  if (e.state === "barking") return `${cat} flagged as high risk — review recommended.`;
-  if (e.state === "growling") return `${cat} looks suspicious — worth checking.`;
-  return `${cat} requires your attention.`;
+  return "Tap to view details";
 }
 
 /** Build deduplicated priority threats from real PatrolEvent data. */

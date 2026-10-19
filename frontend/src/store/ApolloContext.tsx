@@ -835,8 +835,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
+    let investigationCaseId: string | null = null;
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
     if (state !== "resting") {
+      // Stage 12: Create a Magnum DI investigation via the canonical compat adapter.
+      // The investigation runs asynchronously — the local analysis still drives the immediate UX.
+      try {
+        const remote = await apiPost<{ investigation_case_id?: string | null }>("/message/analyse", "message_investigation", {
+          device_id: deviceId ?? undefined, text, sender,
+          local_state: state, local_findings: why.slice(0, 12),
+        });
+        investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+      } catch { /* investigation is async — local analysis still stands */ }
       const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
       const apolloHeadline = analysis.state !== "resting"
         ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
@@ -849,6 +859,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         what_to_do: analysis.recommendation,
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
+        investigation_case_id: investigationCaseId,
       }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
       if (event.state !== state) { state = event.state; }
     }
@@ -943,11 +954,30 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const analysis = analyseCall(input);
     let event: PatrolEvent | null = null;
     if (analysis.state !== "resting") {
+      // Stage 12: Create a Magnum DI investigation via the canonical /investigations endpoint.
+      let investigationCaseId: string | null = null;
+      try {
+        const callSummary = [
+          input.claim ? `Caller said: ${input.claim}` : null,
+          input.brandName ? `Claimed brand: ${input.brandName}` : null,
+          input.number ? `Number: ${input.number}` : null,
+          input.asks.length ? `Asked for: ${input.asks.join(", ")}` : null,
+          input.transcript ? `Transcript: ${input.transcript}` : null,
+        ].filter(Boolean).join("\n");
+        const remote = await apiPost<{ case_id?: string | null }>("/investigations", "call_investigation", {
+          gate: "call",
+          question: `Investigate this phone call.\n\n${callSummary}`,
+          submissions: [{ client_item_id: "call-content", kind: "text", value: callSummary, label: "Call details" }],
+          initial_findings: analysis.why.slice(0, 12),
+        });
+        investigationCaseId = typeof remote.case_id === "string" ? remote.case_id : null;
+      } catch { /* investigation is async — local analysis still stands */ }
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
         headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: analysis.why, what_to_do: analysis.recommendation,
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
+        investigation_case_id: investigationCaseId,
       }, { kind: "call", fields: [
         ...(input.number?.trim() ? [{ label: "Number", value: input.number }] : []),
         { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
@@ -1003,6 +1033,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
       void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: number }], data: result });
       void syncEventRef.current?.(ev);
+      // Stage 12: Fire-and-forget Magnum DI investigation for the risk-flagged number.
+      void apiPost("/investigations", "number_risk_investigation", {
+        gate: "call",
+        question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
+        submissions: [{ client_item_id: "number-risk", kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
+        initial_findings: why,
+      }).catch(() => { /* non-blocking */ });
       showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
     }
     return result;

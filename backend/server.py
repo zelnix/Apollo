@@ -189,14 +189,36 @@ async def lifespan(_: FastAPI):
 
     receipts_task = asyncio.create_task(push_receipt_loop())
     maintenance_task = asyncio.create_task(supervise_maintenance(), name="apollo-maintenance-supervisor")
+
+    # 7. learn_weekly_publish_loop — Auto-publish pending learning candidates (weekly cadence).
+    #    Runs weekly_publish() from learning_feeds once every 7 days.  On each tick it also
+    #    calls refresh_due() so that feed ingestion + publishing happen in the same cycle.
+    async def learn_weekly_publish_loop():
+        while True:
+            try:
+                from services import learning_feeds
+                await learning_feeds.refresh_due()
+                result = await learning_feeds.weekly_publish()
+                if result["promoted"] or result["published"]:
+                    logger.info("learn weekly publish: promoted=%d published=%d skipped=%d failed=%d",
+                                result["promoted"], result["published"], result["skipped"], result["failed"])
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("learn weekly publish loop failed")
+            await asyncio.sleep(604_800)  # 7 days in seconds
+
+    learn_publish_task = asyncio.create_task(learn_weekly_publish_loop(), name="apollo-learn-weekly-publish")
+
     yield
+    learn_publish_task.cancel()
     maintenance_task.cancel()
     receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(learn_publish_task, maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

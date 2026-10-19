@@ -148,3 +148,110 @@ async def refresh_due() -> None:
                 await db.learning_feed_state.update_one({"feed_id": feed["feed_id"]}, {"$set": {"feed_id": feed["feed_id"], "last_checked_at": now, "status": "unavailable", "error": "FeedRefreshFailure"}}, upsert=True)
             except Exception:
                 continue
+
+
+async def weekly_publish() -> dict:
+    """Process pending learning candidates into published articles.
+
+    Weekly automation cycle:
+    1. Select candidates that are pending and not yet converted to articles.
+    2. Deduplicate: skip if an article with a matching title slug already exists.
+    3. Convert to article draft via the existing prepare/upsert pipeline.
+    4. Run quality checks; auto-publish those that pass.
+    5. Return summary counts.
+
+    Uses ONLY the existing learning service infrastructure — no new CMS, no new
+    models, no new databases.
+    """
+    from services.learning import (
+        _slug, quality_checks, sources_by_id, upsert_article, transition,
+    )
+
+    now = now_utc()
+    candidates = await db.learning_candidates.find(
+        {"status": "pending"},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(50).to_list(50)
+
+    promoted = 0; published = 0; skipped = 0; failed = 0
+
+    source_map = await sources_by_id()
+
+    for candidate in candidates:
+        try:
+            title = (candidate.get("title") or "").strip()
+            if not title:
+                skipped += 1
+                continue
+
+            try:
+                slug = _slug(title)
+            except ValueError:
+                skipped += 1
+                continue
+            # Dedup: skip if article with this slug already exists
+            existing = await db.learning_articles.find_one({"slug": slug}, {"_id": 0, "slug": 1})
+            if existing:
+                await db.learning_candidates.update_one(
+                    {"fingerprint": candidate["fingerprint"]},
+                    {"$set": {"status": "duplicate", "updated_at": now}})
+                skipped += 1
+                continue
+
+            # Build article draft from candidate data
+            raw = {
+                "slug": slug,
+                "title": title,
+                "summary": (candidate.get("summary") or title)[:600],
+                "category": "scam_alert",
+                "topic": "government_alert",
+                "audience": "general",
+                "language": candidate.get("language", "en-AU"),
+                "contentType": "alert_context",
+                "riskContext": "active_threat",
+                "tags": ["government", "alert", "automated"],
+                "sections": [
+                    {"heading": "Alert details", "paragraphs": [(candidate.get("summary") or title)[:2000]], "bullets": []},
+                    {"heading": "Source", "paragraphs": [f"Published by {candidate.get('source_id', 'government authority')}. Original URL: {candidate.get('url', 'N/A')}"], "bullets": []},
+                    {"heading": "What to do", "paragraphs": ["If you think you have been affected, contact the organisation directly using details from their official website."], "bullets": ["Do not click links in unexpected messages.", "Report scams to Scamwatch or your local authority.", "Monitor your accounts for unusual activity."]},
+                ],
+                "citations": [{
+                    "sourceId": candidate.get("source_id", ""),
+                    "url": candidate.get("url", ""),
+                    "label": candidate.get("source_id", "Government source"),
+                }],
+                "sourceType": "automated_feed",
+                "evidenceQuality": "official_alert",
+            }
+
+            # Upsert as draft
+            await upsert_article(raw, "system:weekly_publish")
+            promoted += 1
+
+            # Attempt full workflow: draft → in_review → approved → published
+            try:
+                await transition(slug, "in_review", "system:weekly_publish")
+                await transition(slug, "approved", "system:weekly_publish")
+                await transition(slug, "published", "system:weekly_publish")
+                published += 1
+            except (LookupError, ValueError) as exc:
+                logger.info("weekly_publish: %s stayed as draft (quality gate): %s", slug, exc)
+
+            # Mark candidate as processed
+            await db.learning_candidates.update_one(
+                {"fingerprint": candidate["fingerprint"]},
+                {"$set": {"status": "processed", "updated_at": now}})
+
+        except Exception as exc:
+            failed += 1
+            logger.warning("weekly_publish candidate failed fingerprint=%s error=%s",
+                           candidate.get("fingerprint"), type(exc).__name__)
+            # Mark candidate as failed so it isn't retried endlessly
+            try:
+                await db.learning_candidates.update_one(
+                    {"fingerprint": candidate["fingerprint"]},
+                    {"$set": {"status": "failed", "error": type(exc).__name__, "updated_at": now}})
+            except Exception:
+                pass
+
+    return {"promoted": promoted, "published": published, "skipped": skipped, "failed": failed}
