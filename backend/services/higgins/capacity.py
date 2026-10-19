@@ -36,11 +36,7 @@ CALL_SECONDS = 90
 # Source evidence content (images, files, screenshots): delete within 24 hours of acquisition.
 EVIDENCE_RETENTION_SECONDS = int(os.getenv("EVIDENCE_RETENTION_SECONDS", str(24 * 3600)))  # 24 hours
 # Device-local investigations: the server does NOT retain completed investigations.
-# These constants are kept at zero / removed for backward compat of imports.
-REPORT_RETENTION_SECONDS = 0  # No server-side report retention
-REPORT_STORAGE_LIMIT_BYTES = 0  # No server-side saved-report storage allowance
-# Retention class tags — SAVED_RETENTION is no longer promoted to; existing references are safe no-ops.
-SAVED_RETENTION = "apollo_saved_report"  # Legacy constant — never assigned to new cases
+# The server is a temporary processing workspace only; the device owns the durable record.
 
 
 def policy() -> dict:

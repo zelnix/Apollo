@@ -174,36 +174,28 @@ async def _pipeline_submission_impl():
         # Check the case has correct initiator
         case = await db.investigation_cases.find_one(
             {"owner_id": device_id, "case_id": result["case_id"]},
-            {"_id": 0, "initiator": 1, "evidence_fingerprint": 1, "source_metadata": 1}
+            {"_id": 0, "initiator": 1, "source_metadata": 1}
         )
         _assert(case is not None, "Case exists in DB")
         _assert(case.get("initiator") == "higgins_user_request",
                 "Initiator is higgins_user_request", f"got: {case.get('initiator')}")
-        _assert(case.get("evidence_fingerprint") is not None,
-                "Evidence fingerprint is set")
         _assert(case.get("source_metadata") is not None,
                 "Source metadata is set")
     except Exception as exc:
         _assert(False, "Pipeline submission", f"Exception: {exc}")
 
-    # Test 2: Same submission on same device reuses investigation
+    # Test 2: Same submission on same device creates a new investigation (reuse removed in Stage 11)
     try:
-        # Mark previous case as completed (has response_ciphertext)
-        await db.investigation_cases.update_one(
-            {"owner_id": device_id, "case_id": result["case_id"]},
-            {"$set": {"response_ciphertext": repo.enc_json({"overview": "Test result"})}}
-        )
-
         result2 = await submit_to_investigation_pipeline(
             device_id,
             "Is this URL a scam? https://test-suspicious.com/phish",
             items,
         )
-        _assert(result2["reused"] is True, "Same evidence reuses investigation")
-        _assert(result2["case_id"] == result["case_id"],
-                "Reused case ID matches", f"got: {result2['case_id']} vs {result['case_id']}")
+        _assert(result2["reused"] is False, "Stage 11: no server-side reuse — new investigation created")
+        _assert(result2["case_id"] != result["case_id"],
+                "New case created (device decides locally whether to skip duplicate)")
     except Exception as exc:
-        _assert(False, "Investigation reuse", f"Exception: {exc}")
+        _assert(False, "No server reuse", f"Exception: {exc}")
 
     # Test 3: Different device does NOT reuse
     other_device = f"test-higgins-other-{uuid.uuid4().hex[:8]}"

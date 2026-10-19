@@ -50,7 +50,6 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
 async def ensure_indexes() -> None:
     await db.worker_heartbeats.create_index([("worker", 1), ("instance_id", 1)], unique=True)
     await db.worker_heartbeats.create_index("last_heartbeat_at")
-    await db.investigation_reports.create_index([("owner_id", 1), ("saved_at", -1)])
 
 
 async def _record(patch: dict) -> None:

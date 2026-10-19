@@ -35,19 +35,12 @@ class TestRetentionConstants:
         from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
         assert EVIDENCE_RETENTION_SECONDS == 24 * 3600
 
-    def test_report_retention_disabled(self):
-        """Report retention is currently disabled (server-side report storage not active)."""
-        from services.higgins.capacity import REPORT_RETENTION_SECONDS
-        assert REPORT_RETENTION_SECONDS == 0, "Report retention should be 0 (disabled)"
-
-    def test_storage_limit_disabled(self):
-        """Storage limit is currently disabled (no server-side saved-report storage)."""
-        from services.higgins.capacity import REPORT_STORAGE_LIMIT_BYTES
-        assert REPORT_STORAGE_LIMIT_BYTES == 0, "Storage limit should be 0 (disabled)"
-
-    def test_saved_retention_class(self):
-        from services.higgins.capacity import SAVED_RETENTION
-        assert SAVED_RETENTION == "apollo_saved_report"
+    def test_dead_retention_constants_removed(self):
+        """Stage 11: Server-side report retention constants have been removed."""
+        from services.higgins import capacity
+        assert not hasattr(capacity, "REPORT_RETENTION_SECONDS"), "REPORT_RETENTION_SECONDS removed in Stage 11"
+        assert not hasattr(capacity, "REPORT_STORAGE_LIMIT_BYTES"), "REPORT_STORAGE_LIMIT_BYTES removed in Stage 11"
+        assert not hasattr(capacity, "SAVED_RETENTION"), "SAVED_RETENTION removed in Stage 11"
 
 
 class TestEvidenceContentExpiry:

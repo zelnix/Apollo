@@ -117,8 +117,6 @@ async def submit_to_investigation_pipeline(
     Returns: {"case_id": str, "status": str, "reused": bool, "job_id": str|None}
     """
     from routers.investigations import (
-        _evidence_fingerprint,
-        _find_reusable_investigation,
         _pregather_specialist_evidence,
         _build_source_metadata,
     )
@@ -139,28 +137,12 @@ async def submit_to_investigation_pipeline(
     question = redact_investigation_secrets(message)
     gate = _infer_gate(items)
 
-    # ── Check for reusable investigation (same device, same evidence) ────────
-    reuse_case = await _find_reusable_investigation(owner, submissions, question)
-    if reuse_case:
-        log.info("higgins_pipeline_reuse device=%s case=%s", owner[:12], reuse_case["case_id"][:12])
-        return {
-            "case_id": reuse_case["case_id"],
-            "status": reuse_case.get("status", "complete"),
-            "reused": True,
-            "job_id": None,
-        }
-
     # ── Create new case with shared pipeline ─────────────────────────────────
     case = await repo.create_case(owner, gate, device_profile, initiator="higgins_user_request")
     case_id = case["case_id"]
 
-    # Store evidence fingerprint for deduplication
-    fp = _evidence_fingerprint(submissions, question)
-    update_fields: dict = {}
-    if fp:
-        update_fields["evidence_fingerprint"] = fp
-
     # Source metadata
+    update_fields: dict = {}
     source_meta = _build_source_metadata(gate, submissions, question)
     if source_meta:
         update_fields["source_metadata"] = source_meta
@@ -179,6 +161,8 @@ async def submit_to_investigation_pipeline(
             await ev.ingest_text(owner, case, sub.client_item_id, sub.value, label=sub.label or "submitted text")
 
     # ── Pre-gather specialist evidence ───────────────────────────────────────
+    # Stored as triage_provider_evidence on the case; the coordinator delivers
+    # it to Magnum DI as structured Apollo observations — not injected into the question.
     if question.strip():
         try:
             provider_evidence = await _pregather_specialist_evidence(gate, submissions)
@@ -187,10 +171,6 @@ async def submit_to_investigation_pipeline(
                     {"owner_id": owner, "case_id": case_id},
                     {"$set": {"triage_provider_evidence": provider_evidence}},
                 )
-                from services.triage_engine import compact_evidence_for_magnum_di
-                compact = compact_evidence_for_magnum_di(provider_evidence)
-                if compact:
-                    question = question + "\n\n" + compact
         except Exception as exc:
             log.warning("higgins_pregather_failed case=%s error=%s", case_id[:12], type(exc).__name__)
 

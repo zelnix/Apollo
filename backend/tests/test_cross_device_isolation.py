@@ -139,8 +139,9 @@ async def run_tests():
     })
     _assert(b_triage is None, "Triage results are device-scoped")
 
-    # ── Test 6: Investigation reports are device-scoped ──
-    print("\n[Test 6] Investigation reports are device-scoped...")
+    # ── Test 6: Investigation reports collection device-scoping (legacy) ──
+    # Server-side saved reports removed in Stage 11; this tests legacy data isolation.
+    print("\n[Test 6] Investigation reports legacy data is device-scoped...")
     report_id = f"report-{uuid.uuid4().hex[:8]}"
     await db.investigation_reports.insert_one({
         "report_id": report_id,

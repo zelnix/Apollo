@@ -19,7 +19,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 from core.db import db, now_utc
 from services.higgins.capacity import (
     LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS,
-    EVIDENCE_RETENTION_SECONDS, REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES, SAVED_RETENTION,
+    EVIDENCE_RETENTION_SECONDS,
 )
 from services.higgins.contracts import (Coverage, EvidenceItem, EvidenceProvenance, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
                                         RetryAttempt, SourceReference, TurnCommit, failure_body)
@@ -99,7 +99,6 @@ async def ensure_indexes() -> None:
     except OperationFailure:
         pass
     await db.investigation_turn_commits.create_index([("owner_id", 1), ("case_id", 1), ("commit_id", 1)], unique=True)
-    await db.investigation_reports.create_index([("owner_id", 1), ("report_id", 1)], unique=True)
     await db.higgins_investigation_history.create_index([("owner_id", 1), ("last_update", -1)])
     await db.higgins_investigation_history.create_index([("owner_id", 1), ("history_id", 1)], unique=True)
 
@@ -180,13 +179,8 @@ async def get_case(owner: str, case_id: str, *, for_mutation: bool = False) -> d
         raise http(410, "evidence_expired", "This investigation has been deleted or has expired. Start a new check with the required evidence.")
     # Check if the case has expired by time
     if utc(doc["expires_at"]) <= now_utc():
-        # For saved reports: expire and report it clearly
-        if doc.get("retention_class") == SAVED_RETENTION:
-            await expire_case(owner, case_id)
-            raise http(410, "report_expired", "This saved investigation has reached its 90-day retention limit and has been automatically removed.")
-        else:
-            await expire_case(owner, case_id)
-            raise http(410, "evidence_expired", "The temporary investigation content expired at its original deadline. Submit the evidence again for a new check.")
+        await expire_case(owner, case_id)
+        raise http(410, "evidence_expired", "The temporary investigation content expired at its original deadline. Submit the evidence again for a new check.")
     if for_mutation and doc["status"] in ("cancelled",):
         raise http(409, "conflict", "This investigation was cancelled. Start a new check.")
     return doc
@@ -228,9 +222,7 @@ async def case_view(doc: dict) -> InvestigationCase:
     return InvestigationCase(id=doc["case_id"], revision=doc["revision"], gates=doc["gates"], status=doc["status"], created_at=utc(doc["created_at"]),
                              updated_at=utc(doc["updated_at"]), expires_at=utc(doc["expires_at"]), response=response, active_job_id=doc.get("active_job_id"),
                              evidence_expires_at=utc(doc["evidence_expires_at"]) if doc.get("evidence_expires_at") else None,
-                             report_expires_at=utc(doc["report_expires_at"]) if doc.get("report_expires_at") else None,
                              retention_class=doc.get("retention_class", ""),
-                             report_byte_size=doc.get("report_byte_size", 0),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
                              cleanup_status=doc.get("cleanup_status", "not_due"))
 
@@ -753,15 +745,7 @@ async def sweep() -> None:
     # ── Phase 2: Temporary cases (15-minute work window) ──
     async for doc in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "expires_at": {"$lte": now}, "cleanup_status": {"$in": ["not_due"]}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         await expire_case(doc["owner_id"], doc["case_id"])
-    # ── Phase 3: Any legacy SAVED_RETENTION cases that still exist — expire them ──
-    async for doc in db.investigation_cases.find(
-        {"retention_class": SAVED_RETENTION, "deleted": {"$ne": True}},
-        {"_id": 0, "owner_id": 1, "case_id": 1}
-    ).limit(100):
-        await expire_case(doc["owner_id"], doc["case_id"])
-    # Also sweep any remaining saved reports from investigation_reports collection
-    await db.investigation_reports.delete_many({"expires_at": {"$lte": now}})
-    # ── Phase 4: Retry pending cleanups ──
+    # ── Phase 3: Retry pending cleanups ──
     async for task in db.investigation_cleanup.find({"state": "pending", "next_attempt_at": {"$lte": now}}, {"_id": 0}):
         await run_cleanup(task["owner_id"], task["case_id"])
     # ── Phase 5: Unreferenced bundles ──

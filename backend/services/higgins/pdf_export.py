@@ -380,12 +380,11 @@ def generate_pdf(
     story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", color=GREY_LIGHT, thickness=0.5))
 
-    report_expires = case.get("reportExpiresAt", "")[:10] if case.get("reportExpiresAt") else "—"
     evidence_expires = case.get("evidenceExpiresAt", "")[:10] if case.get("evidenceExpiresAt") else "—"
     retention_text = (
         f"<b>Retention Policy</b><br/>"
         f"Source evidence: automatically deleted within 24 hours of acquisition (expires {evidence_expires}).<br/>"
-        f"Saved investigation report: retained for up to 90 days (expires {report_expires}).<br/>"
+        f"Investigation results: stored on your device only. Apollo's server does not retain completed investigations.<br/>"
         f"This exported PDF is a user-controlled copy outside the application's automatic retention system."
     )
     story.append(Paragraph(retention_text, s["retention"]))

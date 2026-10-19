@@ -4,26 +4,23 @@ Validates:
 1. Confirm-commit endpoint purges server data for completed investigations
 2. Confirm-commit is idempotent (already purged → success)
 3. Confirm-commit rejects incomplete investigations (no response)
-4. Server retention constants are set to zero / no-retain
-5. _find_reusable_investigation always returns None (server reuse removed)
+4. Server retention constants have been removed (Stage 11)
+5. Evidence retention is positive
 """
 import pytest
-import asyncio
-from datetime import datetime, timedelta, timezone
 
-from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS, REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES, SAVED_RETENTION
+from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
 
 
 # ── Retention constant tests ────────────────────────────────────────────
 
-def test_report_retention_is_zero():
-    """Server must not retain completed investigation reports."""
-    assert REPORT_RETENTION_SECONDS == 0, f"REPORT_RETENTION_SECONDS should be 0, got {REPORT_RETENTION_SECONDS}"
-
-
-def test_storage_limit_is_zero():
-    """Server must not allocate saved-report storage."""
-    assert REPORT_STORAGE_LIMIT_BYTES == 0, f"REPORT_STORAGE_LIMIT_BYTES should be 0, got {REPORT_STORAGE_LIMIT_BYTES}"
+def test_dead_retention_constants_removed():
+    """Stage 11: REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES, and
+    SAVED_RETENTION have been removed from capacity.py."""
+    from services.higgins import capacity
+    assert not hasattr(capacity, "REPORT_RETENTION_SECONDS"), "REPORT_RETENTION_SECONDS should be removed"
+    assert not hasattr(capacity, "REPORT_STORAGE_LIMIT_BYTES"), "REPORT_STORAGE_LIMIT_BYTES should be removed"
+    assert not hasattr(capacity, "SAVED_RETENTION"), "SAVED_RETENTION should be removed"
 
 
 def test_evidence_retention_positive():
@@ -32,21 +29,25 @@ def test_evidence_retention_positive():
     assert EVIDENCE_RETENTION_SECONDS <= 24 * 3600, "Evidence retention should be ≤24h"
 
 
-def test_saved_retention_constant_exists():
-    """SAVED_RETENTION constant exists for backward compat but should be a legacy no-op."""
-    assert isinstance(SAVED_RETENTION, str)
+def test_investigation_reuse_removed():
+    """Stage 11: _find_reusable_investigation and _evidence_fingerprint have been
+    removed from the investigations router."""
+    from routers import investigations
+    assert not hasattr(investigations, "_find_reusable_investigation"), "_find_reusable_investigation should be removed"
+    assert not hasattr(investigations, "_evidence_fingerprint"), "_evidence_fingerprint should be removed"
 
 
-# ── Reuse removal test ──────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_find_reusable_investigation_always_none():
-    """Server-side investigation reuse has been removed."""
-    import sys
-    sys.path.insert(0, "/app/backend")
-    from routers.investigations import _find_reusable_investigation
-    result = await _find_reusable_investigation("test-owner", [], "test question")
-    assert result is None, "Server should never reuse a previously completed investigation"
+def test_saved_report_endpoints_removed():
+    """Stage 11: Server-side saved report endpoints have been removed."""
+    from routers.investigations import router
+    paths = [r.path for r in router.routes if hasattr(r, 'path')]
+    assert "/investigations/reports/list" not in paths, "list_reports endpoint should be removed"
+    assert "/investigations/reports/{report_id}" not in paths or \
+        not any(r.path == "/investigations/reports/{report_id}" and "GET" in r.methods for r in router.routes if hasattr(r, 'methods')), \
+        "get_report endpoint should be removed"
+    assert "/investigations/{case_id}/reports" not in paths or \
+        not any(r.path == "/investigations/{case_id}/reports" and "POST" in r.methods for r in router.routes if hasattr(r, 'methods')), \
+        "save_report endpoint should be removed"
 
 
 # ── Confirm-commit API test (requires running server) ───────────────────

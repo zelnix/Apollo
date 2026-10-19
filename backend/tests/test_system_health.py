@@ -40,7 +40,7 @@ async def test_readiness_maps_only_bounded_codes(monkeypatch):
     monkeypatch.setattr(system_health, "GEMINI_API_KEY", "test-only-fixture")
     monkeypatch.setattr(system_health, "db", SimpleNamespace(
         devices=SimpleNamespace(find_one=AsyncMock(return_value={"device_id": "owner"})),
-        investigation_reports=SimpleNamespace(find_one=AsyncMock(return_value=None)),
+        health_report_artifacts=SimpleNamespace(find_one=AsyncMock(return_value=None)),
         investigation_jobs=SimpleNamespace(find_one=AsyncMock(return_value=None)),
         command=AsyncMock(return_value={"ok": 1})))
     report = await system_health.readiness("owner")
@@ -213,24 +213,16 @@ async def test_job_poll_is_strictly_owner_scoped(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_normal_and_disposable_reports_share_one_encrypted_store_with_explicit_db(monkeypatch, tmp_path):
+async def test_report_store_rejects_non_healthcheck_writes_after_stage11(monkeypatch, tmp_path):
+    """Stage 11: report_store.write() only accepts health_check=True."""
     key_file = tmp_path / "report.key"
     key_file.write_bytes(Fernet.generate_key())
     key_file.chmod(0o600)
     monkeypatch.setenv("INVESTIGATION_KEY_FILE", str(key_file))
     encryption.cipher.cache_clear()
-    normal = _Collection()
-    external = SimpleNamespace(investigation_reports=normal)
-    default = _Collection()
-    monkeypatch.setattr(report_store, "db", SimpleNamespace(investigation_reports=default))
     try:
         report = health_check.fixture("normal-test")
-        await report_store.write("owner", report, database=external)
-        assert not default.rows and len(normal.rows) == 1
-        assert "Synthetic health" not in normal.rows[0]["report_ciphertext"]
-        assert (await report_store.read("owner", report["reportId"], database=external))["overview"] == report["overview"]
-        assert await report_store.read("another-owner", report["reportId"], database=external) is None
-        assert await report_store.delete("owner", report["reportId"], database=external)
-        assert not normal.rows
+        with pytest.raises(ValueError, match="server_side_saved_reports_removed"):
+            await report_store.write("owner", report)
     finally:
         encryption.cipher.cache_clear()

@@ -84,15 +84,9 @@ async def patrol(owner: str, *, one: bool = False) -> dict:
 
 
 async def saved_reports(owner: str) -> dict:
-    rows = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0, "report_id": 1, "saved_at": 1, "report_ciphertext": 1}).sort("saved_at", -1).limit(5).to_list(5)
-    items = []
-    for row in rows:
-        try:
-            report = repo.dec_json(row["report_ciphertext"]); overview = redact_investigation_secrets(str(report.get("overview") or "Saved report"))[:400]
-        except (ValueError, TypeError):
-            overview = "Saved report"
-        items.append({"reportId": row["report_id"], "savedAt": row["saved_at"].isoformat(), "summary": overview})
-    return _result(items, ["encrypted_saved_report_store"], observed_at=rows[0]["saved_at"] if rows else None)
+    """Server-side saved reports have been removed (Stage 11).  Returns empty result.
+    The device owns completed investigation records locally."""
+    return _result([], ["device_local_storage"], observed_at=None)
 
 
 async def preferences(owner: str) -> dict:

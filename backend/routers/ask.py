@@ -127,15 +127,6 @@ async def higgins_history(request: Request, limit: int = Query(default=25, ge=1,
                       "status": "active" if active else "completed", "occurredAt": case.get("updated_at") or case["created_at"], "caseStart": case["created_at"],
                       "lastUpdate": case.get("updated_at") or case["created_at"], "gates": case.get("gates", []), "attention": latest.response.attention if latest else "unknown",
                       "conclusion": summary, "caseId": case["case_id"], "reportId": None, "reopenable": active})
-    reports = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0, "report_id": 1, "saved_at": 1, "report_ciphertext": 1}).sort("saved_at", -1).limit(limit).to_list(limit)
-    for row in reports:
-        try:
-            report = investigation_repository.dec_json(row["report_ciphertext"])
-            title = redact_investigation_secrets(str(report.get("title") or report.get("overview") or "Saved investigation report"))[:160]
-            summary = redact_investigation_secrets(str(report.get("overview") or "Saved for later review."))[:300]
-        except (ValueError, TypeError):
-            title, summary = "Saved investigation report", "Saved for later review."
-        items.append({"id": row["report_id"], "kind": "saved_report", "title": title, "summary": summary, "status": "saved", "occurredAt": row["saved_at"], "caseStart": row["saved_at"], "lastUpdate": row["saved_at"], "gates": [], "attention": "none", "conclusion": summary, "caseId": None, "reportId": row["report_id"], "reopenable": True})
     deduped = list({f"{item['kind']}:{item.get('caseId') or item['id']}": item for item in items}.values())
     deduped.sort(key=lambda item: item["occurredAt"], reverse=True)
     next_cursor = history_rows[limit - 1]["last_update"].isoformat() if len(history_rows) > limit else None

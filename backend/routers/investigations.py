@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import hashlib
 import json
@@ -27,12 +26,11 @@ from services.higgins import evidence as ev
 from services.higgins import jobs
 from services.higgins import provider
 from services.higgins import repository as repo
-from services.higgins import report_store
 from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
 from services.higgins import tools as toolbox
 from services.higgins.capacity import ITEMS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
-                                        RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, Submission, SubmitTurn,
+                                        RecheckRequest, RecheckResult, SettingsPlan, SettingsPlanRequest, Submission, SubmitTurn,
                                         UUID_PATTERN, UploadMetadata, Wire)
 from services.higgins.encryption import cipher, decrypt, encrypt
 from services.higgins.repository import http
@@ -162,28 +160,6 @@ def _build_source_metadata(gate: str | None, submissions: list, question: str) -
     return None
 
 
-def _evidence_fingerprint(submissions: list, question: str) -> str | None:
-    """Compute a normalised fingerprint for the submitted evidence.
-    Used for same-device investigation deduplication. The fingerprint is built
-    from the normalised evidence content only — never from user identity."""
-    import hashlib
-    parts = []
-    for s in sorted(submissions, key=lambda x: (x.kind, x.value)):
-        v = s.value.strip().lower()[:2000]
-        parts.append(f"{s.kind}:{v}")
-    if not parts:
-        return None
-    raw = "|".join(parts)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
-
-
-async def _find_reusable_investigation(owner: str, submissions: list, question: str) -> dict | None:
-    """Server-side investigation reuse has been removed.
-    Completed investigations live on the device only.  A new investigation
-    always proceeds when submitted — the device can decide locally whether
-    to skip a duplicate submission before calling the server."""
-    return None
-
 
 async def _pregather_specialist_evidence(gate: str | None, submissions: list) -> dict:
 
@@ -256,13 +232,6 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
         case = await repo.get_case(owner, existing["result"]["caseId"])
         return JSONResponse(await _case_json(case), status_code=201, headers=NO_STORE)
 
-    # ── Investigation reuse: check for materially identical completed investigation ──
-    # Device-scoped only — never cross-device. Uses normalised fingerprint of the
-    # submitted evidence to find a valid completed investigation on the same device.
-    reuse_case = await _find_reusable_investigation(owner, body.submissions, body.question)
-    if reuse_case:
-        return JSONResponse(await _case_json(reuse_case), status_code=200, headers=NO_STORE)
-
     # Gate provenance: if the client didn't supply a gate, infer it from the
     # evidence items so the investigation is properly attributed from creation.
     gate = body.gate
@@ -270,12 +239,6 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
         gate = _infer_gate_from_submissions(body.submissions, body.question)
 
     case = await repo.create_case(owner, gate, body.device_profile.wire() if body.device_profile else None, initiator="user_check")
-    # Store evidence fingerprint for same-device deduplication
-    _fp = _evidence_fingerprint(body.submissions, body.question)
-    if _fp:
-        await db.investigation_cases.update_one(
-            {"owner_id": owner, "case_id": case["case_id"]},
-            {"$set": {"evidence_fingerprint": _fp}})
     for item in body.submissions:
         if item.kind == "url":
             await ev.ingest_url(owner, case, item.client_item_id, item.value, label=item.label)
@@ -300,9 +263,9 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     # ── Pre-gather specialist evidence for Magnum DI ──────────────────────────
     # Before the expensive Magnum DI reasoning begins, automatically gather all
     # relevant free/already-paid specialist evidence for the submitted items.
-    # Magnum DI's tool-level cache (triage_provider_evidence on the case) will
-    # prevent redundant re-queries. This does NOT downgrade the Check — the full
-    # investigation always proceeds. It just ensures Magnum DI starts with facts.
+    # Stored as `triage_provider_evidence` on the case document; Magnum DI's
+    # tools read this for deduplication and the coordinator receives it as
+    # structured Apollo observations — NOT injected into the person's question.
     if question.strip():
         try:
             provider_evidence = await _pregather_specialist_evidence(gate, body.submissions)
@@ -310,12 +273,6 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
                 await db.investigation_cases.update_one(
                     {"owner_id": owner, "case_id": case["case_id"]},
                     {"$set": {"triage_provider_evidence": provider_evidence}})
-                # Inject the compact evidence summary into the investigation question
-                # so Magnum DI receives it as established facts with provenance.
-                from services.triage_engine import compact_evidence_for_magnum_di
-                compact = compact_evidence_for_magnum_di(provider_evidence)
-                if compact:
-                    question = question + "\n\n" + compact
         except Exception as exc:
             __import__("logging").getLogger("apollo.investigations").warning("pregather_evidence_failed case=%s error=%s", case["case_id"], type(exc).__name__)
 
@@ -382,14 +339,15 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
         }, status_code=202, headers=NO_STORE)
 
     # ── Triage escalated: proceed to full investigation ──
-    # Inject pre-gathered specialist intelligence into the investigation prompt.
-    pre_gathered = triage_result.compact_evidence_for_magnum_di()
+    # Pre-gathered specialist intelligence is delivered to Magnum DI as structured
+    # Apollo observations via the case's triage_provider_evidence field — not injected
+    # into the person's question.
     limitation = "" if body.content_complete else f"\n\nCapture limitation: Android exposed {body.original_characters} characters; Apollo retained the first {len(body.text)} under its admission policy."
     submission = Submission(client_item_id=f"sms-{body.submission_id[:70]}", kind="text",
                             value=f"From: {body.sender}\n{body.text}{limitation}", label="opt-in text notification")
     investigation_question = (
         "Investigate this captured text-message notification, verify its claims and links, "
-        "and identify the safest next action.\n\n" + pre_gathered
+        "and identify the safest next action."
     )
     payload = CreateCase(gate="text", question=investigation_question, submissions=[submission])
     response = await create_case(payload, request, idempotency_key=f"sms-notification-{body.submission_id}")
@@ -1247,57 +1205,3 @@ async def confirm_commit(case_id: str, request: Request):
     await repo.revoke(owner, case_id, "expired")
     cleanup_status = await repo.run_cleanup(owner, case_id)
     return JSONResponse({"purged": True, "status": cleanup_status}, headers=NO_STORE)
-@router.post("/investigations/{case_id}/reports", status_code=201)
-async def save_report(case_id: str, body: ReportRequest, request: Request):
-    owner = owner_of(request)
-    case = await repo.get_case(owner, case_id)
-    if case.get("response_revision") != body.response_revision or not case.get("response_ciphertext"):
-        raise http(409, "conflict", "That response revision is not the current accepted answer.")
-    response = repo.dec_json(case["response_ciphertext"])
-    sources = await repo.sources(owner, case_id)
-    report = report_store.build_report(response, case_id=case_id, gates=case["gates"],
-                                       revision=body.response_revision, sources=sources)
-    await report_store.write(owner, report, database=db)
-    return JSONResponse({"reportId": report["reportId"]}, status_code=201, headers=NO_STORE)
-
-
-@router.get("/investigations/reports/list")
-async def list_reports(request: Request, cursor: Optional[str] = Query(default=None), limit: int = Query(default=25, ge=1, le=50)):
-    owner = owner_of(request)
-    total = await db.investigation_reports.count_documents({"owner_id": owner})
-    query: dict = {"owner_id": owner}
-    if cursor:
-        try:
-            decoded = base64.urlsafe_b64decode(cursor.encode() + b"=" * (-len(cursor) % 4)).decode()
-            saved_raw, report_id = decoded.split("|", 1)
-            saved_at = datetime.fromisoformat(saved_raw.replace("Z", "+00:00"))
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise http(400, "invalid_input", "Saved-report cursor is invalid.") from exc
-        query["$or"] = [{"saved_at": {"$lt": saved_at}}, {"saved_at": saved_at, "report_id": {"$lt": report_id}}]
-    rows = await db.investigation_reports.find(query, {"_id": 0}).sort([("saved_at", -1), ("report_id", -1)]).limit(limit + 1).to_list(limit + 1)
-    page, more = rows[:limit], len(rows) > limit
-    next_cursor = None
-    if more and page:
-        marker = f"{repo.utc(page[-1]['saved_at']).isoformat()}|{page[-1]['report_id']}".encode()
-        next_cursor = base64.urlsafe_b64encode(marker).decode().rstrip("=")
-    return JSONResponse({"items": [repo.dec_json(r["report_ciphertext"]) for r in page], "total": total, "nextCursor": next_cursor}, headers=NO_STORE)
-
-
-@router.get("/investigations/reports/{report_id}")
-async def get_report(report_id: str, request: Request):
-    owner = owner_of(request)
-    report = await report_store.read(owner, report_id, database=db)
-    if not report:
-        raise http(404, "not_found", "Unknown report.")
-    return JSONResponse({"report": report}, headers=NO_STORE)
-
-
-@router.delete("/investigations/reports/{report_id}", status_code=204)
-async def delete_report(report_id: str, request: Request):
-    owner = owner_of(request)
-    if not await report_store.delete(owner, report_id, database=db):
-        raise http(404, "not_found", "Unknown report.")
-    await db.investigation_scopes.delete_many({"owner_id": owner, "scope_id": report_id})
-    return Response(status_code=204, headers=NO_STORE)
-
-

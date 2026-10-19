@@ -62,7 +62,7 @@ async def test_stuck_investigation_and_cleanup_backlog_are_independent(monkeypat
     monkeypatch.setattr(system_health, "cipher", lambda: object())
     monkeypatch.setattr(system_health, "db", SimpleNamespace(
         devices=SimpleNamespace(find_one=AsyncMock(return_value={"device_id": "verified"})),
-        investigation_reports=SimpleNamespace(find_one=AsyncMock(return_value=None)),
+        health_report_artifacts=SimpleNamespace(find_one=AsyncMock(return_value=None)),
         investigation_jobs=SimpleNamespace(find_one=AsyncMock(return_value={"created_at": now - timedelta(minutes=5)})),
         command=AsyncMock(return_value={"ok": 1})))
     report = await system_health.readiness("verified")
@@ -86,7 +86,7 @@ async def test_missing_provider_and_required_privacy_failure_cannot_report_healt
     monkeypatch.setattr(system_health, "cipher", lambda: object())
     monkeypatch.setattr(system_health, "db", SimpleNamespace(
         devices=SimpleNamespace(find_one=AsyncMock(return_value={"device_id": "verified"})),
-        investigation_reports=SimpleNamespace(find_one=AsyncMock(return_value=None)),
+        health_report_artifacts=SimpleNamespace(find_one=AsyncMock(return_value=None)),
         investigation_jobs=SimpleNamespace(find_one=AsyncMock(return_value=None)),
         command=AsyncMock(return_value={"ok": 1})))
     report = await system_health.readiness("verified")

@@ -220,6 +220,9 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
     investigation_context = ""
     if selected_report_id:
         try:
+            # Legacy path: reads from server-side saved reports (removed in Stage 11).
+            # For existing legacy reports this still works; new investigations store
+            # results on-device only. Falls through gracefully when no server report exists.
             from services.higgins import repository as repo
             report_doc = await db.investigation_reports.find_one(
                 {"owner_id": owner, "report_id": selected_report_id},

@@ -186,9 +186,7 @@ class InvestigationCase(Wire):
     updated_at: datetime
     expires_at: datetime
     evidence_expires_at: Optional[datetime] = None  # 24h from first evidence acquisition
-    report_expires_at: Optional[datetime] = None  # 90 days from completion
     retention_class: str = ""
-    report_byte_size: int = 0
     response: Optional[HigginsResponse] = None
     active_job_id: Optional[str] = None
     pending_device_request_ids: list[str] = Field(default_factory=list)
@@ -462,10 +460,6 @@ class SettingsPlanRequest(Wire):
 
 class RecheckRequest(Wire):
     device_result_ids: list[str]
-
-
-class ReportRequest(Wire):
-    response_revision: int
 
 
 # ------------------------------------------------------------------ model-facing (IDs assigned by coordinator)

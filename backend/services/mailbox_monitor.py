@@ -348,15 +348,16 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
                                    label="VirusTotal attachment scan", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
 
     # ─── Escalate to Magnum DI (Tier 2) ───
-    # Inject pre-gathered specialist intelligence so Magnum DI starts with facts.
-    pre_gathered = triage_result.compact_evidence_for_magnum_di()
+    # Pre-gathered specialist intelligence is delivered to Magnum DI as structured
+    # Apollo observations via the case's triage_provider_evidence field — not injected
+    # into the investigation prompt.
     logger.info("triage_escalation device=%s digest=%s tier=%d verdict=%s escalation=%s providers=%s",
                  device_id, digest[:12], triage_result.tier.value, triage_result.verdict.value,
                  (triage_result.escalation_reason or "")[:80], triage_result.providers_used)
     turn_id = str(uuid.uuid4())
     investigation_prompt = (
         "Investigate this monitored email. Verify its sender, claims and every material link; "
-        "explain one safe next action.\n\n" + pre_gathered
+        "explain one safe next action."
     )
     payload = {"message": investigation_prompt,
                "answerToQuestionId": None, "evidenceIds": [item.id], "turnId": turn_id}

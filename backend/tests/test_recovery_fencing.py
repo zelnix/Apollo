@@ -169,10 +169,6 @@ def test_structured_device_observation_preserves_provenance_fields():
     _run(lambda inv: _structured_observation_preserves_provenance())
 
 
-def test_saved_reports_page_and_delete_without_leaking_other_owners():
-    _run(lambda inv: _saved_reports_page_and_delete(inv))
-
-
 def test_settings_confirmation_is_user_reported_evidence():
     _run(lambda inv: _settings_confirmation_is_user_reported(inv))
 
@@ -900,23 +896,6 @@ async def _structured_observation_preserves_provenance():
     item = await ev.ingest_observation(owner, case, "observation-1", result)
     stored = json.loads((await repo.read_bytes(owner, case["case_id"], item.id)).decode())
     assert stored == result
-
-
-async def _saved_reports_page_and_delete(inv):
-    owner = f"reports-{uuid.uuid4().hex[:8]}"; other = f"other-{uuid.uuid4().hex[:8]}"
-    request = Request({"type": "http", "method": "GET", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
-    for index in range(3):
-        report = {"reportId": f"report-{index}", "caseId": "case", "gates": ["text"], "savedAt": now_utc().isoformat(), "overview": str(index),
-                  "explanationMarkdown": "", "assessment": "uncertain", "attention": "review", "findings": [], "uncertainties": [], "sources": [], "historical": True}
-        await db.investigation_reports.insert_one({"owner_id": owner, "report_id": report["reportId"], "report_ciphertext": repo.enc_json(report), "saved_at": now_utc() + timedelta(seconds=index)})
-    await db.investigation_reports.insert_one({"owner_id": other, "report_id": "report-foreign", "report_ciphertext": repo.enc_json({"reportId": "report-foreign"}), "saved_at": now_utc()})
-    page = json.loads((await inv.list_reports(request, None, 2)).body)
-    assert page["total"] == 3 and len(page["items"]) == 2 and isinstance(page["nextCursor"], str)
-    following = json.loads((await inv.list_reports(request, page["nextCursor"], 2)).body)
-    assert len(following["items"]) == 1 and following["items"][0]["reportId"] not in {item["reportId"] for item in page["items"]}
-    await inv.delete_report(page["items"][0]["reportId"], request)
-    assert await db.investigation_reports.count_documents({"owner_id": owner}) == 2
-    assert await db.investigation_reports.count_documents({"owner_id": other}) == 1
 
 
 async def _settings_confirmation_is_user_reported(inv):

@@ -155,10 +155,20 @@ async def _brief(owner: str, case: dict, payload: dict, device: Optional[dict]) 
                 "question_asked": t.response.question.wire() if t.response.question else None} for t in turns]
     sources = await repo.sources(owner, case["case_id"])
     open_question = repo.dec_json(case["open_question_ciphertext"]) if case.get("open_question_ciphertext") else None
+    # Pre-gathered specialist intelligence as structured Apollo observations —
+    # separate from the person's question so Magnum DI treats them as evidence, not user text.
+    apollo_observations = None
+    pre_gathered = case.get("triage_provider_evidence")
+    if pre_gathered:
+        from services.triage_engine import compact_evidence_for_magnum_di
+        compact = compact_evidence_for_magnum_di(pre_gathered)
+        if compact:
+            apollo_observations = compact
     brief = {"caseId": case["case_id"], "gates": case["gates"], "createdAt": repo.utc(case["created_at"]).isoformat(), "deviceProfile": device,
              "previousTurns": history, "openQuestion": open_question, "registeredSources": [{"sourceId": s["id"], "url": s["url"], "title": s["title"], "authority": s["authority"]} for s in sources],
              "evidenceInventory": inventory, "currentMessage": payload["message"], "answerToQuestionId": payload.get("answerToQuestionId"),
-             "attachedEvidenceIds": payload.get("evidenceIds", [])}
+             "attachedEvidenceIds": payload.get("evidenceIds", []),
+             **({"apolloObservations": apollo_observations} if apollo_observations else {})}
     return parts, brief, marks
 
 

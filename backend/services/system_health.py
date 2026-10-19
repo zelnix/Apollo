@@ -80,7 +80,8 @@ async def readiness(owner: str) -> dict:
             result["investigation_queue"] = _component("investigation_queue", "degraded", "queue_unavailable")
             result["privacy_cleanup"] = _component("privacy_cleanup", "unavailable", "cleanup_unavailable")
         try:
-            await asyncio.wait_for(db.investigation_reports.find_one({"owner_id": owner}, {"_id": 0, "report_id": 1}), 2)
+            # Health-check artifacts use their own collection; permanent saved reports are removed (Stage 11).
+            await asyncio.wait_for(db.health_report_artifacts.find_one({}, {"_id": 0, "report_id": 1}), 2)
             cipher()  # existing 0600 server-only investigation key; never sent to the device
         except Exception:
             result["report_store"] = _component("report_store", "degraded", "report_store_unavailable")
