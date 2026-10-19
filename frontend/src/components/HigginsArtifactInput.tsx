@@ -81,9 +81,9 @@ const CATEGORY_CONFIG: Record<HigginsCheckCategory, {
     defaultQuestion: "Is this email legitimate?",
   },
   apps_files: {
-    title: "Check an app or file",
-    placeholder: "Enter the app name, or describe the file or download",
-    multiline: true,
+    title: "Check an app",
+    placeholder: "Enter the app name or its package/bundle identifier",
+    multiline: false,
     keyboardType: "default",
     autoCapitalize: "sentences",
     defaultQuestion: "Is this app safe to use?",

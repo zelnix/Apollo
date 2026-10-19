@@ -92,7 +92,7 @@ const useStyles = makeStyles((c) => ({
 
 export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter(); const { deviceId, isMock, events, resolution } = useApollo(); const health = useProtectionHealth();
-  const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string }>();
+  const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string; screenshotUri?: string; screenshotName?: string; screenshotType?: string }>();
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
@@ -118,6 +118,23 @@ export default function Ask() {
   }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
   useEffect(() => { if (!params.handoffId && params.prompt && !investigationMode) { setText(redactUserSecrets(String(params.prompt))); router.setParams({ prompt: "" }); } }, [params.prompt, params.handoffId, investigationMode, router]);
+
+  // Stage 13: Receive screenshot evidence from Check tab → start Magnum investigation.
+  // The screenshot is evidence, not a local verdict — it goes directly to Magnum DI.
+  const screenshotHandled = useRef<string | null>(null);
+  useEffect(() => {
+    const uri = params.screenshotUri ? String(params.screenshotUri) : "";
+    if (!uri || !deviceId || screenshotHandled.current === uri) return;
+    screenshotHandled.current = uri;
+    const question = params.prompt ? redactUserSecrets(String(params.prompt)).trim() : "Investigate this screenshot — is this a scam or legitimate?";
+    const name = params.screenshotName ? String(params.screenshotName) : "screenshot.jpg";
+    const type = params.screenshotType ? String(params.screenshotType) : "image/jpeg";
+    router.setParams({ screenshotUri: "", screenshotName: "", screenshotType: "", prompt: "" });
+    setInvestigationMode(true); setText(""); setRouteError(null); setChatError(null); setLastAction(null);
+    const operationId = Crypto.randomUUID(); router.setParams({ operationId });
+    const input = { gate: null as string | null, question, submissions: [] as { clientItemId: string; kind: "text" | "url"; value: string; label: string }[], initialFindingRefs: [] as string[], initialFindings: ["User-initiated screenshot investigation from Check tab"] };
+    void start(input, [{ uri, name, mediaType: type }], operationId);
+  }, [params.screenshotUri, params.screenshotName, params.screenshotType, params.prompt, deviceId, router, start]);
 
   const autoSent = useRef<string | null>(null);
   const pendingImageEvidence = useRef<PreparedImage | null>(null);

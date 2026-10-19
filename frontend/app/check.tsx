@@ -2,7 +2,6 @@
 // Matches the approved mock-up: header, description, URL card,
 // gold Check website link CTA, "or" divider, two action cards, recent links.
 import * as ImagePicker from "expo-image-picker";
-import { Image as ExpoImage } from "expo-image";
 import Camera from "lucide-react-native/icons/camera";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
@@ -13,13 +12,11 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost, apiUpload } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
-import { EventActions } from "@/src/components/EventActions";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
@@ -27,11 +24,10 @@ import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermission
 import { ImageUploadPrep, type PreparedImage } from "@/src/components/ImageUploadPrep";
 import { saveImageEvidence } from "@/src/store/imageEvidence";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
-import { Body, Button, Pill, Card, toneColor } from "@/src/components/ui";
+import { Body, Button, Pill, Card } from "@/src/components/ui";
 import { buildLinkCheckResult } from "@/src/domain/linkCheckResultAdapter";
 import { verifyWebsite } from "@/src/domain/brand";
-import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
-import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { STATE_NAME } from "@/src/domain/types";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -119,28 +115,19 @@ export default function CheckLink() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkLink, events, ready, setupDone, deviceId, showToast, recordPageAnalysis } = useApollo();
+  const { checkLink, events, ready, setupDone, deviceId, showToast } = useApollo();
   const [verify, setVerify] = useState(false);
   const [report, setReport] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [tech, setTech] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [page, setPage] = useState<PageAnalysis | null>(null);
-  const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [pageHigginsNote, setPageHigginsNote] = useState<string | null>(null);
-  const [pageScreenshotUri, setPageScreenshotUri] = useState<string | null>(null);
   const [pageGateScreening, setPageGateScreening] = useState<ScreeningResult | null>(null);
   const [pendingPageScreenshot, setPendingPageScreenshot] = useState<{ uri: string; name: string; type: string } | null>(null);
 
-  const applyPageSignals = async (signals: PageSignals, note: string | null) => {
-    const analysis = analysePage(signals, input);
-    setPage(analysis); setPageHigginsNote(note);
-    const ev = await recordPageAnalysis(analysis, pageEvent);
-    setPageEvent(ev);
-    return ev;
-  };
+  // Stage 13: screenshot is EVIDENCE for Magnum DI, not a local verdict source.
+  // choose image → privacy screening → protected image → one Magnum investigation.
   const launchPagePicker = async () => {
     if (!deviceId) return;
     try {
@@ -160,13 +147,22 @@ export default function CheckLink() {
     const file = pendingPageScreenshot;
     setPendingPageScreenshot(null);
     if (!deviceId || !file) return;
-    try {
-      const signals = await apiUpload<PageSignals>("/page/extract", "page_extract",
-        { device_id: deviceId, url_hint: input.trim() },
-        { uri: result.imageUri, name: file.name, type: file.type });
-      const ev = await applyPageSignals(signals, "Higgins extracted visible page signals; Apollo's local rules made the assessment.");
-      await saveImageEvidence(result, [ev?.event_id]);
-    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
+    // Route directly to Magnum DI via Higgins: the screenshot is evidence, not a local verdict.
+    // Save the prepared image locally before navigating so the investigation can reference it.
+    await saveImageEvidence(result, []);
+    const hint = input.trim();
+    const question = hint
+      ? `Investigate this screenshot of ${hint} — is this page a scam or legitimate?`
+      : "Investigate this screenshot — is this a scam or legitimate?";
+    router.push({
+      pathname: "/(tabs)/ask",
+      params: {
+        prompt: question,
+        screenshotUri: result.imageUri,
+        screenshotName: file.name,
+        screenshotType: file.type,
+      },
+    });
   };
 
   const handlePageGateCancel = () => {
@@ -390,30 +386,8 @@ export default function CheckLink() {
           <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : "Check website link"}</Text>
         </Pressable>
 
-        {/* ── Screenshot analysis result (from "Take a screenshot" only) ── */}
+        {/* ── Screenshot error (privacy screening or navigation failure) ── */}
         {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
-        {page ? (
-          <Animated.View entering={FadeInDown.duration(350)}>
-            <Card testID="check-page-card" style={{ borderColor: toneColor(colors, page.state), gap: spacing.sm }}>
-              {pageScreenshotUri ? <ExpoImage testID="check-page-screenshot-preview" source={{ uri: pageScreenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Page screenshot selected for investigation" /> : null}
-              <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
-                <Pill tone={page.state} label={STATE_NAME[page.state]} testID="check-page-state" />
-                <Pill tone="neutral" label={page.title} testID="check-page-scenario" />
-              </View>
-              <Text style={s.headline} testID="check-page-verdict">{page.verdict}</Text>
-              {page.why.map((w, i) => <Body key={i} testID={`check-page-why-${i}`}>{"\u2022"} {w}</Body>)}
-              <Body testID="check-page-recommendation">{page.recommendation}</Body>
-              {page.phoneToAvoid ? <Pill tone="barking" label={`Don\u2019t call ${page.phoneToAvoid}`} testID="check-page-phone" /> : null}
-              {pageHigginsNote ? (
-                <View style={{ gap: 2 }}>
-                  <Text style={s.sub}>Higgins&apos;s take</Text>
-                  <Body testID="check-page-higgins-note">{pageHigginsNote}</Body>
-                </View>
-              ) : null}
-              {!outcome && pageEvent ? <View style={{ marginTop: spacing.sm, gap: spacing.sm }}><EventActions event={events.find((e) => e.event_id === pageEvent.event_id) ?? pageEvent} originalEvidence={input.trim() ? [{ kind: "url", value: input.trim(), label: "checked link" }] : []} /><RecoveryFlow event={pageEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="page-recovery" /></View> : null}
-            </Card>
-          </Animated.View>
-        ) : null}
 
         {/* ── Or divider ── */}
         <View style={s.orDivider}>
