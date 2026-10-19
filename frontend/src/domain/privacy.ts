@@ -138,6 +138,14 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
       throw new EgressViolation(endpoint, 'local_findings');
     }
   }
+  // Investigation endpoint: apply consistent credential redaction to all text fields
+  // the person submits. Scammer identifiers (phone, URL, email, sender) are retained.
+  if (endpoint === 'investigation') {
+    if (typeof out.question === 'string') out.question = redactInvestigationSecrets(out.question);
+    if (typeof out.text === 'string') out.text = redactInvestigationSecrets(out.text);
+    if (typeof out.message === 'string') out.message = redactInvestigationSecrets(out.message);
+    if (typeof out.url === 'string') out.url = purposeLimitedUrl(out.url);
+  }
   if (endpoint === 'intel_check') {
     if (typeof out.value === 'string') out.value = out.indicator_type === 'domain' ? new URL(minimalIndicator(out.value)).hostname : minimalIndicator(out.value);
     if (Array.isArray(out.values)) out.values = out.values.map(v => minimalIndicator(String(v)));

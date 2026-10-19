@@ -56,6 +56,10 @@ import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { ReportScamHelper } from "@/src/components/ReportScamHelper";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
+import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
+import { getOriginalSource, type OriginalSource } from "@/src/store/originalSource";
+import { listImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -375,6 +379,9 @@ function ScentSection({ event }: { event: PatrolEvent }) {
 
 // ── Evidence Tab ─────────────────────────────────────────────────────────────
 
+/** For investigation cases: show the privacy-protected evidence Magnum actually received.
+ *  For deterministic cases (DNS block, etc.): show the local observation details.
+ *  Never reconstruct evidence from Magnum prose, Higgins explanation, or metadata. */
 function EvidenceContent({ event }: { event: PatrolEvent }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -382,71 +389,177 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   const record = event.patrol_record;
   const si = sourceIcon(event.category, meta);
   const briefing = record?.higginsBriefing;
+  const isInvestigation = !!event.investigation_case_id;
 
+  // Load device investigation data for investigation-sourced cases
+  const [inv, setInv] = useState<DeviceInvestigation | null>(null);
+  const [origSrc, setOrigSrc] = useState<OriginalSource | null>(null);
+  const [imgEvidence, setImgEvidence] = useState<ImageEvidenceRecord | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!isInvestigation) { setLoaded(true); return; }
+    (async () => {
+      const caseId = event.investigation_case_id!;
+      const [investigation, original, imgRec] = await Promise.all([
+        getInvestigation(caseId).catch(() => null),
+        getOriginalSource(event.event_id).catch(() => null),
+        listImageEvidence(event.event_id).then((recs) => recs[0] ?? null).catch(() => null),
+      ]);
+      setInv(investigation);
+      setOrigSrc(original);
+      setImgEvidence(imgRec);
+      setLoaded(true);
+    })();
+  }, [isInvestigation, event.investigation_case_id, event.event_id]);
+
+  if (!loaded) return null;
+
+  // ── Investigation evidence: show what Magnum actually received ──
+  if (isInvestigation) {
+    return (
+      <View style={s.content}>
+        {/* Primary: Evidence investigated by Magnum DI */}
+        <View style={s.evidenceSection} testID="tc-evidence-investigated">
+          <View style={s.evidenceHeader}>
+            <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
+              <si.Icon size={18} color={si.fg} />
+            </View>
+            <View style={s.evidenceHeaderText}>
+              <Text style={s.evidenceHeaderTitle}>Evidence investigated by Magnum DI</Text>
+            </View>
+          </View>
+
+          <View style={s.evidenceBody}>
+            {/* Show the actual protected evidence submitted to Magnum */}
+            <InvestigatedEvidenceView
+              inv={inv}
+              originalSource={origSrc}
+              imageEvidence={imgEvidence}
+              event={event}
+              meta={meta}
+            />
+
+            {/* Privacy protection notice */}
+            {inv?.evidenceItems?.some((e) => e.transformations?.length > 0) ? (
+              <Text style={s.provenanceNote} testID="tc-evidence-privacy-note">
+                Personal-data protection was applied before this evidence left your device. Credentials were removed; investigative indicators (scammer identifiers, URLs, sender details) were retained.
+              </Text>
+            ) : (
+              <Text style={s.provenanceNote}>
+                This evidence was submitted for investigation after Apollo's privacy protection step.
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Image evidence — show the copy Apollo sent (not the original) */}
+        <ImageEvidenceCompare caseKey={event.event_id} title={event.headline} date={event.occurred_at} summary={{
+          overview: briefing?.meaning || event.what_happened || null,
+          findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
+          steps: [...new Set([event.what_to_do, briefing?.action].filter((v): v is string => !!v && v !== "No action required."))],
+          uncertainties: [],
+        }} />
+
+        {event.state !== "resting" ? <ReportScamHelper brand={event.claimed_brand ?? null} caseKey={event.event_id} /> : null}
+
+        {/* Analysis signals (from Magnum DI findings — NOT presented as evidence) */}
+        {briefing?.evidence_points && briefing.evidence_points.length > 0 ? (
+          <View style={s.evidenceSection}>
+            <CollapseSection
+              icon={Search} iconBg="#DBEAFE" iconFg="#1E3A5F"
+              title={`${si.label} analysis`}
+              subtitle="Findings from Magnum DI investigation"
+              testID="tc-evidence-analysis"
+            >
+              {briefing.evidence_points.map((point, i) => (
+                <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Text style={{ color: "#6B7280", marginTop: 1 }}>•</Text>
+                  <Text style={s.evidenceOriginalText}>{point}</Text>
+                </View>
+              ))}
+            </CollapseSection>
+          </View>
+        ) : null}
+
+        {/* Apollo detection evidence */}
+        {event.enforcement_evidence ? (
+          <View style={s.evidenceSection}>
+            <CollapseSection
+              icon={Shield} iconBg="#FEE2E2" iconFg="#991B1B"
+              title="Apollo detection evidence"
+              subtitle="When and how this was detected"
+              testID="tc-evidence-detection"
+            >
+              <EvidenceField label="Mechanism:" value={event.enforcement_evidence.mechanism.replace(/_/g, " ")} />
+              <EvidenceField label="Action:" value={event.enforcement_evidence.enforced_action.replace(/_/g, " ")} />
+              <EvidenceField label="Result:" value={event.enforcement_evidence.result.replace(/_/g, " ")} />
+              <EvidenceField label="Confidence:" value={event.enforcement_evidence.confidence} />
+              {event.enforcement_evidence.destination_domain ? (
+                <EvidenceField label="Destination:" value={event.enforcement_evidence.destination_domain} />
+              ) : null}
+              <EvidenceField label="Observed:" value={formatDateTime(event.enforcement_evidence.observed_at)} />
+            </CollapseSection>
+          </View>
+        ) : null}
+
+        {/* Supporting references */}
+        {event.supporting_references && event.supporting_references.length > 0 ? (
+          <View style={s.evidenceSection}>
+            <CollapseSection
+              icon={Globe} iconBg="#D1FAE5" iconFg="#065F46"
+              title={`Supporting references (${event.supporting_references.length})`}
+              testID="tc-evidence-refs"
+            >
+              {event.supporting_references.map((ref, i) => (
+                <Pressable key={i} onPress={() => void Linking.openURL(ref.url)} style={{ gap: 2 }}>
+                  <Text style={[s.evidenceFieldLabel, { width: "auto" }]}>{ref.label}</Text>
+                  <Text style={s.evidenceLink}>{ref.url}</Text>
+                </Pressable>
+              ))}
+            </CollapseSection>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  // ── Non-investigation (deterministic): show local observation as before ──
   return (
     <View style={s.content}>
-      {/* Original source — first and unaltered */}
       <View style={s.evidenceSection} testID="tc-evidence-original">
         <View style={s.evidenceHeader}>
           <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
             <si.Icon size={18} color={si.fg} />
           </View>
           <View style={s.evidenceHeaderText}>
-            <Text style={s.evidenceHeaderTitle}>Original {si.label.toLowerCase()} (exact source)</Text>
+            <Text style={s.evidenceHeaderTitle}>{si.label} observation</Text>
           </View>
         </View>
 
         <View style={s.evidenceBody}>
-          {/* The saved original source itself — exactly as Apollo investigated it. Metadata only when no original was saved. */}
-          <OriginalSourceView caseKeys={[event.event_id, event.investigation_case_id]} fallback={<>
-            <Text style={s.provenanceNote} testID="tc-evidence-original-missing">
-              {"The original wasn't saved on this device for this case. Apollo saves originals for cases checked from v1.1.14. Server copies are deleted after 24 hours, so older cases can't be recovered."}
-            </Text>
-
-          {/* Email fields */}
+          <OriginalSourceView caseKeys={[event.event_id]} fallback={<>
           {meta?.sender ? <EvidenceField label="From:" value={meta.sender} /> : null}
           {meta?.subject ? <EvidenceField label="Subject:" value={meta.subject} /> : null}
           {meta?.received_at ? <EvidenceField label="Date:" value={formatDateTime(meta.received_at)} /> : null}
-          {meta?.reply_to ? <EvidenceField label="Reply-to:" value={meta.reply_to} /> : null}
-          {meta?.provider ? <EvidenceField label="Provider:" value={meta.provider} /> : null}
-          {meta?.auth_passed !== null && meta?.auth_passed !== undefined ? (
-            <EvidenceField label="Auth:" value={meta.auth_passed ? "Passed" : "Failed"} />
-          ) : null}
-
-          {/* SMS/message fields */}
           {meta?.preview ? (
             <View style={s.evidenceOriginalContent}>
               <Text style={s.evidenceOriginalText} selectable testID="tc-evidence-preview">{meta.preview}</Text>
             </View>
           ) : null}
-
-          {/* Link/URL */}
           {(meta?.url ?? event.local_indicator) ? (
             <View style={s.evidenceOriginalContent}>
-              <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>Original URL</Text>
+              <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>Observed URL</Text>
               <Text style={s.evidenceOriginalText} selectable testID="tc-evidence-url">
                 {meta?.url ?? event.local_indicator}
               </Text>
             </View>
           ) : null}
-
-          {/* Domain */}
           {event.indicator_host && !meta?.url && !event.local_indicator ? (
             <EvidenceField label="Domain:" value={event.indicator_host} />
           ) : null}
-
-          {/* Screenshot question */}
-          {meta?.user_question ? <EvidenceField label="Question:" value={meta.user_question} /> : null}
           </>} />
 
-          {/* Open original link */}
-          {(meta?.url ?? event.local_indicator) ? (
-            <Pressable onPress={() => void Linking.openURL((meta?.url ?? event.local_indicator)!)} testID="tc-evidence-open-link">
-              <Text style={s.evidenceLink}>Open original source →</Text>
-            </Pressable>
-          ) : null}
-
-          {/* Evidence provenance */}
           {event.evidence_provenance ? (
             <Text style={s.provenanceNote}>
               Source: {event.evidence_provenance === "local_device" ? "captured on this device"
@@ -458,7 +571,6 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
         </View>
       </View>
 
-      {/* Image evidence — original (device only) beside the copy Apollo sent */}
       <ImageEvidenceCompare caseKey={event.event_id} title={event.headline} date={event.occurred_at} summary={{
         overview: briefing?.meaning || event.what_happened || null,
         findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
@@ -466,8 +578,6 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
         uncertainties: [],
       }} />
       {event.state !== "resting" ? <ReportScamHelper brand={event.claimed_brand ?? null} caseKey={event.event_id} /> : null}
-
-      {/* Progressive disclosure sections */}
 
       {/* Links found */}
       {meta?.link_count !== null && meta?.link_count !== undefined ? (
@@ -480,43 +590,6 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
           >
             {event.local_indicator ? <Text style={s.evidenceOriginalText} selectable>{event.local_indicator}</Text> : null}
             {event.indicator_host ? <EvidenceField label="Domain:" value={event.indicator_host} /> : null}
-          </CollapseSection>
-        </View>
-      ) : null}
-
-      {/* Attachments */}
-      {meta?.attachment_count !== null && meta?.attachment_count !== undefined ? (
-        <View style={s.evidenceSection}>
-          <CollapseSection
-            icon={Paperclip} iconBg="#F3F4F6" iconFg="#374151"
-            title={`Attachments (${meta.attachment_count})`}
-            subtitle={meta.attachment_count > 0
-              ? meta.attachment_names?.join(", ") ?? `${meta.attachment_count} file(s)`
-              : "No attachments"}
-            testID="tc-evidence-attachments"
-          >
-            {meta.attachment_names?.map((name, i) => (
-              <Text key={i} style={s.evidenceOriginalText}>{name}</Text>
-            )) ?? <Text style={s.alertBody}>No attachments were found.</Text>}
-          </CollapseSection>
-        </View>
-      ) : null}
-
-      {/* Analysis signals */}
-      {briefing?.evidence_points && briefing.evidence_points.length > 0 ? (
-        <View style={s.evidenceSection}>
-          <CollapseSection
-            icon={Search} iconBg="#DBEAFE" iconFg="#1E3A5F"
-            title={`${si.label} analysis`}
-            subtitle="Headers, sender checks and content signals"
-            testID="tc-evidence-analysis"
-          >
-            {briefing.evidence_points.map((point, i) => (
-              <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Text style={{ color: "#6B7280", marginTop: 1 }}>•</Text>
-                <Text style={s.evidenceOriginalText}>{point}</Text>
-              </View>
-            ))}
           </CollapseSection>
         </View>
       ) : null}
@@ -559,6 +632,112 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
           </CollapseSection>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/** Shows the actual privacy-protected evidence that Magnum DI received.
+ *  For text/URL: re-applies the same deterministic privacy function to the local original.
+ *  For images: shows the sentUri (the copy actually uploaded after credential blackout).
+ *  Never reconstructs evidence from Magnum prose, Higgins explanation, or metadata. */
+function InvestigatedEvidenceView({ inv, originalSource, imageEvidence, event, meta }: {
+  inv: DeviceInvestigation | null;
+  originalSource: OriginalSource | null;
+  imageEvidence: ImageEvidenceRecord | null;
+  event: PatrolEvent;
+  meta: SourceMetadata | null | undefined;
+}) {
+  const s = useStyles();
+
+  // If no device investigation stored, show unavailable notice
+  if (!inv) {
+    return (
+      <View style={s.evidenceOriginalContent}>
+        <Text style={s.provenanceNote} testID="tc-evidence-unavailable">
+          Investigation evidence unavailable — the investigation data for this case was not saved on this device.
+        </Text>
+      </View>
+    );
+  }
+
+  // Build the protected evidence from the local original + deterministic privacy function
+  const protectedItems: { kind: string; label: string; content: string | null }[] = [];
+
+  // Text evidence: apply the same credential redaction Magnum received
+  if (originalSource?.text) {
+    protectedItems.push({
+      kind: "text",
+      label: originalSource.kind === "email" ? "Email content" : originalSource.kind === "text" ? "Message content" : "Text content",
+      content: redactInvestigationSecrets(originalSource.text),
+    });
+  }
+
+  // URL evidence: apply the same URL sanitization Magnum received
+  if (originalSource?.url) {
+    protectedItems.push({
+      kind: "url",
+      label: "URL submitted",
+      content: purposeLimitedUrl(originalSource.url),
+    });
+  }
+
+  // Structured fields from original (sender, subject, etc.) — these are investigative evidence, not personal data
+  if (originalSource?.fields?.length) {
+    for (const f of originalSource.fields) {
+      protectedItems.push({
+        kind: "field",
+        label: f.label,
+        content: redactInvestigationSecrets(f.value),
+      });
+    }
+  }
+
+  // Image evidence: show the actual copy Apollo sent (sentUri from imageEvidence store)
+  if (imageEvidence?.sentUri) {
+    protectedItems.push({
+      kind: "image",
+      label: "Screenshot/image sent to Magnum DI",
+      content: imageEvidence.sentUri,
+    });
+  }
+
+  // Fall back to evidence items metadata if no local original was saved
+  if (protectedItems.length === 0 && inv.evidenceItems?.length > 0) {
+    for (const item of inv.evidenceItems.filter((e) => e.origin === "user_submission")) {
+      const transforms = item.transformations?.map((t) => t.description).join("; ") || null;
+      protectedItems.push({
+        kind: item.kind,
+        label: item.label || `${item.kind} evidence`,
+        content: transforms ? `[${item.kind}] — Privacy transformations applied: ${transforms}` : `[${item.kind} evidence submitted]`,
+      });
+    }
+  }
+
+  // If truly nothing is available
+  if (protectedItems.length === 0) {
+    return (
+      <View style={s.evidenceOriginalContent}>
+        <Text style={s.provenanceNote} testID="tc-evidence-unavailable">
+          Investigation evidence unavailable
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      {protectedItems.map((item, i) => (
+        <View key={i} style={s.evidenceOriginalContent}>
+          <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>{item.label}</Text>
+          {item.kind === "image" && item.content ? (
+            <Image source={{ uri: item.content }} style={{ width: "100%", height: 200, borderRadius: radius.sm }} resizeMode="contain" />
+          ) : item.content ? (
+            <Text style={s.evidenceOriginalText} selectable testID={`tc-evidence-item-${i}`}>
+              {item.content}
+            </Text>
+          ) : null}
+        </View>
+      ))}
     </View>
   );
 }

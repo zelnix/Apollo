@@ -10,10 +10,18 @@ import { screenImage } from "@/src/domain/imagePrivacy";
 
 /** Submitting an image authorises its analysis. The only privacy step is credential protection: if on-device
  *  text recognition finds a credential/authentication secret that wasn't already redacted, the image is not
- *  sent (it can't be blacked out here). Personal details are evidence and are kept. The original is unchanged. */
+ *  sent (it can't be blacked out here). Personal details are evidence and are kept. The original is unchanged.
+ *  If on-device screening was unavailable (ocr_unavailable), the image is WITHHELD — fail-closed. */
 async function investigationImageMeta(uri: string, gate?: SanitizationReceipt): Promise<Record<string, unknown>> {
-  if (gate) return gate.decision === "withheld" ? Promise.reject(new Error("This image was withheld.")) : sanitizationMetadata(gate);
+  if (gate) {
+    if (gate.decision === "withheld") return Promise.reject(new Error("This image was withheld."));
+    if (gate.decision === "not_checked") return Promise.reject(new Error("Apollo could not verify this image is safe to send (on-device text recognition unavailable). Type the text manually or try again with a native build."));
+    return sanitizationMetadata(gate);
+  }
   const screening = await screenImage(uri, "investigation_evidence");
+  if (screening.status === "ocr_unavailable") {
+    throw new Error("Apollo could not screen this image for credentials (text recognition unavailable). The image was not sent.");
+  }
   if (screening.sensitiveRegions.some((r) => r.sensitiveType === "credential")) {
     throw new Error("This image appears to show a password, PIN or one-time code, so Apollo didn't send it. Crop that part out and add the image again.");
   }

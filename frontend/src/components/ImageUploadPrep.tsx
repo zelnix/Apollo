@@ -1,8 +1,8 @@
 // Prepares a submitted image for investigation: warn → (optional crop) → Continue → black out detected credentials
 // on a copy → send. Everything else in the image (names, numbers, emails, medical/financial/payment details, senders,
 // URLs, layout) is kept as evidence. The original file is never modified. If a detected credential can't be blacked
-// out, the image is not sent (fail closed). Detection relies on on-device text recognition, which can miss text and
-// is unavailable in Expo Go / web preview — in that case the copy is sent without credential blackout.
+// out, the image is not sent (fail closed). Detection relies on on-device text recognition — when unavailable the
+// image is WITHHELD (fail-closed) and the user is offered text entry or cropping as safe alternatives.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Image, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
@@ -12,9 +12,8 @@ import { ImageUploadWarning } from "@/src/components/ImageUploadWarning";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 
 export interface PreparedImage {
-  /** credentials_redacted: copy with detected credentials blacked out; no_credentials_found: metadata-stripped copy;
-   *  not_checked: on-device text recognition unavailable, metadata-stripped copy. */
-  decision: "credentials_redacted" | "no_credentials_found" | "not_checked";
+  /** credentials_redacted: copy with detected credentials blacked out; no_credentials_found: metadata-stripped copy. */
+  decision: "credentials_redacted" | "no_credentials_found";
   /** URI of the analysis copy (the original file is untouched). */
   imageUri: string;
   /** The original image as chosen by the user (before crop) — kept on device only. */
@@ -52,11 +51,16 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
   const prepare = useCallback(async () => {
     setPrepError(null);
     if (!screening.strippedImageUri) { setPrepError("Apollo couldn't prepare this image. Nothing was sent."); return; }
+    // Fail-closed: if on-device screening was unable to verify the image is credential-free, withhold it.
+    if (screening.status === "ocr_unavailable") {
+      setPrepError("Apollo can't verify this image is safe to send because on-device text recognition is unavailable. Type the text manually, or use a native build for automatic screening.");
+      return;
+    }
     setBusy("Preparing image…");
     const base = { originalUri, cropped, text: screening.extractedText || null, screening };
     try {
       if (credentials.length === 0) {
-        onComplete({ ...base, decision: screening.status === "ocr_unavailable" ? "not_checked" : "no_credentials_found", imageUri: screening.strippedImageUri, redactedRegions: 0 });
+        onComplete({ ...base, decision: "no_credentials_found", imageUri: screening.strippedImageUri, redactedRegions: 0 });
         return;
       }
       if (!captureViewRef.current) throw new Error("capture view missing");

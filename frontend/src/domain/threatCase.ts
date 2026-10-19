@@ -208,15 +208,40 @@ export function buildTimeline(event: PatrolEvent): TimelineEntry[] {
   }
 
   // 4. Magnum DI investigation (only if one actually exists)
+  // Factual timeline: Investigation requested → Personal-data protection applied → Sent to Magnum DI → Response received
   const investigationId = event.investigation_case_id ?? record?.investigationCaseId;
   if (investigationId) {
     entries.push({
       id: `tl-${idx++}`,
       timestamp: null,
-      title: "Magnum DI investigation started",
-      description: "Full investigation initiated.",
+      title: "Investigation requested",
+      description: "You requested a Magnum DI investigation for this item.",
       dotColor: "#2563EB",
       iconId: "investigation",
+    });
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: null,
+      title: "Personal-data protection applied",
+      description: "Credentials removed; your personal information protected before evidence left this device.",
+      dotColor: "#059669",
+      iconId: "protection",
+    });
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: null,
+      title: "Sent to Magnum DI",
+      description: "Protected evidence submitted for investigation.",
+      dotColor: "#2563EB",
+      iconId: "gathering",
+    });
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: null,
+      title: "Response received",
+      description: "Magnum DI completed its investigation and returned findings.",
+      dotColor: "#059669",
+      iconId: "findings",
     });
   }
 

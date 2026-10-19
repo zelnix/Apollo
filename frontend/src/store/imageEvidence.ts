@@ -64,7 +64,9 @@ export async function saveImageEvidence(
       originalUri: prepared.originalUri ? keepFile(prepared.originalUri, `${id}_original`) : null,
       sentUri: keepFile(prepared.imageUri, `${id}_sent`),
       redactedRegions: prepared.redactedRegions, cropped: prepared.cropped,
-      checked: prepared.decision !== "not_checked", createdAt: new Date().toISOString(),
+      // After the fail-closed change, images are always screened before saving.
+      // "not_checked" is no longer possible — images are either screened or withheld (never saved).
+      checked: true, createdAt: new Date().toISOString(),
     };
     await writeAll([record, ...(await readAll())]);
     return record;
