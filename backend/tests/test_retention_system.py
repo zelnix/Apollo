@@ -30,6 +30,7 @@ def register_device() -> tuple[str, dict]:
     return data["device_id"], {"Authorization": f"Bearer {data['device_token']}"}
 
 
+
 class TestRetentionConstants:
     def test_evidence_retention_24h(self):
         from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
@@ -41,6 +42,7 @@ class TestRetentionConstants:
         assert not hasattr(capacity, "REPORT_RETENTION_SECONDS"), "REPORT_RETENTION_SECONDS removed in Stage 11"
         assert not hasattr(capacity, "REPORT_STORAGE_LIMIT_BYTES"), "REPORT_STORAGE_LIMIT_BYTES removed in Stage 11"
         assert not hasattr(capacity, "SAVED_RETENTION"), "SAVED_RETENTION removed in Stage 11"
+
 
 
 class TestEvidenceContentExpiry:
@@ -64,7 +66,7 @@ class TestEvidenceContentExpiry:
         assert wire["total"] == 3
 
 
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestSweepEvidenceContent:
     async def test_sweep_marks_expired_evidence(self):
         from core.db import db, now_utc
@@ -93,14 +95,14 @@ class TestSweepEvidenceContent:
 
 
 @pytest.mark.skip(reason="promote_to_saved not implemented — server-side report retention is disabled")
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestPromoteToSaved:
     async def test_promote_sets_retention_fields(self):
         pass
 
 
 @pytest.mark.skip(reason="Storage limit functions not implemented — server-side report storage is disabled")
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestStorageLimit:
     async def test_enforce_deletes_oldest_first(self):
         pass
@@ -110,10 +112,11 @@ class TestStorageLimit:
 
 
 @pytest.mark.skip(reason="migrate_legacy_retention not implemented — server-side report retention is disabled")
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestMigrateLegacy:
     async def test_migration_promotes_completed_cases(self):
         pass
+
 
 
 class TestStorageInfoEndpoint:
@@ -129,7 +132,7 @@ class TestStorageInfoEndpoint:
         assert body["evidenceRetentionHours"] == 24
 
 
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestEvidenceExpiryDoesNotReset:
     async def test_get_evidence_metadata_does_not_change_expiry(self):
         from core.db import db, now_utc
@@ -153,7 +156,7 @@ class TestEvidenceExpiryDoesNotReset:
         await db.investigation_evidence.delete_many({"owner_id": owner})
 
 
-@pytest.mark.asyncio(loop_scope="module")
+
 class TestCrossOwnerIsolation:
     async def test_sweep_only_affects_own_evidence(self):
         from core.db import db, now_utc
@@ -180,6 +183,7 @@ class TestCrossOwnerIsolation:
         assert row_a["availability"] == "content_expired"
         assert row_b["availability"] == "available"
         await db.investigation_evidence.delete_many({"owner_id": {"$in": [owner_a, owner_b]}})
+
 
 
 class TestReportRetentionNotice:

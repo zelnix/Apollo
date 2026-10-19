@@ -102,6 +102,11 @@ class TestArchitecturalEnforcement:
             for match in call_pattern.finditer(content):
                 # Find the complete call (rough: scan until matching closing paren or 10 lines)
                 start = match.start()
+                # Skip matches inside docstrings or comments
+                line_start = content.rfind("\n", 0, start) + 1
+                line = content[line_start:start + 80]
+                if line.lstrip().startswith(("#", '"""', "'''")) or '"""' in line[:line.index(match.group()) if match.group() in line else len(line)]:
+                    continue
                 # Look for purpose= within the next 500 chars
                 context = content[start:start + 500]
                 if "purpose=" not in context and "**kwargs" not in context:

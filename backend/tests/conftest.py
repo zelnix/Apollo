@@ -6,7 +6,7 @@
 # ids back to the legacy ones in response bodies so the tests' equality checks still hold.
 # Authentication itself is tested WITHOUT this shim in test_device_auth.py (it uses requests.post directly with
 # explicit headers and its own ids, which are never rewritten because they are real server ids).
-import fcntl, json, os, re, tempfile, time
+import asyncio, fcntl, json, os, re, tempfile, time
 from pathlib import Path
 
 import pytest, requests
@@ -137,3 +137,10 @@ def _forbid_live_gemini(monkeypatch):
 
     monkeypatch.setattr(provider, "generate", blocked)
     monkeypatch.setattr(provider, "generate_json", blocked)
+
+
+
+# Motor event-loop compatibility: asyncio_default_fixture_loop_scope = session in pytest.ini
+# keeps one loop per xdist worker for the whole test session, so Motor's AsyncIOMotorClient
+# never hits "Event loop is closed" on subsequent tests.
+

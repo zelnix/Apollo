@@ -122,21 +122,13 @@ def test_artefact_extraction():
 
 
 def _run(coro):
-    """Run an async function safely, reusing Motor's event loop if available."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+    """Run an async function safely under xdist workers."""
+    return asyncio.run(coro)
 
 
-def test_pipeline_submission():
+async def test_pipeline_submission():
     """Test that pipeline submission creates a case with correct initiator."""
-    _run(_pipeline_submission_impl())
+    await _pipeline_submission_impl()
 
 
 async def _pipeline_submission_impl():

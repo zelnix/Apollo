@@ -39,7 +39,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
 
         # Patch record_usage to avoid DB dependency
         with patch("services.higgins.mock_provider._record_usage", new_callable=AsyncMock):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 mock_provider.mock_generate(
                     "test system prompt",
                     [types.Content(role="user", parts=[types.Part(text="test")])],
@@ -69,7 +69,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
             recorded_calls.append(kwargs)
 
         with patch("services.higgins.mock_provider._record_usage", side_effect=capture_record):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 mock_provider.mock_generate(
                     "test", "test input",
                     model="gemini-3.8-flash",
@@ -97,7 +97,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
 
         with patch("services.higgins.mock_provider._record_usage", new_callable=AsyncMock):
             # Single call with search capability — should return conclusion text directly
-            r1 = asyncio.get_event_loop().run_until_complete(
+            r1 = asyncio.run(
                 mock_provider.mock_generate(
                     "system", [types.Content(role="user", parts=[types.Part(text="investigate")])],
                     model="gemini-3.8-flash",
@@ -139,7 +139,7 @@ class TestMockModeBlocksProductionGemini(unittest.TestCase):
             # Verify that the mode is mock
             self.assertEqual(provider.get_provider_mode(), "mock")
 
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 provider.generate(
                     "test", "test input",
                     model="gemini-3.8-flash",
@@ -181,7 +181,7 @@ class TestMockModeBlocksProductionGemini(unittest.TestCase):
         mock_provider.mock_generate = crashing_mock
         try:
             with self.assertRaises(RuntimeError) as ctx:
-                asyncio.get_event_loop().run_until_complete(
+                asyncio.run(
                     # Call mock_generate directly (the provider.generate route goes to this)
                     crashing_mock(
                         "test", "test",
@@ -221,7 +221,7 @@ class TestMailboxCannotReachPaidGemini(unittest.TestCase):
              patch("services.higgins.mock_provider._record_usage", new_callable=AsyncMock):
 
             # This simulates the coordinator calling generate() for a mailbox-triggered job
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 tracking_mock(
                     "system prompt", "evidence text",
                     model="gemini-3.8-flash",
@@ -250,7 +250,7 @@ class TestRecoveryJobsCannotReachPaidGemini(unittest.TestCase):
         mock_provider.reset_round_counters()
 
         with patch("services.higgins.mock_provider._record_usage", new_callable=AsyncMock):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 provider.generate(
                     "system", [types.Content(role="user", parts=[types.Part(text="resumed investigation")])],
                     model="gemini-3.8-flash",
@@ -356,7 +356,7 @@ class TestMockResponseDeterminism(unittest.TestCase):
         with patch("services.higgins.mock_provider._record_usage", new_callable=AsyncMock):
             for _ in range(3):
                 mock_provider.reset_round_counters()
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.run(
                     mock_provider.mock_generate(
                         "system", [types.Content(role="user", parts=[types.Part(text="test input")])],
                         model="gemini-3.8-flash",

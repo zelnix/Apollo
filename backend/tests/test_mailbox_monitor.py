@@ -14,7 +14,6 @@ from services import mailbox_monitor
 from services.higgins import repository as repo
 
 
-@pytest.mark.asyncio
 async def test_enabled_mailbox_monitor_is_shared_summary_only_and_idempotent(monkeypatch):
     import core.db as core_db
 
@@ -34,6 +33,23 @@ async def test_enabled_mailbox_monitor_is_shared_summary_only_and_idempotent(mon
 
     monkeypatch.setattr(mailbox_monitor.gmail, "scan_inbox_page", fake_scan)
     monkeypatch.setattr(mailbox_monitor.jobs, "launch", lambda *_args: None)
+
+    # Mock triage to return a suspicious verdict so the monitor escalates to investigation
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    fake_triage = AsyncMock(return_value=SimpleNamespace(
+        should_escalate=True,
+        tier=SimpleNamespace(value=3),
+        verdict=SimpleNamespace(value="suspicious"),
+        reason="Unexpected verification-code wording.",
+        escalation_reason="Sender not authenticated.",
+        cost_usd=0.0,
+        cached=True,
+        provider_evidence=None,
+        providers_used=[],
+    ))
+    import services.triage_engine as _triage_mod
+    monkeypatch.setattr(_triage_mod, "triage_item", fake_triage)
 
     await mailbox_monitor.monitor_enabled_mailboxes_once()
     receipt = await fresh_db.mailbox_assessment_receipts.find_one({"device_id": device_id}, {"_id": 0})
