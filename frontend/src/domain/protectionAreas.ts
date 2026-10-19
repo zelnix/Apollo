@@ -109,13 +109,6 @@ const TONE_RANK: Record<GateTone, number> = {
   good: 0,
 };
 
-function gateMode(gate: GatePresentation): "automatic" | "manual" {
-  const auto = gate.capability.automatic;
-  if (!auto) return "manual";
-  if (auto.manualOnly) return "manual";
-  return "automatic";
-}
-
 /** Original technical Gate names — shown ONLY inside the expandable "How Apollo protects you" detail. */
 const TECHNICAL_GATE_NAME: Record<GateId, string> = {
   site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Internet Gate",
@@ -127,7 +120,8 @@ function buildCapability(gate: GatePresentation): ProtectionAreaCapability {
     gateId: gate.id,
     label: CAPABILITY_LABELS[gate.id],
     gateName: TECHNICAL_GATE_NAME[gate.id],
-    mode: gateMode(gate),
+    // Read from canonical resolved state — no independent mode calculation.
+    mode: gate.resolved.isAutomatic ? "automatic" : "manual",
     statusLabel: gate.statusLabel,
     tone: gate.tone,
     currentHelp: gate.currentHelp,

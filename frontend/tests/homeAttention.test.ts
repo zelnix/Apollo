@@ -10,6 +10,7 @@ const gate = (over: Partial<GatePresentation> & Pick<GatePresentation, "id" | "t
   statusLabel: "Action needed", tone: over.tone,
   capability: over.capability ?? { automatic: { kind: "monitoring", state: "interrupted", limitation: "Reconnect to restore protection." } },
   primaryAction: over.primaryAction ?? { id: "check_network", label: "Reconnect Internet Gate" },
+  resolved: over.resolved ?? { coverageState: "temporarily_unavailable", isAutomatic: true },
 });
 
 const event = (over: Partial<PatrolEvent>): PatrolEvent => ({

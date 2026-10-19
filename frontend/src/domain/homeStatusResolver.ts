@@ -122,7 +122,6 @@ const CAPABILITY_LABEL: Record<string, string> = {
 };
 
 import { gateName } from "./gateRegistry";
-import { resolveProtectionState } from "./protectionStateResolver";
 
 /** Automatic capability IDs (continuous background monitoring or enforcement). */
 const AUTOMATIC_IDS = new Set(["site_guard", "connection_guard", "message_guard"]);
@@ -155,24 +154,17 @@ function deriveCoverage(gates: GatePresentation[], capabilities: Capability[], p
   const items: CoverageItem[] = [];
 
   for (const gate of gates) {
-    const auto = gate.capability.automatic;
-    const isAutomatic = !!auto && !auto.manualOnly;
-
-    // Delegate to the shared resolver — ONE place decides coverage state.
-    const resolved = resolveProtectionState({
-      automaticState: auto?.state,
-      manualOnly: auto?.manualOnly,
-      coverageLimited: auto?.coverageLimited,
-      onDemandState: gate.capability.onDemand?.state,
-    });
-    const state = resolved.coverageState;
+    // Read from the canonical resolved state — computed ONCE in gates.ts by
+    // resolveProtectionState(). No re-resolution here.
+    const state = gate.resolved.coverageState;
+    const isAutomatic = gate.resolved.isAutomatic;
 
     items.push({
       id: gate.id,
       name: gateName(gate.id),
       state,
       isAutomatic,
-      detail: gate.currentHelp,
+      detail: gate.capability.automatic?.limitation || gate.currentHelp,
     });
   }
 

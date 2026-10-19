@@ -55,7 +55,7 @@ test("a verified protection failure (enabled + permitted but not operating) repo
   assert.equal(site.capability.automatic?.state, "interrupted");
   assert.equal(site.statusLabel, "Action needed");
   assert.equal(site.tone, "action");
-  const working = overview.gates.filter((g) => g.capability.automatic?.state === "running" && !g.capability.automatic?.manualOnly).length;
+  const working = overview.gates.filter((g) => g.resolved.coverageState === "active_verified" && g.resolved.isAutomatic).length;
   assert.ok(working > 0);
   assert.equal(overview.summary, "Protection active — reduced coverage");
 });

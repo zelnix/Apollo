@@ -16,6 +16,13 @@ export interface GatePresentation {
   id: GateId; title: string; purpose: string; currentHelp: string; statusLabel: GateStatusLabel; tone: GateTone;
   capability: { automatic?: { kind: GateAutomationKind; state: AutomaticCapabilityState; lastObservedAt?: string; limitation?: string; manualOnly?: boolean; coverageLimited?: boolean }; onDemand?: { state: OnDemandCapabilityState; action: UserAction } };
   primaryAction?: UserAction;
+  /** Canonical resolved state — computed ONCE by the protection state resolver.
+   *  All consumers (Home, Protection, Higgins, Support) read from here instead of
+   *  re-calling resolveProtectionState(). */
+  resolved: {
+    coverageState: import("./protectionStateResolver").CoverageItemState;
+    isAutomatic: boolean;
+  };
 }
 export type GateItem = GatePresentation;
 export interface GatesOverview { summary: string; higgins: string; primary: GatePresentation | null; gates: GatePresentation[] }
@@ -26,9 +33,11 @@ const cap = (items: Capability[], id: string) => items.find((item) => item.id ==
 const action = (id: UserAction["id"], label: string): UserAction => ({ id, label });
 const onDemand = (id: UserAction["id"], label: string, state: OnDemandCapabilityState = "ready") => ({ state, action: action(id, label) });
 
-function presentation(base: Omit<GatePresentation, "statusLabel" | "tone">): GatePresentation {
+function presentation(base: Omit<GatePresentation, "statusLabel" | "tone" | "resolved">): GatePresentation {
   const auto = base.capability.automatic; const od = base.capability.onDemand;
   // Delegate to the shared resolver — ONE place decides protection state.
+  // The resolved output is stored on the gate so ALL consumers (Home, Protection,
+  // Higgins, Support) read it directly. Nobody re-calls resolveProtectionState().
   const resolved = resolveProtectionState({
     automaticState: auto?.state,
     manualOnly: auto?.manualOnly,
@@ -39,7 +48,7 @@ function presentation(base: Omit<GatePresentation, "statusLabel" | "tone">): Gat
   const tone = resolved.tone;
   const request = !!auto && ["permission_needed", "setup_needed", "interrupted"].includes(auto.state);
   const primaryAction = request && base.primaryAction ? base.primaryAction : base.capability.onDemand?.action ?? base.primaryAction;
-  return { ...base, statusLabel, tone, primaryAction };
+  return { ...base, statusLabel, tone, primaryAction, resolved: { coverageState: resolved.coverageState, isAutomatic: resolved.isAutomatic } };
 }
 
 function simple(id: GateId, currentHelp: string, actionId: UserAction["id"], label: string, automatic?: GatePresentation["capability"]["automatic"], onDemandState: OnDemandCapabilityState = "ready"): GatePresentation {
@@ -149,9 +158,9 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const app = simple("app", "Apollo is ready to check an installed app or one you are considering.", "check_app", "Check an app", appAuto);
   const device = simple("device", "Apollo is checking visible protection health and is ready for a fuller device check.", "check_device", "Check my device", deviceAuto);
 
-  const rank = (gate: GatePresentation) => gate.tone === "action" ? 0 : (gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly) ? 1 : gate.capability.onDemand?.state === "ready" ? 2 : 3;
+  const rank = (gate: GatePresentation) => gate.tone === "action" ? 0 : (gate.resolved.coverageState === "active_verified" && gate.resolved.isAutomatic) ? 1 : gate.capability.onDemand?.state === "ready" ? 2 : 3;
   const gates = [site, link, text, call, network, account, emailGate, file, app, device].sort((a, b) => rank(a) - rank(b));
-  const primary = gates.find((gate) => gate.tone === "action") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
+  const primary = gates.find((gate) => gate.tone === "action") ?? null; const working = gates.filter((gate) => gate.resolved.coverageState === "active_verified" && gate.resolved.isAutomatic).length;
   const attentionGates = gates.filter((gate) => gate.tone === "action");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
   // A gate awaiting optional setup/permission is NOT an alarm. Only a verified problem (tone "action")

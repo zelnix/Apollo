@@ -94,7 +94,7 @@ export default function GuardScreen() {
   useEffect(() => { if (workingIds) void recordWorking(workingIds.split(",")).then(setHealthLog); }, [workingIds]);
   if (ready && !setupDone) return <Redirect href="/" />;
   const acctStatus = deriveGateState({ monitoredCount: acctEmails, lastScan: acctScan, lastCheckedAt: acctCheckedAt, checking: false });
-  const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
+  const active = health.gates.filter((gate) => gate.resolved.coverageState === "active_verified" && gate.resolved.isAutomatic).length;
   const attentionGates = health.gates.filter((gate) => gate.tone === "action");
   const attentionNames = attentionGates.map((g) => g.title).join(" and ");
   const reducedCoverage = attentionGates.length > 0 && active > 0;

@@ -28,6 +28,8 @@ function fakeGate(id: string, opts: {
   autoState?: string;
   manualOnly?: boolean;
 }) {
+  const isAutomatic = !!opts.autoState && !(opts.manualOnly ?? false);
+  const coverageState = opts.autoState === "running" && isAutomatic ? "active_verified" : opts.autoState === "running" && !isAutomatic ? "setup_available" : opts.autoState === "temporarily_unavailable" ? "temporarily_unavailable" : opts.autoState === "unsupported" ? "unsupported" : "unknown";
   return {
     id,
     title: opts.title ?? `${id} Gate`,
@@ -43,6 +45,7 @@ function fakeGate(id: string, opts: {
       onDemand: { available: true },
     },
     primaryAction: undefined,
+    resolved: { coverageState, isAutomatic },
   };
 }
 

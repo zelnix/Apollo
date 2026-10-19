@@ -34,7 +34,7 @@ function makeGate(overrides: Partial<GatePresentation> = {}): GatePresentation {
   return {
     id: "site_guard", title: "Site Guard", tone: "watching" as any,
     currentHelp: "All good", capability: { automatic: null },
-    primaryAction: null, ...overrides,
+    primaryAction: null, resolved: { coverageState: "active_verified", isAutomatic: true }, ...overrides,
   } as GatePresentation;
 }
 

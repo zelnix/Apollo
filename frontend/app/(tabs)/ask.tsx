@@ -134,7 +134,7 @@ export default function Ask() {
   useEffect(() => {
     if (!deviceId || health.checking || !health.checkedAt || contextRecorded.current === health.checkedAt) return;
     contextRecorded.current = health.checkedAt;
-    const on = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length; const attention = health.gates.filter((gate) => gate.tone === "action").map((gate) => gate.title);
+    const on = health.gates.filter((gate) => gate.resolved.coverageState === "active_verified" && gate.resolved.isAutomatic).length; const attention = health.gates.filter((gate) => gate.tone === "action").map((gate) => gate.title);
 
     // Improvement 6: Enrich Higgins context with daily activity for natural conversation
     const dailyActivity = buildDailyActivity(events);

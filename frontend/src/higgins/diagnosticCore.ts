@@ -67,12 +67,17 @@ export interface DiagnosticResult {
 
 // ── Diagnostic functions ─────────────────────────────────────────────────────
 
-/** Extract structured protection facts from the health snapshot. */
+/** Extract structured protection facts from the health snapshot.
+ *  Reads the CANONICAL resolved state from each gate — does not independently infer
+ *  protection status from raw permissions or run its own protection-status interpretation. */
 export function getProtectionStatus(health: ProtectionHealthSnapshot): DiagnosticResult {
   const gates = health.gates.map(gateToFact);
   const activeGates = gates.filter((g) => g.automaticState === "running");
   const issueGates = gates.filter((g) => g.needsAttention);
-  const vpnActive = health.protection?.enforcement === "vpn" || health.protection?.state === "active";
+  // Derive VPN active from the site gate's canonical resolved state — if site gate
+  // is "Watching" (active_verified) with enforcement, the VPN is running.
+  const siteGate = health.gates.find((g) => g.id === "site");
+  const vpnActive = siteGate?.resolved.coverageState === "active_verified" && siteGate?.resolved.isAutomatic;
   const serviceRunning = !!health.protection && health.protection.state !== "off";
 
   const issues: string[] = issueGates.map((g) => `${g.title}: ${g.limitation || g.statusLabel}`);
@@ -204,22 +209,30 @@ export function getPermissionStatus(permissions: ProtectionPermission[]): Diagno
   };
 }
 
-/** Get VPN-specific status. */
+/** Get VPN-specific status.
+ *  Reads the site gate's canonical resolved state to determine VPN activity.
+ *  Uses the gate's limitation text directly instead of independently generating reasons. */
 export function getVpnStatus(health: ProtectionHealthSnapshot): DiagnosticResult {
-  const vpnActive = health.protection?.enforcement === "vpn" || health.protection?.state === "active";
   const siteGate = health.gates.find((g) => g.id === "site");
+  // Use canonical resolved state — if site gate is active_verified and automatic, VPN is running.
+  const vpnActive = siteGate?.resolved.coverageState === "active_verified" && siteGate?.resolved.isAutomatic;
   const siteRunning = siteGate?.capability?.automatic?.state === "running";
 
   const parts: string[] = [];
   if (vpnActive) {
     parts.push("Apollo's VPN is active.");
-    if (siteRunning) parts.push("Site Gate is using it to inspect DNS queries and protect you from malicious websites.");
-    else parts.push("However, Site Gate is not currently running.");
+    if (siteRunning) parts.push("Website protection is using it to inspect DNS queries and protect you from malicious websites.");
+    else parts.push("However, website protection is not currently running.");
   } else {
     parts.push("Apollo's VPN is not active.");
-    if (siteGate) parts.push(`Site Gate status: ${siteGate.statusLabel}.`);
+    // Use the gate's own limitation/status text rather than generating independently.
+    if (siteGate) {
+      const reason = siteGate.capability.automatic?.limitation || siteGate.currentHelp;
+      parts.push(`Website protection: ${siteGate.statusLabel}. ${reason}`);
+    }
   }
 
+  // Read Private DNS from the site gate's limitation (it's already been evaluated there).
   if (health.network?.privateDnsActive) {
     parts.push("Note: Private DNS is active on your device, which may bypass Apollo's DNS protection.");
   }

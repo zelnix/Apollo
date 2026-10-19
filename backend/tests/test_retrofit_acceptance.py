@@ -142,7 +142,8 @@ def test_11_distinguish_historic_from_new():
     with_reassessment = _run(db.patrol_records.count_documents({"reassessment": {"$exists": True, "$ne": None}}))
     if with_reassessment == 0:
         import pytest; pytest.skip("No reassessment metadata — retrofit not run")
-    sample = _run(db.patrol_records.find_one({"reassessment": {"$exists": True, "$ne": None}}, {"_id": 0}))
+    sample = _run(db.patrol_records.find_one({"reassessment": {"$exists": True, "$ne": None}}, {"_id": 0})
+    )
     r = sample["reassessment"]
     assert "reassessed_at" in r, "Missing reassessed_at"
     assert "reason" in r, "Missing reason"
