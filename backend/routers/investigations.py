@@ -216,6 +216,94 @@ async def _pregather_specialist_evidence(gate: str | None, submissions: list) ->
     return await gather_provider_evidence(evidence)
 
 
+
+async def _launch_investigation(
+    owner: str,
+    gate: str | None,
+    question: str,
+    submissions: list[dict],
+    initial_findings: list[str] | None = None,
+    intel_evidence: list[dict] | None = None,
+    triage_provider_evidence: dict | None = None,
+    source_metadata: dict | None = None,
+    initiator: str = "user_check",
+) -> tuple[str | None, dict | None]:
+    """Shared investigation lifecycle for compatibility gates.
+
+    Creates case → ingests evidence → stores metadata → submits first turn.
+    Returns (case_id, job_wire_dict) or (None, None) on failure.
+
+    Used by analysis.py compatibility endpoints (/message/analyse,
+    /link/investigate) so the duplicate _create_investigation_case is removed
+    and every investigation follows the canonical path.
+    """
+    try:
+        case = await repo.create_case(owner, gate, None, initiator=initiator)
+        case_id = case["case_id"]
+
+        # Ingest submitted evidence items
+        for sub in (submissions or []):
+            if sub["kind"] == "url":
+                await ev.ingest_url(owner, case, sub["client_item_id"],
+                                    sub["value"], label=sub.get("label", ""))
+            else:
+                await ev.ingest_text(owner, case, sub["client_item_id"],
+                                     sub["value"],
+                                     label=sub.get("label", "submitted text"))
+
+        # Ingest pre-gathered specialist intelligence as evidence items
+        for idx, intel_item in enumerate(intel_evidence or []):
+            await ev.ingest_text(
+                owner, case, f"intel-{idx}",
+                json.dumps(intel_item, ensure_ascii=False, default=str),
+                origin="apollo_inference",
+                label=intel_item.get("label", "Pre-gathered specialist intelligence"),
+                coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
+
+        # Ingest Apollo initial findings
+        for idx, finding in enumerate(initial_findings or []):
+            await ev.ingest_text(
+                owner, case, f"apollo-finding-{idx}", finding,
+                origin="apollo_inference", label="Apollo initial finding",
+                coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
+
+        # Source metadata (actual recorded identifiers — never Gemini-inferred)
+        if source_metadata:
+            await db.investigation_cases.update_one(
+                {"owner_id": owner, "case_id": case_id},
+                {"$set": {"source_metadata": source_metadata}})
+
+        # Build triage_provider_evidence from intel if not already supplied
+        _triage = triage_provider_evidence
+        if not _triage and intel_evidence:
+            _triage = {}
+            for item in intel_evidence:
+                key = item.get("label", f"intel_{len(_triage)}")
+                _triage[key] = item
+
+        if _triage:
+            await db.investigation_cases.update_one(
+                {"owner_id": owner, "case_id": case_id},
+                {"$set": {"triage_provider_evidence": _triage}})
+
+        # Submit the first investigation turn
+        if question.strip():
+            idem_key = f"compat-{gate or 'general'}-{case_id}"
+            job = await _submit_turn(
+                owner, case,
+                SubmitTurn(expected_revision=0,
+                           turn_id=str(uuid.uuid4()),
+                           message=question),
+                idem_key)
+            return case_id, repo.job_view(job).wire() if job else None
+        return case_id, None
+    except Exception as exc:
+        __import__("logging").getLogger("apollo.investigations").warning(
+            "_launch_investigation failed (gate=%s): %s", gate, type(exc).__name__)
+        return None, None
+
+
+
 # ------------------------------------------------------------------ cases
 @router.post("/investigations", status_code=201)
 async def create_case(body: CreateCase, request: Request, idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key")):

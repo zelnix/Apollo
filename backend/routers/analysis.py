@@ -26,8 +26,9 @@ from services.investigation import extract_message_screenshot, purpose_limited_u
 from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
 from services.higgins.llm_boundary import Purpose
 from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
-from services.higgins import evidence as ev, repository as invest_repo, jobs as invest_jobs
-from services.higgins.contracts import EvidenceItem, EvidenceProvenance, Transformation, Coverage
+from services.higgins import evidence as ev, repository as invest_repo
+from services.higgins.contracts import EvidenceItem, EvidenceProvenance, Transformation, Coverage, SubmitTurn
+from routers.investigations import _launch_investigation, _submit_turn
 from core.db import now_utc
 
 router = APIRouter()
@@ -108,57 +109,8 @@ class LinkInvestigateOut(BaseModel):
     job: Optional[dict[str, Any]] = None
 
 
-async def _create_investigation_case(owner: str, gate: str, question: str,
-                                     submissions: list[dict], intel_evidence: list[dict],
-                                     initial_findings: list[str]) -> tuple[Optional[str], Optional[dict]]:
-    """Create a Magnum DI investigation case with pre-gathered evidence.
-
-    Returns (case_id, job_view_dict) or (None, None) on failure.
-    This is the shared path: person-requested message/link checks create
-    an async investigation through the same coordinator used by all investigations.
-    """
-    try:
-        case = await invest_repo.create_case(owner, gate, None, initiator="user_check")
-        case_id = case["case_id"]
-        # Ingest submitted evidence items
-        for sub in submissions:
-            if sub["kind"] == "url":
-                await ev.ingest_url(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", ""))
-            else:
-                await ev.ingest_text(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", "submitted text"))
-        # Ingest pre-gathered specialist intelligence (URL intel, phone rep, etc.)
-        for idx, intel_item in enumerate(intel_evidence):
-            await ev.ingest_text(owner, case, f"intel-{idx}", json.dumps(intel_item, ensure_ascii=False, default=str),
-                                 origin="apollo_inference", label=intel_item.get("label", "Pre-gathered specialist intelligence"),
-                                 coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
-        # Ingest initial Apollo findings
-        for idx, finding in enumerate(initial_findings):
-            await ev.ingest_text(owner, case, f"apollo-finding-{idx}", finding,
-                                 origin="apollo_inference", label="Apollo initial finding",
-                                 coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
-        # Stage 14: Store intel as triage_provider_evidence on the case for the coordinator
-        # to deliver as structured Apollo observations — not injected into the question.
-        if intel_evidence:
-            triage_data = {}
-            for item in intel_evidence:
-                key = item.get("label", f"intel_{len(triage_data)}")
-                triage_data[key] = item
-            await invest_repo.db.investigation_cases.update_one(
-                {"owner_id": owner, "case_id": case_id},
-                {"$set": {"triage_provider_evidence": triage_data}})
-        # Submit the investigation turn
-        turn_id = str(uuid.uuid4())
-        key_digest = invest_repo.digest(f"{owner}:turn:{gate}-{case_id}")
-        payload = {"message": question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
-        payload_digest = invest_repo.digest(json.dumps(payload, sort_keys=True))
-        job = await invest_repo.create_job(owner, case, turn_id, key_digest, payload_digest, "turn", payload)
-        await invest_repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},
-                              {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn_id}})
-        invest_jobs.launch(owner, case_id, job["job_id"])
-        return case_id, invest_repo.job_view(job).wire() if job else None
-    except Exception as exc:
-        logger.warning("_create_investigation_case failed (gate=%s): %s", gate, type(exc).__name__)
-        return None, None
+    # _create_investigation_case removed — callers now use _launch_investigation
+    # from routers.investigations (canonical case lifecycle).
 
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
@@ -223,7 +175,10 @@ async def message_analyse(body: MessageAnalyseIn, request: Request):
     if body.local_state != "resting":
         initial_findings.append(f"Apollo local state: {body.local_state}")
 
-    case_id, job = await _create_investigation_case(owner, "message", question, submissions, intel_evidence, initial_findings)
+    case_id, job = await _launch_investigation(
+        owner, "message", question, submissions,
+        initial_findings=initial_findings, intel_evidence=intel_evidence,
+        source_metadata={"type": "text", "preview": protected_text[:160], "submitted_at": now_utc()})
     return MessageAnalyseOut(urls=results, investigation_case_id=case_id,
                              job=job if isinstance(job, dict) else None)
 
@@ -263,7 +218,10 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
     if body.local_findings:
         initial_findings.extend(body.local_findings[:12])
 
-    case_id, job = await _create_investigation_case(owner, "link", question, submissions, intel_evidence, initial_findings)
+    case_id, job = await _launch_investigation(
+        owner, "link", question, submissions,
+        initial_findings=initial_findings, intel_evidence=intel_evidence,
+        source_metadata={"type": "link", "url": normalized[:500], "submitted_at": now_utc()})
     return LinkInvestigateOut(url=normalized, host=host, verdict=intel.verdict,
                              threat_types=intel.threat_types, coverage=intel.coverage,
                              redirect_chain=intel.redirect_chain, final_url=intel.final_url,
@@ -1106,15 +1064,14 @@ async def vision_investigate(
                 await ev.ingest_text(owner, case, f"vision-finding-{idx}",
                                      finding.get("summary", finding.get("finding", str(finding))),
                                      label="Vision analysis finding")
-            # Submit the investigation turn via the repo + jobs pattern
-            turn_id = str(uuid.uuid4())
-            key_digest = invest_repo.digest(f"{owner}:turn:vision-{case_id}")
-            payload = {"message": inv_question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
-            payload_digest = invest_repo.digest(json.dumps(payload, sort_keys=True))
-            job = await invest_repo.create_job(owner, case, turn_id, key_digest, payload_digest, "turn", payload)
-            await invest_repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},
-                                  {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn_id}})
-            invest_jobs.launch(owner, case_id, job["job_id"])
+            # Submit the investigation turn via the canonical _submit_turn path
+            idem_key = f"compat-vision-{case_id}"
+            job = await _submit_turn(
+                owner, case,
+                SubmitTurn(expected_revision=0,
+                           turn_id=str(uuid.uuid4()),
+                           message=inv_question),
+                idem_key)
             investigation_case_id = case_id
     except Exception as exc:
         logger.warning("vision: coordinator case creation failed (non-blocking): %s", type(exc).__name__)
