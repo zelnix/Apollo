@@ -136,17 +136,20 @@ async def _create_investigation_case(owner: str, gate: str, question: str,
             await ev.ingest_text(owner, case, f"apollo-finding-{idx}", finding,
                                  origin="apollo_inference", label="Apollo initial finding",
                                  coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
-        # Append compact intel summary to the question for Magnum DI
-        enriched_question = question
+        # Stage 14: Store intel as triage_provider_evidence on the case for the coordinator
+        # to deliver as structured Apollo observations — not injected into the question.
         if intel_evidence:
-            compact_parts = []
+            triage_data = {}
             for item in intel_evidence:
-                compact_parts.append(f"- {item.get('label', 'Intel')}: {item.get('summary', json.dumps(item, default=str)[:200])}")
-            enriched_question += "\n\nPre-gathered specialist intelligence (Apollo Triage):\n" + "\n".join(compact_parts)
+                key = item.get("label", f"intel_{len(triage_data)}")
+                triage_data[key] = item
+            await invest_repo.db.investigation_cases.update_one(
+                {"owner_id": owner, "case_id": case_id},
+                {"$set": {"triage_provider_evidence": triage_data}})
         # Submit the investigation turn
         turn_id = str(uuid.uuid4())
         key_digest = invest_repo.digest(f"{owner}:turn:{gate}-{case_id}")
-        payload = {"message": enriched_question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
+        payload = {"message": question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
         payload_digest = invest_repo.digest(json.dumps(payload, sort_keys=True))
         job = await invest_repo.create_job(owner, case, turn_id, key_digest, payload_digest, "turn", payload)
         await invest_repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},

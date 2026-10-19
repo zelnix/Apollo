@@ -23,7 +23,6 @@ import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
-import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
@@ -161,8 +160,6 @@ interface ApolloContextValue {
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
   scanGmailInbox(): Promise<{ checked: number; accepted: number }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
-  /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
-  recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
   checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null }>;
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
@@ -942,21 +939,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return { checked: result.checked, accepted: result.accepted };
   }, [deviceId]);
 
-  const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
-    if (existing) {
-      const escalate = STATE_RANK[pa.state] > STATE_RANK[existing.state] && existing.state !== "biting";
-      return upsertEvent({ ...existing, state: escalate ? pa.state : existing.state, status: escalate && existing.status === "resolved" ? "active" : existing.status, resolved_at: escalate ? null : existing.resolved_at,
-        headline: escalate ? pa.title : existing.headline, what_happened: escalate ? `${existing.what_happened} A screenshot of the page: ${pa.verdict}` : existing.what_happened,
-        why: [...existing.why, ...pa.why.map((w) => `Page: ${w}`)], what_to_do: escalate ? pa.recommendation : existing.what_to_do, claimed_brand: existing.claimed_brand ?? pa.claimedBrand, scenario: pa.scenario });
-    }
-    if (pa.state === "resting") return null;
-    return upsertEvent({
-      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "website", state: pa.state, status: "active", headline: pa.title, what_happened: pa.verdict, why: pa.why, what_to_do: pa.recommendation,
-      indicator_host: pa.host, indicator_digest: null, local_indicator: pa.host, verified_block: false, adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null,
-      trust_allowed: false, claimed_brand: pa.claimedBrand, scenario: pa.scenario,
-    }, pa.host ? { kind: "website", fields: [{ label: "Website", value: pa.host }] } : undefined);
-  }, [deviceId, upsertEvent]);
-
   const checkCall = useCallback(async (input: CallInput) => {
     const analysis = analyseCall(input);
     let event: PatrolEvent | null = null;
@@ -1271,7 +1253,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     privateDnsStatus,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
