@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.25)
+project(ApolloWfpService LANGUAGES CXX)
+add_executable(apollo-wfp-service ApolloWfpService.cpp)
+target_compile_features(apollo-wfp-service PRIVATE cxx_std_20)
+target_compile_definitions(apollo-wfp-service PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(apollo-wfp-service PRIVATE fwpuclnt ws2_32 advapi32)

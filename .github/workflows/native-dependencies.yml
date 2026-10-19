@@ -1,0 +1,55 @@
+name: Native dependency singleton guard
+
+on:
+  pull_request:
+    paths: ['frontend/**', '.github/workflows/native-dependencies.yml']
+  push:
+    paths: ['frontend/**', '.github/workflows/native-dependencies.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-singletons:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      EXPO_PUBLIC_APP_ENV: production
+      EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: guarddog_production
+      EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: https://threat-patrol-1.emergent.host/api/guarddog/rules
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: apolloverify.harmonywellnessgroup.com.au
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: 52.25.179.131
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: https://apolloverify.harmonywellnessgroup.com.au/
+      EXPO_PUBLIC_GUARDDOG_RULESET_ID: apollo-rules-v1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Enforce clean CNG and one package manager
+        run: |
+          if test -n "$(git ls-files -- android ios)"; then
+            printf 'Generated android/ and ios/ files must not be tracked.\n' >&2
+            exit 1
+          fi
+          if test -e package-lock.json || test ! -f yarn.lock; then
+            printf 'Only the Yarn lockfile is allowed for this build.\n' >&2
+            exit 1
+          fi
+      - name: Use the locked package manager
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+      - name: Install without changing the lockfile
+        run: yarn install --frozen-lockfile --non-interactive
+      - name: Audit the actual installed tree
+        run: node scripts/native-dependency-guard.cjs
+      - name: Run guard and security regression tests
+        run: node --test tests/nativeDependencyGuard.test.cjs tests/securityConfig.test.ts tests/securityBoot.test.ts
+      - name: Verify combined preflight
+        run: yarn security:preflight
+      - name: Verify frozen GuardDog source
+        working-directory: frontend/packages
+        run: sha256sum --check ../../docs/APOLLO_STAGE1B_SHA256_MANIFEST.txt

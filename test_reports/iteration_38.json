@@ -1,0 +1,91 @@
+{
+  "summary": "Iteration 38 — Frontend-only visual sweep of the new 'Light Sentinel' palette (390x844) + 'Higgins Reads Captions' E2E. Higgins-reads-captions flow works end-to-end on both guardian (Sarah) and protected (Mum) sides. Contrast problems: state-coloured text (success #4FAF83, ears_up #F4B942, growling/warning #E8943A) is rendered on WHITE surfaceSecondary and fails WCAG contrast at typical body sizes — worst case 'Ears up' pill text at 1.77:1 (below the 3:1 minimum for even large text). Also observed: no <meta name='theme-color'> is emitted, and RN's outer html/body are transparent (the visible #F5F7FA background is painted by RN's root container — visually correct, just noting so the main agent doesn't chase phantoms). Two-context E2E (chromium fake-mic, microphone granted, page.context.request for scripted API calls) run twice: onboarding→family pair YSD4LR & GDNR4W→Mum /check phishing.apollo.test/login→incident-share-family→POST /api/voice/speak (Sarah bearer, text 'Hello Mum, it is Sarah, everything is fine')→200; GET the mp3→200 (~43 KB); POST /api/family/incidents/<scent>/voice multipart mp3→201. Mum /patrol/scent/<id>: incident-family-note-caption-0 flipped 'Caption coming…'→'\"Hello mum, it is Sarah, everything is fine.\"' in ~12s. incident-family-note-caption-0-higgins button present with initial label 'Can\\'t play it? Let Higgins read it'. Tap 1 → POST /api/voice/speak fired with body '{device_id, text: \"Sarah says: Hello mum, it is Sarah, everything is fine.\"}' and button label became 'Stop Higgins'. Tap 2 → label reverted to 'Can\\'t play it? Let Higgins read it'. Sarah /family/incident/<scent>: family-note-caption-0 shows same caption, family-note-caption-0-higgins present with the same label. voice-play-<note_id> on Sarah still works — GET /api/family/voice-play/<note_id>?exp=…&sig=… returned 200. Deprecated packages detected: expo-av still used (see react_native_issues).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Onboarding step 1 (index / A calm guard dog…)",
+        "issues": [
+          "'APOLLO' wordmark rendered in success green rgb(79,175,131) on surface rgb(245,247,250) — computed contrast 2.51:1 (fails WCAG AA for text; below 3:1 large-text minimum).",
+          "State pill 'Patrolling' text rgb(79,175,131) on card rgb(255,255,255) — 2.70:1.",
+          "State pill 'Ears up' text rgb(244,185,66) on card rgb(255,255,255) — 1.77:1 (worst offender; below the 3:1 minimum even for large text/decorative).",
+          "State pill 'Growling' text rgb(232,148,58) on card rgb(255,255,255) — 2.41:1.",
+          "Root cause: the *Tint variants (restingTint/ears_upTint/growlingTint at 0.12–0.20 alpha) do sit behind the pill, but the alpha is too low to lift the effective background off pure white, so the state colour ends up printed on ~#FFFFFF."
+        ]
+      },
+      {
+        "screen": "Onboarding step 2 / /privacy-disclosure",
+        "issues": [
+          "Five 'when this leaves your device' labels ('Only when you tap \"Check with Apollo\" (or share a link into…)', 'After each check or protection change', 'Only when you send a message', 'Only when you tap \"Hear Higgins\"', 'With every request') are rendered in warning amber rgb(232,148,58) directly on the white card — 2.41:1. These are the primary informative labels of the whole screen (13–15 px body text). Please raise them to onSurface navy #0B1220 or, if the amber is required as semantic emphasis, wrap in a small chip/tint like the other state pills."
+        ]
+      },
+      {
+        "screen": "Home (/(tabs)/home)",
+        "issues": [
+          "'Limited visibility' capability label in warning amber rgb(232,148,58) on white card — 2.41:1."
+        ]
+      },
+      {
+        "screen": "Guard (/(tabs)/guard)",
+        "issues": [
+          "'Enforcement: not active' status label rgb(232,148,58) on white card — 2.41:1.",
+          "'Active' capability label rgb(79,175,131) on white — 2.70:1.",
+          "'All good' status label rgb(79,175,131) on white — 2.70:1."
+        ]
+      },
+      {
+        "screen": "/check (both barking and resting results)",
+        "issues": [
+          "'Apollo threat list' → status pill text 'Clear' rgb(79,175,131) on white — 2.70:1. Repeats in both barking and resting result cards.",
+          "In the resting case, the top-of-card 'Apollo is patrolling' state chip also renders text at rgb(79,175,131) on white — 2.70:1."
+        ]
+      },
+      {
+        "screen": "/device (Check my device)",
+        "issues": [
+          "Header status pill 'Patrolling' rgb(79,175,131) on white — 2.70:1."
+        ]
+      },
+      {
+        "screen": "Global / <head>",
+        "issues": [
+          "No <meta name='theme-color'> element is emitted on the web preview. The spec asks us to confirm the browser status-bar isn't dark — currently there's no directive at all, so mobile Chrome will default (usually a slightly darker tinted bar than the #F5F7FA canvas). Consider adding <meta name='theme-color' content='#F5F7FA'> (and 'apple-mobile-web-app-status-bar-style' = 'default') so the browser chrome matches the light canvas.",
+          "document.body / documentElement backgroundColor are both rgba(0,0,0,0). The visible #F5F7FA canvas is painted by React Native's root container, not by <body>. Visually this is fine (screenshots confirm #F5F7FA underneath), but any browser feature that reads document.body background (e.g. share-sheet chrome, older Safari WKWebView) will see 'transparent'. Consider setting body { background:#F5F7FA } in the web build for defence-in-depth."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "VoiceNoteRecorder / VoicePlayButton",
+        "issue": "Uses expo-audio (correct — expo-av already migrated). No action needed for this file, kept as a reference: /app/frontend/src/components/VoiceNote.tsx:4."
+      },
+      {
+        "component": "expo-av (deprecated) still imported elsewhere",
+        "issue": "Runtime warning observed on /family and /patrol/scent/<id>: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not blocking. Likely one of the tab/nav wrappers is passing pointerEvents as a prop instead of via style. Reference: appears twice in the console logs of iteration 38 (once when Sarah loads /family, once when Mum opens /patrol/scent/<id>)."
+      }
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_38.json"],
+  "action_items": [
+    "PRIMARY — Contrast/legibility fixes for the state palette used as *text* on the white surfaceSecondary. Recommended paths, in order of preference: (a) Never colour body text with the pure state colours on white; instead put the coloured text inside a chip that fills with the corresponding Tint at high enough alpha (~0.85) so it becomes an effectively coloured surface (matches the design_guidelines chip pattern already used for MOCK/Explanation-only pills). (b) If a chip is not appropriate (e.g. inline status labels), swap the amber/green foreground for onSurface #0B1220 and put a small coloured dot/icon next to it. (c) As a last resort, darken the state text colours only when used on-surface (e.g. text-on-white variants: resting-text #2E7D5A ≥ 4.5:1, growling-text #B36719 ≥ 4.5:1, ears_up-text #7A5A00 ≥ 4.5:1) — but do NOT darken the underlying colour tokens themselves because the light 'Ears up' amber is meaningful as a background tint elsewhere.",
+    "SECONDARY — Privacy disclosure: change the five 'when' labels ('Only when you tap…', 'After each check…', 'Only when you send a message', 'Only when you tap \"Hear Higgins\"', 'With every request') from warning amber to onSurface #0B1220 (they're metadata, not warnings — the amber currently reads as noise anyway).",
+    "META — Add <meta name='theme-color' content='#F5F7FA'> and <meta name='apple-mobile-web-app-status-bar-style' content='default'> to the web build so mobile browsers paint the status bar to match. And set body { background:#F5F7FA } in the RN web build.",
+    "MINOR RN — Chase down the 'props.pointerEvents is deprecated. Use style.pointerEvents' warning; likely a wrapper in /app/frontend/app/(tabs)/_layout.tsx or in one of the recorder/toolbar components."
+  ],
+  "critical_code_review_comments": [
+    "src/theme.ts L45-52: the state colours are perceptually correct (calm green, warm amber, deep orange, threat red) but are only WCAG-safe as *foregrounds* against the dark navy surfaceInverse (#0B1220) or on their own filled backgrounds — not on the primary #FFFFFF card. There is no 'onWhite' variant token; components currently paint the raw state colour as text on cards.",
+    "src/theme.ts L57-63: the *Tint variants are 0.12–0.20 alpha. On #FFFFFF this composites to ~#F1E5CE for ears_up (i.e. still nearly white). A pill that fills with this tint AND paints the state colour as its text (#F4B942 on ~#F1E5CE) is still ~2:1. If pills are the intended layout, tints need to be ≥0.75 alpha OR the pill text should switch to onSurface #0B1220.",
+    "components/VoiceNote.tsx L146: Higgins caption button correctly toggles between 'Can\\'t play it? Let Higgins read it' → 'Stop Higgins' via `reading = higgins.speaking === line.trim().slice(0, 1500)`. Behaviour verified live. accessibilityLabel is set for both states.",
+    "components/VoiceNote.tsx L138: `line = speaker ? \"${speaker} says: ${text}\" : text` — the exact 'Sarah says: …' body was observed in the outbound POST body during E2E. Good.",
+    "components/VoiceNote.tsx L143-148: the Higgins button is only rendered when `deviceId` is truthy — verified rendered on both Mum (protected) and Sarah (guardian) sides."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run)", "frontend": "Higgins-Reads-Captions flow: 100% (Mum + Sarah). Light-palette contrast sweep: 6 screens with legibility failures (see design_issues)."},
+  "seed_data_creation": "Two paired device-pairs (Mum↔Sarah) and two shared incidents each with a voice note were created on the shared preview backend during E2E (iteration 38 run twice for verification). Non-blocking for prod-shaped preview DB.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Higgins caption button testIDs: `incident-family-note-caption-{i}-higgins` (protected side, /patrol/scent/[id]) and `family-note-caption-{i}-higgins` (guardian side, /family/incident/[id]). Labels toggle 'Can\\'t play it? Let Higgins read it' ↔ 'Stop Higgins'. On tap the frontend POSTs /api/voice/speak with body `text: \"<speaker> says: <caption>\"`. For scripted API calls against the preview URL use `page.context.request` — bare `requests`/urllib get Cloudflare 1010 on some paths. Fake-mic chromium flags: ['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']. localStorage identity key `apollo.device.identity.v2` is DOUBLE-JSON-encoded (`json.loads(json.loads(raw))`). `apollo.patrol.events` is also double-encoded; the event field is `scent_id`. Contrast probe used getComputedStyle to walk up the ancestor chain until it found an opaque backgroundColor — for pill text over Tinted (low-alpha) fills, this correctly resolves to the enclosing white card, matching what a human eye sees.",
+  "rca_of_issue": "Light Sentinel palette places semantic state colours (success/warning/error) primarily as *background* fills (Tint variants) but the UI currently uses them as *foreground* text on white cards. Because #4FAF83, #F4B942 and #E8943A are all mid-lightness hues, none of them clears the 3:1 threshold on #FFFFFF, and #F4B942 is far below (1.77:1). Fix is not theme-value changes; it's swapping the render pattern: use the tint as the pill's background (raised to a higher alpha or a pre-multiplied hex) and paint the pill text in onSurface navy, keeping the semantic meaning in the *hue* of the chip rather than in the text colour."
+}

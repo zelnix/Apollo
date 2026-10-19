@@ -1,0 +1,204 @@
+import { router, useSegments } from "expo-router";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
+import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
+import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
+import { alertIcon, alertTime, familyScamAlerts, loadRegionFilter, openScamAlert, rememberAlerts, saveRegionFilter, SEVERITY_RANK, SEVERITY_TONE, severityLabel, type SharedScamAlert } from "@/src/higgins/scamAlertUi";
+import { useApollo } from "@/src/store/ApolloContext";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+
+type RegionFilter = "ALL" | "AU" | "US" | "UK" | "EU" | "GLOBAL";
+const REGIONS: { id: RegionFilter; label: string }[] = [
+  { id: "ALL", label: "All" }, { id: "AU", label: "Australia" }, { id: "US", label: "USA" },
+  { id: "UK", label: "UK" }, { id: "EU", label: "EU" }, { id: "GLOBAL", label: "Global" },
+];
+const regionMatch = (a: GovernmentAlert, f: RegionFilter) =>
+  f === "ALL" ? true : f === "AU" ? a.region === "AU" || a.australianRelevance === "confirmed" : a.region === f;
+
+type SortMode = "latest" | "severity";
+const COMPACT_WIDTH = 430; // below this the six region chips overflow the screen
+const SORT_LABEL: Record<SortMode, string> = { latest: "Latest first", severity: "Highest severity" };
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  list: { paddingHorizontal: spacing.xl, gap: spacing.sm },
+  subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  chip: { paddingHorizontal: spacing.md, minHeight: 36, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  chipOn: { backgroundColor: c.brand, borderColor: c.brand },
+  chipText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  chipTextOn: { color: "#FFFFFF" },
+  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dropBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  dropBtnText: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  dropList: { borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, overflow: "hidden" },
+  dropOption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: c.divider },
+  sort: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44, paddingHorizontal: spacing.xs },
+  sortText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
+  icon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  rowBody: { flex: 1, gap: 4 },
+  pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  title: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface },
+  meta: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  sectionHeading: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, marginTop: spacing.md },
+}));
+
+function AlertRow({ item, index }: { item: GovernmentAlert; index: number }) {
+  const s = useStyles(); const { colors } = useTheme();
+  const tone = SEVERITY_TONE[item.severity]; const Icon = alertIcon(item);
+  return (
+    <Pressable
+      testID={`higgins-scam-${index}`} accessibilityRole="button" accessibilityLabel={`${severityLabel(item.severity)} alert: ${item.title}`}
+      onPress={() => router.push({ pathname: "/higgins/scam/[id]", params: { id: item.url } })}
+      style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+    >
+      <Card style={[s.row, { padding: spacing.md }]}>
+        <View style={[s.icon, { backgroundColor: toneTint(colors, tone) }]}><Icon size={22} color={toneColor(colors, tone)} /></View>
+        <View style={s.rowBody}>
+          <View style={s.pills}>
+            <Pill testID={`higgins-scam-${index}-severity`} tone={tone} label={severityLabel(item.severity)} />
+            <Pill tone="neutral" label={item.regionLabel} />
+          </View>
+          <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+          <Text style={s.meta} numberOfLines={1} testID={`higgins-scam-${index}-source-name`}>{`${item.source} · ${item.dateLabel}`}</Text>
+        </View>
+        <ChevronRight size={20} color={colors.onSurfaceSecondary} />
+      </Card>
+    </Pressable>
+  );
+}
+
+export default function GovernmentScamsScreen() {
+  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets();
+  const [alerts, setAlerts] = useState<GovernmentAlert[]>([]); const [emerging, setEmerging] = useState<GovernmentAlert[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [coverage, setCoverage] = useState(""); const [lastSourced, setLastSourced] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState(false);
+  const [region, setRegion] = useState<RegionFilter>("ALL"); const [sort, setSort] = useState<SortMode>("latest");
+  const isTab = (useSegments() as string[]).includes("(tabs)");
+  const { deviceId } = useApollo();
+  const [fromFamily, setFromFamily] = useState<SharedScamAlert[]>([]);
+  // Remember the last region the person chose so Scam Alerts reopens on it.
+  useEffect(() => { void loadRegionFilter().then((v) => { if (v && REGIONS.some((r) => r.id === v)) setRegion(v as RegionFilter); }); }, []);
+  const chooseRegion = (id: RegionFilter) => { setRegion(id); void saveRegionFilter(id); };
+  // Smaller phones can't fit all six region chips, so they get a dropdown list instead.
+  const compact = useWindowDimensions().width < COMPACT_WIDTH;
+  const [regionOpen, setRegionOpen] = useState(false);
+  const regionCount = (id: RegionFilter) => alerts.filter((a) => regionMatch(a, id)).length;
+
+  const load = (pull = false) => {
+    if (pull) setRefreshing(true); else setLoading(true);
+    setError(false);
+    if (deviceId) void familyScamAlerts(deviceId).then(setFromFamily).catch(() => undefined);
+    void governmentScams().then((result) => {
+      rememberAlerts([...result.alerts, ...result.emerging]);
+      setAlerts(result.alerts); setEmerging(result.emerging); setPendingCount(result.pendingCount);
+      setCoverage(result.coverage); setLastSourced(result.lastSourcedAt);
+    }).catch(() => setError(true)).finally(() => { setLoading(false); setRefreshing(false); });
+  };
+  useEffect(() => load(), [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sourcedLabel = useMemo(() => {
+    if (!lastSourced) return "Checking official sources…";
+    const d = new Date(lastSourced);
+    return `Latest from official sources · ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}, ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }, [lastSourced]);
+  const arrange = (list: GovernmentAlert[]) => list.filter((a) => regionMatch(a, region)).sort((a, b) =>
+    sort === "severity" ? SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || alertTime(b) - alertTime(a) : alertTime(b) - alertTime(a));
+  const shown = useMemo(() => arrange(alerts), [alerts, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownEmerging = useMemo(() => arrange(emerging), [emerging, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const info = { title: "About Scam Alerts", body: [coverage || "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself.", "Emerging patterns are techniques appearing across several reports with no single named campaign yet."] };
+
+  return (
+    <View style={s.root} testID="higgins-scams-screen">
+      {isTab
+        ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} /></View>
+        : <ChildScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} />}
+      <FlatList
+        testID="higgins-scams-list" data={shown} keyExtractor={(item) => item.url}
+        contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.brand} />}
+        ListHeaderComponent={
+          <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
+            <Text style={s.subtitle} testID="higgins-scams-sourced">{sourcedLabel}{pendingCount > 0 ? `  ·  Reading ${pendingCount} new…` : ""}</Text>
+            {compact ? (
+              <View style={{ gap: spacing.xs }}>
+                <Pressable testID="scam-filter-dropdown-btn" accessibilityRole="button" accessibilityLabel={`Region: ${REGIONS.find((r) => r.id === region)!.label}`} accessibilityState={{ expanded: regionOpen }} onPress={() => setRegionOpen(!regionOpen)} style={s.dropBtn}>
+                  <Text style={s.dropBtnText}>{`Region: ${REGIONS.find((r) => r.id === region)!.label} (${regionCount(region)})`}</Text>
+                  <ChevronDown size={16} color={colors.onSurface} />
+                </Pressable>
+                {regionOpen ? (
+                  <View style={s.dropList} testID="scam-filter-dropdown">
+                    {REGIONS.map((r) => {
+                      const on = region === r.id;
+                      return (
+                        <Pressable key={r.id} testID={`scam-filter-${r.id}`} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => { chooseRegion(r.id); setRegionOpen(false); }} style={[s.dropOption, on && s.chipOn]}>
+                          <Text style={[s.chipText, on && s.chipTextOn]}>{r.label}</Text>
+                          <Text style={[s.meta, on && s.chipTextOn]}>{regionCount(r.id)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 2 }}>
+              {REGIONS.map((r) => {
+                const on = region === r.id;
+                return (
+                  <Pressable key={r.id} testID={`scam-filter-${r.id}`} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => chooseRegion(r.id)} style={[s.chip, on && s.chipOn]}>
+                    <Text style={[s.chipText, on && s.chipTextOn]}>{r.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            )}
+            {fromFamily.length > 0 ? (
+              <View style={{ gap: spacing.sm }} testID="higgins-scams-family">
+                <Text style={s.sectionHeading}>Sent by your family</Text>
+                {fromFamily.slice(0, 3).map((f, i) => (
+                  <Pressable key={`${f.url}-${f.from_label}`} testID={`higgins-scams-family-${i}`} accessibilityRole="button" accessibilityLabel={`${f.from_label} sent: ${f.title}`} onPress={() => openScamAlert(router, f.url)} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
+                    <Card style={[s.row, { padding: spacing.md }]}>
+                      <View style={s.rowBody}>
+                        <View style={s.pills}><Pill tone={SEVERITY_TONE[f.severity]} label={severityLabel(f.severity)} /><Pill tone="neutral" label={`From ${f.from_label}`} /></View>
+                        <Text style={s.title} numberOfLines={2}>{f.title}</Text>
+                        <Text style={s.meta} numberOfLines={1}>{`${f.source} · ${f.date_label}`}</Text>
+                      </View>
+                      <ChevronRight size={20} color={colors.onSurfaceSecondary} />
+                    </Card>
+                  </Pressable>
+                ))}
+                <Text style={s.sectionHeading}>All alerts</Text>
+              </View>
+            ) : null}
+            <View style={s.toolbar}>
+              <Text style={s.meta}>{`${shown.length} alert${shown.length === 1 ? "" : "s"}`}</Text>
+              <Pressable testID="scam-sort" accessibilityRole="button" accessibilityLabel={`Sort: ${SORT_LABEL[sort]}`} accessibilityHint="Switches between latest and highest severity" onPress={() => setSort(sort === "latest" ? "severity" : "latest")} style={s.sort}>
+                <Text style={s.sortText}>{SORT_LABEL[sort]}</Text><ChevronDown size={16} color={colors.onSurface} />
+              </Pressable>
+            </View>
+          </View>
+        }
+        renderItem={({ item, index }) => <AlertRow item={item} index={index} />}
+        ListEmptyComponent={loading ? <ActivityIndicator testID="higgins-scams-loading" color={colors.brand} /> : error ? (
+          <Card testID="higgins-scams-error"><Body>Official guidance could not be loaded. Apollo will not substitute unrecognised sources.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={() => load()} /></Card>
+        ) : (
+          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "Apollo is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : region === "ALL" ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts for this region right now."}</Body></Card>
+        )}
+        ListFooterComponent={shownEmerging.length > 0 ? (
+          <View style={{ gap: spacing.sm }}>
+            <Text style={s.sectionHeading} testID="higgins-scams-emerging-heading">Emerging patterns</Text>
+            <Text style={s.meta}>Techniques showing up across several reports. No single named campaign yet.</Text>
+            {shownEmerging.map((item, i) => <AlertRow key={item.url} item={item} index={1000 + i} />)}
+          </View>
+        ) : null}
+      />
+    </View>
+  );
+}

@@ -1,0 +1,35 @@
+{
+  "summary": "Tested new optional Gmail read-only connection feature (backend gmail router/service + email.tsx UI card) plus full regression of the existing paste-email flow and app-wide tab navigation. Backend: 11/11 new gmail tests passed (status pre-connection, authorization_url shape/params, open-redirect protection on bad app_redirect schemes, bogus/missing oauth state -> 400 never 500, scan without connection -> 404, idempotent disconnect -> 204). Full backend regression: 230/230 passed (excluding 1 pre-existing xdist-only flake in test_family_weekly_push.py unrelated to this diff -- confirmed passes cleanly when run without parallel workers, and the 3 previously-documented flakes noted by main agent). Frontend: verified email.tsx renders the new 'Connect Gmail (optional)' card (testID email-gmail-card) above the paste form with 'Connect Gmail (read-only)' button; tapping it opens a real Google OAuth popup with correct client_id/redirect_uri/scope=gmail.readonly/access_type=offline/state, button shows 'Connecting...' busy state, and closing/cancelling the popup returns the button to its normal state without any crash or stuck UI. Full paste-email regression flow (From/Subject/Body -> Check this email -> result card with state/verdict/why/recommendation -> links-in-email check -> Verify sender sheet -> Technical details sheet -> Account Guard handoff -> second opinion) all working exactly as before; only extra latency observed is the existing Gemini second-opinion call (10-20s), not a regression. Spot-checked Home/Guard/Patrol/Ask/Settings tabs -- all load without error, and Settings > Privacy text now correctly documents the Gmail read-only policy.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gate_gmail.py",
+    "/app/test_reports/pytest/pytest_gate_gmail.xml",
+    "/app/test_reports/pytest/pytest_full_regression.xml",
+    "/app/test_reports/pytest/pytest_full_regression2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/gmail.py & services/gmail.py: clean separation of concerns, privacy contract clearly documented in module docstrings and honoured in code (scan_inbox() results only returned to caller, never persisted; only encrypted refresh token in Mongo).",
+    "_valid_app_redirect() correctly implements an allow-list (apollo/exp/exps/https/http) rather than a deny-list, which is the right approach for open-redirect protection -- verified javascript://, ftp:// and arbitrary custom schemes are rejected with 400.",
+    "gmail_callback() correctly handles every branch without raising unexpected 500s: bogus/expired state, denied consent, missing code, exchange_code failure, and the Google 'no refresh_token on repeat consent' edge case (falls back to checking for an existing connection before failing) -- good defensive design.",
+    "gmail.py device auth: /gmail/connect, /gmail/status, /gmail/scan, DELETE /gmail/connection all correctly require the device bearer token via core/auth.py's enforce_device_auth (only /gmail/oauth/callback is public, justified by the single-use 10-min state token) -- verified via the auth shim in conftest.py which had to attach real bearer tokens for all these calls to succeed.",
+    "email.tsx: gmailBusy/scanBusy state correctly gate their respective buttons independently; Gmail card is scoped to the pre-result view only (hidden once a result renders), matching spec 'coexists with paste-email flow' without ever appearing in a way that could confuse the two flows."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate_gmail.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11 new gmail tests, 230/230 full regression excluding 1 xdist-only flake unrelated to this diff)", "frontend": "100% (all requested UI/integration checks passed, including OAuth popup boundary and full paste-email regression)"},
+  "seed_data_creation": "None required; test devices created via existing conftest.py auth shim and cleaned up implicitly (TEST_ prefixed legacy ids never persisted as real records beyond the shim's device registration).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Gmail read-only connect feature is solid and matches the spec precisely up to the human-login boundary (real Google consent screen cannot be automated -- verified everything up to and around it: authorization_url correctness, open-redirect protection, bogus-state handling, scan-without-connection 404, idempotent disconnect). Full OAuth happy path (actual token save + scan_inbox with real Gmail data) remains untested end-to-end since it requires a real Google account login, per the review request's explicit limitation. Onboarding->email navigation note for future testers: there is no direct home-button to /email; reach it via page.goto('/email') AFTER completing onboarding (device identity persists in SecureStore/AsyncStorage via storage.ts, so a full page reload to /email does NOT drop auth, unlike what a prior iteration's notes suggested for /check -- worth re-verifying that older note next time since this iteration found reloads safe with the current deviceIdentity.ts implementation). One-time false alarm during testing: the paste-email 'Check this email' button appeared stuck on 'Sniffing...' at 15s but completed successfully at ~10-20s once given the LLM/second-opinion call's normal latency -- not a bug."
+}

@@ -1,0 +1,81 @@
+package com.hucentai.apollosecurity
+
+/**
+ * Pure data model for one enforcement action — mirrors src/security/PlatformCapabilityProfile.ts
+ * EnforcementEvidence field-for-field so the JSON ApolloSecurityModule builds from this needs no
+ * reshaping on the JS side beyond JSON.parse. No Android dependencies: testable under plain JVM.
+ *
+ * THE rule this file exists to protect: only [verifiedDnsBlock] may ever produce
+ * result="verified" + enforcedAction="blocked" from an ACTUAL observed packet. Everything else
+ * that touches enforcement (rule activation, a saved-but-not-enforced host) must say so honestly.
+ */
+data class EnforcementEvidence(
+  val evidenceId: String,
+  val eventId: String? = null,
+  val deviceId: String? = null,
+  val platform: String = "android",
+  val osVersion: String? = null,
+  val sdkVersion: String? = null,
+  val observedAt: String,
+  val mechanism: String,
+  val direction: String,
+  val protocol: String,
+  val destinationIp: String? = null,
+  val destinationDomain: String? = null,
+  val destinationPort: Int? = null,
+  val appId: String? = null,
+  val processName: String? = null,
+  val attributionConfidence: String = "unavailable",
+  val matchedRuleId: String? = null,
+  val threatId: String? = null,
+  val requestedAction: String,
+  val enforcedAction: String,
+  val result: String,
+  val ruleSource: String,
+  val confidence: String,
+  val correlationId: String? = null,
+) {
+  companion object {
+    /**
+     * The ONLY factory that may claim a verified DNS block. Called from the GuardDog VPN packet handler
+     * at the exact moment a real IPv4/UDP/port-53 packet was matched against the on-device blocklist and
+     * an NXDOMAIN reply was actually written back to the tunnel. Every field is a live fact about that
+     * one packet — nothing here is inferred, scheduled, or assumed to have happened.
+     */
+    fun verifiedDnsBlock(evidenceId: String, observedAt: String, domain: String, matchedRuleId: String, osVersion: String?, sdkVersion: String?): EnforcementEvidence =
+      EnforcementEvidence(
+        evidenceId = evidenceId, observedAt = observedAt, mechanism = "dns_filter", direction = "outbound", protocol = "dns",
+        destinationDomain = domain, destinationPort = 53, matchedRuleId = matchedRuleId, osVersion = osVersion, sdkVersion = sdkVersion,
+        requestedAction = "block", enforcedAction = "blocked", result = "verified", ruleSource = "local_blocklist", confidence = "high",
+      )
+
+    /**
+     * Call Guard's ONLY factory for a verified call block. Called from
+     * ApolloCallScreeningService.onScreenCall at the exact moment respondToCall() was actually invoked
+     * with rejectCall=true for a real incoming call — never in advance, never from an intent to block.
+     * `destinationDomain` doubles as the caller's E.164 number here (no separate phone field was added
+     * to this shared model purely to avoid schema churn across three layers — see field comment above).
+     */
+    fun verifiedCallBlock(evidenceId: String, observedAt: String, number: String, ruleSource: String, osVersion: String?, sdkVersion: String?): EnforcementEvidence =
+      EnforcementEvidence(
+        evidenceId = evidenceId, observedAt = observedAt, mechanism = "call_screening", direction = "inbound", protocol = "unknown",
+        destinationDomain = number, matchedRuleId = number, osVersion = osVersion, sdkVersion = sdkVersion,
+        requestedAction = "block", enforcedAction = "blocked", result = "verified", ruleSource = ruleSource, confidence = "high",
+      )
+
+    /**
+     * Rule-activation confirmation for a manual "Block" tap (ApolloSecurityModule.blockDestination):
+     * the filter is observed live-running and this host is now in its enforced set, so a FUTURE
+     * lookup for it will be answered by [verifiedDnsBlock] — but none has happened yet. result is
+     * deliberately "unverified" and enforcedAction "none": this must NEVER pass isVerifiedEnforcement
+     * / _derive_verified_block, however real the rule-activation itself is. A manual tap is a REQUEST,
+     * not a VERIFIED block — only an actually-observed dropped packet may claim that.
+     */
+    fun ruleActivated(evidenceId: String, observedAt: String, domain: String, osVersion: String?, sdkVersion: String?): EnforcementEvidence =
+      EnforcementEvidence(
+        evidenceId = evidenceId, observedAt = observedAt, mechanism = "dns_filter", direction = "outbound", protocol = "dns",
+        destinationDomain = domain, destinationPort = 53, matchedRuleId = domain, osVersion = osVersion, sdkVersion = sdkVersion,
+        requestedAction = "block", enforcedAction = "none", result = "unverified", ruleSource = "user_override", confidence = "high",
+      )
+  }
+}

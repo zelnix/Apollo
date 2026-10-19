@@ -1,0 +1,75 @@
+{
+  "summary": "Re-tested Stage 1D candidate handoff scope with focused backend/frontend/security checks: acceptance vectors passed (Python + Node), targeted backend P0/acceptance suite passed (50/50), preview flows loaded, TEST-NET endpoint/provisioning fail-closed behavior verified, and native compile/device acceptance remains NOT RUN due missing Java/device environment.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Native Android compile + JUnit verification",
+        "issue": "`./gradlew :app:assembleDebug` and `:app:testDebugUnitTest` fail immediately because JAVA_HOME/java is unavailable in this workspace; native acceptance cannot be executed here.",
+        "affected_testIDs": [
+          "guarddog-acceptance-screen"
+        ]
+      },
+      {
+        "flow": "Web preview security adapter",
+        "issue": "Preview continues using MOCKED security adapter (`SecureCore initialized {implementation: mock}`), so it is not native enforcement evidence.",
+        "affected_testIDs": [
+          "guarddog-acceptance-mode",
+          "guarddog-run-button"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Expo supervisor startup logs",
+        "issue": "Repeated React Native DevTools install warning (`Running as root without --no-sandbox`) appears in expo logs; app still serves and tests passed, but log noise persists."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/frontend/tests/test_guarddog_acceptance_fixtures.py",
+    "/app/frontend/tests/guardDogCandidateSource.test.ts",
+    "/app/backend/tests/test_p0_patrol_persistence.py",
+    "/app/backend/tests/test_p0_policy_regression.py",
+    "/app/backend/tests/test_p0_mapper_e2e_fixture.py",
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_evidence_receipt_indexes.py",
+    "/app/backend/tests/test_enforcement_evidence_gate.py",
+    "/app/test_reports/pytest/pytest_iter67_frontend_acceptance_vectors.xml",
+    "/app/test_reports/pytest/pytest_iter67_stage1d_backend.xml",
+    "/app/test_reports/frontend_load_iter67.jpeg",
+    "/app/test_reports/guarddog_acceptance_iter67.jpeg"
+  ],
+  "action_items": [
+    "Run managed Android build/JUnit in an environment with Java/Android toolchain, then execute Pixel acceptance once; keep status as NOT RUN until evidence exists.",
+    "Perform user-owned Publish action for profile `guarddog-acceptance` and record build ID/APK hash before any device acceptance claims.",
+    "Provision a real owned dedicated IPv4 + exact A record + HTTPS endpoint; current TEST-NET example is correctly rejected by verifier/provisioner.",
+    "If SHA 91/91 attestation is required in this workspace, run verification from a path layout matching manifest expectations or provide mapped verification procedure."
+  ],
+  "critical_code_review_comments": [
+    "Candidate runtime uses only `apollo-stage1d-acceptance-ed25519-001` with `TrustedKeyRegistry(mapOf(...))`; no historical gd-m1 key reference in this runtime file.",
+    "No private key bytes/PEM material were found in repository sources scanned; only external key path documentation and env variable names are present.",
+    "Fail-closed endpoint controls are correctly enforced: verifier/provisioner reject TEST-NET/non-global IPv4 before any bundle output is generated."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_67.json",
+    "/app/test_reports/pytest/pytest_iter67_frontend_acceptance_vectors.xml",
+    "/app/test_reports/pytest/pytest_iter67_stage1d_backend.xml",
+    "/app/test_reports/frontend_load_iter67.jpeg",
+    "/app/test_reports/guarddog_acceptance_iter67.jpeg"
+  ],
+  "success_rate": {
+    "backend": "100% (50/50)",
+    "frontend": "100% (8/8 targeted checks: 2 Python crypto + 4 Node source guards + 2 preview checks)"
+  },
+  "seed_data_creation": "Backend tests created only temporary API-registered test devices/events via existing test fixtures.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Executed both backend and frontend Stage 1D-focused suites successfully; preview acceptance screen shows disabled candidate in dev/mock mode; native compile and native JUnit are blocked by missing JAVA_HOME in this container; physical device run still NOT RUN.",
+  "rca_of_issue": "Native evidence blocker is environmental: Android Gradle tasks fail before compilation because no Java runtime/JAVA_HOME is present. Separate known attestation blocker persists: APOLLO_STAGE1B_SHA256_MANIFEST.txt expects root-level `./guarddog-android-sdk` and `./guarddog-expo-module` paths, but current workspace stores these under `/app/frontend/packages/...`, causing open/read failures rather than digest mismatches."
+}

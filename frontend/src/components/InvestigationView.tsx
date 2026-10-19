@@ -1,0 +1,979 @@
+// Unified Investigation Report: three-tab structure — Overview | Evidence | History.
+// Default to Overview. Matches the approved Threat Case reporting experience.
+// Apollo detects. Magnum DI investigates. Higgins explains findings and guides users.
+// Evidence tab shows original evidentiary sources, not summaries or interpretations.
+import * as FileSystem from "expo-file-system";
+import * as Clipboard from "expo-clipboard";
+import * as Sharing from "expo-sharing";
+import * as WebBrowser from "expo-web-browser";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import CircleCheck from "lucide-react-native/icons/circle-check";
+import Clock from "lucide-react-native/icons/clock";
+import Copy from "lucide-react-native/icons/copy";
+import FileText from "lucide-react-native/icons/file-text";
+import Globe from "lucide-react-native/icons/globe";
+import Info from "lucide-react-native/icons/info";
+import Mail from "lucide-react-native/icons/mail";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import Search from "lucide-react-native/icons/search";
+import Shield from "lucide-react-native/icons/shield";
+import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
+import { API_BASE } from "@/src/api/client";
+import { getDeviceToken } from "@/src/auth/deviceIdentity";
+import { EvidencePopup } from "@/src/components/EvidencePopup";
+import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
+import { ReportScamHelper } from "@/src/components/ReportScamHelper";
+import { OriginalSourceView } from "@/src/components/OriginalSourceView";
+import { findBrandIn } from "@/src/domain/reportingContacts";
+import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import type { CaseState } from "@/src/investigation/caseStore";
+import * as investigationApi from "@/src/investigation/client";
+import type { ActionProposal, Attention, EvidenceItem, Gate, SourceReference } from "@/src/investigation/types";
+import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
+import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
+
+const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type TabId = "overview" | "evidence" | "history";
+const TAB_LABELS: { id: TabId; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "evidence", label: "Evidence" },
+  { id: "history", label: "History" },
+];
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+
+const useStyles = makeStyles((c) => ({
+  // ── Status Card ──
+  statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
+  statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm },
+  statusIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
+  statusInfo: { flex: 1, gap: 2 },
+  statusTitle: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
+  statusTimestamp: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  statusBadge: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" as const },
+  statusBadgeText: { fontFamily: fonts.textSemibold, fontSize: 12 },
+  confidenceText: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+
+  // ── Tab bar ──
+  tabBar: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surfaceSecondary },
+  tab: { flex: 1, paddingVertical: 12, alignItems: "center" as const, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tabActive: { borderBottomColor: c.brandPrimary },
+  tabText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.muted },
+  tabTextActive: { color: c.onSurface, fontFamily: fonts.textSemibold },
+
+  // ── Overview tab ──
+  higginsHeader: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, marginBottom: spacing.md },
+  higginsAvatarWrap: { width: 48, height: 48, borderRadius: 24, overflow: "hidden" as const, backgroundColor: c.surfaceTertiary },
+  higginsAvatarImg: { width: 48, height: 48 },
+  higginsName: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  higginsTime: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  briefingText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+  sectionHeader: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, marginTop: spacing.md },
+
+  // ── Action cards ──
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md },
+  actionIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center" as const, justifyContent: "center" as const },
+  actionContent: { flex: 1, gap: 2 },
+  actionTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
+  actionDescription: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  infoCard: { borderRadius: radius.md, padding: spacing.lg, flexDirection: "row" as const, gap: spacing.md, alignItems: "flex-start" as const },
+  infoIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const, marginTop: 2 },
+  infoContent: { flex: 1, gap: 4 },
+  infoTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface, lineHeight: 20 },
+  infoBody: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
+
+  // ── Shared content ──
+  text: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
+  muted: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted },
+  heading: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurfaceSecondary, marginTop: spacing.xs },
+  sectionTitle: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
+  row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: spacing.sm, alignItems: "center" as const },
+  source: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
+  link: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
+  question: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
+  turn: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
+  user: { alignSelf: "flex-end" as const, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border, maxWidth: "88%" as const },
+  divider: { height: 1, backgroundColor: c.border, marginVertical: spacing.xs },
+
+  // ── Evidence tab ──
+  evidenceCard: { gap: spacing.xs, borderColor: c.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
+  evidenceLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.muted, textTransform: "uppercase", letterSpacing: 0.3 },
+
+  // ── Evidence source header ──
+  sourceHeader: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, marginBottom: spacing.sm },
+  sourceIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: "center" as const, justifyContent: "center" as const },
+  sourceHeaderInfo: { flex: 1, gap: 2 },
+  sourceHeaderTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  sourceHeaderMeta: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  sourceHeaderMetaBold: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.onSurfaceSecondary },
+  sourceContentBlock: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border },
+  sourceContentText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurface },
+  sourceLink: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary, marginTop: spacing.xs },
+  sourceOriginalBanner: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, backgroundColor: c.restingTint, borderRadius: radius.sm, marginTop: spacing.xs },
+  sourceOriginalText: { fontFamily: fonts.textMedium, fontSize: 12, color: c.restingText },
+
+  // ── History tab ──
+  timelineItem: { flexDirection: "row" as const, gap: spacing.md },
+  timelineTrack: { alignItems: "center" as const, width: 32 },
+  timelineDot: { width: 32, height: 32, borderRadius: 16, alignItems: "center" as const, justifyContent: "center" as const, zIndex: 1 },
+  timelineLine: { width: 2, flex: 1, marginTop: -2, marginBottom: -2 },
+  timelineContent: { flex: 1, paddingBottom: spacing.lg },
+  timelineContentLast: { flex: 1, paddingBottom: spacing.sm },
+  timelineRow: { flexDirection: "row" as const, justifyContent: "space-between" as const, alignItems: "flex-start" as const, gap: spacing.sm },
+  timelineTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface, lineHeight: 20, flex: 1 },
+  timelineTime: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
+  timelineBody: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary, marginTop: 4 },
+
+  // ── Technical Error Details ──
+  diagSection: { gap: spacing.sm },
+  diagToggle: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, paddingVertical: spacing.sm },
+  diagToggleText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  diagCard: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs, borderWidth: 1, borderColor: c.border },
+  diagRow: { flexDirection: "row" as const, gap: spacing.sm },
+  diagLabel: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.muted, minWidth: 100 },
+  diagValue: { fontFamily: fonts.text, fontSize: 12, color: c.onSurface, flex: 1, flexShrink: 1 },
+  diagDivider: { height: 1, backgroundColor: c.border, marginVertical: spacing.xs },
+  retryEntry: { flexDirection: "row" as const, gap: spacing.xs, paddingVertical: 2 },
+  retryBadge: { fontFamily: fonts.textMedium, fontSize: 11, color: c.muted },
+  retryText: { fontFamily: fonts.text, fontSize: 12, color: c.onSurface, flex: 1, flexShrink: 1 },
+  copyBtn: { marginTop: spacing.xs },
+
+  // ── Raw provider response ──
+  rawBlock: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border },
+  rawHeader: { flexDirection: "row" as const, justifyContent: "space-between" as const, alignItems: "center" as const, marginBottom: spacing.sm },
+  rawTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  rawCopyBtn: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4 },
+  rawCopyText: { fontFamily: fonts.textMedium, fontSize: 12, color: c.brandPrimary },
+  rawCode: { fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }), fontSize: 12, color: c.onSurface, lineHeight: 18 },
+  sensitiveRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  sensitiveText: { fontFamily: fonts.text, fontSize: 12, color: c.muted, flex: 1 },
+
+  // ── Preserved legacy ──
+  card: { gap: spacing.sm, borderColor: c.navyBorder },
+  higginsExplanation: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderLeftWidth: 3, borderLeftColor: c.gold, gap: spacing.xs },
+  higginsExplainText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurface },
+  higginsExplainLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.3, color: c.gold, textTransform: "uppercase" },
+}));
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Attention projection → Apollo tone. */
+export function attentionTone(attention: Attention): Tone { return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting"; }
+
+function plain(markdown: string) {
+  return scrubMessage(markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)"));
+}
+
+/** Build a copyable diagnostics record from failure data. */
+function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefined, caseId?: string): string {
+  if (!failure) return "No diagnostic information available.";
+  const lines: string[] = ["── Technical Error Details ──"];
+  const diag = (failure.diagnostics ?? {}) as Record<string, unknown>;
+  const addLine = (label: string, value: unknown) => { if (value !== null && value !== undefined && value !== "") lines.push(`${label}: ${String(value)}`); else lines.push(`${label}: Unavailable`); };
+  addLine("Failing component", diag.component);
+  addLine("Service/provider", diag.service);
+  addLine("Operation", diag.operation);
+  addLine("Original error code", diag.originalErrorCode ?? diag.original_error_code);
+  addLine("HTTP status", diag.httpStatus ?? diag.http_status);
+  addLine("Original error message", diag.originalMessage ?? diag.original_message);
+  addLine("Exception type", diag.exceptionType ?? diag.exception_type);
+  addLine("Timestamp", diag.timestamp);
+  const durMs = diag.durationMs ?? diag.duration_ms;
+  addLine("Duration", durMs ? `${durMs}ms` : undefined);
+  addLine("Case ID", caseId ?? diag.caseId ?? diag.case_id);
+  addLine("Job ID", diag.jobId ?? diag.job_id);
+  addLine("Request ID", diag.requestId ?? diag.request_id);
+  addLine("Final status", diag.finalStatus ?? diag.final_status);
+  addLine("Failure code", failure.code);
+  addLine("Retryable", failure.retryable);
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as Record<string, unknown>[];
+  if (history.length) {
+    lines.push("\n── Investigation Attempts ──");
+    for (const rh of history) {
+      const attempt = rh.attempt ?? "?";
+      const kind = rh.kind ?? "unknown";
+      const outcome = rh.outcome ?? "unknown";
+      const code = rh.failureCode ?? rh.failure_code ?? "";
+      const msg = rh.failureMessage ?? rh.failure_message ?? "";
+      const ts = rh.timestamp ?? "";
+      const dur = rh.durationMs ?? rh.duration_ms;
+      lines.push(`  Attempt ${attempt} (${String(kind).replace(/_/g, " ")}) → ${outcome}${code ? ` [${code}]` : ""}${msg ? `: ${String(msg).slice(0, 200)}` : ""}${ts ? ` at ${ts}` : ""}${dur ? ` (${dur}ms)` : ""}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Map failure to Higgins-style user-facing explanation. */
+function higginsExplanation(failure: Record<string, unknown> | null | undefined, isRetrying: boolean): string {
+  if (!failure) return "";
+  const code = String(failure.code ?? "");
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as unknown[];
+  if (isRetrying) {
+    if (code === "rate_limited") return "Magnum DI has temporarily reached the analysis service's request limit. It's waiting briefly before trying again.";
+    if (code === "provider_unavailable") return "Magnum DI's analysis service took longer than expected to respond. It's automatically trying again, so you don't need to do anything just yet.";
+    if (code === "budget_exhausted") return "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.";
+    return "Magnum DI encountered a temporary issue and is automatically retrying.";
+  }
+  if (code === "provider_configuration") return "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.";
+  if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
+  if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
+  return "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing.";
+}
+
+/** Gate-specific display info for the status card. */
+function gateInfo(gates: Gate[] | undefined): { title: string; IconComponent: React.ComponentType<{ size: number; color: string }>; iconBg: string; iconColor: string } {
+  const primary = gates?.[0];
+  switch (primary) {
+    case "text": return { title: "Message check", IconComponent: MessageSquare, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A" };
+    case "call": return { title: "Call check", IconComponent: Phone, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "email": return { title: "Email check", IconComponent: Mail, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "site": case "link": return { title: "Website check", IconComponent: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "file": return { title: "File check", IconComponent: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "app": return { title: "App check", IconComponent: Search, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "device": return { title: "Device check", IconComponent: Shield, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "account": return { title: "Account check", IconComponent: Shield, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    case "network": return { title: "Network check", IconComponent: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+    default: return { title: "Investigation", IconComponent: Search, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
+  }
+}
+
+/** Investigation status for the badge. */
+function statusInfo(phase: string, response: { completion?: string } | null, _failure: unknown): { label: string; tone: "barking" | "resting" | "ears_up" | "sniffing" } {
+  if (phase === "expired") return { label: "Expired", tone: "barking" };
+  if (phase === "failed") return { label: "Incomplete", tone: "barking" };
+  if (response) {
+    if (response.completion === "complete") return { label: "Complete", tone: "resting" };
+    if (response.completion === "partial") return { label: "Partial", tone: "ears_up" };
+    if (response.completion === "waiting_user") return { label: "Question pending", tone: "ears_up" };
+  }
+  return { label: "In progress", tone: "sniffing" };
+}
+
+/** Build a JSON representation of raw provider response for display. */
+function buildRawProviderResponse(failure: Record<string, unknown> | null | undefined): string | null {
+  if (!failure) return null;
+  const diag = (failure.diagnostics ?? {}) as Record<string, unknown>;
+  const code = diag.originalErrorCode ?? diag.original_error_code;
+  const message = diag.originalMessage ?? diag.original_message;
+  const httpStatus = diag.httpStatus ?? diag.http_status;
+  if (!code && !message && !httpStatus) return null;
+  const error: Record<string, unknown> = {};
+  if (code !== null && code !== undefined) error.code = code;
+  if (message) error.message = message;
+  if (httpStatus) error.status = httpStatus;
+  return JSON.stringify({ error }, null, 2);
+}
+
+/** Retry kind label. */
+function kindLabel(kind: string) {
+  if (kind === "provider_retry") return "Provider retry";
+  if (kind === "job_resume") return "Auto-resume";
+  if (kind === "stream_reconnect") return "Reconnection";
+  if (kind === "manual_retry") return "Manual retry";
+  return kind.replace(/_/g, " ");
+}
+
+/** Evidence source type header info based on evidence kind and metadata. */
+function evidenceSourceInfo(ev: EvidenceItem): {
+  title: string;
+  Icon: React.ComponentType<{ size: number; color: string }>;
+  iconBg: string;
+  iconColor: string;
+  metaLines: string[];
+  originalUrl: string | null;
+} {
+  const meta: string[] = [];
+  let originalUrl: string | null = null;
+  const label = ev.label ?? "";
+  const prov = ev.provenance;
+
+  // Extract URL from label if it looks like one
+  const urlMatch = label.match(/https?:\/\/[^\s"'<>]+/);
+  if (urlMatch) originalUrl = urlMatch[0];
+
+  switch (ev.kind) {
+    case "url": {
+      const domain = originalUrl ? (() => { try { return new URL(originalUrl).hostname; } catch { return ""; } })() : "";
+      if (!originalUrl && label.startsWith("http")) originalUrl = label;
+      return {
+        title: domain || "Website / Link",
+        Icon: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F",
+        metaLines: [originalUrl ?? label, ...(prov?.sourceDescription ? [prov.sourceDescription] : []), ev.collectedAt ? `Captured: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean),
+        originalUrl,
+      };
+    }
+    case "text": {
+      // Determine if this is a message, email, or generic text
+      const isEmail = /email|mail|subject|from:/i.test(label);
+      const isMessage = /message|sms|chat|whatsapp/i.test(label);
+      const isCall = /call|phone|number/i.test(label);
+      if (isEmail) {
+        const subjectMatch = label.match(/subject:\s*(.+)/i);
+        const senderMatch = label.match(/from:\s*(.+?)(?:\s*[|·]|$)/i);
+        meta.push(senderMatch ? `From: ${senderMatch[1].trim()}` : "Email");
+        if (subjectMatch) meta.push(`Subject: ${subjectMatch[1].trim()}`);
+        return { title: "Email", Icon: Mail, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [...meta, ev.collectedAt ? `Received: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean), originalUrl: null };
+      }
+      if (isMessage || isCall) {
+        const phoneMatch = label.match(/\+?\d[\d\s().-]{7,}\d/);
+        if (phoneMatch) meta.push(`From: ${phoneMatch[0].trim()}`);
+        return { title: isCall ? "Call" : "Message", Icon: isCall ? Phone : MessageSquare, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [...meta, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+      }
+      return { title: "Text content", Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [prov?.sourceDescription ?? label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+    }
+    case "image":
+      return { title: "Screenshot", Icon: Search, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [label || "User screenshot", ev.collectedAt ? `Captured: ${new Date(ev.collectedAt).toLocaleString()}` : "", ev.mediaType ?? ""].filter(Boolean), originalUrl: null };
+    case "document": case "file": case "attachment":
+      return { title: prov?.originalFilename ?? "File", Icon: FileText, iconBg: "#E4F0E8", iconColor: "#2E7D32", metaLines: [prov?.originalFilename ?? label, ev.mediaType ?? "", ev.byteLength ? formatEvBytes(ev.byteLength) : "", ev.collectedAt ? `Uploaded: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean), originalUrl: null };
+    default:
+      return { title: ev.kind.charAt(0).toUpperCase() + ev.kind.slice(1), Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+  }
+}
+
+function formatEvBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Timeline entry for History tab. */
+interface TimelineEntry { title: string; body: string; at: string; iconType: "create" | "working" | "retry" | "complete" | "failed" | "question" }
+
+function buildTimeline(state: CaseState): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+  const { caseData, turns, failure, phase, response } = state;
+  if (caseData) entries.push({ title: "Investigation opened", body: "Magnum DI began the investigation.", at: caseData.createdAt, iconType: "create" });
+  for (const turn of turns) entries.push({ title: "Follow-up submitted", body: `You asked: "${turn.question.slice(0, 100)}${turn.question.length > 100 ? "\u2026" : ""}"`, at: turn.committedAt, iconType: "question" });
+  const history = ((failure as unknown as Record<string, unknown> | null)?.retryHistory ?? (failure as unknown as Record<string, unknown> | null)?.retry_history ?? []) as Record<string, unknown>[];
+  for (const rh of history) {
+    entries.push({ title: kindLabel(String(rh.kind ?? "Retry")), body: `${rh.outcome === "success" ? "Succeeded" : "Failed"}${rh.failureCode || rh.failure_code ? ` \u2014 ${rh.failureCode ?? rh.failure_code}` : ""}`, at: String(rh.timestamp ?? caseData?.createdAt ?? ""), iconType: rh.outcome === "success" ? "complete" : "retry" });
+  }
+  if (response && (phase === "answered" || phase === "waiting_user")) {
+    entries.push({ title: response.completion === "complete" ? "Investigation complete" : "Results available", body: response.completion === "complete" ? "Magnum DI completed the investigation within scope." : response.completion === "partial" ? "Magnum DI provided partial results." : "Magnum DI is waiting for your answer.", at: caseData?.updatedAt ?? caseData?.createdAt ?? "", iconType: "complete" });
+  } else if (phase === "failed") {
+    entries.push({ title: "Investigation incomplete", body: failure?.message ?? state.error ?? "The investigation could not be completed.", at: caseData?.updatedAt ?? caseData?.createdAt ?? "", iconType: "failed" });
+  } else if (phase === "expired") {
+    entries.push({ title: "Investigation expired", body: "Temporary evidence expired before the investigation finished.", at: caseData?.updatedAt ?? "", iconType: "failed" });
+  }
+  return entries.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+function timelineDotColor(type: string): string {
+  switch (type) { case "create": return "#2563EB"; case "working": return "#7C3AED"; case "retry": return "#D97706"; case "complete": return "#16A34A"; case "failed": return "#DC2626"; case "question": return "#D97706"; default: return "#6B7280"; }
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeof useStyles> }) {
+  return <Pressable style={s.source} onPress={() => void WebBrowser.openBrowserAsync(source.url)} accessibilityRole="link" testID={`inv-source-${source.id}`}>
+    <Text style={s.link}>{source.title || source.url}</Text>
+    <Text style={s.muted}>{source.authority === "official" ? "Official platform/vendor source" : source.authority === "self_claimed" ? "Fetched from the destination itself \u2014 not independent" : "Search result \u2014 publisher not independently verified"} \u00B7 {scrubMessage(source.retrieval)}</Text>
+  </Pressable>;
+}
+
+/** Single row in the diagnostic detail display. */
+function DiagRow({ label, value, s }: { label: string; value: unknown; s: ReturnType<typeof useStyles> }) {
+  const display = value !== null && value !== undefined && value !== "" ? String(value) : "Unavailable";
+  return <View style={s.diagRow}><Text style={s.diagLabel}>{label}</Text><Text style={s.diagValue}>{display}</Text></View>;
+}
+
+/** Tab bar matching the approved mock-up. */
+function TabBar({ active, onChange, s }: { active: TabId; onChange: (id: TabId) => void; s: ReturnType<typeof useStyles> }) {
+  return (
+    <View style={s.tabBar} testID="inv-tab-bar">
+      {TAB_LABELS.map(({ id, label }) => (
+        <Pressable key={id} style={[s.tab, active === id && s.tabActive]} onPress={() => onChange(id)} accessibilityRole="tab" accessibilityState={{ selected: active === id }} testID={`inv-tab-${id}`}>
+          <Text style={[s.tabText, active === id && s.tabTextActive]}>{label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** Expandable Technical Error Details section. */
+function TechnicalErrorDetails({ failure, caseId, s }: { failure: Record<string, unknown> | null | undefined; caseId?: string; s: ReturnType<typeof useStyles> }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copyNote, setCopyNote] = useState("");
+  const { colors } = useTheme();
+  if (!failure) return null;
+  const diag = (failure.diagnostics ?? {}) as Record<string, unknown>;
+  const history = (failure.retryHistory ?? failure.retry_history ?? []) as Record<string, unknown>[];
+  const hasDiag = Object.values(diag).some((v) => v !== null && v !== undefined && v !== "");
+
+  return <View style={s.diagSection} testID="inv-diag-section">
+    <Pressable style={s.diagToggle} onPress={() => setExpanded((v) => !v)} testID="inv-diag-toggle">
+      <Text style={s.diagToggleText}>Technical error details</Text>
+      {expanded ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
+    </Pressable>
+    {expanded ? <View style={s.diagCard} testID="inv-diag-details">
+      {hasDiag ? <>
+        <DiagRow s={s} label="Component" value={diag.component} />
+        <DiagRow s={s} label="Service" value={diag.service} />
+        <DiagRow s={s} label="Operation" value={diag.operation} />
+        <View style={s.diagDivider} />
+        <DiagRow s={s} label="Failure" value={failure.code} />
+        <DiagRow s={s} label="HTTP status" value={diag.httpStatus ?? diag.http_status} />
+        <DiagRow s={s} label="Error code" value={diag.originalErrorCode ?? diag.original_error_code} />
+        <DiagRow s={s} label="Error message" value={diag.originalMessage ?? diag.original_message} />
+        <DiagRow s={s} label="Exception" value={diag.exceptionType ?? diag.exception_type} />
+        <View style={s.diagDivider} />
+        <DiagRow s={s} label="Request ID" value={diag.requestId ?? diag.request_id} />
+        <DiagRow s={s} label="Timestamp" value={diag.timestamp} />
+        <DiagRow s={s} label="Duration" value={(diag.durationMs ?? diag.duration_ms) ? `${diag.durationMs ?? diag.duration_ms}ms` : undefined} />
+        <DiagRow s={s} label="Attempts" value={history.length ? `${history.length} (${history.length - 1} automatic retries)` : undefined} />
+        <DiagRow s={s} label="Recovery" value={diag.finalStatus ?? diag.final_status} />
+        <DiagRow s={s} label="Case ID" value={caseId ?? diag.caseId ?? diag.case_id} />
+        <DiagRow s={s} label="Job ID" value={diag.jobId ?? diag.job_id} />
+      </> : <Text style={s.diagValue}>No detailed diagnostics were recorded for this failure.</Text>}
+      {history.length ? <>
+        <View style={s.diagDivider} />
+        <Text style={[s.diagLabel, { minWidth: 0 }]}>Investigation Attempts</Text>
+        {history.map((rh, i) => <View key={i} style={s.retryEntry}>
+          <Text style={s.retryBadge}>#{String(rh.attempt ?? i + 1)}</Text>
+          <Text style={s.retryText}>{kindLabel(String(rh.kind ?? "unknown"))} \u2192 {String(rh.outcome ?? "unknown")}{rh.failureCode ?? rh.failure_code ? ` [${rh.failureCode ?? rh.failure_code}]` : ""}{rh.failureMessage ?? rh.failure_message ? `: ${String(rh.failureMessage ?? rh.failure_message).slice(0, 150)}` : ""}</Text>
+        </View>)}
+      </> : null}
+      <View style={s.copyBtn}>
+        <Button testID="inv-diag-copy" variant="ghost" label={copyNote || "Copy Diagnostics"} onPress={() => {
+          const text = buildDiagnosticsCopy(failure, caseId);
+          void Clipboard.setStringAsync(text).then(() => { setCopyNote("Copied to clipboard"); setTimeout(() => setCopyNote(""), 3000); }).catch(() => setCopyNote("Copy failed"));
+        }} />
+      </View>
+    </View> : null}
+  </View>;
+}
+
+/** Raw provider response code block with Copy. */
+function RawProviderResponse({ failure, s }: { failure: Record<string, unknown> | null | undefined; s: ReturnType<typeof useStyles> }) {
+  const { colors } = useTheme();
+  const [copyNote, setCopyNote] = useState("");
+  const rawJson = useMemo(() => buildRawProviderResponse(failure), [failure]);
+  if (!rawJson) return null;
+  return <View style={s.rawBlock} testID="inv-raw-response">
+    <View style={s.rawHeader}>
+      <Text style={s.rawTitle}>Raw provider response</Text>
+      <Pressable style={s.rawCopyBtn} onPress={() => { void Clipboard.setStringAsync(rawJson).then(() => { setCopyNote("Copied"); setTimeout(() => setCopyNote(""), 3000); }).catch(() => setCopyNote("Failed")); }} testID="inv-raw-copy">
+        <Copy size={14} color={colors.brandPrimary} />
+        <Text style={s.rawCopyText}>{copyNote || "Copy"}</Text>
+      </Pressable>
+    </View>
+    <Text style={s.rawCode} selectable>{rawJson}</Text>
+  </View>;
+}
+
+// ── Evidence Source Card ─────────────────────────────────────────────────────
+
+/** Renders a single evidence item with source-specific header, original content, and metadata. */
+function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
+  ev: EvidenceItem; caseId: string; onViewFull: (id: string) => void;
+  s: ReturnType<typeof useStyles>;
+}) {
+  const { colors } = useTheme();
+  const info = evidenceSourceInfo(ev);
+  const IconEl = info.Icon;
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Load content on mount for available items
+  useEffect(() => {
+    if (ev.availability !== "available") return;
+    setLoading(true);
+    getDeviceToken().then((token) => {
+      if (!token) { setLoading(false); return; }
+      if (ev.kind === "image") {
+        fetch(`${API_BASE}/investigations/${caseId}/evidence/${ev.id}/content`, { headers: { Authorization: `Bearer ${token}` } })
+          .then(async (r) => { if (!r.ok) throw new Error(""); const blob = await r.blob(); return new Promise<string>((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result as string); reader.readAsDataURL(blob); }); })
+          .then((uri) => { setImageUri(uri); setLoading(false); })
+          .catch(() => setLoading(false));
+      } else if (ev.kind === "text" || ev.kind === "url") {
+        fetch(`${API_BASE}/investigations/${caseId}/evidence/${ev.id}/content`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => { if (!r.ok) throw new Error(""); return r.text(); })
+          .then((text) => { setTextContent(text); setLoading(false); })
+          .catch(() => setLoading(false));
+      } else { setLoading(false); }
+    }).catch(() => setLoading(false));
+  }, [ev, caseId]);
+
+  return (
+    <View style={s.evidenceCard} testID={`inv-ev-source-${ev.id}`}>
+      {/* ── Source Header ── */}
+      <View style={s.sourceHeader}>
+        <View style={[s.sourceIconWrap, { backgroundColor: info.iconBg }]}>
+          <IconEl size={20} color={info.iconColor} />
+        </View>
+        <View style={s.sourceHeaderInfo}>
+          <Text style={s.sourceHeaderTitle}>{info.title}</Text>
+          {info.metaLines.map((line, i) => (
+            <Text key={i} style={i === 0 ? s.sourceHeaderMetaBold : s.sourceHeaderMeta} numberOfLines={2}>{line}</Text>
+          ))}
+        </View>
+      </View>
+
+      {/* ── Original Content ── */}
+      {loading ? (
+        <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+          <ActivityIndicator color={colors.gold} size="small" />
+        </View>
+      ) : null}
+
+      {/* Text/URL content — show original unaltered */}
+      {textContent ? (
+        <View style={s.sourceContentBlock}>
+          <Text style={s.sourceContentText} selectable testID={`inv-ev-content-${ev.id}`}>{textContent}</Text>
+        </View>
+      ) : null}
+
+      {/* Image content — show original screenshot */}
+      {imageUri ? (
+        <Pressable onPress={() => onViewFull(ev.id)} style={{ borderRadius: radius.md, overflow: "hidden" }}>
+          <Image source={{ uri: imageUri }} style={{ width: "100%", aspectRatio: 16 / 9 }} resizeMode="contain" testID={`inv-ev-image-${ev.id}`} />
+        </Pressable>
+      ) : null}
+
+      {/* URL/link — original URL preserved and tappable */}
+      {info.originalUrl ? (
+        <Pressable onPress={() => void WebBrowser.openBrowserAsync(info.originalUrl!)} style={s.sourceOriginalBanner}>
+          <Globe size={14} color={colors.restingText} />
+          <Text style={s.sourceOriginalText} numberOfLines={1}>Open original: {info.originalUrl}</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Unavailable / expired notice */}
+      {ev.availability === "content_expired" ? (
+        <Text style={s.muted}>Content expired — original evidence was automatically deleted after 24 hours.</Text>
+      ) : ev.availability !== "available" && ev.availability !== "content_expired" ? (
+        <Text style={s.muted}>{ev.availability === "purged" ? "Securely deleted." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
+      ) : null}
+
+      {/* Label — preserved original submission label */}
+      {ev.label && !textContent && !imageUri ? <Text style={s.muted}>{ev.label}</Text> : null}
+
+      {/* View full details link */}
+      <Pressable onPress={() => onViewFull(ev.id)} hitSlop={8}>
+        <Text style={[s.link, { fontSize: 13 }]}>View full details →</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Main Component ──────────────────────────────────────────────────────────
+
+export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation" }: {
+  state: CaseState; onAnswer?: (text: string) => void; onRetry: () => void; onCancel: () => void; onAction?: (action: ActionProposal, outcome: ActionOutcome) => void; testID?: string;
+}) {
+  const s = useStyles(); const { colors } = useTheme();
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [actionNote, setActionNote] = useState<string | null>(null);
+  const [confirmablePlanId, setConfirmablePlanId] = useState<string | null>(null);
+  const [reports, setReports] = useState<investigationApi.SavedReport[]>([]);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [reportNext, setReportNext] = useState<string | null>(null);
+  const [reportNote, setReportNote] = useState<string | null>(null);
+  const [failedRecheck, setFailedRecheck] = useState(false);
+  const [evidencePopupVisible, setEvidencePopupVisible] = useState(false);
+  const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfNote, setPdfNote] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  // ── Recheck observer ──
+  useEffect(() => onRecheck((o) => {
+    if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
+    const fresh = o.observation ? `fresh observation: ${scrubMessage(o.observation.status)}${o.observation.unavailableReason ? ` (${scrubMessage(o.observation.unavailableReason)})` : ""}` : "no observation possible on this device";
+    const verdict = o.plan ? ({ correct: "The setting now matches what Apollo asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here \u2014 only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
+    setActionNote(`Back from Settings \u2014 ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
+    setFailedRecheck(o.attempt.status === "failed" && o.plan?.outcome === "failed");
+    setConfirmablePlanId(o.plan?.outcome === "cannot_observe" ? o.attempt.planId : null);
+  }), [state.caseData]);
+
+  // ── PDF export ──
+  const exportPdf = useCallback(async () => {
+    const currentCase = state.caseData;
+    if (!currentCase) return;
+    setPdfExporting(true); setPdfNote(null);
+    try {
+      const token = await getDeviceToken();
+      if (!token) { setPdfNote("Device not registered. Please restart Apollo."); return; }
+      const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf`;
+      const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
+      const destination = new FileSystem.File(FileSystem.Paths.cache, filename);
+      const task = new FileSystem.DownloadTask(url, destination, { headers: { Authorization: `Bearer ${token}` } });
+      const file = await task.downloadAsync();
+      if (!file) { setPdfNote("Could not generate the PDF. Please try again."); return; }
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (sharingAvailable) {
+        await Sharing.shareAsync(file.uri, { mimeType: "application/pdf", dialogTitle: "Export Apollo Investigation Report", UTI: "com.adobe.pdf" });
+        setPdfNote("PDF exported successfully.");
+      } else if (Platform.OS === "web") { setPdfNote("PDF download is not available in the web preview. Use the Expo Go app on a device."); }
+      else { setPdfNote("Sharing is not available on this device."); }
+    } catch (e: unknown) { setPdfNote(e instanceof Error ? e.message : "PDF export failed."); }
+    finally { setPdfExporting(false); }
+  }, [state.caseData]);
+
+  // ── Load reports + evidence ──
+  useEffect(() => {
+    if (!state.caseData) { setReports([]); setReportNext(null); return; }
+    void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));
+    void investigationApi.listEvidence(state.caseData.id).then((result) => setEvidenceItems(result.items)).catch(() => {});
+  }, [state.caseData]);
+
+  const { phase, response, sources, turns, caseData, progress, failure, error, question } = state;
+  const working = phase === "creating" || phase === "working" || phase === "reconnecting" || phase === "waiting_device";
+
+  // Reset retrying state when phase leaves "failed"
+  useEffect(() => { if (phase !== "failed") setRetrying(false); }, [phase]);
+
+  const handleRetry = useCallback(() => {
+    setRetrying(true);
+    onRetry();
+    // Safety: reset after 6s in case retry returns silently (e.g., expired operation)
+    setTimeout(() => setRetrying(false), 6000);
+  }, [onRetry]);
+  const usedSources = sources.filter((src) => response?.sourceIds.includes(src.id));
+  const inventory = caseData?.inventory;
+  const showTabs = !!(response || (failure && caseData && !working));
+
+  // ── Categorised evidence items ──
+  const originalEvidence = useMemo(() => evidenceItems.filter((e) => e.origin === "user_submission" || e.origin === "device_observation"), [evidenceItems]);
+  const derivedEvidence = useMemo(() => evidenceItems.filter((e) => e.origin !== "user_submission" && e.origin !== "device_observation"), [evidenceItems]);
+
+  // ── Status info ──
+  const gate = gateInfo(caseData?.gates as Gate[] | undefined);
+  const status = statusInfo(phase, response, failure);
+  const timeline = useMemo(() => buildTimeline(state), [state]);
+
+  const statusBadgeBg = status.tone === "resting" ? colors.restingTint : status.tone === "barking" ? colors.barkingTint : status.tone === "ears_up" ? colors.ears_upTint : colors.sniffingTint;
+  const statusBadgeColor = status.tone === "resting" ? colors.restingText : status.tone === "barking" ? colors.barkingText : status.tone === "ears_up" ? colors.ears_upText : colors.sniffingText;
+  const StatusIcon = status.tone === "resting" ? CircleCheck : status.tone === "barking" ? CircleAlert : Info;
+
+  return <View style={{ gap: spacing.md }} testID={testID}>
+
+    {/* ── Conversation history (all turns) ── */}
+    {turns.slice(0, -1).map((turn) => <View key={turn.turnId} style={s.turn} testID={`inv-turn-${turn.turnId}`}>
+      <View style={s.user}><Text style={s.text}>{turn.question}</Text></View>
+      <Text style={s.text}>{scrubMessage(turn.response.overview)}</Text>
+    </View>)}
+    {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
+
+    {/* ── Working / progress state ── */}
+    {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted \u2014 reconnecting to the same investigation\u2026" : phase === "waiting_device" ? "Checking this device for a fresh observation\u2026" : "Magnum DI is investigating\u2026"}</Body></View>
+      {progress.slice(-3).map((line, i) => <Text key={`${i}-${line}`} style={s.muted}>{line}</Text>)}
+      {caseData?.activeJobId ? <Button testID="inv-cancel" variant="ghost" label="Cancel this investigation" onPress={onCancel} /> : null}</Card> : null}
+
+    {/* ── Retrying state — show Higgins explanation during auto-retry ── */}
+    {(phase as string) === "retry_wait" ? <Card style={s.card} testID="inv-retry-progress">
+      <View style={s.row}><ActivityIndicator color={colors.gold} /><Body>Investigation continuing</Body></View>
+      <View style={s.higginsExplanation}>
+        <Text style={s.higginsExplainLabel}>Higgins</Text>
+        <Text style={s.higginsExplainText}>{higginsExplanation(failure as unknown as Record<string, unknown> | null, true)}</Text>
+      </View>
+    </Card> : null}
+
+    {/* ── Status Card + Four-Tab Report ── */}
+    {showTabs ? <>
+      {/* ── Status Card ── */}
+      <View style={s.statusCard} testID="inv-status-card">
+        <View style={s.statusRow}>
+          <View style={[s.statusIconWrap, { backgroundColor: gate.iconBg }]}>
+            <gate.IconComponent size={16} color={gate.iconColor} />
+          </View>
+          <Text style={s.statusTitle}>{gate.title}</Text>
+        </View>
+        <View style={{ gap: 4 }}>
+          <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
+            <StatusIcon size={12} color={statusBadgeColor} />
+            <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
+          </View>
+          <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
+            {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+            <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Tab Navigation ── */}
+      <TabBar active={activeTab} onChange={setActiveTab} s={s} />
+
+      {/* ━━━━ TAB 1: OVERVIEW — Higgins' Briefing ━━━━ */}
+      {activeTab === "overview" ? (
+        <Card style={[s.card, { gap: spacing.md }]} testID="inv-tab-overview-content">
+          {/* Higgins header */}
+          <View style={s.higginsHeader}>
+            <View style={s.higginsAvatarWrap}>
+              <Image source={higginsAvatar} style={s.higginsAvatarImg} />
+            </View>
+            <View>
+              <Text style={s.higginsName}>Higgins</Text>
+              {caseData ? <Text style={s.higginsTime}>{new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text> : null}
+            </View>
+          </View>
+
+          {/* Conversational briefing */}
+          {response ? (
+            <Text style={s.briefingText} testID="inv-overview">{scrubMessage(response.overview)}</Text>
+          ) : failure ? (
+            <Text style={s.briefingText} testID="inv-overview">{higginsExplanation(failure as unknown as Record<string, unknown>, false)}</Text>
+          ) : error ? (
+            <Text style={s.briefingText} testID="inv-overview">{error}</Text>
+          ) : null}
+
+          {response?.attentionReason ? <>
+            <View style={s.divider} />
+            <Text style={s.briefingText}>{scrubMessage(response.attentionReason)}</Text>
+          </> : null}
+
+          {/* What you can do */}
+          <Text style={s.sectionHeader}>What you can do</Text>
+          <View style={{ gap: spacing.sm }}>
+            {/* Retry investigation — when failed */}
+            {(phase === "failed" && caseData) ? (
+              <Pressable style={[s.actionCard, retrying && { opacity: 0.6 }]} disabled={retrying} onPress={handleRetry} testID="inv-retry">
+                <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}>{retrying ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <RefreshCw size={20} color={colors.brandPrimary} />}</View>
+                <View style={s.actionContent}>
+                  <Text style={s.actionTitle}>{retrying ? "Retrying investigation…" : "Retry investigation"}</Text>
+                  <Text style={s.actionDescription}>{retrying ? "Magnum DI is reconnecting" : "Magnum DI will run the checks again"}</Text>
+                </View>
+                {!retrying ? <ChevronRight size={18} color={colors.muted} /> : null}
+              </Pressable>
+            ) : null}
+
+            {/* Dynamic actions from Higgins */}
+            {response?.actions.map((action) => (
+              <Pressable key={action.id} style={s.actionCard} testID={`inv-action-${action.id}`}
+                onPress={() => {
+                  if (!isExecutable(action)) return;
+                  if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
+                  if (!caseData) return;
+                  void runAction(action, caseData).then((outcome) => {
+                    setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading. Ask Higgins to re-check so it folds the new result in."
+                      : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
+                      : outcome.kind === "requested" ? "Apollo asked the system for that permission. A fresh check runs when you return."
+                      : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
+                    onAction?.(action, outcome);
+                  });
+                }}>
+                <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
+                <View style={s.actionContent}>
+                  <Text style={s.actionTitle}>{action.label}</Text>
+                  <Text style={s.actionDescription} numberOfLines={2}>{action.instruction}</Text>
+                </View>
+                {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
+              </Pressable>
+            )) ?? null}
+
+            {/* Partial findings card — when partial findings available */}
+            {failure && response ? (
+              <View style={[s.infoCard, { backgroundColor: "#E6F2FF" }]} testID="inv-partial-findings">
+                <View style={[s.infoIconWrap, { backgroundColor: colors.info }]}><Info size={16} color="#FFFFFF" /></View>
+                <View style={s.infoContent}>
+                  <Text style={s.infoTitle}>Partial findings available</Text>
+                  <Text style={s.infoBody}>Some initial checks were completed. View Evidence tab for details.</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+
+          {actionNote ? <Text style={s.muted} testID="inv-action-note">{actionNote}</Text> : null}
+          {confirmablePlanId && caseData ? <Button testID="inv-settings-user-confirm" variant="ghost" label="I checked this setting myself" onPress={() => {
+            void investigationApi.confirmSettingsPlan(caseData.id, confirmablePlanId, true).then((result) => {
+              setConfirmablePlanId(null); setActionNote(result.explanation);
+            }).catch(() => setActionNote("Apollo could not record your confirmation. Try again."));
+          }} /> : null}
+          {failedRecheck ? <Button testID="inv-recheck-retry" variant="ghost" label="Retry the fresh check" onPress={() => { setFailedRecheck(false); void retryFailedAttempt(); }} /> : null}
+
+          {/* ── Report controls (moved from Probe) ── */}
+          {caseData && response ? <View style={{ gap: spacing.xs, marginTop: spacing.md }} testID="inv-report-controls">
+            <View style={s.divider} />
+            <Button testID="inv-export-pdf" variant="secondary" disabled={pdfExporting}
+              label={pdfExporting ? "Generating PDF\u2026" : "Export Report as PDF"}
+              icon={pdfExporting ? <ActivityIndicator size="small" color={colors.brand} /> : undefined}
+              onPress={exportPdf} />
+            {pdfNote ? <Text style={s.muted} testID="inv-pdf-note">{pdfNote}</Text> : null}
+            <Button testID="inv-report-save" variant="ghost" label="Save a redacted report" onPress={() => {
+              void investigationApi.saveReport(caseData.id, response.revision).then(({ reportId }) => investigationApi.listReports().then((result) => {
+                setReports(result.items); setReportNext(result.nextCursor); setReportNote(`Saved report ${reportId.slice(0, 8)}. Temporary evidence is not copied.`);
+              })).catch(() => setReportNote("The report could not be saved."));
+            }} />
+            <Button testID="inv-reports-toggle" variant="ghost" label={`${reportsOpen ? "Hide" : "Manage"} saved reports (${reports.length}${reportNext !== null ? "+" : ""})`} onPress={() => setReportsOpen((v) => !v)} />
+            {reportsOpen ? <View style={{ gap: spacing.sm }} testID="inv-reports-list">{reports.map((report) => <View key={report.reportId} style={s.source} testID={`inv-report-${report.reportId}`}>
+              <Text style={s.text}>{scrubMessage(report.overview)}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} \u00B7 historical snapshot</Text>
+              <Button testID={`inv-report-delete-${report.reportId}`} variant="ghost" label="Delete saved report" onPress={() => {
+                void investigationApi.deleteReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
+                  .catch(() => setReportNote("That report could not be deleted."));
+              }} />
+            </View>)}
+            {reportNext !== null ? <Button testID="inv-reports-load-more" variant="ghost" label="Load more reports" onPress={() => {
+              void investigationApi.listReports(reportNext).then((result) => { setReports((items) => [...items, ...result.items]); setReportNext(result.nextCursor); });
+            }} /> : null}</View> : null}
+            {reportNote ? <Text style={s.muted} testID="inv-report-note">{reportNote}</Text> : null}
+          </View> : null}
+        </Card>
+      ) : null}
+
+      {/* ━━━━ TAB 2: EVIDENCE — Original Source Material ━━━━ */}
+      {activeTab === "evidence" ? (
+        <View style={{ gap: spacing.md }} testID="inv-tab-evidence-content">
+          {/* Explanatory header */}
+          <Card style={[s.card, { gap: spacing.xs }]}>
+            <Text style={s.sectionTitle}>SOURCE EVIDENCE</Text>
+            <Text style={s.muted}>The original material Apollo relied on for this investigation. Content is preserved unaltered.</Text>
+          </Card>
+
+          {caseData ? <OriginalSourceView caseKeys={[caseData.id]} /> : null}
+          {caseData ? <ImageEvidenceCompare caseKey={caseData.id} title={`Apollo investigation ${caseData.id.slice(0, 8)}`} date={caseData.createdAt} summary={caseData.response ? {
+            overview: caseData.response.overview || null,
+            findings: caseData.response.findings.map((f) => f.text),
+            steps: caseData.response.actions.map((a) => a.instruction ? `${a.label}: ${a.instruction}` : a.label),
+            uncertainties: caseData.response.uncertainties,
+          } : null} /> : null}
+          {caseData ? <ReportScamHelper caseKey={caseData.id} brand={caseData.response ? findBrandIn([caseData.response.overview, ...caseData.response.findings.map((f) => f.text)].join(" ")) : null} /> : null}
+
+          {/* Original evidence items — with full source headers and inline content */}
+          {originalEvidence.length ? <>
+            {originalEvidence.map((ev) => (
+              <Card key={ev.id} style={[s.card, { gap: spacing.sm }]}>
+                <EvidenceSourceCard
+                  ev={ev} caseId={caseData?.id ?? ""}
+                  onViewFull={(id) => { setFocusEvidenceId(id); setEvidencePopupVisible(true); }} s={s} />
+              </Card>
+            ))}
+          </> : null}
+
+          {/* Derived / extracted content — kept separate and clearly labelled */}
+          {derivedEvidence.length ? <>
+            <Card style={[s.card, { gap: spacing.sm }]}>
+              <Text style={s.sectionTitle}>EXTRACTED & ANALYSIS CONTENT</Text>
+              <Text style={s.muted}>Content produced during the investigation — not original submissions.</Text>
+              {derivedEvidence.map((ev) => (
+                <Pressable key={ev.id} style={s.evidenceCard} onPress={() => { setFocusEvidenceId(ev.id); setEvidencePopupVisible(true); }} testID={`inv-evidence-derived-${ev.id}`}>
+                  <Text style={s.evidenceLabel}>{ev.origin || "Derived"} · {ev.kind}</Text>
+                  <Text style={s.text}>{ev.displayId || ev.id.slice(0, 8)}</Text>
+                  {ev.label ? <Text style={s.muted}>{ev.label}</Text> : null}
+                </Pressable>
+              ))}
+            </Card>
+          </> : null}
+
+          {!originalEvidence.length && !derivedEvidence.length && !failure ? <Card style={s.card}><Text style={s.muted}>No evidence items are available for this investigation.</Text></Card> : null}
+
+          {/* Evidence inventory summary */}
+          {inventory ? <Card style={[s.card, { gap: spacing.xs }]}>
+            <Text style={s.sectionTitle}>EVIDENCE INVENTORY</Text>
+            <Text style={s.muted}>Evidence: {inventory.examined} of {inventory.total} items examined{inventory.partial ? `, ${inventory.partial} partially` : ""}{inventory.unavailable ? `, ${inventory.unavailable} unavailable` : ""}.</Text>
+          </Card> : null}
+
+          {/* Investigation incomplete alert */}
+          {failure ? (
+            <Card style={[s.card, { gap: spacing.sm }]}>
+              <View style={[s.infoCard, { backgroundColor: colors.barkingTint, padding: spacing.md }]}>
+                <View style={[s.infoIconWrap, { backgroundColor: colors.barking }]}><CircleAlert size={16} color="#FFFFFF" /></View>
+                <View style={s.infoContent}>
+                  <Text style={[s.infoTitle, { color: colors.barkingText }]}>Investigation incomplete</Text>
+                  <Text style={s.infoBody}>{failure.message ?? error ?? "Magnum DI couldn\u0027t complete all checks."}</Text>
+                </View>
+              </View>
+              <TechnicalErrorDetails failure={failure as unknown as Record<string, unknown>} caseId={caseData?.id} s={s} />
+              <RawProviderResponse failure={failure as unknown as Record<string, unknown>} s={s} />
+            </Card>
+          ) : null}
+
+          {/* View full evidence chain */}
+          {caseData && evidenceItems.length > 0 ? (
+            <Pressable style={s.actionCard} onPress={() => { setFocusEvidenceId(null); setEvidencePopupVisible(true); }} testID="inv-evidence-viewer">
+              <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><FileText size={20} color="#1E3A5F" /></View>
+              <View style={s.actionContent}>
+                <Text style={[s.actionTitle, { color: colors.onSurface }]}>Full evidence chain</Text>
+                <Text style={s.actionDescription}>View all items with detailed provenance and metadata.</Text>
+              </View>
+              <ChevronRight size={18} color={colors.muted} />
+            </Pressable>
+          ) : null}
+
+          {/* Link to History tab */}
+          <Pressable style={s.actionCard} onPress={() => setActiveTab("history")} testID="inv-evidence-history-link">
+            <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Clock size={20} color="#1E3A5F" /></View>
+            <View style={s.actionContent}>
+              <Text style={[s.actionTitle, { color: colors.onSurface }]}>Investigation history</Text>
+              <Text style={s.actionDescription}>See the full timeline, attempts and events.</Text>
+            </View>
+            <ChevronRight size={18} color={colors.muted} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* ━━━━ TAB 3: HISTORY — Investigation Timeline ━━━━ */}
+      {activeTab === "history" ? (
+        <View style={{ gap: spacing.md }} testID="inv-tab-history-content">
+
+          {/* Timeline */}
+          <Card style={[s.card, { gap: spacing.md }]} testID="inv-history-timeline">
+            {timeline.map((entry, i) => {
+              const isLast = i === timeline.length - 1;
+              const dotBg = timelineDotColor(entry.iconType);
+              const IconEl = entry.iconType === "create" ? Search : entry.iconType === "complete" ? CircleCheck : entry.iconType === "failed" ? CircleAlert : entry.iconType === "retry" ? RefreshCw : entry.iconType === "question" ? MessageSquare : Clock;
+              return (
+                <View key={i} style={s.timelineItem} testID={`inv-history-${i}`}>
+                  <View style={s.timelineTrack}>
+                    <View style={[s.timelineDot, { backgroundColor: dotBg }]}><IconEl size={16} color="#FFFFFF" /></View>
+                    {!isLast ? <View style={[s.timelineLine, { backgroundColor: colors.divider }]} /> : null}
+                  </View>
+                  <View style={isLast ? s.timelineContentLast : s.timelineContent}>
+                    <View style={s.timelineRow}>
+                      <Text style={s.timelineTitle}>{entry.title}</Text>
+                      {entry.at ? <Text style={s.timelineTime}>{new Date(entry.at).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
+                    </View>
+                    <Text style={s.timelineBody}>{entry.body}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </Card>
+
+          {/* Investigation history from domain (phase-based) */}
+          {response ? <Card style={[s.card, { gap: spacing.xs }]}>
+            <Text style={s.sectionTitle}>INVESTIGATION PROGRESS</Text>
+            {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-progress-history-${i}`}>{"\u2022"} {h.text}</Text>)}
+          </Card> : null}
+        </View>
+      ) : null}
+    </> : null}
+
+    {/* ── Question from Higgins (outside tabs — transient) ── */}
+    {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Magnum DI asks: {scrubMessage(question.reasonNeeded)}</Text>
+      {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
+      {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
+
+    {/* ── Lifecycle notice ── */}
+    {state.notice ? <Card style={s.card} testID="inv-lifecycle-notice"><Body>{state.notice}</Body></Card> : null}
+
+    {/* ── Error without tabs (edge case: failed before case created) ── */}
+    {error && !showTabs && (phase === "failed" || phase === "expired") ? <Card style={s.card} testID="inv-error">
+      <View style={s.higginsExplanation}>
+        <Text style={s.higginsExplainLabel}>Higgins</Text>
+        <Text style={s.higginsExplainText}>{failure ? higginsExplanation(failure as unknown as Record<string, unknown> | null, false) : error}</Text>
+      </View>
+      <TechnicalErrorDetails failure={failure as unknown as Record<string, unknown> | null} caseId={caseData?.id} s={s} />
+      {phase === "failed" ? <Button testID="inv-retry" label={retrying ? "Retrying…" : "Retry investigation"} disabled={retrying} onPress={handleRetry} /> : null}
+    </Card> : null}
+
+    {/* ── Partial failure indicator (outside tabs) ── */}
+    {failure && phase !== "failed" && !showTabs ? <Text style={s.muted} testID="inv-partial-reason">Incomplete: {failure.message}</Text> : null}
+
+    {/* ── Evidence popup (shared across all tabs) ── */}
+    {caseData ? <EvidencePopup visible={evidencePopupVisible} onClose={() => setEvidencePopupVisible(false)}
+      caseId={caseData.id} focusEvidenceId={focusEvidenceId} items={evidenceItems} /> : null}
+  </View>;
+}

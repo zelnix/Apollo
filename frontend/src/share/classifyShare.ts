@@ -1,0 +1,54 @@
+// Share Into Apollo — decide which check a shared payload belongs to. Pure so it can be unit-tested.
+// Order matters: files → email-looking text → account alerts → bare link → message.
+
+export type ShareKind = "link" | "message" | "email" | "account" | "file" | "screenshot";
+export interface SharedPayload { text?: string | null; webUrl?: string | null; files?: { path: string; mimeType?: string | null; fileName?: string | null; size?: number | null }[]; title?: string | null }
+export interface ShareRoute { kind: ShareKind; pathname: "/check" | "/message" | "/email" | "/account" | "/file"; params: Record<string, string>; reason: string }
+
+export const SHARE_KIND_LABEL: Record<ShareKind, string> = { link: "a link", message: "a text message or chat", email: "an email", account: "an account or login alert", file: "a file", screenshot: "an image" };
+
+const URL_RE = /https?:\/\/[^\s<>"']+/i;
+const BARE_DOMAIN_RE = /\b[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"']*)?/i;
+const EMAIL_HEADER_RE = /^\s*(from|subject|to|reply-to|sent|date)\s*:/im;
+const EMAIL_FORWARD_RE = /-{3,}\s*(forwarded|original) message\s*-{3,}|^begin forwarded message/im;
+const EMAIL_BODY_RE = /\b(dear\b|kind regards|regards,|unsubscribe|view (this )?(email|message) in (your )?browser|sincerely)/i;
+const ACCOUNT_RE = /\b(approve (this|the) (sign[- ]?in|login|request)|was this you|new (sign[- ]?in|login|device)|sign[- ]?in attempt|password (was )?(reset|changed)|reset your password|verification code|security code|one[- ]time (code|passcode)|two[- ]factor|2fa|unusual (sign[- ]?in|activity)|recovery (email|phone) (was )?(changed|added)|suspicious (login|sign[- ]?in|activity)|your account (was|has been) (accessed|locked))/i;
+
+export function extractUrl(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const match = text.match(URL_RE) ?? text.match(BARE_DOMAIN_RE);
+  return match ? match[0] : null;
+}
+
+export function classifyShare(p: SharedPayload): ShareRoute {
+  const file = p.files?.[0];
+  if (file) {
+    const mime = (file.mimeType ?? "").toLowerCase();
+    const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
+    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "Looks like an image. If it's a screenshot of a message, Apollo can read the text and check it — or you can check it as a file instead. Apollo doesn't know what's in it until it looks." };
+    return { kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
+  }
+  const raw = (p.text ?? "").trim();
+  const url = p.webUrl?.trim() || extractUrl(raw);
+  const withoutUrl = url ? raw.replace(url, "").trim() : raw;
+  const headerHits = (raw.match(new RegExp(EMAIL_HEADER_RE.source, "gim")) ?? []).length;
+  if (headerHits >= 2 || EMAIL_FORWARD_RE.test(raw) || (raw.length > 400 && EMAIL_BODY_RE.test(raw))) return { kind: "email", pathname: "/email", params: { source: "share" }, reason: headerHits >= 2 ? "It has email headers (From / Subject)." : "It reads like an email." };
+  if (ACCOUNT_RE.test(raw)) return { kind: "account", pathname: "/account", params: { source: "share" }, reason: "It talks about a login, code or password change — Account alerts handles those." };
+  if (url && withoutUrl.length < 12) return { kind: "link", pathname: "/check", params: { source: "share" }, reason: "It's just a link." };
+  return { kind: "message", pathname: "/message", params: { source: "share" }, reason: url ? "A message with a link inside — Apollo reads the wording first, then the link." : "It reads like a text or chat message." };
+}
+
+/** Alternatives the user can pick if Apollo guessed wrong (same payload, different check). */
+export function alternativeRoutes(p: SharedPayload, chosen: ShareKind): ShareRoute[] {
+  const raw = (p.text ?? "").trim();
+  const url = p.webUrl?.trim() || extractUrl(raw);
+  const all: ShareRoute[] = [];
+  if (p.files?.[0]) {
+    all.push({ kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "" }, { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "" });
+  } else {
+    const body = raw || url || "";
+    if (url) all.push({ kind: "link", pathname: "/check", params: { source: "share" }, reason: "" });
+    if (body) all.push({ kind: "message", pathname: "/message", params: { source: "share" }, reason: "" }, { kind: "email", pathname: "/email", params: { source: "share" }, reason: "" }, { kind: "account", pathname: "/account", params: { source: "share" }, reason: "" });
+  }
+  return all.filter((r) => r.kind !== chosen);
+}

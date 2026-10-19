@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the NEW Call Guard feature (dedicated /call-guard screen, IPQualityScore-backed on-demand number check, Guard tab 'Calls' card). Backend: ran the 7 new tests in test_gate4_callguard_risk.py (all pass, live against real IPQS API) plus the full existing suite (273 tests) - 270/273 passed; the 3 failures (test_gate2_message Gemini-second-opinion flake, test_family_voice 503 voice-storage, test_family_weekly_push event-loop-closed under xdist) are all pre-existing/unrelated to this diff (none touch call.py/phonerisk.py/models.py call additions). Re-ran test_family.py + test_device_auth.py in isolation as requested to confirm the previously-reported 8 guardian/email/weekly-checkin failures are NOT spreading — only 1 isolated pre-existing failure (test_confirm_valid_token, email-link related) reproduced this run, confirming isolation. Frontend (mobile viewport, web preview): completed onboarding, navigated Guard tab -> confirmed NEW 'Calls' section renders a Call Guard card ('All good' pill, correct summary, 'Open Call Guard' button) without disturbing Network/Account/Text Guard cards above it. Opened /call-guard: header+close work, 'Automatic call screening' card correctly shows 'Off' pill + honest web copy 'Automatic call screening needs a native build — not available in this preview' with NO turn-on button (as required for unsupported platform). Checked IPQS's documented high-risk test number +18007132618 live -> result card correctly showed decision 'High risk', fraud score 100/100, and a Barking Patrol event ('High-risk caller: +18007132618') appeared IMMEDIATELY in both 'Recently flagged calls' on the same screen AND the main Patrol tab. Checked the UK VOIP number +442071838750 live -> decision 'Some risk', fraud score 65/100, line type 'Landline · Aql Wholesale · VOIP' rendered correctly, Growling Patrol event created. 'Add to block list' button on web showed a sensible optimistic toast ('Apollo will reject calls from +442071838750.') with no crash, while the on-device block list correctly stayed empty (honest graceful degradation, expected per spec). Local number without country code (4155552671, no country) correctly surfaced the backend's 422 validation message ('Provide a valid phone number (and a 2-letter country code for local numbers).') in the UI error card rather than crashing. Regression: existing /call ('Check this call') screen renders completely unchanged (same ask/claim options), /text-guard, /email, /check all load cleanly, zero console errors captured across the whole session (the new ~45s pending-call-lookup poll effect is correctly gated to never fire/error on web).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_callguard_full_regression.xml",
+    "/app/backend/tests/test_gate4_callguard_risk.py"
+  ],
+  "action_items": [
+    "No blocking issues found for Call Guard. Native Android CallScreeningService and iOS CXCallDirectoryExtension remain untested (correctly out of scope for web-preview per review request - needs physical device build)."
+  ],
+  "critical_code_review_comments": [
+    "phonerisk.py correctly follows Truth-of-State: decision is always 'allow'/'review'/'avoid' (never 'block'), matches module docstring's stated constraint that only a real CallScreeningService rejection can produce verified 'biting'.",
+    "normalize_phone() correctly raises 422 for local numbers without a country code, verified live via UI.",
+    "IPQS key check (IPQS_API_KEY as URL path segment, not header) documented inline with rationale - good practice given IPQS's non-standard auth.",
+    "call-guard.tsx correctly gates 'Turn on call screening' button to Platform.OS==='android'||'ios' only, matching honest web/unsupported-platform copy with no misleading CTA.",
+    "Cache-then-live pattern in phonerisk.py mirrors rdap.py/intel.py conventions, verified indirectly via test_second_lookup_is_served_from_cache passing.",
+    "Guard tab 'Calls' section (guard.tsx) correctly derives callOpen from events.filter(category==='call' && state!=='resting'), consistent with existing Account/Message Guard card patterns - no duplicated logic."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "270/273 (99%) - 3 failures pre-existing/unrelated to Call Guard, verified via isolated re-run of test_family.py/test_device_auth.py (only 1 isolated pre-existing email failure, confirms not spreading); Call Guard's own 7 new tests are 100% (7/7)",
+    "frontend": "100% of testable Call Guard flows passed: Guard tab card, /call-guard navigation, honest web unsupported-platform copy, live IPQS high-risk check (fraud 100 -> Barking), live IPQS some-risk check (fraud 65 -> Growling, VOIP tag), Patrol event creation (same screen + main Patrol tab), graceful block/allow degradation on web (toast + no crash + list stays empty), 422 validation surfaced cleanly, and zero-regression on /call, /text-guard, /email, /check"
+  },
+  "seed_data_creation": "None required beyond the live IPQS lookups themselves (cached server-side in Mongo phone_risk_cache for the two test numbers used, per the module's 24h TTL design).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Call Guard (Gate 4 add-on) is fully solid on everything testable via web preview: manual number-check flow live against real IPQS API, Patrol logging, Guard tab card, and graceful degradation of block/allow-list buttons where no native module exists. The 3 backend test failures seen in the full-suite run (test_gate2_message Gemini flake, test_family_voice 503, test_family_weekly_push event-loop-closed) and the 1 pre-existing test_family.py email-confirm failure are all confirmed pre-existing/unrelated to this session's diff (git-diff-verified scope: call.py/phonerisk.py/models.py/config.py additions only) - consistent with prior iteration reports flagging these as known flaky/out-of-scope items. Native Android ApolloCallScreeningService.kt and iOS CXCallDirectoryExtension (withApolloCallGuard.js plugin) were correctly NOT tested per review request - these require a physical device / native dev build outside this environment's capability."
+}

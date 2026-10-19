@@ -1,0 +1,108 @@
+# GuardDog Revised Trust Model — HTTPS-Authenticated Rules
+
+## Summary
+
+This document replaces the Ed25519-signed rule bundle architecture with
+HTTPS-authenticated rule delivery. Apollo no longer manages its own
+cryptographic signing keys for rule bundles.
+
+## What is being removed
+
+| Component | Location | Purpose |
+|---|---|---|
+| `sign-rule-bundle.mjs` | `scripts/guarddog-production/` | Offline Ed25519 signing tool |
+| `sign-trust-manifest.mjs` | `scripts/guarddog-production/` | Offline trust manifest signing tool |
+| `rule-bundle-v2-unsigned.json` | `scripts/guarddog-production/` | Unsigned bundle template |
+| `trust-manifest.json` | `backend/guarddog_artifacts/` | Signed trust manifest (Ed25519 public keys) |
+| `rule-bundle.json` | `backend/guarddog_artifacts/` | Signed rule bundle artifact |
+| `withGuardDogProductionTrust.js` | `plugins/` | Config plugin injecting Ed25519 root keys into AndroidManifest |
+| `ApolloGuardDogProductionTrust.kt` | `apollo-security` module | Trust manifest parsing, Ed25519 key registry, generation tracking |
+| `RuleBundleVerifier.kt` | `guarddog-core` SDK | Ed25519 signature verification, payloadHash, JCS canonicalization |
+| `TrustedKeyRegistry.kt` | `guarddog-core` SDK | Ed25519 public key store |
+| `SignedRuleBundle` data class | `guarddog-core` SDK | Bundle model with `keyId`, `payloadHash`, `signature` fields |
+| `BundleVersionStore` | `guarddog-core` SDK | Rollback protection via signed envelope hash |
+| Backend `/api/guarddog/trust-manifest` | `routers/guarddog.py` | Serves static signed trust manifest |
+| Backend `/api/guarddog/rule-bundle` | `routers/guarddog.py` | Serves static signed rule bundle |
+| EAS env vars | `eas.json` | `APOLLO_GUARDDOG_PRIMARY_ROOT_*`, `APOLLO_GUARDDOG_RECOVERY_ROOT_*`, `TRUST_DOMAIN`, `TRUST_PROFILE`, `MANIFEST_URL`, `RULESET_ID` |
+| JS config | `GuardDogProductionConfig.ts` | `manifestUrl`, `ruleBundleUrl`, `rulesetId` fields |
+| JS adapter references | `GuardDogProductionSecurityAdapter.ts` | `refreshGuardDogProductionAuthority`, `installGuardDogProductionTrustManifest`, `acceptGuardDogProductionRuleBundle` |
+
+## Revised trust model
+
+### Authentication
+- Rules are delivered over **HTTPS** from Apollo's existing backend API.
+- TLS certificates are managed by the existing hosting provider.
+- No Apollo-managed private signing keys exist.
+- No new API-key system is introduced.
+- **Current implementation**: HTTPS-only (TLS + baked-in URL in signed APK).
+  The Android runtime's `fetch()` does not send an auth header; the endpoint
+  does not require one. The baked-in URL in the signed APK provides origin-binding.
+- **Future enhancement**: If per-device auth is needed, add Apollo JWT verification
+  to the backend endpoint and a matching Authorization header in the native fetcher.
+
+### Rule delivery API
+- **Endpoint**: `GET /api/guarddog/rules`
+- **Authentication**: HTTPS-only (TLS + baked-in URL in signed APK)
+- **Response schema**:
+```json
+{
+  "schemaVersion": "2.0",
+  "rulesetId": "apollo-rules-v1",
+  "bundleVersion": 2,
+  "issuedAt": "2026-10-06T15:00:00Z",
+  "expiresAt": "2027-10-06T15:00:00Z",
+  "payload": {
+    "rules": [
+      {
+        "ruleId": "prod-controlled-verify-v1",
+        "host": "apolloverify.harmonywellnessgroup.com.au",
+        "action": "block",
+        "matchType": "exact",
+        "category": "controlled-verification"
+      }
+    ]
+  }
+}
+```
+- **Removed fields**: `keyId`, `payloadHash`, `signature` (no longer needed)
+- **Retained fields**: `schemaVersion`, `rulesetId`, `bundleVersion`, `issuedAt`, `expiresAt`, `payload`
+
+### Validation (on-device, without signing)
+1. **HTTPS only** — reject non-TLS responses.
+2. **Schema validation** — strict JSON parsing, no unknown keys, typed fields.
+3. **Versioning** — `bundleVersion` must be ≥ the last accepted version (rollback protection).
+4. **Expiry** — `issuedAt` must be in the past, `expiresAt` must be in the future.
+5. **Rule validation** — non-empty rules, valid `action` (`block`/`allow`), `matchType` (`exact`), non-empty `host`.
+6. **Size limit** — reject payloads > 2MB.
+7. **Version conflict** — same `bundleVersion` must have identical content (SHA-256 of canonical payload).
+
+### Offline resilience
+- The last successfully validated rule bundle is persisted on-device.
+- If the backend is unreachable, the app continues with the last valid local rules.
+- Expiry is enforced: if the local bundle's `expiresAt` has passed and no refresh succeeds, protection degrades gracefully (no stale rules enforced).
+
+### Blocktest / controlled verification
+- `apolloverify.harmonywellnessgroup.com.au` → `52.25.179.131` remains the controlled verification endpoint.
+- It proves real packet observation → drop → evidence → THREAT_BLOCKED.
+- A blocktest outage only means the controlled test cannot be performed. It does NOT disable GuardDog protection.
+- The controlled host must have a matching exact-block rule in the active ruleset.
+
+### THREAT_BLOCKED evidence requirements (unchanged)
+- Evidence is only created when a real packet is observed and dropped by the enforcement layer.
+- No simulated or assumed evidence.
+- The evidence contract and `THREAT_BLOCKED` event path are not weakened.
+
+## Migration path
+
+1. ✅ Replaced `RuleBundleVerifier` with `RuleBundleValidator` (schema + version + expiry checks only, no Ed25519).
+2. ✅ Replaced `SignedRuleBundle` with `RuleBundle` (removed `keyId`, `payloadHash`, `signature`).
+3. ✅ Removed `TrustedKeyRegistry`, trust manifest flow. `ApolloGuardDogProductionTrust` simplified to a manifest meta-data boolean gate.
+4. ✅ Removed `withGuardDogProductionTrust` config plugin. Production meta-data now set by `withGuardDogEngine`.
+5. ✅ Replaced backend static file serving with authenticated API endpoint (`GET /api/guarddog/rules`).
+6. ✅ Updated production runtime `refreshAuthority()` → `refreshRules()`.
+7. ✅ Removed signing scripts and unsigned bundle templates.
+8. ✅ Removed BouncyCastle dependency from `guarddog-core` build config.
+9. ✅ Fixed all Expo module adapters (`GuardDogExpoAdapters.kt`, `GuardDogExpoModule.kt`) to use `ValidationResult`/`RejectionReason`/`RuleBundle`.
+10. ✅ Created `ApolloBundleVersionStore.kt` and `ApolloGuardDogEvidenceCorrelator.kt` in `apollo-security` module.
+11. ✅ Fixed `RuleBundleValidator` clock type to accept `Clock` interface instead of `() -> Instant`.
+12. ✅ Cleaned up all test files referencing removed signing types.

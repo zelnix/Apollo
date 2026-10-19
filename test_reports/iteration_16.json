@@ -1,0 +1,27 @@
+{
+  "summary": "BUG VERIFY PASSED: Site Guard settings now persist across reload. MockSecurityAdapter.hydrate()/PERMS_KEY persistence to AsyncStorage (localStorage on web) confirmed working end-to-end at mobile viewport 390x844. Full flow: fresh onboarding → protection auto-starts (master card 'Protection is on', localStorage 'apollo.protection.on'=true). BEFORE GRANT: guard-cap-site_guard-status='Permission required'. Tapped guard-cap-site_guard-fix → capability-sheet-perm-network_filter → permission-sheet-continue. AFTER GRANT: guard-cap-site_guard-status='Active', guard-perm-network_filter shows 'Granted', master 'Protection is on', localStorage apollo.mock.permissions=\"{\\\"network_filter\\\":\\\"granted\\\",\\\"vpn_config\\\":\\\"not_applicable\\\",\\\"accessibility\\\":\\\"not_applicable\\\",\\\"notifications\\\":\\\"undetermined\\\"}\". Then page.reload() (same browser context / localStorage retained) and re-navigated to Guard tab: AFTER RELOAD guard-cap-site_guard-status STILL='Active', guard-perm-network_filter STILL='Granted', master card STILL='Protection is on' (protection switch ON), localStorage apollo.mock.permissions unchanged. Home tab after reload: home-cap-site_guard='Site GuardActive'. Regression smoke: /check /account /network all render titles and go-back works. No red-screen or console errors during the flow (only a pre-existing React Native web deprecation warning about props.pointerEvents which is unrelated).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_16.json"],
+  "action_items": [
+    "None — bug fix is verified end-to-end. Persistence works via storage wrapper → AsyncStorage → localStorage on web. Safe to ship.",
+    "OPTIONAL (non-blocking): The storage wrapper JSON.stringifies every value, and MockSecurityAdapter also JSON.stringifies the permissions map before setItem, so the raw localStorage value is a double-encoded JSON string. It round-trips correctly (getItem JSON.parses once → returns string → adapter JSON.parses again → object), but for cleanliness the adapter could store the map object directly if the storage wrapper's StorageItemValue type is widened to accept objects, or the adapter could serialize/deserialize its own single layer."
+  ],
+  "critical_code_review_comments": [
+    "MockSecurityAdapter.ts L28-37 hydrate() correctly guards against double-hydration with the promise memoization pattern and is awaited in getCapabilities(), getProtectionPermissions() and requestProtectionPermission() — the three entry points that read/mutate this.permissions. Good.",
+    "MockSecurityAdapter.ts L128 setItem happens after mutation and its failure is swallowed via .catch(() => undefined) — acceptable for a mock; a real adapter should surface the error.",
+    "storage/index.web.ts uses AsyncStorage web shim (IndexedDB) but the actual persisted value observed is in window.localStorage — the shim falls back to localStorage on some browsers. Either way the reload persistence is proven."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only verification)", "frontend": "100% for this bug — all four assertions pass (status pill before/after grant, after reload, protection switch remains ON, home mirror card)."},
+  "seed_data_creation": "Fresh device: localStorage.clear() then onboarding-start-button → disclosure-accept-button. No backend seed required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Site Guard permission-persistence bug fix (apollo.mock.permissions key in AsyncStorage / localStorage) verified on web preview 390x844. To reproduce the passing case: clear localStorage → onboarding → Guard tab → guard-cap-site_guard-fix → capability-sheet-perm-network_filter → permission-sheet-continue → assert status 'Active' + perm 'Granted' → page.reload() → re-navigate to Guard tab → assert same. Web-preview note (unchanged from previous iterations): expo-network reports connection type='unknown' — irrelevant here.",
+  "rca_of_issue": "Original defect: MockSecurityAdapter kept the permission map only in the in-memory `permissions` field, so any reload / app restart reset network_filter back to 'undetermined', which flipped Site Guard back to 'permission_required'. Fix landed in /app/frontend/src/security/MockSecurityAdapter.ts (PERMS_KEY='apollo.mock.permissions'): hydrate() reads the persisted map before the first capability/permission read, and requestProtectionPermission() writes the updated map to storage after every mutation. Verified via localStorage inspection + reload + re-render of Guard/Home tabs."
+}

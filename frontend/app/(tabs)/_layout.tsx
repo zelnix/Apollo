@@ -1,0 +1,68 @@
+import { Redirect, Tabs } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
+// Bottom nav uses genuine solid/filled icons (pure SVG, no native font linking — safe in Expo Go
+// and web). Lucide is outline-only by design; faking "solid" with thicker strokes looks wrong, so
+// Lucide stays for secondary in-screen actions only (see other screens) and never the tab bar.
+import { ChatBubbleLeftRight, Cog6Tooth, Home, Megaphone, ShieldExclamation } from "@nandorojo/heroicons/24/solid";
+import React from "react";
+import { Platform, Text } from "react-native";
+
+import { useApollo } from "@/src/store/ApolloContext";
+import { useAccountMonitorDueCheck } from "@/src/hooks/useAccountMonitorDueCheck";
+import { fonts, useTheme } from "@/src/theme";
+
+const isIOS26 = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
+const NAV_ICON_SIZE = 25;
+
+// Tab order: Home → Threats → Alerts → Higgins → Settings
+// Hidden tabs (accessible via routes but not in the tab bar): check-it, guard, protection
+export default function TabsLayout() {
+  const { colors } = useTheme();
+  const { ready, setupDone } = useApollo();
+  useAccountMonitorDueCheck();
+  if (ready && !setupDone) return <Redirect href="/onboarding" />;
+
+  if (isIOS26) {
+    return (
+      <NativeTabs>
+        <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="settings"><NativeTabs.Trigger.Icon sf="gearshape.fill" /><NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+      </NativeTabs>
+    );
+  }
+
+  // Icon and label use deliberately different golds when active (Brand Gold vs. Gold Highlight) —
+  // the icon alone should already make the selected tab obvious; the label is a softer echo.
+  const tabIcon = (Icon: React.ComponentType<{ color?: string; width?: number; height?: number }>) =>
+    function TabIcon({ focused }: { focused: boolean }) { return <Icon color={focused ? colors.navActiveIcon : colors.navInactiveIcon} width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />; };
+  const tabLabel = (title: string) =>
+    function TabLabel({ focused }: { focused: boolean }) { return <Text style={{ fontFamily: fonts.textSemibold, fontSize: 11, color: focused ? colors.navActiveLabel : colors.navInactiveLabel }}>{title}</Text>; };
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: colors.navyDeep, borderTopWidth: 0,
+          shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: -3 }, elevation: 12,
+          ...(Platform.OS === "web" ? { height: 64 } : {}),
+        },
+        tabBarItemStyle: { alignSelf: "center" },
+        sceneStyle: { backgroundColor: colors.surface },
+      }}
+    >
+      <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
+      <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats") }} />
+      <Tabs.Screen name="scams" options={{ title: "Alerts", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel("Alerts") }} />
+      <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: tabIcon(Cog6Tooth), tabBarLabel: tabLabel("Settings") }} />
+      {/* Hidden tabs — still routable for deep links and backwards compatibility */}
+      <Tabs.Screen name="check-it" options={{ href: null }} />
+      <Tabs.Screen name="guard" options={{ href: null }} />
+      <Tabs.Screen name="protection" options={{ href: null }} />
+    </Tabs>
+  );
+}

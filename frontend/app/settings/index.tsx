@@ -1,0 +1,152 @@
+import * as Linking from "expo-linking";
+import { useRouter, useSegments } from "expo-router";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import X from "lucide-react-native/icons/x";
+import React, { useState } from "react";
+import { Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
+import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
+import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
+import { RetrofitModal } from "@/src/components/RetrofitModal";
+import { Sheet } from "@/src/components/Sheet";
+import { TimeStepper } from "@/src/components/TimeStepper";
+import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import type { NotificationStatus } from "@/src/push/notifications";
+import { useApollo } from "@/src/store/ApolloContext";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { minimiseApp } from "@/src/utils/minimise";
+import { goBackOrHome } from "@/src/utils/navigation";
+
+const ALERT_LABEL: Record<NotificationStatus, string> = { granted: "Allowed", denied: "Not allowed", undetermined: "Not decided", blocked: "Blocked in Settings", unsupported: "Not available here" };
+// The voluntary "Support Apollo" contribution card stays feature-gated until the approved copy and real
+// public Stripe Payment Links exist. It never unlocks protection or creates a paid security tier.
+const SHOW_CONTRIBUTION = false;
+const SETTINGS_INFO: ScreenInfo = { title: "About Settings", body: [
+  "Manage your protection, alerts, quiet hours, family, personal data and privacy choices.",
+  "Changes apply straight away on this device.",
+] };
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
+  title: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface },
+  close: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
+  rowItem: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm },
+  divider: { borderTopWidth: 1, borderTopColor: c.divider },
+  rowLabel: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface },
+  rowHint: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, marginTop: 2 },
+  trustRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
+  footer: { fontFamily: fonts.text, fontSize: 12, color: c.muted, textAlign: "center" },
+}));
+
+export default function SettingsScreen() {
+  const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
+  const { trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
+  const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
+  const [showRetrofit, setShowRetrofit] = useState(false);
+  const isTab = (useSegments() as string[]).includes("(tabs)");
+
+  const NavRow = ({ label, hint, onPress, testID, first }: { label: string; hint?: string; onPress: () => void; testID: string; first?: boolean }) => (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[s.rowItem, !first && s.divider]}>
+      <View style={{ flex: 1 }}><Text style={s.rowLabel}>{label}</Text>{hint ? <Text style={s.rowHint}>{hint}</Text> : null}</View>
+      <ChevronRight size={20} color={colors.muted} />
+    </Pressable>
+  );
+  const SwitchRow = ({ label, hint, value, onValueChange, testID, first }: { label: string; hint?: string; value: boolean; onValueChange: (v: boolean) => void; testID: string; first?: boolean }) => (
+    <View style={[s.rowItem, !first && s.divider]}>
+      <View style={{ flex: 1 }}><Text style={s.rowLabel}>{label}</Text>{hint ? <Text style={s.rowHint}>{hint}</Text> : null}</View>
+      <Switch testID={testID} value={value} onValueChange={onValueChange} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+    </View>
+  );
+
+  return <View style={s.root} testID="settings-screen">
+    <View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="settings-title">Settings</Text>{isTab ? <InfoButton info={SETTINGS_INFO} testID="settings-info" /> : <Pressable testID="settings-close" accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => goBackOrHome(router)} style={s.close}><X size={22} color={colors.onSurface} /></Pressable>}</View>
+    <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="settings-scroll">
+
+      <View><SectionTitle>Check</SectionTitle>
+        <Card testID="settings-check">
+          <NavRow first label="Run a manual check" hint="Check a number, link, message, email, screenshot or file" onPress={() => router.push("/(tabs)/check-it")} testID="settings-run-check" />
+        </Card>
+      </View>
+
+      <View><SectionTitle>Protection &amp; permissions</SectionTitle>
+        <Card testID="settings-protection">
+          <NavRow first label="View all protections" hint="View all Apollo protections, their status, coverage and available setup." onPress={() => router.push("/gates")} testID="settings-view-gates" />
+        </Card>
+      </View>
+
+      <View><SectionTitle>Alerts &amp; voice</SectionTitle>
+        <Card testID="settings-alerts">
+          <View style={s.rowItem}>
+            <View style={{ flex: 1 }}><Text style={s.rowLabel}>Important security alerts</Text><Text style={s.rowHint}>Permission alone does not prove an alert was delivered.</Text></View>
+            <Pill tone={notificationStatus === "granted" ? "resting" : notificationStatus === "unsupported" ? "unknown" : "growling"} label={ALERT_LABEL[notificationStatus]} testID="settings-push-status" />
+          </View>
+          {notificationStatus === "denied" || notificationStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Allow security alerts" onPress={() => void enableNotifications()} /> : null}
+          {notificationStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open notification settings" onPress={() => void Linking.openSettings()} /> : null}
+          <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
+          <SwitchRow label="Quiet hours" hint="Silence non-urgent reminders at night. Urgent threat and family alerts still appear." value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} testID="settings-quiet-switch" />
+          {quietHours.enabled ? <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}><View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View><Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /></View> : null}
+        </Card>
+      </View>
+
+      <View><SectionTitle>Connected accounts</SectionTitle>
+        <Card testID="settings-accounts">
+          <NavRow first label="Email accounts" hint="Connect or disconnect Gmail accounts for email checking" onPress={() => router.push("/settings/email-accounts")} testID="settings-email-accounts" />
+        </Card>
+      </View>
+
+      <View><SectionTitle>App preferences</SectionTitle>
+        <Card testID="settings-preferences">
+          <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
+          <NavRow label="Retrofit new enhancements" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
+          <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
+        </Card>
+      </View>
+
+      <View><SectionTitle>Family &amp; trusted links</SectionTitle>
+        <Card testID="settings-family-trust">
+          <NavRow first label="Family sharing" hint="Choose a trusted person for alerts you deliberately share" onPress={() => router.push("/family")} testID="settings-family" />
+          <Pressable testID="settings-trust" accessibilityRole="button" onPress={() => setShowTrust((v) => !v)} style={[s.rowItem, s.divider]}>
+            <View style={{ flex: 1 }}><Text style={s.rowLabel}>Trusted links</Text><Text style={s.rowHint}>Trust applies to one exact link and never overrides a confirmed threat.</Text></View>
+            <Pill tone="neutral" label={String(trust.length)} testID="settings-trust-count" /><ChevronRight size={20} color={colors.muted} />
+          </Pressable>
+          {showTrust ? (trust.length === 0 ? <Body testID="settings-trust-empty" style={{ paddingTop: spacing.sm }}>No trusted links.</Body> : trust.map((entry) => <View key={entry.trust_id} style={s.trustRow} testID={`settings-trust-${entry.trust_id}`}><View style={{ flex: 1 }}><Text style={s.rowLabel}>{entry.indicator_host}</Text><Body>Exact link · {new Date(entry.created_at).toLocaleDateString()}</Body></View><Button testID={`settings-revoke-${entry.trust_id}`} variant="secondary" label="Remove" onPress={() => revokeTrust(entry)} /></View>)) : null}
+        </Card>
+      </View>
+
+      <View><SectionTitle>Privacy &amp; data</SectionTitle>
+        <Card testID="settings-privacy">
+          <NavRow first label="My Personal Data" hint="Add your names, numbers, emails and addresses so Apollo can protect them" onPress={() => router.push("/settings/personal-data")} testID="settings-personal-data" />
+          <NavRow label="Privacy &amp; data" hint="See everything Apollo stores and delete all your data" onPress={() => router.push("/privacy-data")} testID="settings-privacy-data" />
+          <NavRow label="Privacy statement" hint="What Apollo stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
+          <NavRow label="Third-party services" hint="External services, what they receive and HWG accountability" onPress={() => router.push("/third-party-register")} testID="settings-third-party" />
+          <NavRow label="Compliance matrix" hint="Standards, application controls and operational assurance" onPress={() => router.push("/compliance-matrix")} testID="settings-compliance-matrix" />
+          <NavRow label="Clear Patrol history" hint="Hide local summaries and ask the service to hide synced ones" onPress={() => setConfirmClear(true)} testID="settings-clear-patrol" />
+        </Card>
+      </View>
+
+      <View><SectionTitle>Help &amp; about</SectionTitle>
+        <Card testID="settings-help">
+          <NavRow first label="Get help with Apollo" hint="App details, protection issues, device checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
+          <Pressable testID="settings-share" accessibilityRole="button" onPress={() => setShowShare((v) => !v)} style={[s.rowItem, s.divider]}>
+            <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
+          </Pressable>
+          {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
+          <NavRow label="About Apollo" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
+        </Card>
+      </View>
+
+      {SHOW_CONTRIBUTION ? <View testID="settings-contribution"><SectionTitle>Support Apollo</SectionTitle><Card><Body>Apollo protects everyone. If you believe in the mission, help keep Apollo on watch.</Body></Card></View> : null}
+
+      <Text style={s.footer} testID="settings-footer">Apollo V1 · No account · No advertising tracking</Text>
+    </ScrollView>
+    <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />
+    <AboutApolloSheet visible={showAbout} onClose={() => setShowAbout(false)} />
+    <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} />
+    <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear Patrol history?" testID="clear-sheet"><Body>This hides Patrol items on this device and asks the service to hide synced summaries. Trusted links are kept.</Body><Button testID="clear-confirm" variant="danger" label="Clear history" onPress={() => { setConfirmClear(false); void clearPatrol(); }} /><Button testID="clear-cancel" variant="ghost" label="Keep history" onPress={() => setConfirmClear(false)} /></Sheet>
+  </View>;
+}

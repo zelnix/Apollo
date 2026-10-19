@@ -1,0 +1,149 @@
+{
+  "name": "frontend",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "expo": {
+    "autolinking": {
+      "searchPaths": [
+        "./packages"
+      ],
+      "android": {
+        "exclude": [
+          "guarddog-expo-module",
+          "apollo-family-assist"
+        ]
+      },
+      "ios": {
+        "exclude": [
+          "guarddog-expo-module"
+        ]
+      }
+    },
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "apollo-security",
+          "apollo-family-assist",
+          "guarddog-expo-module"
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "preinstall": "./scripts/cmd-guard.js --preinstall",
+    "postinstall": "node scripts/eas-post-install.mjs",
+    "start": "npx expo start",
+    "security:preflight": "node scripts/security-preflight.mjs",
+    "test:security": "node --test tests/securityConfig.test.ts",
+    "test:boot": "node --test tests/securityBoot.test.ts",
+    "test:platform": "node --test tests/platformCapability.test.ts",
+    "test:adapter-contract": "node --test tests/adapterContract.test.ts",
+    "test:evidence-sync": "node --test tests/enforcementEvidenceSync.test.ts",
+    "test:gate2": "node --test tests/messageAnalysis.test.ts",
+    "test:gate3": "node --test tests/gate3.test.ts",
+    "test:gate3page": "node --test tests/gate3page.test.ts",
+    "test:gate4": "node --test tests/gate4.test.ts",
+    "test:gate5": "node --test tests/gate5.test.ts",
+    "test:gate6": "node --test tests/gate6.test.ts",
+    "test:gate7": "node --test tests/gate7.test.ts",
+    "test:gate8": "node --test tests/gate8.test.ts",
+    "test:gate1": "node --test tests/gate1.test.ts",
+    "test:share": "node --test tests/share.test.ts",
+    "eas-build-pre-install": "node scripts/security-preflight.mjs",
+    "eas-build-post-install": "node scripts/eas-post-install.mjs",
+    "reset-project": "node ./scripts/reset-project.js",
+    "android": "npx expo run:android",
+    "ios": "npx expo run:ios",
+    "web": "npx expo start --web",
+    "lint": "npx expo lint",
+    "test:family": "node --test tests/familyWeekly.test.ts",
+    "test:higgins": "node --test tests/higginsGreeting.test.ts",
+    "test:narration": "node --test tests/higginsNarration.test.ts",
+    "test:truth": "node --test tests/protectionTruth.test.ts",
+    "test:failure": "node --test tests/failureModes.test.ts",
+    "test:higgins-checks": "node --test tests/higginsChecks.test.ts"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "@nandorojo/heroicons": "0.3.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@tanstack/react-query": "5.102.8",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "date-fns": "4.1.0",
+    "dayjs": "1.11.13",
+    "expo": "~57.0.26",
+    "expo-application": "~57.0.3",
+    "expo-asset": "~57.0.18",
+    "expo-audio": "~57.0.5",
+    "expo-blur": "~57.0.3",
+    "expo-build-properties": "~57.0.22",
+    "expo-camera": "~57.0.6",
+    "expo-clipboard": "~57.0.2",
+    "expo-constants": "~57.0.20",
+    "expo-crypto": "~57.0.3",
+    "expo-device": "~57.0.2",
+    "expo-document-picker": "~57.0.3",
+    "expo-file-system": "~57.0.7",
+    "expo-font": "~57.0.4",
+    "expo-haptics": "~57.0.3",
+    "expo-image": "~57.0.5",
+    "expo-image-manipulator": "~57.0.21",
+    "expo-image-picker": "~57.0.20",
+    "expo-linear-gradient": "~57.0.2",
+    "expo-linking": "~57.0.11",
+    "expo-localization": "~57.0.2",
+    "expo-mail-composer": "~57.0.2",
+    "expo-network": "~57.0.2",
+    "expo-notifications": "~57.0.21",
+    "expo-ocr-kit": "0.1.4",
+    "expo-print": "~57.0.2",
+    "expo-router": "~57.0.24",
+    "expo-secure-store": "~57.0.4",
+    "expo-share-intent": "8.0.1",
+    "expo-sharing": "~57.0.22",
+    "expo-splash-screen": "~57.0.9",
+    "expo-status-bar": "57.0.1",
+    "expo-symbols": "~57.0.3",
+    "expo-system-ui": "~57.0.4",
+    "expo-updates": "~57.0.24",
+    "expo-web-browser": "~57.0.3",
+    "lucide-react-native": "1.41.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-dotenv": "3.4.11",
+    "react-native-gesture-handler": "2.32.0",
+    "react-native-keyboard-controller": "1.21.9",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.26.2",
+    "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
+    "react-native-web": "0.21.2",
+    "react-native-webview": "13.16.1",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@expo/ngrok": "^4.1.0",
+    "@types/react": "19.2.10",
+    "eslint": "9.25.0",
+    "eslint-config-expo": "57.0.2",
+    "expo-doctor": "1.19.8",
+    "typescript": "6.0.3"
+  },
+  "resolutions": {
+    "@eslint/plugin-kit": "0.3.4",
+    "postcss": "8.5.10",
+    "uuid": "11.1.1",
+    "undici": "6.27.0",
+    "tar": "7.5.19",
+    "**/@eslint/eslintrc/js-yaml": "4.3.0",
+    "**/@expo/xcpretty/js-yaml": "4.3.0",
+    "**/@istanbuljs/load-nyc-config/js-yaml": "3.15.0",
+    "shell-quote": "1.9.0",
+    "react-native-svg": "15.15.4",
+    "expo-constants": "~57.0.20"
+  },
+  "private": true,
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}

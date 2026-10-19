@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the new Email Guard automatic pre-click link assessment feature (backend enrichment of /message/analyse with redirect_chain/final_url/domain_info, assess_indicator() refactor shared with /intel/check, Gmail anchor-mismatch extraction, and frontend src/domain/linkGuard.ts integration). Backend: created 10 new tests in test_email_guard.py covering /message/analyse enrichment fields, /intel/check regression (expand true/false, malicious, domain type), and 3 unit tests for services.gmail._extract_content() anchor extraction (synthetic HTML anchor with mismatched text/href, multipart plain+html, plain-text-only with no anchors) -- all 10/10 passed. Full backend regression: 254/257 passed; the 3 failures (test_gate2_message Gemini timing, test_enforcement_evidence_gate connection timeout under xdist parallel load, test_iter7_quiet_and_phone push-log timing) were re-run individually and passed cleanly -- confirmed as transient/flaky, matching the 3 pre-existing documented flakes from the handoff, not regressions from this diff. Frontend: completed onboarding, then fully exercised the paste-email flow (From/Subject/Body -> Check this email -> result card correctly escalated to Barking with domain-mismatch why-lines -> Links in the email card -> Verify sender sheet -> Technical details sheet, all rendering correctly with no crash), the SMS paste flow (message.tsx: sender+text -> Check message -> Growling result with why/recommendation/links/recovery-open, no crash), and Check-a-Link (check.tsx: bit.ly shortener -> redirect chain bit.ly->drive.google.com displayed, RDAP domain-info line, why-Apollo-reacted, technical/report-mistake buttons all present) -- all three flows unaffected by the assess_indicator refactor. Gmail connect card (testID email-gmail-card) renders correctly above the paste form. Spot-checked Home/Guard/Patrol/Ask/Settings tabs render without error; Settings > Privacy correctly documents the Gmail read-only scan policy.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_guard.py",
+    "/app/test_reports/pytest/pytest_email_guard.xml",
+    "/app/test_reports/pytest/pytest_full_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/intel.py assess_indicator(): domain lookup task is fired concurrently (asyncio.create_task) alongside the blocklist/SafeBrowsing/redirect-expansion work rather than sequentially -- good latency design, matches the concurrency claim in routers/analysis.py's docstring.",
+    "routers/analysis.py message_analyse(): per-URL assess_indicator() calls are gathered concurrently via asyncio.gather -- verified in testing that 2-URL requests do not incur double latency.",
+    "frontend/src/domain/linkGuard.ts: Truth-of-State invariant is enforced by construction -- escalate() only accepts the literals 'growling'/'barking', so it is structurally impossible for this file to produce 'biting'; confirmed by code inspection, no test could have observed a violation regardless since the type signature forbids it.",
+    "services/gmail.py _extract_anchors(): correctly filters anchors to only http/https hrefs and requires non-empty visible text, avoiding noise from tracking pixels or anchor-only styling wrappers -- confirmed behaviour in unit tests.",
+    "MessageUrlResult/IntelCheckResponse: domain_info is Optional and gracefully degrades (None) when RDAP lookup times out or fails -- confirmed assess_indicator wraps the domain lookup in asyncio.wait_for with a 6s bound so a slow RDAP server can never hold up the overall check."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_email_guard.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10 new Email Guard tests; 254/257 full regression, remaining 3 confirmed transient/flaky and pass on individual re-run)", "frontend": "100% (paste-email, SMS paste, Check-a-Link, Gmail card, and tab navigation all verified with no crashes or regressions)"},
+  "seed_data_creation": "None required beyond existing conftest.py auth shim device registration.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Email Guard enrichment feature is solid: backend correctly returns redirect_chain/final_url/domain_info on /message/analyse for every checked URL, /intel/check behaves identically to before the assess_indicator() refactor, and services.gmail._extract_content() correctly extracts anchor text/href pairs (including the paypal.com-text-but-evil-href mismatch case) from synthetic Gmail-API-shaped messages. Frontend linkGuard.ts integration verified via full end-to-end paste-email and SMS flows producing correctly-escalated (never-biting) states with specific why-lines. Real Gmail OAuth scan-with-anchor-mismatch end-to-end (actual connected account) remains untested since it requires a real Google login, per the review request's explicit limitation -- this is consistent with prior iteration_56's documented boundary. Note for future testers: onboarding must be completed once per fresh browser context before navigating directly to /email, /message or /check (each new mcp_browser_automation call starts a fresh context so onboarding state does not persist across separate script invocations; combine onboarding + the target flow in a single script call)."
+}

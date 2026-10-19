@@ -1,0 +1,298 @@
+{
+  "articles": [
+    {
+      "slug": "recognising-phone-scams",
+      "title": "Recognising phone scams and what to do",
+      "summary": "Phone scams cost Australians millions each year. Learn the warning signs and practical steps to protect yourself from fraudulent calls.",
+      "category": "phone_scams",
+      "topic": "Phone and voice scams",
+      "audience": "general",
+      "language": "en-AU",
+      "contentType": "guide",
+      "riskContext": "phone_call",
+      "tags": ["phone", "scam", "call", "impersonation", "ato", "banks"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "How phone scams work",
+          "paragraphs": [
+            "Scammers call pretending to be from trusted organisations like the ATO, your bank, or even the police. They create urgency to pressure you into giving personal information or transferring money.",
+            "They may spoof caller IDs to make it look like a legitimate number. Some use robocalls to reach thousands of people at once."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "Warning signs to watch for",
+          "paragraphs": ["Look out for these red flags during any phone call:"],
+          "bullets": [
+            "Unexpected calls claiming to be from government agencies or banks",
+            "Requests for passwords, PINs, or remote access to your computer",
+            "Threats of arrest, legal action, or account suspension",
+            "Pressure to act immediately or keep the call secret",
+            "Requests to transfer money to a 'safe account'"
+          ]
+        },
+        {
+          "heading": "What to do if you receive a suspicious call",
+          "paragraphs": ["Take these practical steps to protect yourself:"],
+          "bullets": [
+            "Hang up — no real organisation will mind you being cautious",
+            "Find the official number from the organisation's website or a recent bill",
+            "Call them back on the official number to verify the request",
+            "Never give personal details to someone who called you",
+            "Report the scam to Scamwatch at scamwatch.gov.au"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "scamwatch", "url": "https://www.scamwatch.gov.au/types-of-scams/phone-scams", "label": "Scamwatch phone scams guidance"}
+      ]
+    },
+    {
+      "slug": "protecting-yourself-from-phishing",
+      "title": "Protecting yourself from phishing emails and texts",
+      "summary": "Phishing is the most common way scammers steal personal information. Learn how to spot fake emails and SMS messages before they cause harm.",
+      "category": "phishing",
+      "topic": "Phishing and fake messages",
+      "audience": "general",
+      "language": "en-AU",
+      "contentType": "guide",
+      "riskContext": "email_sms",
+      "tags": ["phishing", "email", "sms", "text", "links", "identity theft"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "What is phishing",
+          "paragraphs": [
+            "Phishing is when scammers send emails or text messages pretending to be from a trusted organisation. The goal is to trick you into clicking a link and entering personal information like passwords or bank details.",
+            "These messages often look convincing and may include real logos and formatting from the organisation they are impersonating."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "How to spot phishing attempts",
+          "paragraphs": ["Common signs of a phishing message include:"],
+          "bullets": [
+            "Generic greetings like 'Dear customer' instead of your name",
+            "Urgent language like 'Your account will be suspended'",
+            "Links that go to unfamiliar or misspelled website addresses",
+            "Requests for passwords, credit card numbers, or personal details",
+            "Poor grammar and spelling mistakes"
+          ]
+        },
+        {
+          "heading": "Practical steps to stay safe",
+          "paragraphs": ["Follow these actions to protect yourself from phishing:"],
+          "bullets": [
+            "Never click links in unexpected emails or texts — go to the website directly",
+            "Check the sender's actual email address, not just the display name",
+            "Use multi-factor authentication on important accounts",
+            "Report phishing emails to ReportCyber at cyber.gov.au",
+            "If you've clicked a link, change your password immediately"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "acsc", "url": "https://www.cyber.gov.au/protect-yourself/staying-secure-online/phishing", "label": "ACSC phishing guidance"}
+      ]
+    },
+    {
+      "slug": "investment-scam-red-flags",
+      "title": "Investment scam red flags everyone should know",
+      "summary": "Investment scams are the highest-loss scam type in Australia. Learn the warning signs of fake investment opportunities and how to verify them.",
+      "category": "investment_scams",
+      "topic": "Investment and cryptocurrency scams",
+      "audience": "general",
+      "language": "en-AU",
+      "contentType": "guide",
+      "riskContext": "financial",
+      "tags": ["investment", "crypto", "financial", "returns", "ponzi"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "Why investment scams succeed",
+          "paragraphs": [
+            "Investment scams promise high returns with little or no risk. They often use professional-looking websites, fake testimonials, and social media advertising to appear legitimate.",
+            "Australians lost over $1.3 billion to investment scams in recent years, making it the most costly scam category according to Scamwatch."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "Red flags to watch for",
+          "paragraphs": ["Be suspicious of any investment opportunity that shows these signs:"],
+          "bullets": [
+            "Guaranteed returns or claims of no risk",
+            "Pressure to invest quickly or miss out",
+            "Unsolicited contact through social media or messaging apps",
+            "Requests to pay using cryptocurrency or gift cards",
+            "An unregistered company or financial adviser"
+          ]
+        },
+        {
+          "heading": "How to verify and protect yourself",
+          "paragraphs": ["Before investing any money:"],
+          "bullets": [
+            "Check the ASIC register at moneysmart.gov.au to verify the company",
+            "Search for the company name plus 'scam' or 'review' online",
+            "Never invest based on advice from someone you only know online",
+            "Be wary of celebrity endorsements — they are almost always fake",
+            "Talk to a licensed independent financial adviser before investing"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "moneysmart", "url": "https://moneysmart.gov.au/check-and-report-scams/investment-scams", "label": "Moneysmart investment scam guidance"}
+      ]
+    },
+    {
+      "slug": "online-shopping-safety",
+      "title": "Safe online shopping: avoid fake stores and checkout scams",
+      "summary": "Fake online stores and checkout scams are increasingly common. Learn how to shop safely online and protect your payment details.",
+      "category": "online_shopping",
+      "topic": "Shopping and marketplace scams",
+      "audience": "general",
+      "language": "en-AU",
+      "contentType": "guide",
+      "riskContext": "online_shopping",
+      "tags": ["shopping", "online", "fake stores", "payment", "marketplace"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "How fake online stores operate",
+          "paragraphs": [
+            "Scammers create professional-looking websites that mimic real retailers. They advertise heavily on social media with prices that look too good to be true. After you pay, the goods either never arrive or are counterfeit.",
+            "Some fake stores also harvest your credit card details for later fraudulent use."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "Signs of a fake online store",
+          "paragraphs": ["Watch for these warning signs before purchasing:"],
+          "bullets": [
+            "Prices significantly below what other retailers charge",
+            "No physical address, ABN, or contact phone number listed",
+            "Recently created website with no reviews or social media history",
+            "Payment only accepted via bank transfer, crypto, or gift cards",
+            "Poor website design, broken links, or copied product descriptions"
+          ]
+        },
+        {
+          "heading": "How to shop safely online",
+          "paragraphs": ["Follow these practices for safer online shopping:"],
+          "bullets": [
+            "Use trusted well-known retailers when possible",
+            "Pay with credit card or PayPal for buyer protection",
+            "Search the store name on scamwatch.gov.au before purchasing",
+            "Look for the ABN and verify it at abr.business.gov.au",
+            "If a deal seems too good to be true, it probably is"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "scamwatch", "url": "https://www.scamwatch.gov.au/types-of-scams/online-shopping-scams", "label": "Scamwatch online shopping scams"}
+      ]
+    },
+    {
+      "slug": "protecting-older-australians-from-scams",
+      "title": "Protecting older Australians from scams",
+      "summary": "Older Australians are frequently targeted by scammers. This guide covers common tactics used against seniors and practical steps families can take.",
+      "category": "vulnerable_groups",
+      "topic": "Protecting seniors from scams",
+      "audience": "seniors",
+      "language": "en-AU",
+      "contentType": "guide",
+      "riskContext": "general",
+      "tags": ["seniors", "elderly", "family", "remote access", "romance scams"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "Why older Australians are targeted",
+          "paragraphs": [
+            "Scammers target older Australians because they may be less familiar with digital technology, more trusting of authority figures, and often have retirement savings. Common scams targeting seniors include remote access scams, romance scams, and impersonation of government agencies.",
+            "The eSafety Commissioner reports that older Australians lose more money per scam incident than younger age groups."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "Common scams targeting seniors",
+          "paragraphs": ["Be aware of these frequently used tactics:"],
+          "bullets": [
+            "Remote access scams where callers ask to control your computer",
+            "Romance scams through dating sites or social media",
+            "Grandparent scams where someone pretends to be a family member in trouble",
+            "Fake tech support claiming your computer has a virus",
+            "Medicare or Centrelink impersonation demanding personal details"
+          ]
+        },
+        {
+          "heading": "What families can do to help",
+          "paragraphs": ["Practical steps to protect older family members:"],
+          "bullets": [
+            "Have regular open conversations about common scams without judgement",
+            "Help set up call blocking and spam filters on their phone",
+            "Establish a family code word to verify emergency requests",
+            "Encourage them to check with family before making large payments",
+            "Report any suspected scams to Scamwatch together"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "esafety", "url": "https://www.esafety.gov.au/seniors/staying-safe-online", "label": "eSafety Commissioner seniors guidance"}
+      ]
+    },
+    {
+      "slug": "securing-your-devices-and-accounts",
+      "title": "Securing your devices and online accounts",
+      "summary": "Strong security on your devices and accounts is your first line of defence against scammers. Learn the practical basics that make the biggest difference.",
+      "category": "device_security",
+      "topic": "Account and device security",
+      "audience": "general",
+      "language": "en-AU",
+      "contentType": "checklist",
+      "riskContext": "account_security",
+      "tags": ["passwords", "mfa", "updates", "security", "devices"],
+      "evidenceQuality": "official_guidance",
+      "sourceType": "owner_curated",
+      "sections": [
+        {
+          "heading": "Why device and account security matters",
+          "paragraphs": [
+            "Many scams succeed because attackers gain access to poorly secured accounts or devices. A compromised email account can be used to reset other passwords, access banking, and impersonate you to friends and family.",
+            "The Australian Cyber Security Centre recommends a few core practices that stop the majority of common attacks."
+          ],
+          "bullets": []
+        },
+        {
+          "heading": "Essential security checklist",
+          "paragraphs": ["Focus on these high-impact actions first:"],
+          "bullets": [
+            "Turn on multi-factor authentication (MFA) for email, banking, and social media",
+            "Use a unique strong password for every important account",
+            "Keep your phone and computer software updated — enable automatic updates",
+            "Lock your phone with a PIN, fingerprint, or face recognition",
+            "Only install apps from official app stores"
+          ]
+        },
+        {
+          "heading": "What to do if you think you have been compromised",
+          "paragraphs": ["If you suspect your account or device has been accessed by someone else:"],
+          "bullets": [
+            "Change your passwords immediately, starting with email",
+            "Check your account activity and sign out of unrecognised sessions",
+            "Contact your bank if financial accounts may be affected",
+            "Report the incident to ReportCyber at cyber.gov.au",
+            "Run a security scan on your device with reputable antivirus software"
+          ]
+        }
+      ],
+      "citations": [
+        {"sourceId": "acsc", "url": "https://www.cyber.gov.au/protect-yourself/securing-your-accounts", "label": "ACSC account security guidance"}
+      ]
+    }
+  ]
+}

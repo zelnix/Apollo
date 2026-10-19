@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 36 — Guardian Voice Note + Admin Audit Trail. Backend: pytest tests/test_family_voice.py tests/test_admin.py -q -p no:warnings -n 0 → 15 passed in 14.86s (real Emergent Object Storage round-trip, forged/tampered/expired/other-note tickets 403, stranger 404, no-bearer 401, size/duration/mime/RIFF guardrails, unpaired guardian 403; admin key boundary; audit log with actor/detail/audit_id/at; audit filters by action/actor/target; stats.audit={total,last_7d,by_action_7d,recent}; failed admin actions never logged). Verified live: /api/admin/stats.audit shape ok (total=12,last_7d=12,by_action_7d={blocklist.add:4,blocklist.remove:4,device.revoke:4},recent=10) and /api/admin/audit?action=device.revoke filter returns only device.revoke rows. Frontend E2E on web preview (390x844, two Chromium contexts with microphone permission): Mum onboarded → /family → family-owner-name 'Mum' → family-make-code → CODE=9W52BC. Sarah onboarded → /family → owner 'Sarah' → family-link-code + family-link-button → linked. Mum → /check → https://phishing.apollo.test/login → check-result-card → scent id extracted from apollo.patrol.events → /patrol/scent/<id> → incident-share-family → incident-shared-note present. Sarah → /family/incident/<id> → voice-note-record visible, composer copy 'Or let them hear it's really you…' present. Tap record → voice-note-recording shown; voice-note-timer advanced 0:01→0:04. Stop → voice-note-review → Send: POST /family/incidents/<scent>/voice → 201; family-note-sent-0 row and voice-play-<note_id> 'Listen back · 0:04' rendered. Mum reloaded /patrol/scent/<id> → incident-family-notes card visible; body contained 'left you a voice note' and 'sarah'; voice-play-<note_id> 'Hear Sarah · 0:04' present; tap → GET /api/family/voice-play/<note_id>?exp=…&sig=… → 200, content-type audio/webm. Discard flow: record → stop → voice-note-discard → returned to idle (voice-note-record). Prompt path: fresh context WITHOUT explicit microphone grant — tapping voice-note-record did NOT surface voice-note-explain; environment limitation: headless Chromium with fake-media stream flags on the preview platform resolves navigator.permissions state to 'granted' by default, so the 'prompt' branch cannot be exercised via web preview. Component code inspection (VoiceNote.tsx L89/91) confirms voice-note-explain + voice-note-allow/not-now are wired for the prompt state.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_family_voice.py",
+    "/app/backend/tests/test_admin.py",
+    "/app/test_reports/pytest/pytest_iter36.xml"
+  ],
+  "action_items": [
+    "None — backend + frontend voice-note + admin audit flows behave per spec. Prompt-state permission branch cannot be verified on web preview; validate on a native build (physical device) where navigator.permissions returns 'prompt' before first getUserMedia call."
+  ],
+  "critical_code_review_comments": [
+    "VoiceNote.tsx renders voice-note-explain / voice-note-allow / voice-note-not-now and voice-note-blocked / voice-note-open-settings testIDs — matches contract.",
+    "family/incident/[id].tsx L139-140 correctly renders the 'Or let them hear it's really you' hint above the VoiceNoteRecorder.",
+    "Admin router publishes stats.audit block and /admin/audit filters as specified; failed admin calls (404) confirmed not logged."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% happy-path + discard; prompt-state UI branch not exercisable in web preview environment"},
+  "seed_data_creation": "Two paired device pairs (Mum↔Sarah, Mum↔Sarah2) and one shared incident with a voice note were created on the shared preview backend during E2E. Data prefix inside test = uuid-based, not TEST_-prefixed; harmless for prod-shaped preview DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For prompt-state voice-note-explain verification, run on a physical build (iOS/Android) where mic permission is 'prompt' at first getUserMedia. Web preview Chromium with fake-media flags reports 'granted' by default, so the explain path can't be triggered even in a fresh context. On the physical device use a fresh install → open /family/incident/<shared scent> → tap voice-note-record → expect voice-note-explain + voice-note-allow / voice-note-not-now; tap Not now → back to voice-note-record.",
+  "rca_of_issue": "N/A — no bugs identified this iteration."
+}

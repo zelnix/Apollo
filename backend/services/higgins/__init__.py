@@ -1,0 +1,1 @@
+"""Owner-managed Higgins processing. No alternative AI providers or gateways."""

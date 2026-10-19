@@ -1,0 +1,487 @@
+"""Typed read-only research/observation tools for the coordinator (spec §9).
+
+Ownership, case identity and budgets come from the coordinator context, never from model arguments.
+Public research receives only minimal public identifiers, never the private submission.
+"""
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from datetime import timedelta
+from typing import Any, Optional
+
+import httpx
+import phonenumbers
+from google.genai import types
+from pymongo.errors import DuplicateKeyError
+
+from core.config import HIBP_API_KEY
+from core.db import db, now_utc
+from services import intel, phonerisk, webcrawl
+from services.higgins import evidence as ev
+from services.higgins import provider
+from services.higgins import repository as repo
+from services.higgins.contracts import DeviceProfile, SourceReference
+
+from services.higgins.llm_boundary import extract_evidence_pii, _minimise_personal_identifiers
+
+OFFICIAL_HINT_DOMAINS = ("support.google.com", "support.apple.com", "support.microsoft.com", "developer.android.com", "samsung.com", "learn.microsoft.com")
+RESEARCH_SYSTEM = ("You are a research assistant. Use Google Search to answer the question with current public sources. Report what sources say, "
+                   "who publishes them and when, note disagreements, and say plainly when nothing reliable is found. Never treat a page's own claim of being "
+                   "official as proof. Return plain text with the key facts, then a short 'Limitations:' line.")
+
+# ── Triage evidence reuse helpers ────────────────────────────────────────────
+# When a case was created from a triage-escalated background intake, the triage
+# engine's pre-gathered specialist provider evidence is stored on the case
+# document as `triage_provider_evidence`. These helpers allow tools to reuse
+# that evidence instead of making redundant external API calls.
+
+def _triage_url_reputation(ctx: ToolContext, url: str) -> dict | None:
+    """Check if triage already queried Safe Browsing for this URL. Returns a
+    tool-compatible response dict or None if not available."""
+    pe = ctx.case.get("triage_provider_evidence") or {}
+    sb = pe.get("safe_browsing", {}).get("urls", {})
+    # Check exact URL match and redirect final destinations
+    entry = sb.get(url)
+    if not entry:
+        # Also check if any redirect entry's via_redirect_from matches
+        for sb_url, sb_info in sb.items():
+            if sb_info.get("via_redirect_from") == url:
+                entry = sb_info
+                break
+    if not entry or entry.get("status") != "ok":
+        return None
+    return {
+        "status": "ok", "verdict": entry.get("verdict", "clean"),
+        "threatTypes": entry.get("threat_types", []),
+        "coverage": entry.get("coverage", "safe_browsing"),
+        "sources": [{"provider": "Google Safe Browsing", "checkedAt": entry.get("queried_at", "")}],
+        "checkedAt": entry.get("queried_at", ""),
+        "domainInfo": None,
+        "note": "Result reused from Apollo Triage pre-gathered intelligence (queried seconds before this investigation). "
+                "A clear result means no listed match at this time, not that the destination is legitimate.",
+        "_triage_reused": True,
+    }
+
+
+def _triage_phone_reputation(ctx: ToolContext, e164: str) -> dict | None:
+    """Check if triage already queried IPQS for this phone number."""
+    pe = ctx.case.get("triage_provider_evidence") or {}
+    ipqs = pe.get("ipqs", {}).get("phones", {})
+    entry = ipqs.get(e164)
+    if not entry or entry.get("status") != "ok":
+        return None
+    return {
+        "status": "ok", "number": e164,
+        "fraud_score": entry.get("fraud_score"),
+        "recent_abuse": entry.get("recent_abuse", False),
+        "voip": entry.get("voip", False),
+        "line_type": entry.get("line_type", "unknown"),
+        "carrier": entry.get("carrier", "unknown"),
+        "country": entry.get("country", "unknown"),
+        "source": "IPQS (triage pre-gathered)",
+        "checked_at": entry.get("queried_at", ""),
+        "note": "Result reused from Apollo Triage pre-gathered intelligence (queried seconds before this investigation). "
+                "Caller-ID or a reputation score never authenticates who is calling.",
+        "_triage_reused": True,
+    }
+
+
+def _triage_breach_result(ctx: ToolContext, email: str) -> dict | None:
+    """Check if triage already queried HIBP for this email."""
+    pe = ctx.case.get("triage_provider_evidence") or {}
+    hibp = pe.get("hibp", {}).get("emails", {})
+    entry = hibp.get(email.lower())
+    if not entry or entry.get("status") not in ("found", "clear"):
+        return None
+    if entry["status"] == "clear":
+        return {
+            "status": "clear",
+            "note": "Result reused from Apollo Triage pre-gathered intelligence (queried seconds before this investigation). "
+                    "No known breach lists this identifier; unreported breaches and recent phishing will not appear.",
+            "_triage_reused": True,
+        }
+    breaches = entry.get("breaches", [])
+    return {
+        "status": "listed", "breaches": breaches, "total": len(breaches),
+        "note": "Result reused from Apollo Triage pre-gathered intelligence (queried seconds before this investigation). "
+                "Historical exposure within scope; not proof of current account takeover.",
+        "_triage_reused": True,
+    }
+
+DECLARATIONS = [
+    types.FunctionDeclaration(name="read_evidence", description="Read a range or pages of a registered evidence item's original/derived content.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"),
+            "range": types.Schema(type="OBJECT", nullable=True, properties={"start": types.Schema(type="INTEGER"), "end": types.Schema(type="INTEGER")}),
+            "pages": types.Schema(type="ARRAY", nullable=True, items=types.Schema(type="INTEGER"))}, required=["evidenceId"])),
+    types.FunctionDeclaration(name="continue_document", description="Extract a bounded later PDF page slice when inventory reports pages beyond the initial extraction budget. Extraction creates addressable evidence but does not claim semantic examination.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "startPage": types.Schema(type="INTEGER"),
+            "pageCount": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId", "startPage"])),
+    types.FunctionDeclaration(name="continue_clues", description="Register the next addressable page of links/phone clues when an evidence inventory reports deferred clues and a nextCursor.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId"])),
+    types.FunctionDeclaration(name="research_public_sources", description="Grounded web research about public organisations, numbers, domains, claims or scams. Give only minimal public identifiers, never private text.",
+        parameters=types.Schema(type="OBJECT", properties={"question": types.Schema(type="STRING"), "entities": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
+            "preferredDomains": types.Schema(type="ARRAY", items=types.Schema(type="STRING")), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["question", "entities", "preferredDomains"])),
+    types.FunctionDeclaration(name="inspect_url", description="Safely fetch a registered URL evidence item (including 'link clue' child items registered from messages/documents, and links discovered during research once registered via register_clue): redirect chain, final URL, title, visible text (paged), forms and links.",
+        parameters=types.Schema(type="OBJECT", properties={"urlEvidenceId": types.Schema(type="STRING"), "purpose": types.Schema(type="STRING"),
+            "cursor": types.Schema(type="STRING", nullable=True)}, required=["urlEvidenceId", "purpose"])),
+    types.FunctionDeclaration(name="lookup_reputation", description="Configured reputation lookup for a url/domain/phone evidence item (clue items are listed in the inventory with their parent; `index` selects the nth link/number inside a larger item). No hit is not authentication.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "kind": types.Schema(type="STRING", enum=["url", "domain", "phone"]),
+            "index": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId", "kind"])),
+    types.FunctionDeclaration(name="lookup_breach", description="Known-breach exposure check for an email identifier evidence item the person explicitly submitted for that purpose.",
+        parameters=types.Schema(type="OBJECT", properties={"identifierEvidenceId": types.Schema(type="STRING")}, required=["identifierEvidenceId"])),
+    types.FunctionDeclaration(name="research_application", description="Research an app's real identity: package/bundle, publisher, store listing, known abuse.",
+        parameters=types.Schema(type="OBJECT", properties={"appEvidenceId": types.Schema(type="STRING"), "question": types.Schema(type="STRING"), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["appEvidenceId", "question"])),
+    types.FunctionDeclaration(name="request_device_observation", description="Ask the app for a fresh supported device observation (only advertised capabilityIds).",
+        parameters=types.Schema(type="OBJECT", properties={"capabilityId": types.Schema(type="STRING"), "fields": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
+            "reason": types.Schema(type="STRING")}, required=["capabilityId", "fields", "reason"])),
+    types.FunctionDeclaration(name="research_settings", description="Research official OEM/platform guidance for a settings target on the person's device profile.",
+        parameters=types.Schema(type="OBJECT", properties={"target": types.Schema(type="STRING")}, required=["target"])),
+    types.FunctionDeclaration(name="register_clue", description="Register a newly discovered link or phone number (e.g. from a fetched page or research) as addressable evidence so it can be inspected or looked up.",
+        parameters=types.Schema(type="OBJECT", properties={"value": types.Schema(type="STRING"), "parentEvidenceId": types.Schema(type="STRING", nullable=True),
+            "kind": types.Schema(type="STRING", enum=["url", "phone"])}, required=["value", "kind"])),
+    types.FunctionDeclaration(name="ask_user", description="Only when no tool can establish a fact: record a question about the person's intent, actions or consent. Then return your final response with the question field set.",
+        parameters=types.Schema(type="OBJECT", properties={"text": types.Schema(type="STRING"), "reasonNeeded": types.Schema(type="STRING")}, required=["text", "reasonNeeded"])),
+]
+
+
+class ToolContext:
+    def __init__(self, owner: str, case: dict, job: dict, device: Optional[dict]):
+        self.owner, self.case, self.job, self.device = owner, case, job, device
+        self.sources: list[SourceReference] = []
+        self.fingerprints: set[str] = set()
+        self.pending_request: Optional[dict] = None
+        self.tool_call_key: Optional[str] = None
+        self.question: Optional[dict] = None
+        self.research_calls = 0
+
+    @property
+    def case_id(self) -> str:
+        return self.case["case_id"]
+
+
+def _snippet(text: str) -> str:
+    return re.sub(r"[^\x20-\x7E\n]", "", text)[:600]
+
+
+async def _grounded(ctx: ToolContext, question: str, entities: list[str], preferred: list[str], cursor: int = 0) -> dict:
+    if ctx.research_calls >= 6:
+        return {"status": "budget_exhausted", "note": "research call budget for this turn reached"}
+    ctx.research_calls += 1
+    provider.require_capability(provider.TEXT_MODEL, "search")
+    cursor = max(0, int(cursor)); entity_page = entities[cursor:cursor + 32]; domain_page = preferred
+
+    # ── Evidence-inventory-aware PII protection for research queries ──
+    # Extract known personal identifiers from the case's evidence. These exact values are
+    # replaced deterministically in the outbound research query — no broad name regex.
+    evidence_texts = []
+    try:
+        case_evidence = await repo.list_evidence(ctx.owner, ctx.case_id)
+        for ev_item in case_evidence[:20]:  # bounded: only scan the first 20 items
+            if ev_item.get("kind") in ("text", "observation") and ev_item.get("availability") == "available":
+                try:
+                    data = await repo.read_bytes(ctx.owner, ctx.case_id, ev_item["evidence_id"])
+                    evidence_texts.append(data.decode("utf-8", errors="replace")[:5000])
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception:  # noqa: BLE001
+        pass  # Evidence extraction failure must not block the research call
+
+    inventory_pii = extract_evidence_pii(evidence_texts) if evidence_texts else None
+
+    # Pre-sanitise the research query using evidence-derived PII before handing to provider
+    sanitised_question = _minimise_personal_identifiers(question, evidence_pii=inventory_pii)
+    sanitised_entities = [_minimise_personal_identifiers(e, evidence_pii=inventory_pii) for e in entity_page]
+
+    prompt = json.dumps({"question": sanitised_question, "entities": sanitised_entities, "preferredDomains": domain_page})
+    try:
+        result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search", purpose=provider.Purpose.RESEARCH, correlation_id="research", trigger_source="research")
+    except provider.ProviderFailure as exc:
+        return {"status": "unavailable", "failure": exc.code, "retryable": exc.retryable}
+    registered = []
+    for chunk in (result.grounding or {}).get("grounding_chunks", []) or (result.grounding or {}).get("groundingChunks", []):
+        web = chunk.get("web") or {}
+        if not web.get("uri"):
+            continue
+        host = re.sub(r"^https?://([^/]+).*$", r"\1", web["uri"]).lower()
+        authority = "official" if any(host == d or host.endswith("." + d) for d in OFFICIAL_HINT_DOMAINS) else "unknown"
+        source = SourceReference(id=str(uuid.uuid4()), url=web["uri"], title=(web.get("title") or host)[:200], retrieved_at=now_utc(), retrieval="search_result",
+                                 authority=authority, authority_basis="Platform vendor support domain" if authority == "official" else "Search result; publisher not independently verified",
+                                 evidence_ids=[])
+        ctx.sources.append(source)
+        registered.append({"sourceId": source.id, "title": source.title, "host": host, "authority": authority})
+    mapping = await repo.add_sources(ctx.owner, ctx.case_id, ctx.sources)
+    for entry in registered:
+        entry["sourceId"] = mapping.get(entry["sourceId"], entry["sourceId"])
+    # The complete research answer is retained as case evidence; the tool result carries a bounded view plus a read reference.
+    snapshot = await ev.ingest_text(ctx.owner, ctx.case, f"research-{uuid.uuid4().hex[:12]}", result.text, kind="source_snapshot", origin="external_source",
+                                    label=f"research: {question[:60]}", coverage=ev.Coverage(status="examined", unit="characters", total=len(result.text), examined=len(result.text)),
+                                    meta={"sourceIds": [e["sourceId"] for e in registered]})
+    next_cursor = cursor + len(entity_page) if len(entities) > cursor + len(entity_page) else None
+    return {"status": "ok", "answer": result.text[:4000], "answerEvidenceId": snapshot.id, "answerCharacters": len(result.text),
+            "truncatedInline": len(result.text) > 4000, "sources": registered, "providerComplete": result.finish_reason == "STOP",
+            "inputCoverage": {"entitiesTotal": len(entities), "entitiesExamined": len(entity_page), "entityCursor": cursor,
+                              "nextCursor": next_cursor, "preferredDomainsTotal": len(preferred), "preferredDomainsUsed": len(domain_page)},
+            "note": ("Full answer stored as evidence; use read_evidence for the rest. " if len(result.text) > 4000 else "") +
+                    ("Search results are leads; a source's own claims are not verification. Authority labels are hints from the publisher domain, not conclusions." if registered else "No grounded sources were returned; treat the answer as model recollection only.")}
+
+
+async def _url_text(ctx: ToolContext, evidence_id: str) -> str:
+    row = await repo.get_evidence(ctx.owner, ctx.case_id, evidence_id)
+    if row["kind"] != "url":
+        raise ValueError("not_url")
+    return (await repo.read_bytes(ctx.owner, ctx.case_id, evidence_id)).decode("utf-8", errors="replace").strip()
+
+
+async def inspect_url(ctx: ToolContext, args: dict) -> dict:
+    url_row = await repo.get_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"])
+    try:
+        url = await _url_text(ctx, args["urlEvidenceId"])
+    except ValueError:
+        return {"status": "invalid", "note": "That evidence item is not a URL."}
+    if re.search(r"(?i)[?&](token|code|otp|session|sig|signature|auth|key)=", url):
+        return {"status": "blocked", "note": "This link carries a credential-like parameter; Apollo does not follow links whose retrieval may itself perform a sensitive action.", "url": url}
+    url_meta = await repo.evidence_meta(url_row)
+    offset = int(args.get("cursor") or 0)
+    snapshot_id = url_meta.get("sourceSnapshotId")
+    if snapshot_id:
+        try:
+            snapshot = await repo.get_evidence(ctx.owner, ctx.case_id, snapshot_id)
+            snapshot_meta = await repo.evidence_meta(snapshot)
+            text = (await repo.read_bytes(ctx.owner, ctx.case_id, snapshot_id)).decode("utf-8", errors="replace")
+            end = min(len(text), offset + 4000)
+            return {"status": "fetched", "sourceId": snapshot_meta.get("sourceId"), "sourceSnapshotId": snapshot_id,
+                    "originalUrl": url, "redirectChain": snapshot_meta.get("redirectChain", [url]), "finalUrl": snapshot_meta.get("finalUrl", url),
+                    "title": snapshot_meta.get("title"), "forms": snapshot_meta.get("forms", []), "buttons": snapshot_meta.get("buttons", []),
+                    "linkHosts": snapshot_meta.get("linkHosts", []), "text": text[offset:end], "nextCursor": str(end) if end < len(text) else None,
+                    "coverage": snapshot_meta.get("fetchCoverage"), "_pendingMark": [snapshot_id, offset, end, len(text)]}
+        except Exception:  # a missing committed snapshot is an explicit failure; never silently refetch changed content
+            return {"status": "unavailable", "originalUrl": url, "note": "The retained source snapshot is unavailable; this continuation was not refetched from a potentially changed page."}
+    try:
+        chain = await intel.expand_redirects(url)
+    except Exception:  # noqa: BLE001
+        chain = [url]
+    final = chain[-1] if chain else url
+    try:
+        page = await webcrawl.fetch_page(final)
+        text = page.text or ""
+        snapshot = await ev.ingest_text(ctx.owner, ctx.case, f"{url_row['client_item_id']}.source", text, kind="source_snapshot", origin="external_source",
+                                        parent_id=args["urlEvidenceId"], label=f"source snapshot: {(page.title or final)[:55]}",
+                                        meta={"redirectChain": chain, "finalUrl": page.final_url, "title": page.title, "forms": page.forms,
+                                              "buttons": page.buttons, "linkHosts": page.links_sample, "fetchCoverage": page.coverage})
+        source = SourceReference(id=str(uuid.uuid4()), url=page.final_url, title=(page.title or final)[:200], retrieved_at=now_utc(), retrieval="fetched",
+                                 authority="self_claimed", authority_basis="Content fetched from the destination itself", evidence_ids=[args["urlEvidenceId"], snapshot.id])
+        ctx.sources.append(source)
+        source.id = (await repo.add_sources(ctx.owner, ctx.case_id, [source])).get(source.id, source.id)
+        snapshot_row = await repo.get_evidence(ctx.owner, ctx.case_id, snapshot.id)
+        snapshot_meta = await repo.evidence_meta(snapshot_row)
+        snapshot_meta["sourceId"] = source.id
+        await repo.update_evidence(ctx.owner, ctx.case_id, snapshot.id, {"$set": {"meta_ciphertext": repo.enc_json(snapshot_meta)}})
+        url_meta.update({"sourceSnapshotId": snapshot.id, "sourceId": source.id})
+        await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"meta_ciphertext": repo.enc_json(url_meta)}})
+        end = min(len(text), offset + 4000)
+        await ev.mark_examined(ctx.owner, ctx.case_id, args["urlEvidenceId"], 0, 1, 1)
+        return {"status": "fetched", "sourceId": source.id, "sourceSnapshotId": snapshot.id, "originalUrl": url, "redirectChain": chain,
+                "finalUrl": page.final_url, "title": page.title, "forms": page.forms, "buttons": page.buttons, "linkHosts": page.links_sample,
+                "text": text[offset:end], "nextCursor": str(end) if end < len(text) else None, "coverage": page.coverage,
+                "_pendingMark": [snapshot.id, offset, end, len(text)]}
+    except webcrawl.CrawlBlocked as exc:
+        await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"coverage.status": "unavailable", "coverage.reason": "fetch blocked by safety policy"}})
+        return {"status": "blocked", "originalUrl": url, "redirectChain": chain, "note": f"Fetch refused by Apollo's safe-fetch policy ({exc}). This is a limitation, not proof of fraud or safety."}
+    except Exception:  # noqa: BLE001 — DNS/HTTP errors are tool results
+        await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"coverage.status": "unavailable", "coverage.reason": "destination unreachable"}})
+        return {"status": "unavailable", "originalUrl": url, "redirectChain": chain, "note": "The destination could not be fetched (DNS/connection/HTTP failure). Unavailable is not takedown, unauthorised ownership or safety."}
+
+
+async def lookup_reputation(ctx: ToolContext, args: dict) -> dict:
+    row = await repo.get_evidence(ctx.owner, ctx.case_id, args["evidenceId"])
+    value = (await repo.read_bytes(ctx.owner, ctx.case_id, args["evidenceId"])).decode("utf-8", errors="replace").strip()
+    selector = int(args.get("index") or 0)
+    if args["kind"] == "phone":
+        matches = list(ev.PHONE_RE.finditer(value))
+        if not matches:
+            return {"status": "invalid", "note": "No phone number found in that evidence item."}
+        if selector >= len(matches):
+            return {"status": "invalid", "note": f"Only {len(matches)} number(s) in this item.", "numbers": [m.group(0) for m in matches][:20]}
+        number = re.sub(r"[\s().-]", "", matches[selector].group(0))
+        region = None
+        if not number.startswith("+"):
+            locale = (ctx.device or {}).get("locale", "") or ""
+            region = locale.split("-")[-1].upper() if "-" in locale else None
+            if not region:
+                return {"status": "unresolved", "number": number, "note": "Number has no international prefix and the device locale gives no region; ask for the country only if it changes the assessment."}
+        try:
+            parsed = phonenumbers.parse(number, region)
+            e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException:
+            return {"status": "invalid", "number": number, "note": "Not a valid phone number for the inferred region."}
+        # Check triage pre-gathered IPQS evidence before making a fresh API call
+        triage_hit = _triage_phone_reputation(ctx, e164)
+        if triage_hit:
+            return triage_hit
+        result = await phonerisk.check_phone_risk(e164, phonenumbers.region_code_for_number(parsed))
+        data = result.model_dump(mode="json", include={"number", "valid", "active", "fraud_score", "recent_abuse", "risky", "voip", "line_type", "carrier", "country", "source", "checked_at"})
+        return {"status": "ok", **data, "note": "Caller-ID or a reputation score never authenticates who is calling."}
+    if row["kind"] != "url" and args["kind"] in ("url", "domain"):
+        matches = ev.URL_RE.findall(value)
+        if not matches:
+            return {"status": "invalid", "note": "No URL found in that evidence item."}
+        if selector >= len(matches):
+            return {"status": "invalid", "note": f"Only {len(matches)} link(s) in this item.", "links": matches[:25]}
+        value = matches[selector]
+    # Check triage pre-gathered Safe Browsing evidence before making a fresh API call
+    triage_hit = _triage_url_reputation(ctx, value)
+    if triage_hit:
+        return triage_hit
+    result = await intel.run_intel_check(args["kind"], value)
+    return {"status": "ok", "verdict": result.verdict, "threatTypes": result.threat_types, "coverage": result.coverage,
+            "sources": [s.model_dump(mode="json") for s in result.sources], "checkedAt": result.checked_at.isoformat(),
+            "domainInfo": result.domain_info.model_dump(mode="json") if result.domain_info else None,
+            "note": "A clear result means no listed match at this time, not that the destination is legitimate."}
+
+
+async def lookup_breach(ctx: ToolContext, args: dict) -> dict:
+    value = (await repo.read_bytes(ctx.owner, ctx.case_id, args["identifierEvidenceId"])).decode("utf-8", errors="replace").strip()
+    match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", value)
+    if not match:
+        return {"status": "invalid", "note": "No email identifier in that evidence item."}
+    email = match.group(0).lower()
+    # Check triage pre-gathered HIBP evidence before making a fresh API call
+    triage_hit = _triage_breach_result(ctx, email)
+    if triage_hit:
+        return triage_hit
+    if not HIBP_API_KEY:
+        return {"status": "unconfigured", "note": "Breach intelligence is not configured on this server; do not infer exposure either way."}
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            r = await client.get(f"https://haveibeenpwned.com/api/v3/breachedaccount/{email}", params={"truncateResponse": "true"},
+                                 headers={"hibp-api-key": HIBP_API_KEY, "user-agent": "Apollo-GuardDog"})
+    except httpx.HTTPError:
+        return {"status": "unavailable", "note": "Breach service did not answer."}
+    if r.status_code == 404:
+        return {"status": "clear", "note": "No known breach lists this identifier; unreported breaches and recent phishing will not appear."}
+    if r.status_code != 200:
+        return {"status": "unavailable", "httpStatus": r.status_code}
+    breaches = [b.get("Name") for b in r.json()]
+    return {"status": "listed", "breaches": breaches, "total": len(breaches), "note": "Historical exposure within scope; not proof of current account takeover."}
+
+
+async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
+    capabilities = (ctx.device or {}).get("capabilityIds", [])
+    if args["capabilityId"] not in capabilities:
+        return {"status": "unavailable", "capabilityId": args["capabilityId"], "note": "This device profile does not advertise that capability. Explain what remains unknown; do not generate values.",
+                "advertised": capabilities}
+    fingerprint = f"device:{args['capabilityId']}"
+    if fingerprint in ctx.fingerprints:
+        return {"status": "duplicate", "note": "This observation was already requested in this turn."}
+    if ctx.pending_request:
+        return {"status": "deferred", "note": "One device observation is collected at a time. Request this capability again after the pending result arrives."}
+    ctx.fingerprints.add(fingerprint)
+    call_key = ctx.tool_call_key or f"legacy:{args['capabilityId']}"
+    existing = await db.investigation_device_requests.find_one(
+        {"owner_id": ctx.owner, "job_id": ctx.job["job_id"], "tool_call_key": call_key}, {"_id": 0}
+    )
+    if existing:
+        ctx.pending_request = existing["request"]
+        return {"status": "pending", "requestId": existing["request_id"], "note": "The existing durable observation request is still pending; the investigation remains paused."}
+    fields = [str(f) for f in args.get("fields", [])]
+    reason = str(args.get("reason", ""))
+    if len(fields) > 32 or len(reason) > 300:
+        return {"status": "invalid", "note": "Request at most 32 fields and keep the reason within 300 characters; no fields were silently omitted."}
+    request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo:{ctx.owner}:{ctx.case_id}:{ctx.job['job_id']}:{call_key}"))
+    request = {"id": request_id, "caseId": ctx.case_id, "caseRevision": ctx.case["revision"], "capabilityId": args["capabilityId"],
+               "fields": fields, "reason": reason,
+               "expiresAt": min(repo.utc(ctx.case["expires_at"]), now_utc() + timedelta(seconds=120)).isoformat()}
+    try:
+        await db.investigation_device_requests.insert_one({"owner_id": ctx.owner, "case_id": ctx.case_id, "request_id": request["id"], "job_id": ctx.job["job_id"],
+                                                            "tool_call_key": call_key, "request": request, "fulfilled": False, "submission": None, "created_at": now_utc()})
+    except DuplicateKeyError:
+        winner = await db.investigation_device_requests.find_one(
+            {"owner_id": ctx.owner, "job_id": ctx.job["job_id"], "tool_call_key": call_key}, {"_id": 0}
+        )
+        if not winner:
+            raise
+        request = winner["request"]
+    ctx.pending_request = request
+    return {"status": "pending", "requestId": request["id"], "note": "The app is being asked for this observation. The investigation pauses until it returns."}
+
+
+async def research_settings(ctx: ToolContext, args: dict) -> dict:
+    device = DeviceProfile.model_validate(ctx.device) if ctx.device else None
+    if not device:
+        return {"status": "unresolved", "note": "No device profile; ask which platform/manufacturer if it changes the instructions."}
+    entities = [device.platform, *(x for x in (device.manufacturer, device.model, device.os_version) if x)]
+    result = await _grounded(ctx, f"Exact steps to {args['target']} on {' '.join(entities)}. Cite official manufacturer or platform support pages.", entities, list(OFFICIAL_HINT_DOMAINS))
+    official = [s for s in result.get("sources", []) if s["authority"] == "official"]
+    # "exact" requires the manufacturer AND the platform/OS to appear in the SAME source; an OEM name alone (e.g. a Samsung
+    # page about a different OS version) is not an exact match. Otherwise a platform-wide official page is "platform_only".
+    def _mentions(src: dict, token: str) -> bool:
+        t = token.lower()
+        return t in src.get("title", "").lower() or t in src.get("host", "").lower() or t in src.get("snippet", "").lower()
+    os_tokens = [device.platform, *([device.os_version.split()[0]] if device.os_version else [])]
+    exact = bool(device.manufacturer and any(_mentions(s, device.manufacturer) and any(_mentions(s, o) for o in os_tokens) for s in result.get("sources", [])))
+    result["match"] = "exact" if exact else ("platform_only" if official else "unresolved")
+    result["note"] = ("Manufacturer- and platform-matched guidance found." if exact
+                      else "Instructions from a platform-wide source apply generally; a page matching both the manufacturer and this OS is required for an exact match.")
+    return result
+
+
+async def ask_user(ctx: ToolContext, args: dict) -> dict:
+    text, reason = str(args["text"]), str(args["reasonNeeded"])
+    if len(text) > 600 or len(reason) > 300:
+        return {"status": "invalid", "note": "Keep the question within 600 characters and its reason within 300; no content was silently truncated."}
+    ctx.question = {"id": str(uuid.uuid4()), "text": text, "reasonNeeded": reason, "answerType": "text", "choices": []}
+    return {"status": "recorded", "questionId": ctx.question["id"], "note": "Now return your final JSON response with completion 'waiting_user' and this question."}
+
+
+async def execute(ctx: ToolContext, name: str, args: dict) -> dict:
+    try:
+        if name == "read_evidence":
+            rng = args.get("range") or {}
+            return await ev.read_text(ctx.owner, ctx.case_id, str(args["evidenceId"]), rng.get("start"), rng.get("end"), args.get("pages"))
+        if name == "continue_document":
+            return await ev.continue_document(ctx.owner, ctx.case, str(args["evidenceId"]), int(args["startPage"]), int(args.get("pageCount") or ev.MAX_PAGES))
+        if name == "continue_clues":
+            return await ev.continue_clues(ctx.owner, ctx.case, str(args["evidenceId"]), int(args.get("cursor") or 0))
+        if name == "research_public_sources":
+            return await _grounded(ctx, str(args["question"]), [str(e) for e in args.get("entities", [])], [str(d) for d in args.get("preferredDomains", [])], int(args.get("cursor") or 0))
+        if name == "inspect_url":
+            return await inspect_url(ctx, args)
+        if name == "lookup_reputation":
+            return await lookup_reputation(ctx, args)
+        if name == "lookup_breach":
+            return await lookup_breach(ctx, args)
+        if name == "research_application":
+            label = (await repo.get_evidence(ctx.owner, ctx.case_id, str(args["appEvidenceId"]))).get("label", "")
+            text = (await repo.read_bytes(ctx.owner, ctx.case_id, str(args["appEvidenceId"]))).decode("utf-8", errors="replace")
+            identifiers = list(dict.fromkeys(re.findall(r"\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}\b", text)))
+            try:
+                observation = json.loads(text)
+                values = observation.get("values", {}) if isinstance(observation, dict) else {}
+                for key in ("packageName", "bundleIdentifier", "appName", "publisher", "installerPackage", "versionName", "signingCertificateSha256"):
+                    if values.get(key) is not None: identifiers.append(f"{key}:{values[key]}")
+            except ValueError:
+                pass
+            identifiers = list(dict.fromkeys([*identifiers, label]))
+            return await _grounded(ctx, f"{args['question']} Identify the real publisher, official store listing and any known abuse.", identifiers, ["play.google.com", "apps.apple.com"], int(args.get("cursor") or 0))
+        if name == "request_device_observation":
+            return await request_device_observation(ctx, args)
+        if name == "research_settings":
+            return await research_settings(ctx, args)
+        if name == "ask_user":
+            return await ask_user(ctx, args)
+        if name == "register_clue":
+            value = str(args["value"]).strip()
+            if args["kind"] == "url" and not ev.URL_RE.fullmatch(value):
+                return {"status": "invalid", "note": "Not an http(s) URL."}
+            parent = str(args.get("parentEvidenceId") or "")
+            item = await (ev.ingest_url if args["kind"] == "url" else ev.ingest_text)(ctx.owner, ctx.case, f"clue-{uuid.uuid4().hex[:12]}", value, parent_id=parent or None,
+                                                                                         label=("discovered link" if args["kind"] == "url" else "discovered number"))
+            return {"status": "registered", "evidenceId": item.id, "kind": item.kind}
+        return {"status": "unknown_tool"}
+    except Exception as exc:  # noqa: BLE001 — a tool failure is evidence of a limitation, never a case failure
+        from fastapi import HTTPException
+        if isinstance(exc, HTTPException):
+            return {"status": "unavailable", "error": exc.detail.get("error", {}).get("code") if isinstance(exc.detail, dict) else "not_found"}
+        return {"status": "unavailable", "error": type(exc).__name__}

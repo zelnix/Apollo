@@ -1,0 +1,32 @@
+{
+  "summary": "Tested new RDAP domain-info feature (additive to POST /api/intel/check) on both backend and frontend. All backend contract requirements verified (shape, caching, expand=true, domain indicator_type, best-effort behaviour for bad TLDs). Frontend check.tsx renders 'Domain info' section and Technical Details 'tech-domain-info' line correctly for real domains (apple.com, google.com) and shows the muted 'Domain registration lookup unavailable.' hint for an unresolvable TLD, with no crash. Zero regressions found in existing Check-a-Link flow or the 25 pre-existing backend tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_rdap_domain_info.py",
+    "/app/test_reports/pytest/pytest_rdap_domain_info.xml",
+    "/app/test_reports/pytest/pytest_rdap_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/rdap.py, routers/intel.py, core/models.py all look clean: async/await used correctly, RDAP task fired via asyncio.create_task in parallel with verdict, bounded await (asyncio.wait_for, 6s) at the end, every exception caught inside lookup_domain_cached so it never propagates. Mongo cache keyed on registrable eTLD+1 domain with checked_at/expires_at (48h TTL) and unique index on 'domain' -- verified index exists (domain_1, expires_at_1) and a real cached doc for google.com in Mongo.",
+    "Frontend intelContract.ts parseDomainInfo is properly defensive (returns null on malformed input, never rejects the whole IntelResult) and domainInfo.ts formatDomainInfoLine handles missing registrar/registrant gracefully.",
+    "No _id leakage observed in API responses; DomainInfo pydantic model correctly excludes internal cache fields (checked_at/expires_at) from the API-facing response."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rdap_domain_info.py (new)"
+  ],
+  "success_rate": {"backend": "100% (30/30: 25 pre-existing regression + 5 new RDAP tests)", "frontend": "100% (all requested UI checks passed)"},
+  "seed_data_creation": "None required; Mongo domain_info_cache populated naturally via live RDAP lookups during testing (google.com, apple.com, microsoft.com cached).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "RDAP feature is solid and additive. Backend: verified domain_info shape/fields, 48h Mongo cache reuse (identical payload on 2nd call), expand=true path includes domain_info based on original host, domain indicator_type works, and a nonsense TLD (example.doesnotexist123) returns fast (<1s) with domain_info.available=false and error='no_authoritative_service' -- never blocks/delays the main verdict. Frontend: onboarding flow had to be navigated through first (fresh device data) before reaching /check -- 'Continue' -> 'I understand -- set up Apollo' -> Home -> Link tab. Verified 'Domain info' section (testID check-result-domain-info) renders 'Registered 1987-02-19 via Nom-iq Ltd. dba COM LAUDE · Registrant: not disclosed' for apple.com, 'Domain registration lookup unavailable.' (testID check-result-domain-unavailable) for the bad TLD, and Technical Details sheet's tech-domain-info line shows Domain/Registrar/Registered/Registrant organisation/RDAP server correctly. No red-screen errors, no console errors beyond a benign deprecation warning ('shadow*' style props -> boxShadow, pre-existing/unrelated). newly_registered=true Pill path not exercisable with a real fresh domain (as expected/acknowledged in the request) but code path is defensive and won't crash given the parseDomainInfo/formatDomainInfoLine guards reviewed. Rest of app (Home, Guard, Patrol, Higgins, Settings tabs) loaded fine during onboarding traversal -- no regressions observed."
+}

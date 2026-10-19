@@ -1,0 +1,46 @@
+{
+  "summary": "Tested the new Text Guard feature (Android Notification Listener opt-in + manual paste fallback, reusing the message/link analysis engine). Backend: no new endpoints added, ran full existing regression suite (266 tests) - 265/266 passed on first run; the 1 failure (test_family_weekly_push event-loop-closed under xdist) was re-run individually and passed, confirming it is a pre-existing transient xdist flake unrelated to this diff (zero regressions from ApolloContext.tsx/guard.tsx/text-guard.tsx). Frontend: completed onboarding on web preview, verified Guard tab renders new 'Messages' section with Text Guard card (status pill, summary, Open Text Guard button) without breaking Network Guard/Account Guard above or Capabilities/Permissions/Connection below. Navigated to /text-guard: header+close button works (returns to /home), 'Automatic scanning' card correctly shows 'Not available' pill with honest iOS/web copy and NO 'Turn on notification access' button (web behaves like iOS branch, as expected). Pasted an obvious phishing text (fake USPS delivery-fee + verification-code request + link) via 'Check message' -> after ~20s (Gemini second-opinion call) result card rendered with state Pill = Barking, Why/Recommendation/signal chips all present, and a new Patrol event immediately appeared in 'Recently flagged from your messages' on the same screen. 'Check link' button correctly navigated to /check?url=<encoded>&source=message with the URL pre-filled and rendered the check screen live. 'Verify sender safely' opened the verification sheet with correct guidance and closed cleanly. RecoveryFlow ('I already clicked / paid / shared…' trigger) rendered correctly once a Patrol event existed (my first is_visible() check used the wrong testID suffix - button is actually testID={prefix}-open, not the bare prefix - not an app bug, just my selector). Regression: /message (paste flow), /check (Check a Link), /patrol timeline all still render and function with zero console errors across the whole session (~1 min, well past the 45s Android-only poll interval - poll effect is Platform.OS==='android' gated so it never mounts on web, exactly as designed).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "text-guard.tsx 'Mark as safe' button",
+        "issue": "Toast race condition: onPress calls `void resolveEvent(event)` (async) then immediately calls `showToast('Marked as safe. Apollo will stop flagging it.', 'resting')` synchronously. resolveEvent() internally also calls showToast('Marked as handled. Apollo will rest after a fresh check.', 'neutral') AFTER its own await completes, which fires later and overwrites the intended 'Marked as safe' toast. Reproduced in testing: the toast shown to the user was always 'Marked as handled...' not the Text-Guard-specific 'Marked as safe...' message.",
+        "testID": "textguard-mark-safe",
+        "priority": "LOW"
+      },
+      {
+        "component": "text-guard.tsx result card (Gemini explanation.summary)",
+        "issue": "For a Barking-state result, the LLM-generated verdict summary text said 'Apollo is growling at this one...' while the state Pill above it showed 'Barking' - a wording mismatch between the AI-generated copy and the deterministic state label that could confuse users about severity. Likely inherited from the shared /message/analyse Gemini prompt (same risk exists for Email Guard) rather than something new in Text Guard.",
+        "testID": "textguard-verdict",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_text_guard_regression.xml"
+  ],
+  "action_items": [
+    "Fix the toast race condition on text-guard.tsx 'Mark as safe' (either await resolveEvent before showing the text-guard-specific toast, or have resolveEvent accept a custom message/suppress its own toast when called from a context that already shows one).",
+    "Consider a lint pass on the Gemini message-explanation prompt to keep verdict wording (growling/barking language) consistent with the deterministic state actually assigned, across Text Guard and Email Guard."
+  ],
+  "critical_code_review_comments": [
+    "text-guard.tsx correctly gates automatic-scanning UI on Platform.OS === 'android' and shows an honest 'Not available' + non-actionable copy on web/iOS with no misleading CTA button - matches the Truth-of-State model.",
+    "ApolloContext.tsx's new SMS-drain useEffect is fully gated behind `if (Platform.OS !== 'android') return;` so it never mounts/polls on web/iOS - verified no console errors and no native-module-unavailable noise over a ~1 minute session.",
+    "checkMessage() is the single shared engine reused identically by both the manual paste flow (text-guard.tsx AND message.tsx) and the Android auto-drain poll - no duplicate verdict logic introduced, consistent with the stated design constraint.",
+    "messagingSdk.ts/nativeBridge.ts additions (openSmsListenerSettings) follow the existing fail-closed pattern (returns {opened:false} when native module absent) - no crash risk on web/Expo Go.",
+    "Native Android (ApolloSmsListenerService.kt) and iOS stub changes were NOT tested (correctly out of scope per review request - requires a native dev build)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% effective (265/266 first pass; the 1 failure confirmed pre-existing transient xdist flake, passes individually, unrelated to Text Guard diff)", "frontend": "100% of testable flows passed (auto-scanning honest fallback, paste-and-check to Barking, Patrol event creation, Check-link nav, Verify-sender sheet, Guard tab card, close/navigation, regression on /message /check /patrol) with 2 minor non-blocking issues found (toast race, verdict wording)"},
+  "seed_data_creation": "None required; used the existing web-preview mock security adapter session (onboarding completed fresh per browser context).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Text Guard (paste flow + Guard tab card + honest web/iOS auto-scan fallback) is solid end-to-end on web preview. Native Android NotificationListenerService capture (ApolloSmsListenerService.kt, getRecentMessageSecurityEvents, openSmsListenerSettings deep-link) remains untested - requires a physical/emulator Android dev build with Play Services + a default messaging app, out of scope for this web-preview pass per the review request. Two minor, non-blocking issues logged for main agent: (1) toast race condition on 'Mark as safe' button showing the wrong/generic message, (2) occasional Gemini-summary wording ('growling') not matching the deterministic state Pill ('Barking') shown alongside it. Full backend regression suite (266 tests) remains green; the one flaky test (test_family_weekly_push, event-loop-closed under pytest-xdist parallel workers) is a known pre-existing issue documented in prior iteration reports, not caused by this change."
+}

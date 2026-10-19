@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/apollo-wfp-service"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
+    }
+  }
+}

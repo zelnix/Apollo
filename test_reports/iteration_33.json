@@ -1,0 +1,46 @@
+{
+  "summary": "Hardening Gate step 4 (backend split) — post-split zero-behaviour-change regression PASS. BACKEND pytest of the six suites that import backend modules directly (test_device_auth + test_failure_modes + test_admin + test_family_weekly_push + test_family_nudge + test_voice) → 48/48 PASS in 9.5s, no environmental Resend flake this run, no motor 'Event loop is closed' xdist flake this run. API-regression via preview URL (new /app/backend/tests/test_iter33_api_regression.py, 18 tests) → 18/18 PASS: /api/health & /api/intel/status public 200, /api/devices/me no-bearer → 401 with 'WWW-Authenticate: Bearer' and detail 'This request needs Apollo\\'s device credential.', bearer → 200 echoing device_id, /api/patrol/events?device_id=<other> → 403, own device → 200, /api/intel/check phishing.apollo.test → verdict 'barking', /api/intel/check-batch returns per-value results, /api/feedback (kind='false_positive', state='resting') → 201, /api/devices/{id}/settings PUT+GET round-trip preserves quiet_hours{enabled,start_minutes,end_minutes}, /api/admin/ping and /api/admin/stats with X-Admin-Key → 200, admin rejects device bearer (401), /api/devices/me rejects admin key (401), /api/nope → 404 stable, /docs UI serves swagger. Route count (via internal openapi.json): 55 paths / 64 operations — the review's '~68 routes' is an approximation. FRONTEND E2E (390x844, fresh preview context, testIDs). Onboarding-start-button → I-understand → home-scroll reached; localStorage 'apollo.device.identity.v2' populated (len 162) and unchanged after reload (identity persists). (1) Check a link ONLINE clean https://www.abc.net.au → check-result-state='Apollo is patrolling', check-result-intel-unavailable pill count = 0 (backend online path OK). Malicious https://phishing.apollo.test/login → check-result-state='Apollo is barking', check-result-headline=\"Don't open phishing.apollo.test\". (3) /ask 'What does growling mean?' → SSE reply text populated the page (no error toast, len 303). (4) /patrol contains 'phishing.apollo.test' (event merged). (4b) Home hero-hear-higgins tap → POST /api/voice/speak → 200 (verified via network capture). (5) /settings contains 'Safe Browsing' status card. (6) /family loads without error text; family-make-code (Create pairing code) → POST /api/family/pair → 200 (code rendered). (7) /guard renders guard-master-card + guard-master-title + guard-master-line + guard-protection-switch + guard-network-card + guard-account-card + capabilities (guard-cap-*) as expected. (8) Reload → home renders in <3s, identity string byte-for-byte identical, no duplicate patrol events. Split-contract verified: identical route table, identical auth semantics (401 vs 403 split preserved, WWW-Authenticate header on 401 preserved, admin/device key boundary preserved), identical status codes and error shapes. No React Native / Expo deprecated packages introduced by the split. No red-screen errors, no console errors from routers reorganisation. Mock pill visible in web preview (documented — MockSecurityAdapter).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/register-push", "issue": "With placeholder EMERGENT_PUSH_KEY the endpoint returns 500 {'detail':'EMERGENT_PUSH_KEY missing or invalid'} (same behaviour as /api/push/test). Iter32 review note said 'still 201 or documented behaviour' — informational, matches /push/test convention rather than a 201 idempotent register. Not a regression from the split."},
+      {"endpoint": "POST /api/devices/register", "issue": "Returns 201 (not 200 as loosely stated in the review). This is the pre-split behaviour and is consistent with the model. Informational only."},
+      {"endpoint": "OpenAPI route count", "issue": "Actual: 55 paths / 64 operations. Review said '~68 routes' — approximation, no behaviour delta."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_33.json",
+    "/app/backend/tests/test_iter33_api_regression.py",
+    "/app/test_reports/pytest/pytest_iter33.xml",
+    "/app/test_reports/pytest/pytest_iter33_api.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional consistency polish: decide whether /api/register-push should return 201 (idempotent register semantics) or continue mirroring /push/test's 500-with-friendly-detail when EMERGENT_PUSH_KEY is a placeholder; update the review note accordingly.",
+    "Optional docs polish: refresh the review's '~68 routes' guidance to the current 55 paths / 64 operations so future regression agents don't chase a moving target."
+  ],
+  "critical_code_review_comments": [
+    "server.py (68 lines): clean split — lifespan owns index creation + seed blocklist upsert + weekly_checkin_loop task, all routers mounted under /api behind Depends(enforce_device_auth); admin mounted under /api/admin behind require_admin_key. Zero global state mutation outside lifespan. CORS explicitly gates browser origins and does NOT accept credentials, which matches the bearer-header model.",
+    "core/auth: WWW-Authenticate: Bearer preserved on 401 (verified live) and detail message is user-friendly ('This request needs Apollo\\'s device credential.'). 403 vs 401 discrimination preserved: cross-device_id → 403, missing bearer → 401.",
+    "routers/patrol + services/intel: /api/intel/check returns verdict='barking' for the seeded blocklist host phishing.apollo.test — identical to pre-split.",
+    "routers/family_weekly.weekly_checkin_loop: task started in lifespan and cancelled cleanly on shutdown — no leaked coroutines observed in supervisor logs during the run.",
+    "conftest.py auth-shim (test infra): The autouse Session.request monkey-patch will silently attach a bearer to any test that uses requests over /api/. New negative-auth tests MUST send header X-Apollo-Raw=1 to bypass it — otherwise 401/403 tests will spuriously pass with 200. This is documented at the top of the new test_iter33_api_regression.py."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter33_api_regression.py"
+  ],
+  "success_rate": {
+    "backend": "48/48 required-suite pytest + 18/18 API regression = 66/66 (100%)",
+    "frontend": "9/9 review flows verified (onboarding, clean link, malicious link, Higgins ask, patrol merge, voice/speak 200, settings status card, family pair-code, guard master+capabilities, identity persist on reload)"
+  },
+  "seed_data_creation": "Ephemeral only: ~3 anonymous devices registered via /api/devices/register during this run; one TEST_i33_* patrol_event + one feedback row per test class; one family/pair token created. All prefixed TEST_ or bounded to short-lived device ids. No persistent seed data written to shared collections.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Split is verified byte-compatible with the pre-split monolith on every code path the review touched. Two things to remember: (a) /app/backend/tests/conftest.py installs an autouse requests.Session.request shim that transparently attaches a bearer token to every /api/ call unless the request carries header X-Apollo-Raw=1 — negative-auth tests MUST opt out or they will get 200 where the real client gets 401. (b) POST /api/devices/register returns 201 and its response field is 'device_token' (not 'token'). Blocklist enum for admin blocklist ops remains {MALWARE, SOCIAL_ENGINEERING, UNWANTED_SOFTWARE, POTENTIALLY_HARMFUL_APPLICATION}. Patrol-event schema requires category ∈ {link, website, connection, known_threat, protection, system, message, call, app, device, account, email}, state ∈ {sniffing, resting, ears_up, growling, barking, biting}, status ∈ {active, trusted, blocked, resolved}, plus headline/what_happened/what_to_do/adapter_label/occurred_at. Push register requires platform ∈ {ios, android} (not 'web'). Route count from /openapi.json is 55 paths / 64 operations (the review's '~68' is approximate). Guard master copy still depends on protectionTruth.ts's requested-flag: web preview boots with protection off, so the hero legitimately reads 'Apollo is patrolling' with 'Some protections are not active' + 'Limited visibility' pill until guard-protection-switch is toggled — this is the honest-report path, NOT a regression.",
+  "rca_of_issue": "n/a — no behavioural regression detected after the 2100-line server.py split into core/services/routers. All routes, status codes, auth semantics and error shapes are identical to the pre-split monolith. The two minor deltas listed are pre-existing (register 201, register-push placeholder 500) and were present in iter32 as well."
+}

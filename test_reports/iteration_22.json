@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 22 — FULL PASS. Backend pytest /app/backend/tests/test_family_notes.py 2/2 GREEN (preset+custom notes visible to both sides; validation for empty/oversize/bad-kind/non-guardian/unknown-scent all 422/404). Frontend E2E on web 390x844 across two browser contexts (A protected, B guardian) verified the complete Family Reassurance Note feature end-to-end. Context A: onboarding → /message (CommBank SMS) → /account (mfa_prompt, bank, initiated=no, run) → account-result → Home shows home-scent-<id>; incident-summary opens; incident-step-0 tick → incident-progress '1/4'; home apollo-hero and apollo-state-label render (regression smoke). Pair via API: POST /api/family/pair returned code 'ZEC5W7', POST /api/family/link → {linked:true, owner_name:'Mum'}. A re-share incident-share-family → toast 'Shared with 1…' and incident-shared-note present. Context B /family → family-incident-open-<scent> → /family/incident/<scent>: family-note-card renders with all 5 chips (family-note-kind-here/calling/on_way/together/custom) plus family-note-name input and family-note-send button. Default 'here' selected, typed name 'Sam', tapped send → toast 'Note sent…' and family-note-sent-0 shows \"I'm here — call me when you're ready. · HH:MM\". Switched to family-note-kind-custom → family-note-text appeared; send button aria-disabled='true' while empty and became enabled (aria-disabled=None) after typing 'Popping over at 6'; send → family-note-sent-1 shows 'Popping over at 6 · HH:MM'. Context A re-opened incident timeline via home-scent → incident-family-notes card rendered within polling window, incident-family-note-0 = \"Sam: I'm here — call me when you're ready.\" and incident-family-note-1 = 'Sam: Popping over at 6'. Iteration 21 regression stayed green (progress ticked, hero + state label present).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_22.json",
+    "/app/test_reports/pytest/pytest_iter22.xml",
+    "/app/tests/test_family_notes_e2e.py",
+    "/app/backend/tests/test_family_notes.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/frontend/app/family/incident/[id].tsx:70 — POST body sends `from_name: fromName.trim()`; empty name gracefully falls back to server-side stored guardian_label (verified: after custom-kind send, guardian_label 'Sam' remembered from first send via storage 'apollo.family.myname'). Good.",
+    "/app/frontend/app/family/incident/[id].tsx:77 — canSend logic (`!isPending && (kind !== 'custom' || custom.trim().length > 0)`) correctly disables send while custom text is empty (verified: aria-disabled='true' → None after typing).",
+    "/app/frontend/app/patrol/scent/[id].tsx:54 — notes useQuery only enabled when `shared && deviceId` set; refetch interval 15s. Card renders once `(notes.data ?? []).length` > 0. On my run the card appeared within 1-2 polling cycles after guardian sent the note — matches spec expectation of 'a reload is fine'.",
+    "/app/frontend/app/patrol/scent/[id].tsx:95 — incident-family-note-<i> text renders 'Sam: I'm here — call me when you're ready.' — matches spec exactly.",
+    "Minor: /app/frontend/app/patrol/scent/[id].tsx:96 — the timestamp Text sits directly under the label with no separator; when captured via textContent the timestamp abuts the note ('...ready.01:46 AM'). Visually still spaced by React Native flex, but consider a leading '·' or space in copy for parity with family view. Non-blocking."
+  ],
+  "updated_files": ["/app/tests/test_family_notes_e2e.py"],
+  "success_rate": {"backend": "100% (2/2)", "frontend": "100% — every required testID/flow verified"},
+  "seed_data_creation": "Ephemeral: two anonymous device IDs, one paired code, one shared incident and two notes ('here' preset + 'Popping over at 6'). Backend append-only, no cleanup performed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Repro (web 390x844, two contexts): Context A onboard → /message (CommBank + phishing URL) → message-check → message-check-account → /account (mfa_prompt/bank/no/run) → account-result → Home home-scent-<id> → incident-summary. Context B onboard. Pair via API using localStorage 'apollo.securecore.mock.identity'.deviceId: POST /api/family/pair {device_id: A, owner_name:'Mum'} → code; POST /api/family/link {device_id: B, code}. IMPORTANT: urllib requests to the public preview URL are rate-limited/403'd without a User-Agent header — pass 'User-Agent: apollo-e2e/1.0'. A: incident-share-family → toast + incident-shared-note. B /family → family-incident-open-<scent> → family-note-card with chips family-note-kind-{here|calling|on_way|together|custom}. Fill family-note-name 'Sam', tap family-note-send with kind=here → family-note-sent-0 preset text. Switch kind-custom, verify aria-disabled='true' with empty family-note-text; type text → enabled → send → family-note-sent-1. A re-open /patrol/scent/<id> → wait up to 20s for polling; incident-family-notes card with incident-family-note-0/1.",
+  "rca_of_issue": "N/A — no defects observed."
+}

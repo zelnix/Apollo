@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 18 targeted re-verification at mobile viewport 390x844, frontend only. (1) BUG FIX from iter17 VERIFIED: after E01 email check → tap email-check-account → /account renders account-scent-notice card with exact text 'Threat Scent Apollo saw 1 suspicious event in the last 30 minutes (about CommBank). An account alert now will be assessed as part of that sequence.'; then account-kind-mfa_prompt + account-provider-bank + account-initiated-no + account-run produces account-state 'Barking' AND account-linked text '• Connected to: Email: Email impersonating CommBank (Threat Scent). These events may be connected — do not approve the login request.' The fix (adding 'email' to the recentLinked whitelist in /app/frontend/app/account.tsx:66) works end-to-end. (2) GROWLING GIF NEW FEATURE VERIFIED: fresh onboarding → home-check-message-button → paste 'Hi, your parcel is waiting, pay $2.99 redelivery' → message-check → message-state 'Growling'; close back to Home → apollo-state-label reads 'Apollo is growling', apollo-hero-gif-growling testID is present (bark=False, growl=True, rest=False), <img src> ends with 'apollo-growling.gif'. (3) REGRESSION SMOKE: fresh home shows apollo-state-label 'Apollo is patrolling' + apollo-hero-gif (patrolling) testID present; /email opens (email-body input, email-run works) and closes via email-close returning to /home; /account opens (account-dashboard renders) and closes via account-close; email flow also confirmed to render apollo-hero-gif-barking for Barking state per iter17. Two minor observations (non-blocking): (a) MOCKED asset — /app/frontend/assets/images/apollo-growling.gif is byte-identical (same md5 649092843bac042ff107b626348ed867) to /app/frontend/assets/images/apollo-barking.gif, so the growling animation visually renders the same frames as barking though the testID and file name are distinct; (b) expo-image on web does not forward accessibilityLabel to aria-label on the <img> element (aria-label observed as null for the growling image); the testID selector still works reliably.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "ApolloHero <Image> (expo-image)", "issue": "accessibilityLabel prop ('Apollo growling', 'Apollo barking', 'Apollo patrolling') is not forwarded to aria-label attribute on the rendered <img> in the web preview by expo-image. Screen-reader labeling on the web target is therefore lost. testID-based e2e selection is unaffected. Reference: /app/frontend/src/components/ApolloHero.tsx:109-115"}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_18.json"],
+  "action_items": [
+    "MOCKED ASSET (main agent): /app/frontend/assets/images/apollo-growling.gif is byte-identical to apollo-barking.gif (same md5 649092843bac042ff107b626348ed867). Replace with an actual growling-specific animation before shipping so the visual differentiates growling (elevated suspicion) from barking (confirmed threat). Functional testID (apollo-hero-gif-growling) and accessibilityLabel ('Apollo growling') are already wired correctly.",
+    "MINOR (main agent, optional): expo-image on web target does not surface accessibilityLabel as aria-label. Either wrap the <Image> in a View with accessibilityLabel + accessible=true, or supply an explicit alt via the web-specific 'alt' prop on the Image, so assistive tech on the web preview reads the state."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/ApolloHero.tsx:108-116 — the state-to-gif mapping is a chain of ternaries with (state === 'barking' || state === 'biting') both mapping to apollo-hero-gif-barking. This means the 'biting' state renders the barking asset — intentional per iter17 but worth documenting; a small STATE_GIF constant map would make this data-driven and safer if more states get their own animations later.",
+    "/app/frontend/assets/images/apollo-growling.gif is a duplicate of apollo-barking.gif — this is a placeholder that must be replaced with a real growling animation before release."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only per request)", "frontend": "100% — all 3 requested verifications pass (email→account scent bug fix, growling GIF, regression smoke)"},
+  "seed_data_creation": "None persisted. Each browser session starts fresh; onboarding via onboarding-start-button → disclosure-accept-button.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both iter17 bug and iter18 growling GIF feature are green. Reproduction of the growling flow: onboarding → home-check-message-button → message-text 'Hi, your parcel is waiting, pay $2.99 redelivery' → message-check → close → verify apollo-hero-gif-growling testID and apollo-state-label 'Apollo is growling'. Reproduction of the email→account scent: onboarding → home-check-email-button → paste the E01 CommBank forgery → email-run → email-check-account → assert account-scent-notice; then account-kind-mfa_prompt + account-provider-bank + account-initiated-no + account-run → assert account-linked text. Only outstanding cosmetic items are the duplicate growling GIF asset and the expo-image aria-label web quirk (see action_items).",
+  "rca_of_issue": "N/A — no functional issues remain. iter17 fix (add 'email' to recentLinked category whitelist in account.tsx:66) is present in current code and confirmed working end-to-end."
+}

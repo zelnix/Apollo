@@ -1,0 +1,1459 @@
+// ApolloProvider — app-wide store: device identity (server-issued, src/auth/deviceIdentity), adapter
+// status/capabilities, Patrol events (local-first, minimal sync), trust list,
+// verification timestamps and the resolved Apollo state.
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
+import * as Localization from "expo-localization";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Platform } from "react-native";
+
+import { API_BASE, apiDelete, apiGet, apiPatch, apiPost, apiPostEmpty, apiPut } from "@/src/api/client";
+import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backendHealth";
+import { clearDeviceIdentity, getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
+import { PENDING_DELETE_KEY, wipeLocalApolloData, type DeleteDataResult } from "@/src/domain/privacyData";
+import { visibilityFrom } from "@/src/domain/capability";
+import { assessConnection } from "@/src/domain/connection";
+import { isTrustedCaller } from "@/src/domain/trustedCallers";
+import { decide } from "@/src/domain/decision";
+import { parseIntelResult } from "@/src/domain/intelContract";
+import { minimalIndicator } from "@/src/domain/privacy";
+import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
+import { markCheckDone } from "@/src/store/checkCompletion";
+import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
+import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
+import type { PageAnalysis } from "@/src/domain/pageAnalysis";
+import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
+import { analyseUrlLocally } from "@/src/domain/risk";
+import { STATE_RANK } from "@/src/domain/stateMachine";
+import { findScentFor } from "@/src/domain/threatScent";
+import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
+import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
+import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
+import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
+import { MOCK_THREAT_EVENT } from "@/src/domain/mockThreatPreview";
+import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
+import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
+import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } from '@/src/domain/packetEvidence';
+import { freshObservation, unavailableObservation, boundedObservation } from '@/src/domain/protectionObservation';
+import { patrolPayload } from '@/src/domain/patrolPayload';
+import { mergeLocalAndRemoteEvents } from '@/src/domain/eventMerge';
+import { patrolDelivery, deliveryFailure } from './patrolDelivery';
+import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
+import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
+import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
+import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectionAlerts";
+import { MessagingSdk } from "@/src/security/messagingSdk";
+import { CallSdk } from "@/src/security/callSdk";
+import { storage } from "@/src/utils/storage";
+import { shouldBypassSetup } from "@/src/testing/setupBypass";
+import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
+import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
+import { getNativeModule } from "@/src/security/nativeBridge";
+import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
+import type { HealthTrigger } from "@/src/protection/healthTypes";
+import { APP_VERSION } from "@/src/config/buildInfo";
+import { isVerifiedDesktopFlowDrop } from "@/src/security/desktopEvidence";
+import { getOriginalSource, saveOriginalSource, type OriginalSourceInput } from "@/src/store/originalSource";
+import { listEvidence } from "@/src/investigation/client";
+
+// ── Privacy-safe notification diagnostic logger ──────────────────────────
+// Records notification failures with enough detail to distinguish permission,
+// registration and scheduling issues — without exposing email content or PII.
+type NotifFailKind = "permission" | "registration" | "scheduling" | "unknown";
+function logNotifDiagnostic(kind: NotifFailKind, error: unknown, context?: string): void {
+  const message = error instanceof Error ? error.message : String(error);
+  // Strip any potential PII / email content — keep only the failure classification
+  const safeMsg = message.replace(/[\w.-]+@[\w.-]+/g, "[redacted-email]").slice(0, 200);
+  const tag = `[Apollo notification ${kind}]`;
+  if (__DEV__) {
+    console.warn(`${tag} ${safeMsg}${context ? ` (context: ${context})` : ""}`);
+  }
+  // In production, this could be sent to a privacy-safe telemetry endpoint.
+  // For now, store the last failure locally for diagnostics.
+  void storage.setItem("apollo.notif.lastFailure", JSON.stringify({
+    kind, message: safeMsg, at: new Date().toISOString(), context: context ?? null,
+  })).catch(() => undefined);
+}
+
+const deviceMeta = () => ({
+  platform: Platform.OS,
+  adapter_mode: securityAdapter.kind,
+  app_version: APP_VERSION,
+  tz_offset_minutes: -new Date().getTimezoneOffset(),
+  locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
+});
+
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
+
+/** Safe JSON parse that returns `fallback` instead of throwing on corrupt data.
+ *  Optionally validates parsed shape (e.g. Array.isArray for list keys).
+ *  Corrupt or shape-invalid keys are **removed** from storage so the next boot is clean. */
+function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: string, validate?: (v: unknown) => boolean): T {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    if (validate && !validate(parsed)) {
+      console.warn(`[Apollo boot] shape mismatch in "${storageKey ?? "?"}", quarantining`);
+      if (storageKey) void storage.removeItem(storageKey).catch(() => {});
+      return fallback;
+    }
+    return parsed as T;
+  }
+  catch (e) {
+    console.warn(`[Apollo boot] corrupt data in "${storageKey ?? "?"}", quarantining:`, e);
+    if (storageKey) void storage.removeItem(storageKey).catch(() => {});
+    return fallback;
+  }
+}
+
+export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
+
+export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
+export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
+export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
+export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
+/** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
+ * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
+ * only reach "growling"/"barking" in the app, never a verified "biting" block.
+ * "unknown" means reputation data was genuinely unavailable — not safe, not suspicious. */
+export interface CallRiskResult {
+  number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null; recent_abuse: boolean | null;
+  risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
+  decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured" | "unavailable";
+  higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
+  assessment?: InvestigationResult | null;
+}
+export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
+
+interface ApolloContextValue {
+  ready: boolean;
+  setupDone: boolean;
+  deviceId: string | null;
+  /** Set when the server rejected this device's credential. The app is in an explicit identity-reset state until the person re-registers. */
+  identityReset: string | null;
+  reRegisterDevice(): Promise<void>;
+  completeSetup(): Promise<void>;
+  capabilities: Capability[];
+  protection: ProtectionStatus | null;
+  permissions: ProtectionPermission[];
+  network: NetworkStatus | null;
+  adapterLabel: string;
+  isMock: boolean;
+  refreshing: boolean;
+  refresh(minVisibleMs?: number): Promise<ProtectionStatus | null>;
+  verifyNow(): Promise<ProtectionStatus | null>;
+  lastVerifiedAt: string | null;
+  toggleProtection(on: boolean): Promise<void>;
+  requestPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission>;
+  /** Grant VPN consent (if needed) and start Site Gate, flipping its status immediately. Returns whether consent was granted. */
+  enableSiteProtection(): Promise<boolean>;
+  events: PatrolEvent[];
+  trust: TrustEntry[];
+  resolution: StateResolution;
+  checkLink(input: string, scentId?: string): Promise<CheckOutcome>;
+  checkMessage(sender: string, text: string): Promise<MessageOutcome>;
+  /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
+   * (never stored server-side), runs each through the same on-device email engine as the paste
+   * flow, files Patrol events for anything non-resting, then discards the raw content. */
+  scanGmailInbox(): Promise<{ checked: number; accepted: number }>;
+  recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
+  /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
+  recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
+  /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
+  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null }>;
+  /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
+  checkNumberRisk(number: string, country?: string): Promise<CallRiskResult>;
+  /** `original` = the exact source investigated; saved unaltered on this device for the Evidence tab. */
+  upsertEvent(event: PatrolEvent, original?: OriginalSourceInput): Promise<PatrolEvent>;
+  reopenEvent(event: PatrolEvent): Promise<void>;
+  blockEvent(event: PatrolEvent): Promise<BlockResult>;
+  trustEvent(event: PatrolEvent): Promise<boolean>;
+  resolveEvent(event: PatrolEvent): Promise<void>;
+  revokeTrust(entry: TrustEntry): Promise<void>;
+  clearPatrol(): Promise<void>;
+  requestDataDeletion(): Promise<{ ok: boolean; pending?: boolean; result?: DeleteDataResult }>;
+  trustedSsids: string[];
+  trustNetwork(ssid: string): Promise<void>;
+  forgetNetwork(ssid: string): Promise<void>;
+  toast: { message: string; tone: ApolloState | "neutral" } | null;
+  showToast(message: string, tone?: ApolloState | "neutral"): void;
+  notificationStatus: NotificationStatus;
+  enableNotifications(): Promise<NotificationStatus>;
+  quietHours: QuietHours;
+  quietNow: boolean;
+  setQuietHours(next: QuietHours): Promise<void>;
+  lowPower: boolean;
+  setLowPower(on: boolean): Promise<void>;
+  /** Private DNS / DoH gap detection. null when not determined (web/non-native). */
+  privateDnsStatus: PrivateDnsStatus | null;
+  storage: { getItem(key: string, fallback: string | null): Promise<string | null>; setItem(key: string, value: string): Promise<boolean> };
+}
+
+export interface QuietHours { enabled: boolean; start_minutes: number; end_minutes: number }
+const DEFAULT_QUIET: QuietHours = { enabled: false, start_minutes: 22 * 60, end_minutes: 7 * 60 };
+
+/** Local-time check; mirrors backend `in_quiet_hours`. */
+export function isQuietNow(q: QuietHours, at = new Date()): boolean {
+  if (!q.enabled) return false;
+  const m = at.getHours() * 60 + at.getMinutes();
+  return q.start_minutes <= q.end_minutes ? m >= q.start_minutes && m < q.end_minutes : m >= q.start_minutes || m < q.end_minutes;
+}
+
+/** Android only: ensure system VPN consent before GuardDog's VpnService starts.
+ *  Requests consent when needed, lets Android's consent screen complete, and returns the result of a
+ *  FRESH permission read. Never throws — a declined/failed request resolves false so setup can finish
+ *  with Site Gate in "permission required" (reduced coverage) rather than disabling Apollo as a whole. */
+async function ensureAndroidVpnConsent(): Promise<boolean> {
+  const vpnGranted = async () => {
+    try { return (await securityAdapter.getProtectionPermissions()).find((p) => p.id === "vpn_config")?.status === "granted"; }
+    catch { return false; }
+  };
+  const perms = await securityAdapter.getProtectionPermissions().catch(() => [] as ProtectionPermission[]);
+  const vpn = perms.find((p) => p.id === "vpn_config");
+  if (!vpn || vpn.status === "granted") return true; // not applicable on this device, or already granted
+  const result = await securityAdapter.requestProtectionPermission("vpn_config").catch(() => null);
+  if (!result) return false;
+  // Current native build launches Android's VPN-consent dialog FOR RESULT and resolves only after
+  // the user responds, so these states are authoritative — no polling/guessing needed.
+  if (result.status === "granted" || result.requestState === "granted" || result.requestState === "already_granted") return true;
+  if (result.requestState === "denied" || result.requestState === "launch_failed" || result.requestState === "unsupported" || result.requestState === "cancelled") return false;
+  // Legacy fallback (older native that returned "system_ui_opened" immediately): wait for the user to
+  // respond and return from the consent screen, then read the real state. Never bails early — it
+  // settles only after a genuine background→active return, or at a hard 120s ceiling.
+  if (result.requestState === "system_ui_opened") {
+    return new Promise<boolean>((resolve) => {
+      let done = false; let backgrounded = false; const ceiling = Date.now() + 120_000; let timer: ReturnType<typeof setTimeout>;
+      const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
+      const onReturn = async () => { for (let i = 0; i < 6 && !done; i++) { if (await vpnGranted()) { finish(true); return; } await new Promise((r) => setTimeout(r, 500)); } finish(await vpnGranted()); };
+      const tick = async () => { if (done) return; if (await vpnGranted()) { finish(true); return; } if (Date.now() > ceiling) { finish(false); return; } timer = setTimeout(tick, 1000); };
+      const sub = AppState.addEventListener("change", (st) => { if (st === "background" || st === "inactive") backgrounded = true; else if (st === "active" && backgrounded) { backgrounded = false; void onReturn(); } });
+      timer = setTimeout(tick, 1000);
+    });
+  }
+  return vpnGranted();
+}
+
+const Ctx = createContext<ApolloContextValue | null>(null);
+
+export function ApolloProvider({ children }: { children: React.ReactNode }) {
+  const qc = useQueryClient();
+  const [ready, setReady] = useState(false);
+  const [setupDone, setSetupDone] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [identityReset, setIdentityReset] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [protection, setProtection] = useState<ProtectionStatus | null>(null);
+  const [permissions, setPermissions] = useState<ProtectionPermission[]>([]);
+  const [network, setNetwork] = useState<NetworkStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
+  const [events, setEvents] = useState<PatrolEvent[]>([]);
+  const [trust, setTrust] = useState<TrustEntry[]>([]);
+  const [toast, setToast] = useState<ApolloContextValue["toast"]>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tick, setTick] = useState(0);
+  const probeGeneration = useRef(0);
+
+  // Quiet hours (local + synced to backend so growling pushes are held) and battery saver.
+  const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
+  const [lowPower, setLowPowerState] = useState(false);
+  const [privateDnsStatus, setPrivateDnsStatus] = useState<PrivateDnsStatus | null>(null);
+  useEffect(() => {
+    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet, (v) => typeof v === "object" && v !== null && !Array.isArray(v)); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
+    void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
+  }, []);
+  const quietNow = useMemo(() => isQuietNow(quietHours), [quietHours, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const quietRef = useRef(quietHours);
+  useEffect(() => { quietRef.current = quietHours; }, [quietHours]);
+  const syncQuiet = useCallback(async (q: QuietHours, id: string | null) => {
+    if (!id) return;
+    try { await apiPut(`/devices/${id}/settings`, "device_settings", { quiet_hours: { ...q, tz_offset_minutes: -new Date().getTimezoneOffset() } }); } catch { /* offline: local copy still silences in-app nudges */ }
+  }, []);
+  const setQuietHours = useCallback(async (next: QuietHours) => {
+    setQuietHoursState(next); quietRef.current = next;
+    await storage.setItem(K.quiet, JSON.stringify(next));
+    await syncQuiet(next, deviceIdRef.current);
+  }, [syncQuiet]);
+  const setLowPower = useCallback(async (on: boolean) => { setLowPowerState(on); await storage.setItem(K.lowPower, on); }, []);
+
+  const showToast = useCallback((message: string, tone: ApolloState | "neutral" = "neutral") => {
+    if (tone === "growling" && isQuietNow(quietRef.current)) return; // quiet hours: hold non-urgent nudges
+    setToast({ message, tone });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  }, []);
+
+  // Latest events, updated synchronously so back-to-back upserts (e.g. resolving a whole incident) never
+  // operate on a stale snapshot and overwrite each other.
+  const eventsRef = useRef<PatrolEvent[]>([]);
+  const alertedStates = useRef(new Map<string, ApolloState>());
+  useEffect(() => { eventsRef.current = events; }, [events]);
+  const persistEvents = useCallback(async (next: PatrolEvent[]) => {
+    eventsRef.current = next; setEvents(next);
+    if (!await storage.setItem(K.events, JSON.stringify(next))) { deliveryFailure(); throw new Error('Patrol could not save the event locally'); }
+  }, []);
+  const persistTrust = useCallback(async (next: TrustEntry[]) => { setTrust(next); await storage.setItem(K.trust, JSON.stringify(next)); }, []);
+
+  const refresh = useCallback(async (minVisibleMs = 0, trigger: HealthTrigger = "periodic") => {
+    const generation = ++probeGeneration.current;
+    setRefreshing(true);
+    const hold = new Promise((r) => setTimeout(r, minVisibleMs));
+    try {
+      const [health, evidence] = await boundedObservation(Promise.all([
+        runProtectionHealthCheck(trigger), securityAdapter.getEnforcementEvidence().catch(() => []),
+      ]));
+      const { capabilities: caps, protection: status, permissions: perms, network: net } = health;
+      if (!status || !net) throw new Error("Protection health is unavailable.");
+      if (generation !== probeGeneration.current) return null;
+      const observed = freshObservation(status) ? status : unavailableObservation(status);
+      setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
+      // ── Private DNS gap detection ──────────────────────────────────────────
+      if (securityAdapter.getPrivateDnsStatus) {
+        securityAdapter.getPrivateDnsStatus().then(setPrivateDnsStatus).catch(() => setPrivateDnsStatus(null));
+      }
+      const verified = freshObservation(status) ? status.lastVerified : null;
+      setLastVerifiedAt(verified);
+      await storage.setItem(K.verified, verified);
+      // Connection Guard: raise one growling event per distinct unsafe network condition (trusted networks stay quiet).
+      const a = assessConnection(net, trustedSsidsRef.current);
+      // Network Gate monitors the live OS connection snapshot and needs no VPN — raise one event
+      // per distinct unsafe network condition whenever observed (open/WEP Wi‑Fi, captive portal),
+      // regardless of whether the Website Gate VPN is running.
+      if (a.state && lastConnectionKey.current !== a.key) {
+        lastConnectionKey.current = a.key;
+        const ev: PatrolEvent = {
+          event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",
+          headline: a.headline, what_happened: a.what_happened, why: a.why, what_to_do: a.what_to_do, indicator_host: null, indicator_digest: null,
+          verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
+        };
+        setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+        void saveOriginalSource([ev.event_id], { kind: "network", data: net });
+        void syncEventRef.current?.(ev);
+      } else if (!a.state) lastConnectionKey.current = a.key;
+      await syncEnforcementEvidence(evidence).catch(deliveryFailure);
+      await syncDnsThreatObservations().catch(deliveryFailure);
+      return observed;
+    } catch {
+      if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); setCapabilities([]); }
+      return null;
+    } finally { await hold; setRefreshing(false); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cross-Platform Architecture Directive: passively surface REAL, native-observed blocks (a real
+  // app's traffic actually hit an already-blocked domain and got dropped) as their own verified
+  // "biting" events — distinct from the immediate tap-to-block flow in blockEvent() below, which
+  // must NEVER reach "biting" on its own (a manual tap is a request, not a verified block). Every
+  // entry here already passed isVerifiedEnforcement(); the backend independently re-validates the
+  // attached evidence again before it ever sets verified_block itself (see routers/patrol.py).
+  const seenEvidenceRef = useRef<Set<string> | null>(null);
+  const syncEnforcementEvidence = useCallback(async (evidence: Awaited<ReturnType<typeof securityAdapter.getEnforcementEvidence>>) => {
+    if (!evidence.length) return;
+    if (!seenEvidenceRef.current) {
+      const raw = await storage.getItem<string | null>(K.seenEvidence, null);
+      seenEvidenceRef.current = new Set(raw ? safeParse<string[]>(raw, [], K.seenEvidence, Array.isArray) : []);
+    }
+    const seen = seenEvidenceRef.current;
+    // isVerifiedEnforcement() + the evidenceId dedupe below together guarantee repeated evidence for
+    // the same real block can never create duplicate "biting" events.
+    const fresh = evidence.filter((e) => isVerifiedEnforcement(e) && !seen.has(e.evidenceId));
+    for (const e of fresh) {
+      const isCall = false; // Call screening is processed separately; never packet-backed Biting.
+      const domain = e.destination.domain ?? e.destination.ip ?? (isCall ? "an unknown caller" : "a threat");
+      // Upgrade an existing card for this exact host/number (e.g. it was flagged/barking earlier) in
+      // place, rather than spawning a duplicate — one destination should read as one continuous story.
+      // Calls use `local_indicator` (never synced — see syncEvent) instead of `indicator_host`,
+      // matching the same privacy choice Check This Call already makes for phone numbers.
+      const existing = eventsRef.current.find(x => x.event_id === (e.eventId ?? e.evidenceId));
+      if (existing) { await syncEventRef.current?.(existing); seen.add(e.evidenceId); continue; }
+      const base: PatrolEvent = existing ?? {
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : undefined, indicator_digest: null,
+        verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
+      };
+      if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
+      const headline = isCall ? `Apollo blocked a call from ${domain}` : `Apollo blocked ${domain}`;
+      const whatHappened = isCall
+        ? `Apollo's Call Gate rejected an incoming call from ${domain} on this device before it rang — it matched a number Apollo already knew was high-risk.`
+        : `Apollo's Site Gate observed a real connection attempt to ${domain} and blocked it on this device.`;
+      const whyLine = isCall
+        ? "The call was rejected before it rang — confirmed by the operating system, not assumed."
+        : "Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed.";
+      const ev: PatrolEvent = {
+        ...base, state: "biting", status: "blocked", headline,
+        what_happened: whatHappened,
+        why: [...base.why, whyLine],
+        what_to_do: "This connection was blocked. If you already shared details or money, review the recovery steps.",
+        indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : base.local_indicator,
+        verified_block: true, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
+        background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
+      };
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      void saveOriginalSource([ev.event_id], { kind: "network", data: e, capturedAt: e.observedAt });
+      await syncEventRef.current?.(ev);
+      seen.add(e.evidenceId); // local dedupe ONLY; delivery receipts live in the durable outbox.
+      showToast(isCall ? `Apollo blocked a call from ${domain}.` : `Apollo blocked ${domain}.`, "biting");
+    }
+    // WFP ALE and NEFilterDataProvider report genuine OS flow/authorization drops, not packet-drop
+    // evidence. Surface them locally and acknowledge them, but preserve the stricter P0 rule that
+    // only correlated packet drops may produce Biting or upload enforcement evidence.
+    for (const e of evidence.filter(x => isVerifiedDesktopFlowDrop(x) && !seen.has(x.evidenceId))) {
+      const domain = e.destination.domain!;
+      const source = e.attribution.processName ?? e.attribution.appId;
+      const mechanism = e.mechanism === "wfp_ale_authorization" ? "Windows Filtering Platform" : "the macOS Network Extension";
+      const ev: PatrolEvent = {
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        headline: `Apollo's desktop filter stopped ${domain}`,
+        what_happened: `${mechanism} reported a blocked outbound connection${source ? ` from ${source}` : ""}. This is flow-level evidence, so Apollo does not label it Biting.`,
+        why: ["The operating system reported an enforced flow or connection-authorization drop.", "Apollo reserves Biting for correlated packet-drop evidence."],
+        what_to_do: "Review the application that attempted the connection and keep the destination blocked.", indicator_host: domain, indicator_digest: null,
+        verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+      };
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      void saveOriginalSource([ev.event_id], { kind: ev.category === "call" ? "call" : "network", data: e, capturedAt: e.observedAt });
+      await syncEventRef.current?.(ev); seen.add(e.evidenceId);
+      showToast(`Apollo's desktop filter stopped ${domain}.`, "barking");
+    }
+    for (const e of evidence.filter(x => x.mechanism === 'call_screening' && x.requestedAction === 'block' && !seen.has(x.evidenceId))) {
+      const ev: PatrolEvent = {
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
+        headline: 'Call rejection requested', what_happened: 'Call Gate submitted a rejection request to Android. No separate completion receipt is available.',
+        why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Gate.',
+        indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false, evidence_provenance: "local_device",
+        adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+      };
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      void saveOriginalSource([ev.event_id], { kind: ev.category === "call" ? "call" : "network", data: e, capturedAt: e.observedAt });
+      await syncEventRef.current?.(ev); seen.add(e.evidenceId);
+    }
+    const retainedSeen = [...seen].slice(-2048);
+    await storage.setItem(K.seenEvidence, JSON.stringify(retainedSeen));
+    await securityAdapter.acknowledgeEnforcementEvidence?.(retainedSeen);
+  }, [showToast, persistEvents]);
+
+  // ── DNS Threat Observation sync (Growling only — never Biting) ──────────
+  // Polls native DNS threat observations from a SEPARATE inbox (ApolloDnsThreatInbox).
+  // These represent genuine DNS-level detections: Apollo redirected a DNS query for a
+  // known-dangerous hostname to a sinkhole. This is a DETECTION, not enforcement.
+  const seenDnsObsRef = useRef<Set<string> | null>(null);
+  const syncDnsThreatObservations = useCallback(async () => {
+    if (!securityAdapter.getDnsThreatObservations) return;
+    try {
+      const observations = await securityAdapter.getDnsThreatObservations();
+      if (!observations.length) return;
+      if (!seenDnsObsRef.current) {
+        const raw = await storage.getItem<string | null>("apollo:seen_dns_observations", null);
+        seenDnsObsRef.current = new Set(raw ? safeParse<string[]>(raw, [], "seen_dns_observations", Array.isArray) : []);
+      }
+      const seen = seenDnsObsRef.current;
+      const fresh = observations.filter((o) => !seen.has(o.observationId));
+      const ackIds: string[] = [];
+      for (const obs of fresh) {
+        const domain = obs.hostname;
+        const ev: PatrolEvent = {
+          event_id: `dns-obs-${obs.observationId}`, device_id: deviceIdRef.current ?? "local", category: "website",
+          state: "growling", status: "active",
+          headline: `Apollo detected a known threat: ${domain}`,
+          what_happened: `Apollo's website protection observed a DNS query for ${domain}, which matches a known threat in Apollo's active rules. The DNS answer was redirected to prevent the connection.`,
+          why: ["Apollo's DNS gateway intercepted the query before the browser received a real address.", "This is a detection — Apollo redirected the DNS answer, but has not yet confirmed whether a real connection attempt followed."],
+          what_to_do: "Do not visit this website. If you opened it from a message or link, treat that source as suspicious.",
+          indicator_host: domain, indicator_digest: null,
+          verified_block: false, evidence_provenance: "dns_observation",
+          adapter_label: securityAdapter.label, occurred_at: obs.observedAt, resolved_at: null, trust_allowed: false, background: true,
+        };
+        await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+        void saveOriginalSource([ev.event_id], { kind: "network", data: obs, capturedAt: obs.observedAt });
+        await syncEventRef.current?.(ev);
+        seen.add(obs.observationId); ackIds.push(obs.observationId);
+        showToast(`Apollo detected a known threat: ${domain}`, "growling");
+      }
+      if (ackIds.length) {
+        const retainedSeen = [...seen].slice(-2048);
+        await storage.setItem("apollo:seen_dns_observations", JSON.stringify(retainedSeen));
+        await securityAdapter.acknowledgeDnsThreatObservations?.(ackIds);
+      }
+    } catch { /* non-critical — periodic poll will retry */ }
+  }, [showToast, persistEvents]);
+
+  const lastConnectionKey = useRef<string | null>(null);
+  const deviceIdRef = useRef<string | null>(null);
+  useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
+  const syncEventRef = useRef<((e: PatrolEvent) => Promise<void>) | null>(null);
+  // Wi‑Fi Memory: networks the user marked as home/work. Local only.
+  const [trustedSsids, setTrustedSsids] = useState<string[]>([]);
+  const trustedSsidsRef = useRef<string[]>([]);
+  useEffect(() => { trustedSsidsRef.current = trustedSsids; }, [trustedSsids]);
+  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = safeParse<string[]>(raw, [], K.wifi, Array.isArray); setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
+  const trustNetwork = useCallback(async (ssid: string) => {
+    const next = Array.from(new Set([...trustedSsidsRef.current, ssid])); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next));
+    // Resolve any active connection event for this condition and re-assess.
+    setEvents((prev) => { const n = prev.map((e) => e.category === "connection" && e.status === "active" ? { ...e, status: "resolved" as const, resolved_at: new Date().toISOString(), what_to_do: `You marked “${ssid}” as a trusted network.` } : e); void storage.setItem(K.events, JSON.stringify(n)); return n; });
+    lastConnectionKey.current = null;
+    showToast(`Trusted “${ssid}”. Apollo stays quiet on this network.`, "resting");
+  }, [showToast]);
+  const forgetNetwork = useCallback(async (ssid: string) => {
+    const next = trustedSsidsRef.current.filter((x) => x !== ssid); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next)); lastConnectionKey.current = null;
+  }, []);
+
+  const verifyNow = useCallback(async () => {
+    // Keep the Sniffing state visible for at least a beat so the user sees Apollo actually checking.
+    return refresh(900);
+  }, [refresh]);
+
+  // Boot
+  useEffect(() => {
+    (async () => {
+      try {
+        // Phase 1 — restore persisted local state. Each step is individually guarded so a
+        // corrupt/stale record cannot prevent the live boot-health observation in Phase 2.
+        try {
+          await primeDeviceFacts();
+          const [storedDone, ev, tr, protOn] = await Promise.all([
+            storage.getItem<boolean>(K.setup, false), storage.getItem<string | null>(K.events, null), storage.getItem<string | null>(K.trust, null),
+            storage.getItem<boolean>(K.protection, false),
+          ]);
+          const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
+          const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
+          setSetupDone(!!done);
+          if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
+          // Web preview: seed a mock threat so the 4-tab investigation UI can be exercised.
+          if (Platform.OS === "web" && eventsRef.current.length === 0) { const seed = [MOCK_THREAT_EVENT]; eventsRef.current = seed; alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state])); setEvents(seed); }
+          if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
+          if (done) {
+            // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
+            let identity = await getDeviceIdentity();
+            const resetWhy = identity ? null : await getIdentityResetReason();
+            if (resetWhy) setIdentityReset(resetWhy); // explicit reset state survives reloads — never re-register silently
+            else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
+            if (identity) {
+              setDeviceId(identity.deviceId);
+              // Build the request inside the Promise chain too: egress validation is synchronous, so a
+              // future client/server contract mismatch must remain contained like an offline heartbeat.
+              void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
+              // Live Caller ID PIR — silently write the PIR server URL to shared UserDefaults (iOS)
+              // so the LiveCallerIDLookup extension knows where to query. Non-blocking, best-effort.
+              if (Platform.OS === "ios") {
+                const pirUrl = Constants.expoConfig?.extra?.pirServer?.url;
+                if (pirUrl && typeof pirUrl === "string" && pirUrl.length > 0) {
+                  void getNativeModule()?.configurePirServerUrl(pirUrl).catch(() => undefined);
+                }
+              }
+            }
+            if (protOn) await storage.setItem(K.protection, true);
+          }
+        } catch (restoreError) {
+          console.warn("[Apollo boot] local state restoration failed, continuing to boot-health check:", restoreError);
+        }
+        // Phase 2 — live boot-health observation. Runs regardless of Phase 1 outcome so the
+        // initial protection-health check is never silently skipped.
+        await refresh(0, "boot");
+      } catch (bootError) {
+        // Degraded boot: log the failure, continue with whatever state was loaded so far.
+        // The app remains functional but may be missing Patrol history or trust entries.
+        console.warn("[Apollo boot] startup error, entering degraded state:", bootError);
+      } finally { setReady(true); }
+    })();
+  }, [refresh]);
+
+  // A 401 means the credential is dead (revoked/expired/rotated elsewhere). Fail closed and enter an EXPLICIT
+  // identity-reset state: nothing is re-registered silently, because a new identity detaches this install from its
+  // Family links and shared incidents on the server. The person chooses to re-register.
+  useEffect(() => onIdentityReset((why) => { setDeviceId(null); setIdentityReset(why); }), []);
+  const identityResetRef = useRef<string | null>(null);
+  useEffect(() => { identityResetRef.current = identityReset; }, [identityReset]);
+  const setupDoneRef = useRef(false);
+  useEffect(() => { setupDoneRef.current = setupDone; }, [setupDone]);
+  const reRegisterDevice = useCallback(async () => {
+    const id = await registerDeviceIdentity(API_BASE, deviceMeta());
+    setDeviceId(id.deviceId); setIdentityReset(null);
+    showToast("Registered as a new device. Re-pair with family members to share alerts again.", "neutral");
+  }, [showToast]);
+
+  // Failure contract: while the security service is unreachable, re-probe /health periodically and whenever the
+  // app returns to the foreground. Degraded state clears ONLY on a fresh successful observation (inside probe/client),
+  // after which cached server data is refetched and a setup-complete install that could not register at boot
+  // (service down at the time) registers now — unless it is in the explicit identity-reset state.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const schedule = (down: boolean) => {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (down) timer = setInterval(() => void probeBackend(), lowPower ? 120000 : 30000);
+    };
+    let wasReachable = getBackendHealth().reachable;
+    schedule(wasReachable === false);
+    const off = onBackendHealth((h) => {
+      schedule(h.reachable === false);
+      if (h.reachable === true && wasReachable === false) {
+        void qc.invalidateQueries();
+        if (setupDoneRef.current && !deviceIdRef.current && !identityResetRef.current) {
+          void registerDeviceIdentity(API_BASE, deviceMeta()).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
+        }
+      }
+      wasReachable = h.reachable;
+    });
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st === 'active') { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); void refresh(0, "foreground"); }
+      else { ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); }
+      if (st === "active" && getBackendHealth().reachable === false) void probeBackend();
+    });
+    return () => { off(); sub.remove(); if (timer) clearInterval(timer); };
+  }, [lowPower, qc, refresh]);
+
+  // Re-resolve state over time so cooldown/freshness windows expire visibly (slower in battery saver).
+  useEffect(() => { const t = setInterval(() => {
+    setTick(n => n + 1);
+    setProtection(p => freshObservation(p) ? p : unavailableObservation(p));
+  }, 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => { if (AppState.currentState !== 'background') void refresh(0, "periodic"); }, lowPower ? 60000 : 30000); return () => clearInterval(t); }, [lowPower, refresh]);
+
+  // Local notification permission is independent of server identity; no remote token is requested.
+  const [notificationStatus, setNotificationStatus] = useState<NotificationStatus>(Platform.OS === "web" ? "unsupported" : "undetermined");
+  useEffect(() => {
+    const refreshPermission = () => { void getNotificationStatus().then(setNotificationStatus).catch(() => setNotificationStatus("unsupported")); };
+    refreshPermission();
+    const sub = AppState.addEventListener("change", (state) => { if (state === "active") refreshPermission(); });
+    return () => sub.remove();
+  }, []);
+  useEffect(() => { if (deviceId && quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId); }, [deviceId, syncQuiet]);
+  // Register for remote push when device identity becomes available (boot or recovery).
+  useEffect(() => { if (deviceId) void registerRemotePush().catch(() => undefined); }, [deviceId]);
+  const enableNotifications = useCallback(async () => {
+    const status = await requestNotificationPermission();
+    setNotificationStatus(status);
+    return status;
+  }, []);
+
+  // Observe accepted Patrol updates downstream of enforcement; neither this effect nor its alerts
+  // may promote an event to Biting. Historical records are seeded above and old syncs stay silent.
+  useEffect(() => {
+    if (!ready) return;
+    for (const event of events) {
+      const previous = alertedStates.current.get(event.event_id);
+      alertedStates.current.set(event.event_id, event.state);
+      const age = Date.now() - Date.parse(event.occurred_at);
+      if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
+      const alert = eventLocalAlert(event);
+      if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
+      // Defect 7: Wire protection-work notification builders (completed checks, protection updates)
+      const checkAlert = completedCheckAlert(event);
+      if (checkAlert && (checkAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(checkAlert).catch((e) => logNotifDiagnostic("scheduling", e, "completed-check"));
+      const updateAlert = protectionUpdateAlert(event);
+      if (updateAlert && (updateAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(updateAlert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-update"));
+    }
+    if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
+  }, [ready, events]);
+
+  const lastObservedProtection = useRef<ProtectionStatus | null>(null);
+  useEffect(() => {
+    if (!ready || !protection || !Number.isFinite(Date.parse(protection.checkedAt))) return;
+    if (lastObservedProtection.current?.checkedAt === protection.checkedAt) return;
+    const previous = lastObservedProtection.current;
+    lastObservedProtection.current = protection;
+    if (previous) {
+      const alert = protectionLocalAlert(previous, protection);
+      if (alert) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, "protection-status"));
+      // Note: recoveryAlert from protectionAlerts.ts is NOT dispatched here to avoid
+      // duplicate notifications — protectionLocalAlert already handles recovery.
+    }
+  }, [ready, protection]);
+
+  const completeSetup = useCallback(async () => {
+    let identity = await getDeviceIdentity();
+    if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
+    if (identity) setDeviceId(identity.deviceId);
+
+    // Record the person's intent to run protection. Site Gate's VPN consent (Android) and the other
+    // per-Gate permissions are now requested in the setup walkthrough (app/setup-gates.tsx) using a
+    // consistent Enable / Not now pattern — so setup never blocks on any single permission. On
+    // non-Android, protection starts here (content filter needs no system consent dialog).
+    await storage.setItem(K.protection, true);
+    // Call Guard: automatic incoming-number checks are turned ON during onboarding by default (the Call
+    // Gate shows the disclosure and lets the person turn it off anytime). Only seed when never set, so a
+    // later user choice is never overwritten.
+    if ((await storage.getItem("apollo.call.auto_check", null)) === null) await storage.setItem("apollo.call.auto_check", "true");
+    if (Platform.OS !== "android") { try { await securityAdapter.startProtection(); } catch { /* reduced coverage */ } }
+
+    await storage.setItem(K.setup, true);
+    setSetupDone(true);
+    await verifyNow();
+    // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
+    try { await enableNotifications(); } catch (e) { logNotifDiagnostic("permission", e, "setup-flow"); }
+    // Register for remote push delivery after notification permission is granted.
+    void registerRemotePush().catch((e) => logNotifDiagnostic("registration", e, "setup-push"));
+  }, [verifyNow, enableNotifications]);
+
+  // Remote Patrol + trust merge — uses the extracted pure mergeLocalAndRemoteEvents function
+  // so the same production logic is exercised by both the app and the regression tests.
+  const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolRecord[]>(`/patrol/records?limit=200`) });
+  const remoteTrust = useQuery({ queryKey: ["trust", deviceId], enabled: !!deviceId, queryFn: () => apiGet<TrustEntry[]>(`/trust?device_id=${deviceId}`) });
+  useEffect(() => {
+    // Wait until local events are restored, and merge against the live ref — merging against an
+    // empty/stale snapshot let the server's unresolved copy overwrite a local "contained" decision.
+    if (!remoteEvents.data || !ready) return;
+    const remoteConverted = remoteEvents.data.map((record) => {
+      const e = normalizeHistoricalEvent(patrolRecordToEvent(record));
+      return { ...e, evidence_provenance: e.evidence_provenance ?? "server_projected" as const };
+    });
+    const { events: merged } = mergeLocalAndRemoteEvents(eventsRef.current, remoteConverted);
+    void persistEvents(merged);
+  }, [remoteEvents.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Server-investigated sources (monitored email, captured texts, Higgins submissions): download the exact
+  // original once while the investigation still holds it (server copies expire after 24 h) and keep it on device.
+  const originalTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (!ready || !deviceId) return;
+    const pending = events.filter((e) => e.investigation_case_id && !originalTried.current.has(e.event_id));
+    if (!pending.length) return;
+    void (async () => {
+      const token = await getDeviceToken();
+      if (!token) return;
+      for (const ev of pending) {
+        originalTried.current.add(ev.event_id);
+        const caseId = ev.investigation_case_id!;
+        try {
+          if (await getOriginalSource(ev.event_id) || await getOriginalSource(caseId)) continue;
+          const { items } = await listEvidence(caseId);
+          const roots = items.filter((i) => i.origin === "user_submission" && !i.parentId && i.availability === "available" && (i.kind === "text" || i.kind === "url"));
+          if (!roots.length) continue;
+          const parts: { kind: string; body: string }[] = [];
+          for (const item of roots) {
+            const res = await fetch(`${API_BASE}/investigations/${caseId}/evidence/${item.id}/content`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) parts.push({ kind: item.kind, body: await res.text() });
+          }
+          if (!parts.length) continue;
+          const meta = ev.source_metadata;
+          const fields = [
+            meta?.sender ? { label: "From", value: meta.sender } : null,
+            meta?.reply_to ? { label: "Reply-to", value: meta.reply_to } : null,
+            meta?.subject ? { label: "Subject", value: meta.subject } : null,
+            meta?.received_at ? { label: "Received", value: new Date(meta.received_at).toLocaleString() } : null,
+          ].filter((f): f is { label: string; value: string } => !!f);
+          const texts = parts.filter((p) => p.kind === "text").map((p) => p.body);
+          const urls = parts.filter((p) => p.kind === "url").map((p) => p.body);
+          await saveOriginalSource([ev.event_id, caseId], {
+            kind: meta?.type ?? (urls.length && !texts.length ? "link" : "text"), fields,
+            text: texts.length ? texts.join("\n\n") : null, url: urls.length ? urls.join("\n") : null, origin: "investigation",
+          });
+        } catch { /* investigation unavailable or expired — Evidence explains the original wasn't saved */ }
+      }
+    })();
+  }, [events, ready, deviceId]);
+  useEffect(() => {
+    if (!remoteTrust.data) return;
+    const known = new Set(trust.map((t) => t.trust_id));
+    const missing = remoteTrust.data.filter((t) => !known.has(t.trust_id));
+    if (missing.length) void persistTrust([...trust, ...missing]);
+  }, [remoteTrust.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const syncEvent = useCallback(async (e: PatrolEvent) => {
+    if (!deviceId || (e.device_id !== 'local' && e.device_id !== deviceId)) return;
+    try { await patrolDelivery.enqueue(patrolPayload(e, deviceId)); void patrolDelivery.flush(deviceId).catch(deliveryFailure); }
+    catch { deliveryFailure(); }
+  }, [deviceId]);
+  useEffect(() => { syncEventRef.current = syncEvent; }, [syncEvent]);
+  useEffect(() => {
+    if (!deviceId || !ready) return;
+    const retry = async () => {
+      try {
+        for (const e of eventsRef.current) if (e.device_id === deviceId || e.device_id === 'local') await patrolDelivery.enqueue(patrolPayload(e, deviceId));
+        await patrolDelivery.flush(deviceId);
+      } catch { deliveryFailure(); }
+    };
+    void retry(); const timer = setInterval(() => void retry(), 15000);
+    const sub = AppState.addEventListener('change', s => { if (s === 'active') void retry(); });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [deviceId, ready]);
+
+  const upsertEvent = useCallback(async (input: PatrolEvent, original?: OriginalSourceInput) => {
+    // Threat Scent: link this event to related recent events (same brand/host within 30 min).
+    // Cross-gate correlation associates findings into the same incident for display purposes,
+    // but each event preserves its own independently assessed severity. The overall incident
+    // status is derived at display time by buildScents(), not by upgrading individual events.
+    let e = normalizeHistoricalEvent({ ...input, evidence_provenance: input.evidence_provenance ?? "local_device" });
+    const events = eventsRef.current;
+    if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
+      const scent = findScentFor(e, events) ?? e.event_id;
+      e = { ...e, scent_id: e.scent_id ?? scent };
+    }
+    const next = [e, ...events.filter((x) => x.event_id !== e.event_id)];
+    await persistEvents(next);
+    if (original) await saveOriginalSource([e.event_id], original);
+    void syncEvent(e);
+    return e;
+  }, [persistEvents, syncEvent]);
+
+  const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
+    const analysis = analyseMessage(sender, text);
+    let urls: MessageUrlResult[] = []; let remoteError: string | null = null;
+    let investigationCaseId: string | null = null;
+    try {
+      const r = await apiPost<{ urls?: unknown; investigation_case_id?: string | null }>("/message/analyse", "message_check", {
+        device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls,
+        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
+      });
+      // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
+      urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
+      investigationCaseId = typeof r.investigation_case_id === "string" ? r.investigation_case_id : null;
+    } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
+    let state = analysis.state; const why = [...analysis.why];
+    // Email Guard / Text Guard: automatic pre-click assessment over every checked link (redirect
+    // chain + RDAP domain-info already included in `urls` from the enriched /message/analyse) plus
+    // any display-text-vs-real-destination mismatch recoverable from the plain pasted text. This can
+    // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
+    const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
+    // Apollo's deterministic result stands. Magnum DI investigates asynchronously.
+    if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
+    why.push(...guard.why);
+    const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
+    let event: PatrolEvent | null = null;
+    // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
+    // Magnum DI investigates asynchronously; its findings appear in the investigation experience.
+    if (state !== "resting") {
+      const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
+      const apolloHeadline = analysis.state !== "resting"
+        ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
+        : guardHeadline;
+      event = await upsertEvent({
+        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
+        headline: apolloHeadline,
+        what_happened: patrolSafeSummary(analysis.state !== "resting" ? analysis.verdict : (guard.why[0] ?? analysis.verdict)),
+        why,
+        what_to_do: analysis.recommendation,
+        indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
+        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
+        investigation_case_id: investigationCaseId,
+      }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
+      if (event.state !== state) { state = event.state; }
+    }
+    void markCheckDone("message");
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, explanation: null, assessment: null, remoteError, event };
+  }, [deviceId, upsertEvent]);
+
+  // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
+  // default messaging app (opt-in, Settings > Notification access — never READ_SMS) and runs each
+  // through the EXACT same on-device engine + Email/Text Guard link assessment as a pasted message.
+  // A capability check keeps this a no-op everywhere else (Expo Go, web, iOS, or listener not yet
+  // granted) — getRecentMessageSecurityEvents() also always returns [] in those cases regardless.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const caps = await MessagingSdk.getMessagingCapabilities();
+        if (caps.smsFiltering !== "supported") return;
+        const items = await MessagingSdk.getRecentMessageSecurityEvents();
+        for (const raw of items) {
+          if (cancelled) return;
+          const item = raw as { id?: unknown; status?: unknown; droppedCount?: unknown; sender?: unknown; text?: unknown; sourceKey?: unknown; revisionDigest?: unknown; capturedAt?: unknown; expiresAt?: unknown; contentComplete?: unknown; originalCharacters?: unknown };
+          const id = typeof item?.id === "string" ? item.id : "";
+          if (item.status === "overflow") {
+            const dropped = typeof item.droppedCount === "number" ? item.droppedCount : 0;
+            showToast(`${dropped} older message notification${dropped === 1 ? " was" : "s were"} not assessed because the protected queue was full.`, "growling");
+            if (id) await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
+            continue;
+          }
+          if (item.status === "queue_error") {
+            showToast("Apollo could not read its protected message queue. Open Support before relying on automatic text checks.", "growling");
+            continue;
+          }
+          const text = typeof item?.text === "string" ? item.text : "";
+          if (!id || !text.trim()) continue;
+          const sender = typeof item.sender === "string" ? item.sender : "";
+          // Trusted senders: always run the analysis — trust influences notification quieting, not
+          // detection suppression. If a trusted sender's message contains barking-level evidence
+          // (e.g., spoofed number), create a Patrol event anyway. Only acknowledge silently when the
+          // analysis shows no concern or low concern (resting/ears_up).
+          const senderTrusted = !!(sender && await isTrustedCaller(sender));
+          if (senderTrusted) {
+            // Still analyse the message content for evidence.
+            const quickAnalysis = analyseMessage(sender, text);
+            const hasUrls = quickAnalysis.signals.urls.length > 0;
+            if (!hasUrls && (quickAnalysis.state === "resting" || quickAnalysis.state === "ears_up")) {
+              // Low/no concern from a trusted sender AND no URLs to check against external
+              // threat intelligence — acknowledge quietly without Patrol event.
+              await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
+              continue;
+            }
+            // Trusted sender but contains URLs (need external reputation check) or significant
+            // local evidence (growling/barking) — fall through to full backend investigation.
+          }
+          await apiPost("/investigations/background/text", "investigation", {
+            submissionId: id, sourceKey: typeof item.sourceKey === "string" ? item.sourceKey : id,
+            revisionDigest: typeof item.revisionDigest === "string" ? item.revisionDigest : id,
+            sender, text, capturedAt: typeof item.capturedAt === "string" ? item.capturedAt : new Date().toISOString(),
+            expiresAt: typeof item.expiresAt === "string" ? item.expiresAt : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            contentComplete: item.contentComplete !== false,
+            originalCharacters: typeof item.originalCharacters === "number" ? item.originalCharacters : text.length,
+          });
+          await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
+          showToast("Magnum DI is investigating a captured text. The result will appear in Patrol.", "neutral");
+        }
+      } catch { /* native module unavailable or listener not granted — nothing to drain */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
+  }, [showToast, lowPower]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !deviceId) return;
+    void getDeviceToken().then((deviceToken) => {
+      const module = getNativeModule();
+      if (!deviceToken || !module?.configureTextBackgroundHandoff) return;
+      return module.configureTextBackgroundHandoff(JSON.stringify({ backendUrl: API_BASE, deviceToken }));
+    }).catch(() => undefined);
+  }, [deviceId]);
+
+  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; accepted: number }> => {
+    if (!deviceId) return { checked: 0, accepted: 0 };
+    const result = await apiPost<{ status: string; checked: number; accepted: number; nextCursor: string | null }>("/gmail/scan", "gmail_scan", { device_id: deviceId });
+    if (result.status === "busy") throw new Error("A Gmail assessment is already in progress.");
+    return { checked: result.checked, accepted: result.accepted };
+  }, [deviceId]);
+
+  const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
+    if (existing) {
+      const escalate = STATE_RANK[pa.state] > STATE_RANK[existing.state] && existing.state !== "biting";
+      return upsertEvent({ ...existing, state: escalate ? pa.state : existing.state, status: escalate && existing.status === "resolved" ? "active" : existing.status, resolved_at: escalate ? null : existing.resolved_at,
+        headline: escalate ? pa.title : existing.headline, what_happened: escalate ? `${existing.what_happened} A screenshot of the page: ${pa.verdict}` : existing.what_happened,
+        why: [...existing.why, ...pa.why.map((w) => `Page: ${w}`)], what_to_do: escalate ? pa.recommendation : existing.what_to_do, claimed_brand: existing.claimed_brand ?? pa.claimedBrand, scenario: pa.scenario });
+    }
+    if (pa.state === "resting") return null;
+    return upsertEvent({
+      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "website", state: pa.state, status: "active", headline: pa.title, what_happened: pa.verdict, why: pa.why, what_to_do: pa.recommendation,
+      indicator_host: pa.host, indicator_digest: null, local_indicator: pa.host, verified_block: false, adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null,
+      trust_allowed: false, claimed_brand: pa.claimedBrand, scenario: pa.scenario,
+    }, pa.host ? { kind: "website", fields: [{ label: "Website", value: pa.host }] } : undefined);
+  }, [deviceId, upsertEvent]);
+
+  const checkCall = useCallback(async (input: CallInput) => {
+    const analysis = analyseCall(input);
+    let event: PatrolEvent | null = null;
+    if (analysis.state !== "resting") {
+      event = await upsertEvent({
+        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
+        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: analysis.why, what_to_do: analysis.recommendation,
+        indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
+        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
+      }, { kind: "call", fields: [
+        ...(input.number?.trim() ? [{ label: "Number", value: input.number }] : []),
+        { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
+        ...(input.asks.length ? [{ label: "Asked for", value: input.asks.join(", ") }] : []),
+      ], text: input.transcript?.trim() ? input.transcript : null });
+      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
+    }
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event };
+  }, [deviceId, upsertEvent]);
+
+  // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see
+  // services/phonerisk.py). Used by the "Check this number" quick action AND the pending-lookup poll
+  // below. A non-"allow" decision is remembered on-device (CallSdk.markNumberRisky) so Call Guard's
+  // native mechanism can act on it next time, and files a growling/barking (never biting) Patrol
+  // event — matching Check This Call's existing choice to keep the number itself local-only
+  // (`local_indicator`, never synced — see syncEvent's strip above).
+  const checkNumberRisk = useCallback(async (number: string, country?: string): Promise<CallRiskResult> => {
+    const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
+    // Auto-detect device region for local numbers without country code
+    const region = country || Localization.getLocales()[0]?.regionCode;
+    if (region) body.country = region;
+    const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
+    if (result.decision !== "allow" && result.decision !== "unknown") {
+      // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the
+      // autoRisky list. "review" (moderate signals, uncertain) should only warn — the person decides.
+      // "unknown" never triggers auto-block or threat warning — it means data was unavailable.
+      if (result.decision === "avoid") {
+        try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
+      }
+      const isAvoid = result.decision === "avoid";
+      const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
+      const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
+      const ev: PatrolEvent = {
+        ...(existing ?? {
+          event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const, status: "active" as const,
+          indicator_host: null, indicator_digest: null, local_indicator: result.number, verified_block: false,
+          adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, why: [],
+        }),
+        state: isAvoid ? "barking" : "growling", status: "active",
+        headline: isAvoid ? `High-risk caller: ${result.number}` : `Caller worth a second look: ${result.number}`,
+        what_happened: isAvoid
+          ? `Apollo checked ${result.number} and found strong signs of fraud/spam abuse (fraud score ${result.fraud_score ?? "unknown"}/100).`
+          : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
+        why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
+      };
+      // Attach caller metadata from the risk check for display (country, carrier, line type).
+      (ev as unknown as Record<string, unknown>).caller_meta = {
+        country: result.country ?? null, carrier: result.carrier ?? null,
+        line_type: result.line_type ?? null, voip: result.voip ?? null,
+        fraud_score: result.fraud_score ?? null, source: result.source,
+        identity_verified: false, // IPQualityScore provides reputation, not authenticated identity
+      };
+      setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+      void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: number }], data: result });
+      void syncEventRef.current?.(ev);
+      showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
+    }
+    return result;
+  }, [deviceId, showToast]);
+
+  // Call Guard add-on: reads numbers ApolloCallScreeningService saw ringing with no local block/
+  // allow/risk signal (non-destructive read — numbers persist in the native queue until individually
+  // acknowledged after successful processing).
+  // RELIABILITY FIX (12 Oct 2026): Uses explicit CallLookupResult status to distinguish:
+  //   "ok" with no items → genuinely no pending calls (clean).
+  //   "unavailable"      → native module not loaded (Expo Go / web) — reported to diagnostics.
+  //   "error"            → native failure — reported to diagnostics after persistent failure.
+  // Lifecycle:
+  //   Success → acknowledgeCallLookups: number removed from queue.
+  //   Failure → retryCallLookups: attempts counter incremented. After MAX_RETRY_ATTEMPTS (4),
+  //             readPendingLookups auto-purges the entry on the next read.
+  //   "unknown" reputation → number acknowledged (don't re-queue), honest "could not check" event.
+  // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
+  const callPollBusy = useRef(false);
+  const callPollFailureCount = useRef(0);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      // Overlap guard: prevent concurrent poll operations processing the same queue entry.
+      if (callPollBusy.current) return;
+      callPollBusy.current = true;
+      try {
+        // Consent gate: only submit numbers automatically when the user has opted in.
+        const consent = await storage.getItem("apollo.call.auto_check", null);
+        if (consent !== "true") return; // User hasn't enabled automatic number checking
+
+        const lookupResult = await CallSdk.getPendingCallLookups();
+
+        // Explicit failure handling — never treat a failed lookup as a verified empty queue.
+        if (lookupResult.status === "unavailable") {
+          // Native module not present — expected on Expo Go / web. Not an error, but not monitoring.
+          // Report once so diagnostics/protection status can reflect this.
+          if (callPollFailureCount.current === 0) {
+            console.info("[Call Guard] Native call module unavailable — call monitoring inactive.", lookupResult.detail);
+          }
+          callPollFailureCount.current = 1; // cap at 1 for "unavailable" (not a transient failure)
+          return;
+        }
+
+        if (lookupResult.status === "error") {
+          callPollFailureCount.current += 1;
+          console.warn(`[Call Guard] Native queue read failed (attempt ${callPollFailureCount.current}):`, lookupResult.detail);
+          // After 3 consecutive failures, create a one-time diagnostic event so the user knows.
+          if (callPollFailureCount.current === 3) {
+            const current = eventsRef.current;
+            if (!current.some((x) => x.category === "call" && x.headline?.includes("call monitoring issue"))) {
+              const ev: PatrolEvent = {
+                event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                status: "active" as const, state: "ears_up" as const,
+                indicator_host: null, indicator_digest: null, local_indicator: null,
+                verified_block: false, adapter_label: securityAdapter.label,
+                occurred_at: new Date().toISOString(), resolved_at: null,
+                trust_allowed: false, why: ["Apollo's call monitoring encountered a persistent error reading the native call queue."],
+                headline: "Apollo detected a call monitoring issue",
+                what_happened: `Apollo's automatic call screening encountered repeated failures. ${lookupResult.detail ?? "The native call module may need attention."}`,
+                what_to_do: "Check that Apollo has the call screening role in your phone settings. You can still check numbers manually.",
+              };
+              await persistEvents([ev, ...current]);
+            }
+          }
+          return;
+        }
+
+        // status === "ok" — genuine successful read. Reset failure counter.
+        callPollFailureCount.current = 0;
+        const items = lookupResult.items;
+
+        const acknowledged: string[] = [];
+        const failed: string[] = [];
+        for (const item of items) {
+          if (cancelled) break;
+          if (!item?.number) continue;
+          // Trusted callers: run the reputation check but suppress routine notification.
+          // Trust influences alert quieting, not detection bypass. If fresh evidence is
+          // concerning, the event is created normally; only benign results stay quiet.
+          const callerTrusted = await isTrustedCaller(item.number);
+          try {
+            const riskResult = await checkNumberRisk(item.number);
+            acknowledged.push(item.number);
+            // If the caller is trusted AND the result is benign (allow or unknown), the reputation was
+            // assessed (or unavailable) but no notification is needed — quiet handling honoured.
+            if (callerTrusted && riskResult && (riskResult.decision === "allow" || riskResult.decision === "unknown")) {
+              continue; // Quiet — trust honoured, but reputation was still assessed.
+            }
+            // Handle "unknown" decision for untrusted callers: create an honest "could not check" event.
+            if (riskResult.decision === "unknown") {
+              const current = eventsRef.current;
+              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
+                const ev: PatrolEvent = {
+                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                  status: "active" as const, state: "ears_up" as const,
+                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
+                  verified_block: false, adapter_label: securityAdapter.label,
+                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+                  trust_allowed: false, why: ["Reputation data was unavailable for this number. This does not mean it is safe or dangerous."],
+                  headline: `Call seen: ${item.number} — could not verify`,
+                  what_happened: `A call from ${item.number} was seen but Apollo could not obtain reputation information. The number's safety is unknown.`,
+                  what_to_do: "Tap 'Check this number' to try again, or verify the caller independently before responding.",
+                };
+                await persistEvents([ev, ...current.filter((x) => x.event_id !== ev.event_id)]);
+                void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: item.number }], data: item, capturedAt: new Date(item.seenAtMs).toISOString() });
+              }
+            }
+          } catch {
+            // Retry once after a short delay before giving up
+            try {
+              await new Promise((r) => setTimeout(r, 2000));
+              const retryResult = await checkNumberRisk(item.number);
+              acknowledged.push(item.number);
+              if (callerTrusted && retryResult && (retryResult.decision === "allow" || retryResult.decision === "unknown")) continue;
+            } catch {
+              // For trusted callers, if reputation service is unavailable, acknowledge quietly.
+              // Creating a "could not check" event for a trusted caller is unnecessary noise.
+              if (callerTrusted) { acknowledged.push(item.number); continue; }
+              failed.push(item.number);
+              // Dedup-safe minimal event so the user knows a call was seen but not assessed.
+              const current = eventsRef.current;
+              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
+                const ev: PatrolEvent = {
+                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                  status: "active" as const, state: "ears_up" as const,
+                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
+                  verified_block: false, adapter_label: securityAdapter.label,
+                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+                  trust_allowed: false, why: ["Apollo could not reach the reputation service for this number after multiple attempts."],
+                  headline: `Missed call: ${item.number}`,
+                  what_happened: `A call from ${item.number} was seen but Apollo could not check it. You can re-check it manually.`,
+                  what_to_do: "Tap 'Check this number' below, or verify the caller independently before responding.",
+                };
+                const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
+                await persistEvents(next);
+                void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: item.number }], data: item, capturedAt: new Date(item.seenAtMs).toISOString() });
+              }
+            }
+          }
+        }
+        // Acknowledge successfully processed numbers — they leave the queue.
+        if (acknowledged.length > 0) await CallSdk.acknowledgeCallLookups(acknowledged);
+        // Bump retry counter for failed numbers — auto-purged after MAX_RETRY_ATTEMPTS.
+        if (failed.length > 0) await CallSdk.retryCallLookups(failed);
+      } finally {
+        callPollBusy.current = false;
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
+  }, [checkNumberRisk, lowPower, deviceId, persistEvents]);
+
+  // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
+  // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event
+  // containing only generic rule findings — no sender or message content. Persisted durably via
+  // persistEvents (NOT upsertEvent — local placeholders must never be synced to the backend).
+  // findingId is used directly as event_id (64 hex characters — fits the backend
+  // PatrolEventIn.event_id max_length=64 contract exactly).
+  //
+  // Sequential processing: the for-of loop awaits persistEvents for each finding. persistEvents
+  // synchronously updates eventsRef.current then awaits storage.setItem, so the next iteration
+  // always reads the committed state. No out-of-order overwrites.
+  //
+  // Reconciliation: if a Higgins-projected Patrol event already exists for the same
+  // client_submission_id (set by the investigation projector, end-to-end from the case's
+  // client_submission_id field), the local finding is acknowledged without creating a duplicate.
+  // Full supersession of an existing local placeholder happens in the remote merge effect above
+  // when the projected event arrives — the local placeholder is dropped from the merged list.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const consumeLocalFindings = async () => {
+      try {
+        const findings = await MessagingSdk.getTextGuardLocalFindings();
+        if (!findings.length || cancelled) return;
+        const acknowledged: string[] = [];
+        for (const finding of findings) {
+          if (cancelled || !finding?.findingId) continue;
+          // findingId IS the event_id — no prefix. SHA-256 hex = 64 characters.
+          const eventId = finding.findingId;
+          // Read from the ref (not the closure) so each sequential iteration sees the latest state.
+          const current = eventsRef.current;
+          // Reconciliation: if a Higgins-projected event already covers this submission,
+          // the authoritative record exists — acknowledge without duplicating.
+          const higginsAlreadyProjected = current.some((ev) =>
+            ev.category === "message" && ev.client_submission_id === finding.submissionId && ev.event_id !== eventId
+          );
+          if (higginsAlreadyProjected) { acknowledged.push(finding.findingId); continue; }
+          // Idempotent: this exact local event already exists (re-read after foreground resume)
+          if (current.some((ev) => ev.event_id === eventId)) { acknowledged.push(finding.findingId); continue; }
+          // Create the local Patrol event with generic rule findings only
+          const ruleReasons = finding.findings.map((f: { ruleId: string; title: string }) => `${f.ruleId}: ${f.title}`).slice(0, 6);
+          const ev: PatrolEvent = {
+            event_id: eventId, device_id: deviceId ?? "local", category: "message" as const,
+            status: "active" as const, state: (finding.state as PatrolEvent["state"]) ?? "ears_up",
+            indicator_host: null, indicator_digest: null, local_indicator: null,
+            verified_block: false, adapter_label: "Text Guard local detection",
+            occurred_at: finding.detectedAt ?? new Date().toISOString(), resolved_at: null,
+            trust_allowed: false, client_submission_id: finding.submissionId,
+            why: ruleReasons.length ? ruleReasons : ["Local analysis detected suspicious patterns."],
+            headline: finding.state === "growling" ? "Suspicious message detected" : "Message worth checking",
+            what_happened: `Apollo's on-device analyzer (${finding.analyzer}) flagged a message based on pattern rules.`,
+            what_to_do: finding.state === "growling" ? "Do not respond to or act on this message until you verify the sender independently." : "Review this message carefully. Verify the sender before responding to any requests.",
+          };
+          // Local-only persistence via persistEvents — NOT upsertEvent (which also syncs to backend).
+          // Local placeholders must never leave the device; the backend creates the authoritative
+          // event when the investigation projector runs. persistEvents updates eventsRef.current
+          // synchronously then awaits storage.setItem — the next loop iteration reads committed state.
+          const next = [ev, ...eventsRef.current.filter((x) => x.event_id !== eventId)];
+          await persistEvents(next);
+          acknowledged.push(finding.findingId);
+        }
+        // Acknowledge native findings only after all events are durably persisted
+        if (acknowledged.length > 0) {
+          await MessagingSdk.acknowledgeTextGuardLocalFindings(acknowledged);
+        }
+      } catch { /* native module unavailable */ }
+    };
+    void consumeLocalFindings();
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
+    return () => { cancelled = true; sub.remove(); };
+  }, [deviceId, persistEvents]);
+
+
+  const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
+    const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };
+    const escalate = kind !== "clicked";
+    await upsertEvent({ ...event, state: escalate ? "barking" : event.state, status: "active", why: [...event.why, `You reported: ${label[kind].toLowerCase()}.`], recovery_kinds: Array.from(new Set([...(event.recovery_kinds ?? []), kind])), what_to_do: RECOVERY_STEPS[kind][0] });
+  }, [upsertEvent]);
+
+  const toggleProtection = useCallback(async (on: boolean) => {
+    ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null);
+    try { await boundedObservation(on ? securityAdapter.startProtection() : securityAdapter.stopProtection()); }
+    catch { showToast('Protection request was not confirmed. Checking current status.', 'growling'); }
+    await storage.setItem(K.protection, on);
+    await refresh();
+    const ev: PatrolEvent = {
+      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "protection", state: "resting", status: "resolved",
+      headline: on ? 'Enable protection requested' : 'Disable protection requested',
+      what_happened: 'This records your request, not proof of current protection. Gates shows the latest observed status.',
+      why: [], what_to_do: 'Check Gates for the current observation and any required permissions.',
+      indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: securityAdapter.label,
+      occurred_at: new Date().toISOString(), resolved_at: new Date().toISOString(),
+    };
+    await upsertEvent(ev);
+    if (on) await verifyNow();
+  }, [deviceId, refresh, upsertEvent, verifyNow, showToast]);
+
+  const requestPermission = useCallback(async (id: ProtectionPermission["id"]) => {
+    const p = await securityAdapter.requestProtectionPermission(id);
+    await refresh();
+    return p;
+  }, [refresh]);
+
+  // Settings "Turn on Site Gate": record intent, ensure VPN consent lands (waits for the system
+  // consent screen to return on Android — see ensureAndroidVpnConsent), then start the VPN service
+  // and refresh so the Gate flips to "Protection on" immediately, without reopening the app. A
+  // decline leaves Apollo in reduced coverage (Site Gate stays "permission required").
+  const enableSiteProtection = useCallback(async (): Promise<boolean> => {
+    await storage.setItem(K.protection, true);
+    const granted = Platform.OS === "android" ? await ensureAndroidVpnConsent() : true;
+    if (granted) { try { await securityAdapter.startProtection(); } catch { /* reduced coverage — health check retries */ } }
+    await refresh(0, "protection_change");
+    return granted;
+  }, [refresh]);
+
+  const checkLink = useCallback(async (input: string, scentId?: string): Promise<CheckOutcome> => {
+    const local = analyseUrlLocally(input);
+    if (!local.valid || !local.normalizedUrl || !local.host) {
+      const decision: Decision = { state: "growling", headline: "That doesn't look like a web link", what_happened: "Apollo could not read this as a web address.", why: ["Only http and https links can be checked."], what_to_do: "Paste the full link, including the website name.", action_required: false, trust_allowed: false, block_offered: false, confidence: "low" };
+      return { submissionId: Crypto.randomUUID(), local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
+    }
+    const indicator = minimalIndicator(local.normalizedUrl);
+    let intel: IntelResult | null = null; let intelError: string | null = null;
+    try {
+      const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined, expand: true });
+      // Malformed/partial answer → rejected → "intelligence unavailable" (never optimistic).
+      intel = parseIntelResult(raw);
+      if (!intel) intelError = FAILURE_MESSAGE.malformed;
+    } catch (e) { intelError = e instanceof Error ? e.message : "Reputation check unavailable"; }
+    const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
+    const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
+    let decision = decide(local, intel, trusted);
+    let assessment: InvestigationResult | null = null; let investigationError: string | null = null;
+    let investigationCaseId: string | null = null;
+    try {
+      const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string }>("/link/investigate", "link_investigation", {
+        device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
+        local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
+      });
+      investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+    } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not start the investigation."; }
+    // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
+    const isEvent = decision.state !== "resting" || trusted;
+    const ev: PatrolEvent = {
+      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
+      state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
+      headline: decision.headline,
+      what_happened: patrolSafeSummary(decision.what_happened),
+      why: decision.why,
+      what_to_do: decision.what_to_do,
+      indicator_host: intel?.final_url ? (intel.redirect_chain?.[intel.redirect_chain.length - 1] ?? local.host) : local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
+      occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
+      claimed_brand: decision.claimed_brand ?? null,
+      investigation_case_id: investigationCaseId,
+      // Scent handoff: when checkLink is invoked from a message flow, the caller provides the
+      // message event's scent_id so that findScentFor can discover the correlation.
+      ...(scentId ? { scent_id: scentId } : {}),
+    };
+    if (isEvent || decision.state === "resting") await upsertEvent(ev, { kind: "link", url: input }); // resting checks are still traceable in Patrol
+    void markCheckDone("link");
+    // When Link Gate confirms a malicious domain, trigger an urgent rule refresh so Site Gate
+    // can pick up any new rules derived from this intelligence as soon as possible.
+    if (intel?.verdict === "malicious" && securityAdapter.triggerUrgentRuleRefresh) {
+      securityAdapter.triggerUrgentRuleRefresh().catch(() => { /* non-critical — periodic refresh continues */ });
+    }
+    return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
+  }, [deviceId, trust, upsertEvent]);
+
+  const blockEvent = useCallback(async (event: PatrolEvent) => {
+    const host = event.indicator_host ?? "";
+    const result = await securityAdapter.blockDestination(host);
+    // A manual "Block" tap can only ever REQUEST a block and confirm the rule is now active
+    // ("operational") — it can never claim a VERIFIED block by itself, so this must never move an
+    // event to "biting" / THREAT_BLOCKED on its own. Only an actually-observed dropped connection
+    // (see syncEnforcementEvidence, driven by real EnforcementEvidence) may do that. isVerifiedEnforcement()
+    // below is always false for tap-driven evidence today — kept as the single defensive gate so that
+    // guarantee can never silently change without this line catching it.
+    //
+    // iOS Safari Content Blocker: the native module returns verified=false because Safari does not
+    // confirm individual matches. However, when rulesState="prepared" and (reloadState="reload_requested"
+    // with activeState="enabled_match_unobservable"), the rules have been accepted by Safari — this is
+    // a successful rule installation even though match verification is architecturally impossible.
+    const nativeResult = result as unknown as Record<string, unknown>;
+    const rulesPrepared = nativeResult.rulesState === "prepared";
+    const reloadAccepted = nativeResult.reloadState === "reload_requested";
+    const extensionEnabled = nativeResult.activeState === "enabled_match_unobservable";
+    const iosRulesAccepted = rulesPrepared && reloadAccepted && extensionEnabled;
+    if (result.verified || iosRulesAccepted) {
+      const iosNote = iosRulesAccepted && !result.verified
+        ? " Safari accepted the rule but cannot confirm individual matches."
+        : "";
+      await upsertEvent({ ...event, status: "active", verified_block: false, adapter_label: result.adapterLabel, why: [...event.why, result.detail],
+        what_to_do: `Apollo has put a block in place for this destination.${iosNote} This card will update the moment Apollo actually sees and stops a connection attempt to it.`,
+        enforcement_evidence: null });
+      showToast(`Block rule active for ${host}. Apollo will confirm once it sees a connection.`, "barking");
+    } else if (rulesPrepared) {
+      // Rules are prepared but the Safari extension may not be enabled, or reload failed.
+      // This is better than "could not verify" — the rules exist, just not fully active.
+      const limitation = nativeResult.activeState === "not_enabled"
+        ? "Enable Apollo's Safari extension in Settings > Safari > Extensions."
+        : nativeResult.reloadState === "reload_failed"
+          ? "The rule list is prepared but Safari could not reload it. Try again."
+          : "The rule is prepared but Apollo cannot confirm it is active.";
+      await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false,
+        adapter_label: result.adapterLabel, why: [...event.why, result.detail],
+        what_to_do: limitation, enforcement_evidence: null });
+      showToast(limitation, "barking");
+    } else {
+      await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false, why: [...event.why, `Block not verified: ${result.detail}`],
+        what_to_do: "Apollo could not verify a block on this device. Do not open the link. Avoid this destination.", enforcement_evidence: null });
+      showToast("Block could not be verified. Apollo is still barking.", "barking");
+    }
+    return result;
+  }, [showToast, upsertEvent]);
+
+  const trustEvent = useCallback(async (event: PatrolEvent) => {
+    if (event.state !== "growling" || !event.trust_allowed || !event.indicator_digest) { showToast("Trust is only available for uncertain (growling) items.", "growling"); return false; } // never overrides confirmed threats
+    if (!deviceId) { showToast("Apollo isn't set up on this device yet.", "growling"); return false; }
+    const entry: TrustEntry = { trust_id: Crypto.randomUUID(), device_id: deviceId, indicator_type: "url", indicator_digest: event.indicator_digest, indicator_host: event.indicator_host ?? "", event_id: event.event_id, created_at: new Date().toISOString(), local_indicator: event.local_indicator ?? undefined };
+    await persistTrust([entry, ...trust]);
+    const { local_indicator: _omit, ...syncable } = entry;
+    try { await apiPost("/trust", "trust_sync", { ...syncable }); qc.invalidateQueries({ queryKey: ["trust", deviceId] }); } catch { /* offline ok */ }
+    await upsertEvent({ ...event, status: "trusted", resolved_at: new Date().toISOString(), what_to_do: "You trusted this exact link. Apollo will still warn you if it is ever confirmed as a threat." });
+    showToast("Trusted this exact link only", "growling");
+    return true;
+  }, [deviceId, persistTrust, qc, showToast, trust, upsertEvent]);
+
+  const resolveEvent = useCallback(async (event: PatrolEvent) => {
+    await upsertEvent({ ...event, status: "resolved", resolved_at: new Date().toISOString() });
+    showToast("Marked as handled. Apollo will rest after a fresh check.", "neutral");
+  }, [showToast, upsertEvent]);
+
+  // Undo "contained/handled": reopen locally and on the server (PATCH reopen clears resolved_at).
+  const reopenEvent = useCallback(async (event: PatrolEvent) => {
+    const status = event.state === "biting" && event.verified_block ? "blocked" : "active";
+    const reopened = { ...event, status, resolved_at: null, reopened_at: new Date().toISOString() } as PatrolEvent;
+    await persistEvents([reopened, ...eventsRef.current.filter((x) => x.event_id !== event.event_id)]);
+    if (deviceId && (event.device_id === "local" || event.device_id === deviceId)) {
+      try { await apiPatch(`/patrol/events/${event.event_id}?device_id=${deviceId}`, { reopen: true, status }); }
+      catch { void syncEvent(reopened); }
+    }
+    showToast("Case reopened.", "neutral");
+  }, [deviceId, persistEvents, showToast, syncEvent]);
+
+  const revokeTrust = useCallback(async (entry: TrustEntry) => {
+    await persistTrust(trust.filter((t) => t.trust_id !== entry.trust_id));
+    try { await apiDelete(`/trust/${entry.trust_id}?device_id=${deviceId}`); qc.invalidateQueries({ queryKey: ["trust", deviceId] }); } catch { /* ok */ }
+    showToast("Trust revoked", "neutral");
+  }, [deviceId, persistTrust, qc, showToast, trust]);
+
+  const clearPatrol = useCallback(async () => {
+    if (!deviceId) { showToast('Reconnect before clearing synced Patrol history.', 'growling'); return; }
+    try {
+      await patrolDelivery.pauseForClear(deviceId);
+      await apiDelete(`/patrol/events?device_id=${deviceId}`);
+      await patrolDelivery.clearPaused(deviceId, eventsRef.current.map(e => e.event_id));
+      await persistEvents([]);
+      qc.setQueryData(['patrol', deviceId], []);
+      showToast('Patrol history hidden. This does not physically erase server records.', 'neutral');
+    } catch { showToast('History was not confirmed cleared. Local records are retained; reconnect and retry.', 'growling'); }
+    finally { patrolDelivery.resume(deviceId); }
+  }, [deviceId, persistEvents, qc, showToast]);
+
+  // Delete My Apollo Data — permanently erase everything for this device on the service, then wipe this
+  // phone and return to a true first-run state. Honest offline behaviour: if the service can't be reached,
+  // nothing is wiped; a pending request is recorded and retried automatically when Apollo reconnects.
+  const requestDataDeletion = useCallback(async (): Promise<{ ok: boolean; pending?: boolean; result?: DeleteDataResult }> => {
+    let result: DeleteDataResult;
+    try {
+      result = await apiPostEmpty<DeleteDataResult>("/devices/delete-data", Crypto.randomUUID());
+    } catch {
+      await storage.setItem(PENDING_DELETE_KEY, true);
+      return { ok: false, pending: true };
+    }
+    // Server records are gone. Now wipe this phone and reset the in-memory app state to first run.
+    try { await wipeLocalApolloData(); } catch { /* best effort — the service copy is already gone */ }
+    await clearDeviceIdentity();
+    eventsRef.current = [];
+    setEvents([]); setTrust([]); setTrustedSsids([]); setLastVerifiedAt(null);
+    setDeviceId(null); setSetupDone(false); setIdentityReset(null);
+    qc.clear();
+    return { ok: true, result };
+  }, [qc]);
+
+  // If a delete was requested while offline, retry it the moment Apollo reconnects.
+  useEffect(() => {
+    const off = onBackendHealth((h) => {
+      if (h.reachable === true) void storage.getItem<boolean>(PENDING_DELETE_KEY, false).then((pending) => { if (pending) void requestDataDeletion(); });
+    });
+    return off;
+  }, [requestDataDeletion]);
+
+  const visibility = useMemo(() => visibilityFrom(capabilities, freshObservation(protection)), [capabilities, protection, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const platformCanEnforce = useMemo(() => capabilities.some((c) => c.id === "site_guard" && c.status !== "unsupported"), [capabilities]);
+  const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, platformCanEnforce, now: Date.now() }), [events, visibility, lastVerifiedAt, platformCanEnforce, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const value: ApolloContextValue = {
+    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
+    privateDnsStatus,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
+    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
+  };
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useApollo() {
+  const v = useContext(Ctx);
+  if (!v) throw new Error("useApollo must be used inside ApolloProvider");
+  return v;
+}

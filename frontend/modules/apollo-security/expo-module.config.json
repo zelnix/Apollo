@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["ApolloSecurityModule"] },
+  "android": { "modules": ["com.hucentai.apollosecurity.ApolloSecurityModule"] }
+}

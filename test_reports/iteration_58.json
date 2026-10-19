@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the new generic IMAP email-connection feature (Phase 3 of email-scanning roadmap, mirrors Gmail architecture with separate Fernet key, read-only BODY.PEEK, asyncio.to_thread wrapping). Backend: created 9 new tests in test_gate_imap.py covering GET /imap/providers (preset shape: Gmail/Outlook/Yahoo/iCloud, all port 993/ssl true), GET /imap/status pre-connection ({connected:false, configured:true, host:null, username:null}), POST /imap/connections with invalid-char host (400, fast) and unreachable host 'imap.doesnotexist.invalid' (400, graceful, <30s, never hangs/500s), POST /imap/scan with no connection (404 'No IMAP inbox is connected'), DELETE /imap/connection idempotent (204), and a pure unit test of services.imapmail._parse_message() with a synthetic RFC822 message verifying exact extraction of {text:'paypal.com', href:'https://evil-domain.ru/x'} anchor plus subject/from/date/body -- all 9/9 passed. Full backend regression: 263/266 passed; the 3 failures (test_gate2_message Gemini timing, test_gate3_page_crawl SSRF-block-latency under xdist parallel load, test_iter7_quiet_and_phone push-log timing) were re-run individually and all passed cleanly, confirming they are the same pre-existing transient flakes documented in the handoff -- zero regressions from the IMAP diff. Frontend: completed onboarding, verified both 'Connect Gmail (optional)' and new 'Connect another inbox (optional)' cards render side-by-side on app/email.tsx (testIDs email-gmail-card, email-imap-card) with the correct 'Connect via IMAP (read-only)' button when disconnected. Tapping it opens the bottom sheet (email-imap-sheet) with 4 provider preset chips; tapping 'Outlook' correctly auto-fills host=outlook.office365.com, port=993. Filled host=imap.doesnotexist.invalid, username, app-password, tapped Connect -> backend returned 400 -> friendly error rendered exactly ('Couldn't connect — check the host, port and app password.', testID email-imap-error) and the sheet correctly stayed open (did not close on failure). Regression spot-checks: paste-email flow fields unaffected, Home/Guard/Patrol/Higgins/Settings tabs navigate without crash, Check-a-Link screen loads, message.tsx (SMS paste) renders correctly, and Settings > Privacy now correctly documents both the Gmail read-only policy and the new IMAP host/username/app-password 'scan and discard' policy.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gate_imap.py",
+    "/app/test_reports/pytest/pytest_gate_imap.xml",
+    "/app/test_reports/pytest/pytest_full_regression_imap.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/imapmail.py correctly uses BODY.PEEK[] (never marks messages read) and select('INBOX', readonly=True) -- verified no STORE/COPY/MOVE/EXPUNGE calls exist anywhere in the file, matching the read-only claim.",
+    "test_connection() and scan_inbox() both wrap the synchronous imaplib call in asyncio.wait_for(asyncio.to_thread(...), timeout=IMAP_TIMEOUT+N) -- confirmed empirically: the unreachable-host connect attempt returned within a few seconds (DNS resolution failure is fast), never approaching the 25-30s bound, so the event loop is never blocked.",
+    "routers/imapmail.py imap_connect() validates host/username against a small banned-character set (@, /, space, CR, LF) BEFORE calling test_connection() -- good defense-in-depth against header-injection-style hosts, and returns 400 fast without even attempting a socket connection.",
+    "IMAP_CREDENTIAL_KEY is a separate Fernet key from GMAIL_TOKEN_ENCRYPTION_KEY as claimed (verified both are set and distinct in backend/.env) -- correctly limits blast radius if one key were ever compromised.",
+    "frontend ApolloContext.tsx's shared _scanInboxMessages() helper is reused by both scanGmailInbox() and scanImapInbox() (confirmed via email.tsx call sites) -- good DRY, avoids duplicating the Email Guard link-assessment pipeline per-provider.",
+    "Minor observation (not a bug): imap_scan's HTTPException(401, ...) on scan failure is a slightly different status code convention than imap_connect's HTTPException(400, ...) for the same underlying imaplib exception class -- intentional per docstring ('connection may need to be reconnected' implies auth/session invalidation), so not flagged as an issue."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate_imap.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new IMAP tests; 263/266 full regression, remaining 3 confirmed transient/flaky and pass on individual re-run, unrelated to IMAP diff)", "frontend": "100% (IMAP card rendering, sheet open/preset-fill/connect-error/stay-open flow, Gmail card regression, tab navigation, Check-a-Link, message.tsx, Settings privacy text all verified with no crashes)"},
+  "seed_data_creation": "None required beyond existing conftest.py auth shim device registration.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Generic IMAP connection feature (Phase 3) is solid and ready. Backend error paths (invalid host chars, unreachable host, no-connection scan/status/disconnect) all behave correctly and fast (never hang, never 500). services.imapmail._parse_message() correctly extracts anchor text/href mismatches from raw RFC822 bytes. Frontend IMAP card/sheet/preset-chip/error-handling all verified end-to-end via the web preview. Real end-to-end scan with an actual mailbox (real app password) remains untested since no test mailbox is available for automation -- this is consistent with the review request's explicit scope limitation, same boundary as Gmail's real-OAuth-consent limitation in prior iterations. No regressions found anywhere in the 266-test backend suite or in the frontend paste-email/SMS/Check-a-Link/tab-navigation flows."
+}

@@ -1,0 +1,501 @@
+import { useFocusEffect, useRouter } from "expo-router";
+import Camera from "lucide-react-native/icons/camera";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import FileText from "lucide-react-native/icons/file-text";
+import Globe from "lucide-react-native/icons/globe";
+import GraduationCap from "lucide-react-native/icons/graduation-cap";
+import Mail from "lucide-react-native/icons/mail";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import Shield from "lucide-react-native/icons/shield";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import React from "react";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
+import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
+import { RetrofitModal, hasRetrofitRun } from "@/src/components/RetrofitModal";
+import { ServiceBanner } from "@/src/components/ServiceBanner";
+import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
+import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
+import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
+import { buildHomeAttention } from "@/src/domain/homeAttention";
+import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
+import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
+import { STATE_LABEL } from "@/src/domain/types";
+import {
+  threatCaseStatus,
+  STATUS_LABELS,
+  STATUS_COLORS,
+  categoryLabel,
+  formatDateTime,
+} from "@/src/domain/threatCase";
+import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { useApollo } from "@/src/store/ApolloContext";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { useProtectionHealth } from "@/src/protection/healthStore";
+
+/** Apollo is an animated character — one state → one GIF.  Matches ApolloHero.tsx. */
+const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = {
+  resting:  { src: require("@/assets/images/apollo-patrolling.gif"), label: "Apollo patrolling" },
+  sniffing: { src: require("@/assets/images/apollo-sniffing.gif"),   label: "Apollo sniffing" },
+  ears_up:  { src: require("@/assets/images/apollo-sniffing.gif"),   label: "Apollo has his ears up" },
+  growling: { src: require("@/assets/images/apollo-growling.gif"),    label: "Apollo growling" },
+  barking:  { src: require("@/assets/images/apollo-barking.gif"),     label: "Apollo barking" },
+  biting:   { src: require("@/assets/images/apollo-barking.gif"),     label: "Apollo blocked a threat" },
+};
+const FALLBACK_IMAGE = require("@/assets/images/logo.png");
+const HERO_BG_IMAGE = require("@/assets/images/hero-bg-patrolling.webp");
+
+// ── Priority threat helpers ──────────────────────────────────────────────────
+// "Important for you" is a priority subset of Threats, not an independent store.
+
+function threatSourceIcon(cat: string, meta?: SourceMetadata | null) {
+  const t = meta?.type ?? cat;
+  switch (t) {
+    case "email": return { Icon: Mail, bg: "rgba(220,38,38,0.1)", fg: "#DC2626" };
+    case "text": case "message": return { Icon: MessageSquare, bg: "rgba(16,185,129,0.1)", fg: "#10B981" };
+    case "screenshot": return { Icon: Camera, bg: "rgba(139,92,246,0.1)", fg: "#8B5CF6" };
+    case "link": case "website": return { Icon: Globe, bg: "rgba(220,38,38,0.1)", fg: "#DC2626" };
+    case "call": return { Icon: Phone, bg: "rgba(217,119,6,0.1)", fg: "#D97706" };
+    case "file": return { Icon: FileText, bg: "rgba(220,38,38,0.1)", fg: "#DC2626" };
+    case "app": return { Icon: Smartphone, bg: "rgba(16,185,129,0.1)", fg: "#065F46" };
+    default: return { Icon: Shield, bg: "rgba(107,114,128,0.1)", fg: "#374151" };
+  }
+}
+
+function threatTitle(e: PatrolEvent): string {
+  const meta = e.source_metadata;
+  if (meta?.subject) return meta.subject;
+  if (e.headline && !looksLikeInternalCode(e.headline)) return e.headline;
+  if (meta?.preview) return meta.preview.length > 50 ? meta.preview.slice(0, 50) + "…" : meta.preview;
+  if (e.indicator_host) return e.indicator_host;
+  return categoryLabel(e.category) + " threat";
+}
+
+function threatIdentity(e: PatrolEvent): string {
+  const meta = e.source_metadata;
+  if (meta?.sender) return `From: ${meta.sender}`;
+  if (e.indicator_host) return e.indicator_host;
+  if (meta?.url) return meta.url;
+  if (e.claimed_brand) return e.claimed_brand;
+  return "";
+}
+
+function threatReason(e: PatrolEvent): string {
+  const briefing = e.patrol_record?.higginsBriefing;
+  if (briefing?.established && briefing.established.length > 10) {
+    return briefing.established.length > 80 ? briefing.established.slice(0, 80) + "…" : briefing.established;
+  }
+  if (e.what_happened && !looksLikeInternalCode(e.what_happened) && e.what_happened.length > 10) {
+    return e.what_happened.length > 80 ? e.what_happened.slice(0, 80) + "…" : e.what_happened;
+  }
+  // Build a specific reason from category + state
+  const cat = categoryLabel(e.category);
+  if (e.state === "barking") return `${cat} flagged as high risk — review recommended.`;
+  if (e.state === "growling") return `${cat} looks suspicious — worth checking.`;
+  return `${cat} requires your attention.`;
+}
+
+/** Build deduplicated priority threats from real PatrolEvent data. */
+function buildPriorityThreats(events: PatrolEvent[]): PatrolEvent[] {
+  const active = events
+    .filter((e) => !e.resolved_at && (e.state === "barking" || e.state === "growling" || e.state === "ears_up" || e.state === "biting"))
+    .sort((a, b) => {
+      const rank = (s: string) => (s === "biting" ? 4 : s === "barking" ? 3 : s === "growling" ? 2 : 1);
+      const r = rank(b.state) - rank(a.state);
+      return r !== 0 ? r : Date.parse(b.occurred_at) - Date.parse(a.occurred_at);
+    });
+  // Deduplicate by logical issue key
+  const seen = new Set<string>();
+  const deduped: PatrolEvent[] = [];
+  for (const e of active) {
+    const key = e.patrol_record?.logicalIssueKey ?? e.event_id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(e);
+  }
+  return deduped.slice(0, 3);
+}
+
+/** State-based hero card background landscapes */
+const STATE_BG: Record<string, any> = {
+  resting:  require("@/assets/images/hero-bg-patrolling.webp"),
+  sniffing: require("@/assets/images/hero-bg-sniffing.webp"),
+  ears_up:  require("@/assets/images/hero-bg-sniffing.webp"),
+  growling: require("@/assets/images/hero-bg-growling.webp"),
+  barking:  require("@/assets/images/hero-bg-barking.webp"),
+  biting:   require("@/assets/images/hero-bg-biting.webp"),
+};
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  scroll: { paddingBottom: spacing["3xl"] },
+
+  // ── Branded header ──
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brandTitle: { fontFamily: fonts.displayBold, fontSize: 28, lineHeight: 34, color: c.onSurface },
+  brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
+
+  // ── Hero status card ──
+  heroCard: {
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, overflow: "hidden",
+    minHeight: 140, backgroundColor: "#E8F5EE",
+  },
+  heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  heroGradient: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  heroOverlay: {
+    padding: spacing.lg, gap: spacing.md, flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
+  heroContentWrap: { flex: 1, flexShrink: 1 },
+  heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
+  heroImage: { width: 90, height: 90 },
+  heroContent: { flex: 1, flexShrink: 1, gap: spacing.xs },
+  heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
+  heroShield: { marginRight: 2 },
+  heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
+  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, flexShrink: 1 },
+
+  // ── Two side-by-side cards ──
+  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
+  halfCard: {
+    flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    borderWidth: 0.25,
+  },
+  halfCardIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  halfCardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface, flex: 1 },
+  halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
+  halfCardBtn: {
+    borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    alignItems: "center", justifyContent: "center", marginTop: "auto",
+  },
+  halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
+
+  // ── Section headers ──
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.sm },
+  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  sectionLink: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
+
+  // ── Priority alert card ──
+  alertCard: {
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    backgroundColor: "rgba(217,83,79,0.06)", borderWidth: 0.25, borderColor: "rgba(217,83,79,0.18)",
+  },
+  alertTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  alertIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(217,83,79,0.14)", alignItems: "center", justifyContent: "center" },
+  alertBadge: { backgroundColor: "rgba(217,83,79,0.14)", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  alertBadgeText: { fontFamily: fonts.textSemibold, fontSize: 10, color: c.barking, letterSpacing: 0.5, textTransform: "uppercase" },
+  alertTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginLeft: "auto" },
+  alertTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  alertDesc: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
+  alertBtn: {
+    borderRadius: radius.sm, borderWidth: 0.25, borderColor: c.barking,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
+    alignItems: "center", alignSelf: "flex-start", marginTop: spacing.xs,
+  },
+  alertBtnText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.barking },
+
+  // ── Activity row ──
+  activityCard: {
+    marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg,
+    backgroundColor: c.surfaceSecondary, borderWidth: 0.25, borderColor: c.border,
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+  },
+  activityIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  activityContent: { flex: 1, gap: 2 },
+  activityText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
+  activitySub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  activityTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary },
+  findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
+}));
+
+
+export default function Home() {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { width: screenW } = useWindowDimensions();
+  const compact = screenW < 380;
+  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
+  const health = useProtectionHealth();
+  const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
+
+  // ── Refresh data whenever Home regains focus (e.g. after handling an item) ──
+  useFocusEffect(
+    React.useCallback(() => {
+      void refresh(0);
+    }, [refresh])
+  );
+
+  // ── Auto-retrofit on first load ──
+  const [showRetrofit, setShowRetrofit] = React.useState(false);
+  React.useEffect(() => {
+    hasRetrofitRun().then((done) => {
+      if (!done) setShowRetrofit(true);
+    });
+  }, []);
+
+  const attention = React.useMemo(
+    () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
+    [health.checking, health.gates, events],
+  );
+
+  const voice = React.useMemo(
+    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities }),
+    [resolution, attention, health.gates, capabilities],
+  );
+
+  // Most recent consumer event for the "Recent activity" section
+  const recentEvent = React.useMemo(() => {
+    const consumer = events.filter(isConsumerPatrolEvent);
+    return consumer.length > 0 ? consumer[0] : null;
+  }, [events]);
+
+  const state = resolution.state;
+  const stateLabel = STATE_LABEL[state] ?? "Apollo is Patrolling";
+  const statusColor = toneColor(colors, state);
+  const gif = STATE_GIF[state];
+  const heroBg = STATE_BG[state] ?? STATE_BG.resting;
+
+  return (
+    <View style={s.root}>
+      {/* ── Branded Header ── */}
+      <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
+        <View style={s.headerRow}>
+          <View>
+            <Text style={s.brandTitle} testID="home-brand-title">Apollo Scam Guard</Text>
+            <Text style={s.brandSubtitle}>Safer People. Safer Tomorrows.</Text>
+          </View>
+          {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={s.scroll} testID="home-scroll" showsVerticalScrollIndicator={false}>
+        {/* ── Hero Status Card ── */}
+        <Pressable
+          testID="home-hero-card"
+          accessibilityRole="button"
+          accessibilityLabel={stateLabel}
+          onPress={() => voice.ctaRoute ? router.push(voice.ctaRoute as any) : null}
+          style={[s.heroCard, compact && { marginHorizontal: spacing.lg }]}
+        >
+          <Image
+            source={heroBg}
+            style={s.heroBgImage}
+            contentFit="cover"
+            testID="home-hero-bg"
+          />
+          <LinearGradient
+            colors={["rgba(232,245,238,0.95)", "rgba(232,245,238,0.85)", "rgba(232,245,238,0.3)", "transparent"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            locations={[0, 0.5, 0.75, 1]}
+            style={s.heroGradient}
+          />
+          <View style={[s.heroOverlay, compact && { padding: spacing.md }]}>
+            <View style={[s.heroImageWrap, compact && { width: 68, height: 68, borderRadius: 34 }]}>
+              <Image
+                source={gif ? gif.src : FALLBACK_IMAGE}
+                style={[s.heroImage, compact && { width: 68, height: 68 }]}
+                contentFit="cover"
+                autoplay
+                accessibilityLabel={gif?.label ?? "Apollo"}
+                testID="home-hero-gif"
+              />
+            </View>
+            <View style={s.heroContentWrap}>
+              <View style={s.heroContent}>
+                <View style={s.heroStatusRow}>
+                  <ShieldCheck size={compact ? 14 : 16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
+                  <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={1}>{stateLabel}</Text>
+                </View>
+                <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]}>{voice.text}</Text>
+              </View>
+            </View>
+          </View>
+        </Pressable>
+
+        {/* Recovery banner */}
+        <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
+          <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
+        </View>
+
+        {/* ── Two Side-by-Side Cards ── */}
+        <View style={[s.twoCards, compact && { gap: spacing.sm, paddingHorizontal: spacing.lg }]}>
+          {/* Protection Status Card */}
+          <Pressable
+            testID="home-protection-card"
+            accessibilityRole="button"
+            accessibilityLabel="Protection Status"
+            onPress={() => router.push("/(tabs)/protection")}
+            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.halfCardTitleRow}>
+              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
+                <ShieldCheck size={compact ? 14 : 16} color={colors.brand} />
+              </View>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Protection</Text>
+            </View>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Gate health, limitations and action needed.</Text>
+            <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
+              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: colors.onBrand }]}>View</Text>
+            </View>
+          </Pressable>
+
+          {/* Learn with Higgins Card */}
+          <Pressable
+            testID="home-learn-card"
+            accessibilityRole="button"
+            accessibilityLabel="Learn with Higgins"
+            onPress={() => router.push("/higgins/learning")}
+            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.halfCardTitleRow}>
+              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: colors.goldTint }]}>
+                <GraduationCap size={compact ? 14 : 16} color={colors.gold} />
+              </View>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Learn</Text>
+            </View>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Practical scam-safety lessons from Higgins.</Text>
+            <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
+              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>Start</Text>
+            </View>
+          </Pressable>
+        </View>
+
+        {/* ── Important For You — priority subset of Threats + one scam alert ── */}
+        {(() => {
+          const priorityThreats = buildPriorityThreats(events);
+          // Section shows if there are personal threats OR if PriorityScamNotice will render
+          // (PriorityScamNotice handles its own data loading — renders null if no alert)
+          return (
+            <View>
+              <View style={[s.sectionHeader, compact && { paddingHorizontal: spacing.lg }]}>
+                <Text style={[s.sectionTitle, compact && { fontSize: 15 }]}>Important for you</Text>
+                <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+                  <Text style={s.sectionLink}>View all</Text>
+                </Pressable>
+              </View>
+
+              {/* Personal threats first — these take precedence */}
+              {priorityThreats.map((event) => {
+                const si = threatSourceIcon(event.category, event.source_metadata);
+                const IconEl = si.Icon;
+                const status = threatCaseStatus(event);
+                const statusColor = STATUS_COLORS[status];
+                return (
+                  <Pressable
+                    key={event.event_id}
+                    testID={`home-threat-${event.event_id}`}
+                    onPress={() => router.push(`/patrol/${encodeURIComponent(event.event_id)}` as any)}
+                    style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, flexDirection: "column", alignItems: "stretch" }]}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+                      <View style={[s.activityIconWrap, compact && { width: 36, height: 36, borderRadius: 18 }, { backgroundColor: si.bg }]}>
+                        <IconEl size={compact ? 16 : 18} color={si.fg} />
+                      </View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={[s.activityText, compact && { fontSize: 14 }]} numberOfLines={2}>{threatTitle(event)}</Text>
+                        {threatIdentity(event) ? <Text style={s.activitySub} numberOfLines={1}>{threatIdentity(event)}</Text> : null}
+                        <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.muted }}>{formatDateTime(event.occurred_at)}</Text>
+                        <Text style={{ fontFamily: fonts.text, fontSize: 13, color: colors.onSurfaceSecondary, lineHeight: 18, marginTop: 2 }} numberOfLines={2}>{threatReason(event)}</Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end", gap: 4 }}>
+                        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
+                          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
+                      <Text style={s.findingLink}>View threat</Text>
+                      <ChevronRight size={14} color={colors.brand} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {/* One highest-priority scam alert — after personal threats */}
+              <PriorityScamNotice compact />
+            </View>
+          );
+        })()}
+
+        {/* ── Recent Activity ── */}
+        <View>
+          <View style={[s.sectionHeader, compact && { paddingHorizontal: spacing.lg }]}>
+            <Text style={[s.sectionTitle, compact && { fontSize: 15 }]}>Recent activity</Text>
+            <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+              <Text style={s.sectionLink}>View all</Text>
+            </Pressable>
+          </View>
+          {recentEvent ? (
+            <Pressable
+              testID="home-recent-activity"
+              accessibilityRole="button"
+              onPress={() => router.push(`/patrol/${encodeURIComponent(recentEvent.event_id)}` as any)}
+              style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }]}
+            >
+              <View style={s.activityIconWrap}>
+                <MessageSquare size={16} color={colors.onSurfaceSecondary} />
+              </View>
+              <View style={s.activityContent}>
+                <Text style={s.activityText} numberOfLines={1}>{recentEvent.headline || "Apollo recorded activity"}</Text>
+                <Text style={s.activitySub} numberOfLines={1}>{recentEvent.what_happened || "Tap to see details."}</Text>
+              </View>
+              <Text style={s.activityTime}>{timeAgo(recentEvent.occurred_at)}</Text>
+              <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          ) : (
+            <View style={s.activityCard} testID="home-no-recent-activity">
+              <View style={s.activityIconWrap}>
+                <ShieldCheck size={16} color={colors.resting} />
+              </View>
+              <View style={s.activityContent}>
+                <Text style={s.activityText}>No recent activity</Text>
+                <Text style={s.activitySub}>Apollo is patrolling quietly. Nothing to report.</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ── Utility banners (compact) ── */}
+        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm, marginTop: spacing.md }}>
+          {identityReset ? (
+            <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
+              <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>Apollo needs to re-register this phone</Text>
+              <Body testID="identity-reset-why">{identityReset}</Body>
+              <Button testID="identity-reset-register" label="Register this phone again" onPress={() => void reRegisterDevice().catch((e: Error) => showToast(e.message, "barking"))} />
+            </Card>
+          ) : null}
+          <ServiceBanner />
+          <HigginsFollowUp />
+          <ClipboardLinkBanner />
+        </View>
+
+      </ScrollView>
+      <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} auto />
+    </View>
+  );
+}
+
+/** Simple relative time label */
+function timeAgo(iso: string): string {
+  const diff = Date.now() - Date.parse(iso);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}

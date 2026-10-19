@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="0" skipped="0" tests="2" time="0.357" timestamp="2026-09-20T12:00:35.184182+00:00" hostname="agent-env-c344520a-3bf7-4318-a5a2-68836b7a4140"><testcase classname="" name="tests.test_investigation_fallback" time="0.000"><error message="collection failure">ImportError while importing test module '/app/backend/tests/test_investigation_fallback.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_investigation_fallback.py:2: in &lt;module&gt;
+    from services.investigation import InvestigationEntities, InvestigationSource, _fallback
+E   ModuleNotFoundError: No module named 'services'</error></testcase><testcase classname="" name="tests.test_user_secret_redaction" time="0.000"><error message="collection failure">ImportError while importing test module '/app/backend/tests/test_user_secret_redaction.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_user_secret_redaction.py:4: in &lt;module&gt;
+    from core.redaction import redact_user_secrets
+E   ModuleNotFoundError: No module named 'core'</error></testcase></testsuite></testsuites>

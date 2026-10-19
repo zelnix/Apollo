@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["com.guarddog.expo.GuardDogExpoModule"]
+  },
+  "ios": {
+    "modules": ["GuardDogExpoModule"]
+  }
+}

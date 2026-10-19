@@ -1,0 +1,4 @@
+.venv/
+secrets/
+output/
+results.json

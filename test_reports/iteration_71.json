@@ -1,0 +1,66 @@
+{
+  "summary": "Executed targeted backend regression for Link/Account purpose-limited contracts and mobile-first UI scenarios for Text Guard + Link Guard on preview URL. Backend tests passed; Text/Link UI evidence captured; screenshot permission/upload flow partially validated with one unresolved UI integration behavior.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Message screenshot upload -> OCR -> investigation result render",
+        "issue": "File upload preview rendered successfully, but assessment card did not render within automation timeout window in one run (Sniffing state remained). Needs deterministic wait/retest for web preview.",
+        "affected_testIDs": [
+          "message-screenshot",
+          "message-screenshot-preview",
+          "message-assessment",
+          "message-sniffing"
+        ]
+      },
+      {
+        "flow": "Screenshot permission sheet visibility on Expo web preview",
+        "issue": "Guided permission sheet was not shown in web test run; likely platform-specific behavior. Native/mobile recheck still needed.",
+        "affected_testIDs": [
+          "message-photo-permission-sheet",
+          "message-photo-permission-why",
+          "message-photo-permission-status",
+          "message-photo-permission-continue"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter71_purpose_limited_contracts.py",
+    "/app/backend/tests/test_link_investigation.py",
+    "/app/test_reports/pytest/pytest_iter71_targeted.xml",
+    "/app/test_reports/artifacts_iter71_ui_final/text_scam.jpeg",
+    "/app/test_reports/artifacts_iter71_ui_final/text_genuine.jpeg",
+    "/app/test_reports/artifacts_iter71_ui_final/text_ambiguous.jpeg",
+    "/app/test_reports/artifacts_iter71_ui_linkonly/link_result.jpeg",
+    "/app/test_reports/artifacts_iter71_ui_linkshot/screenshot_preview.jpeg"
+  ],
+  "action_items": [
+    "Retest screenshot OCR-to-investigation completion with a longer wait budget and confirm result rendering on web/native.",
+    "Validate permission sheet visibility/wording on real mobile permission path (especially when canAskAgain=false with return-from-settings).",
+    "Keep Stage 1D physical acceptance marked pending until real Pixel packet-block observation is captured."
+  ],
+  "critical_code_review_comments": [
+    "frontend/src/api/client.ts uses EXPO_PUBLIC_BACKEND_URL, while the environment rule-set references EXPO_BACKEND_URL for frontend routing. Align naming or document exception to avoid config drift.",
+    "backend/tests/test_link_investigation.py fallback also targets EXPO_PUBLIC_BACKEND_URL only; consider unified env key handling across tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter71_purpose_limited_contracts.py",
+    "/app/test_reports/iteration_71.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "85%"
+  },
+  "seed_data_creation": "No persistent seed data created. Only transient test submissions were used.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated Text Guard scam/genuine/ambiguous flows and Link Guard investigation result ordering (assessment above technical card) via web preview. Screenshot upload preview works with real nonblank JPEG; permission-sheet path did not show in web run. Stage1D static check script passed; no physical/native packet-block acceptance run was performed.",
+  "rca_of_issue": "Screenshot flow uncertainty likely stems from async investigation latency/path differences on web image-picker integration. Reproduction: open Text Guard -> Investigate a message screenshot -> upload real JPEG -> preview appears, Sniffing state shown, but message-assessment not rendered within current automation timeout. Mitigation: increase wait/retry with explicit sniffing->assessment transition checks and verify backend /api/message/extract + /api/message/analyse timing on same run."
+}

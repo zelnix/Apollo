@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend-only targeted retest for onboarding smoke selector passed. initial-onboarding-root and onboarding-screen testIDs are present, root loads in a fresh browser context, focused onboarding test passes, and onboarding continue navigation still works without visible regression.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/tests/onboardingTestId.test.ts",
+    "/app/test_reports/artifacts_iter76_onboarding/onboarding_root_loaded.jpeg",
+    "/root/.emergent/automation_output/20260920_152819/console_20260920_152819.log"
+  ],
+  "action_items": [
+    "Optional: eliminate Node test warning by defining module type strategy for frontend test runtime.",
+    "Optional: address web warning for deprecated shadow* style props (use boxShadow)."
+  ],
+  "critical_code_review_comments": [
+    "Requested testability gap is fixed: onboarding outer root now exposes stable testID=initial-onboarding-root while preserving onboarding-screen on ScrollView.",
+    "Observed runtime indicates SecureCore initializes with implementation=mock in web preview; integration state is MOCKED in this environment.",
+    "No regression observed in onboarding load or continue-path navigation to /privacy-disclosure."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_76.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (skipped)",
+    "frontend": "100%"
+  },
+  "seed_data_creation": "No seed data created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "This run was intentionally scoped to the onboarding smoke-selector fix from iteration_75 and confirms repeatable pass for focused onboarding selector coverage.",
+  "rca_of_issue": "Prior low-priority gap was missing stable first-screen selector on onboarding entry. Adding initial-onboarding-root at the root View resolves smoke-test detectability while keeping existing onboarding-screen selector intact."
+}

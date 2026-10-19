@@ -1,0 +1,6 @@
+# Gradle build outputs — must never be archived into EAS tarballs.
+# Broken symlinks or stale build dirs at these paths cause Gradle to fail
+# with "Failed to create parent directory" during EAS cloud builds.
+build/
+.gradle/
+local.properties

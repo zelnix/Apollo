@@ -1,0 +1,168 @@
+// Small shared UI primitives. All colors from theme tokens.
+
+import * as Haptics from "expo-haptics";
+import React from "react";
+import { Platform, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
+
+import type { ApolloState, CapabilityStatus } from "@/src/domain/types";
+import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
+
+export type Tone = ApolloState | "neutral" | "unknown";
+
+export function toneColor(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffing;
+    case "resting": return colors.resting;
+    case "ears_up": return colors.ears_up;
+    case "growling": return colors.growling;
+    case "barking": return colors.barking;
+    case "biting": return colors.biting;
+    case "unknown": return colors.unknown;
+    default: return colors.onSurfaceSecondary;
+  }
+}
+/** Text painted in a state colour: darker, contrast-safe variants (see theme.ts *Text tokens). */
+export function toneText(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffingText;
+    case "resting": return colors.restingText;
+    case "ears_up": return colors.ears_upText;
+    case "growling": return colors.growlingText;
+    case "barking": return colors.barkingText;
+    case "biting": return colors.bitingText;
+    case "unknown": return colors.unknownText;
+    default: return colors.onSurfaceSecondary;
+  }
+}
+export function toneTint(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffingTint;
+    case "resting": return colors.restingTint;
+    case "ears_up": return colors.ears_upTint;
+    case "growling": return colors.growlingTint;
+    case "barking": return colors.barkingTint;
+    case "biting": return colors.bitingTint;
+    default: return colors.unknownTint;
+  }
+}
+
+/** Even lighter than toneTint — for a full-card wash where the card must still read as white, not coloured. */
+export function toneWash(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffingWash;
+    case "resting": return colors.restingWash;
+    case "ears_up": return colors.ears_upWash;
+    case "growling": return colors.growlingWash;
+    case "barking": return colors.barkingWash;
+    case "biting": return colors.bitingWash;
+    default: return colors.unknownWash;
+  }
+}
+
+export function capabilityTone(status: CapabilityStatus): Tone {
+  if (status === "active") return "resting";
+  if (status === "available" || status === "inactive") return "neutral";
+  if (status === "permission_required") return "growling";
+  return "unknown";
+}
+
+const useStyles = makeStyles((c) => ({
+  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg },
+  pill: { paddingHorizontal: spacing.md, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, alignSelf: "flex-start" },
+  pillText: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.2 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  btn: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
+  btnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
+  section: { fontFamily: fonts.displayBold, fontSize: 13, color: c.brand, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: spacing.md },
+  sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  sectionDivider: { width: 16, height: 3, borderRadius: 2, backgroundColor: c.gold },
+  h1: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface, letterSpacing: -0.4 },
+  body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+}));
+
+export function Card({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
+  const s = useStyles();
+  return <View testID={testID} style={[s.card, style]}>{children}</View>;
+}
+
+export function Pill({ label, tone = "neutral", testID, style }: { label: string; tone?: Tone; testID?: string; style?: StyleProp<ViewStyle> }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const color = toneColor(colors, tone);
+  return (
+    <View testID={testID} style={[s.pill, { backgroundColor: toneTint(colors, tone) }, style]}>
+      <View style={[s.dot, { backgroundColor: color }]} />
+      <Text style={[s.pillText, { color: toneText(colors, tone) }]}>{label}</Text>
+    </View>
+  );
+}
+
+export function SectionTitle({ children }: { children: React.ReactNode }) {
+  const s = useStyles();
+  return (
+    <View style={s.sectionRow}>
+      <View style={s.sectionDivider} />
+      <Text style={[s.section, { marginBottom: 0 }]}>{children}</Text>
+    </View>
+  );
+}
+
+/** Small, muted, secondary tag for dev/QA-only signals (e.g. the mock-adapter indicator). Never a bright
+ *  colour — it must not compete with Apollo or the state colours for attention. */
+export function DevTag({ label, testID }: { label: string; testID?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View testID={testID} style={{ paddingHorizontal: spacing.sm, height: 22, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center", alignSelf: "flex-start" }}>
+      <Text style={{ fontFamily: fonts.textMedium, fontSize: 10, letterSpacing: 0.3, color: colors.onSurfaceSecondary, textTransform: "uppercase" }}>{label}</Text>
+    </View>
+  );
+}
+
+export function ScreenHeader({ title, right, testID }: { title: string; right?: React.ReactNode; testID?: string }) {
+  const s = useStyles();
+  return (
+    <View style={s.header} testID={testID}>
+      <Text style={s.h1}>{title}</Text>
+      {right}
+    </View>
+  );
+}
+
+export function Body({ children, style, testID, numberOfLines, selectable = true }: { children: React.ReactNode; style?: StyleProp<any>; testID?: string; numberOfLines?: number; selectable?: boolean }) {
+  const s = useStyles();
+  return <Text testID={testID} numberOfLines={numberOfLines} selectable={selectable} style={[s.body, style]}>{children}</Text>;
+}
+
+type BtnVariant = "primary" | "secondary" | "ghost" | "danger" | "warning";
+
+export function Button({ label, onPress, variant = "primary", icon, disabled, testID, style, accessibilityLabel, accessibilityHint }: {
+  label: string; onPress: () => void; variant?: BtnVariant; icon?: React.ReactNode; disabled?: boolean; testID: string; style?: StyleProp<ViewStyle>; accessibilityLabel?: string; accessibilityHint?: string;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const palette: Record<BtnVariant, { bg: string; fg: string; border?: string }> = {
+    primary: { bg: colors.brandPrimary, fg: colors.onBrandPrimary },
+    // Secondary buttons sit on cards and on the sky-blue page alike: white face + navy outline keeps them unmistakably tappable.
+    secondary: { bg: colors.surfaceSecondary, fg: colors.brand, border: colors.brand },
+    ghost: { bg: "transparent", fg: colors.brand },
+    danger: { bg: colors.barkingText, fg: colors.onError },
+    warning: { bg: colors.growling, fg: colors.onWarning },
+  };
+  const p = palette[variant];
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={() => { if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPress(); }}
+      style={({ pressed }) => [s.btn, { backgroundColor: p.bg, borderWidth: p.border ? 1 : 0, borderColor: p.border, opacity: disabled ? 0.45 : pressed ? 0.82 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, style]}
+    >
+      {icon}
+      <Text style={[s.btnText, { color: p.fg }]}>{label}</Text>
+    </Pressable>
+  );
+}

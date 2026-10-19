@@ -1,0 +1,66 @@
+{
+  "summary": "Executed P0 remediation verification across backend + frontend. Added/ran fresh P0 regression tests for outbound hardening and local-first privacy gates, reran key Gate suites, and completed mobile web regression navigation (390x844) across onboarding/home/guard/patrol/check/message/email/account/file without runtime crashes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/page/crawl,/api/message/extract,/api/imap/connections,/api/imap/scan,/api/account/breach,/api/call/risk-check",
+        "issue": "Legacy tests expecting 200/4xx now fail with 403 due enforced local-first PrivacyBoundary (intentional behavior)."
+      },
+      {
+        "endpoint": "backend/tests/test_rdap_domain_info.py",
+        "issue": "Test setup can build invalid relative URL '/api/...' when backend URL env is missing in pytest worker context (test bug, not API behavior)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Web preview global",
+        "issues": [
+          "Console warning observed: deprecated shadow* style props (non-blocking)."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_policy_regression.py",
+    "/app/test_reports/pytest/pytest_iter62_p0_regression.xml",
+    "/app/test_reports/pytest/pytest_iter62_p0_targeted.xml",
+    "/app/test_reports/pytest/pytest_iter62_p0_aux.xml",
+    "/app/test_reports/mobile_regression_iter62.jpeg",
+    "/app/test_reports/frontend_load_iter62.jpeg"
+  ],
+  "action_items": [
+    "Main agent: retire/update obsolete backend suites that still assume pre-P0 cloud processing for raw message/page/inbox/caller/breach flows.",
+    "Main agent: keep/extend new P0 regression files added this run for future guardrails (outbound + privacy boundary + evidence receipt/idempotency).",
+    "Main agent: physical-device validation still required for native packet/call-screening acceptance paths; web/Expo cannot prove OS-level enforcement.",
+    "Main agent: review legacy test fixtures that still include disallowed evidence fields (os_version/sdk_version/app/process/etc) under minimal privacy boundary."
+  ],
+  "critical_code_review_comments": [
+    "services/outbound.py enforces strict target parsing (scheme/port/userinfo), global-IP-only DNS policy, pinned numeric socket with original Host/SNI, trust_env=False, no redirects auto-follow, no decompression, bounded body, and concurrency/timeouts.",
+    "core/privacy_boundary.py correctly fails closed with 403 before body parsing for disabled cloud-sensitive routes.",
+    "routers/patrol.py + services/patrol_policy.py correctly gate state='biting' to packet-backed evidence only, block call-category Biting, and enforce evidence receipt identity/fingerprint reuse protection.",
+    "frontend domain mapping (enforcementEvidenceSync.ts) now intentionally strips OS/SDK fingerprint fields (null) to match minimal privacy boundary contract."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_policy_regression.py",
+    "/app/frontend/tests/gate6.test.ts",
+    "/app/frontend/tests/enforcementEvidenceSync.test.ts",
+    "/app/test_reports/iteration_62.json"
+  ],
+  "success_rate": {
+    "backend": "New P0 regression suite: 23/23 passed (100%). Legacy targeted suites executed earlier had significant expected failures from obsolete assertions tied to pre-P0 behavior.",
+    "frontend": "Executed suites this run: failureModes/protectionTruth/gate1/gate2/gate3/gate3page/gate4/gate5/gate6/gate7/gate8/share/evidence-sync all passing after test expectation updates; mobile web regression navigation passed."
+  },
+  "seed_data_creation": "No persistent seed fixtures added. Temporary test events/devices created via /api/devices/register and patrol endpoints only.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Credentials file was read and followed (/app/memory/test_credentials.md). Device registration bearer flow used (no email/password auth). Web preview indicates SecureCore implementation is MOCKED; do not claim native enforcement proof from web. Cloud-sensitive flows are intentionally blocked by policy and should be asserted as 403, not treated as outages.",
+  "rca_of_issue": "Primary failures observed in pre-existing suites were expectation drift after P0 local-first hardening: older tests still post raw message/account bodies, page crawl, IMAP scans, and breach/caller lookups expecting old statuses. Additional mismatch came from legacy evidence fixtures including now-forbidden fields and timestamp mismatches for packet-backed Biting. Added replacement regressions to validate current contracts directly."
+}

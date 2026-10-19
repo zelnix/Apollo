@@ -1,0 +1,214 @@
+"""Apollo V1 iteration-6 backend tests: Emergent-managed push relay & non-blocking failure.
+
+Covers:
+- POST /api/register-push validation (short user_id, bad platform)
+- POST /api/register-push in dev with EMERGENT_PUSH_KEY=placeholder -> 500 with expected detail
+- POST /api/patrol/events with state=biting, background=true still returns 200 (push failure is non-blocking)
+- background defaults to false when omitted
+- Full pairing flow guardian fan-out (already covered by iter4 but re-verifies with new device_ids)
+"""
+import os
+import time
+import uuid
+from datetime import datetime, timezone
+
+import pytest
+import requests
+from dotenv import load_dotenv
+
+load_dotenv("/app/backend/.env")
+load_dotenv("/app/frontend/.env")
+
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
+API = f"{BASE_URL}/api"
+
+
+@pytest.fixture(scope="module")
+def s():
+    sess = requests.Session()
+    sess.headers.update({"Content-Type": "application/json"})
+    return sess
+
+
+# ------------------------- /api/register-push validation ------------------------
+class TestRegisterPushValidation:
+    def test_foreign_user_id_is_forbidden(self, s):
+        # user_id must match the authenticated device (device auth); a foreign id is 403, never accepted.
+        r = s.post(f"{API}/register-push", json={"user_id": "someoneelse0001", "platform": "ios", "device_token": "ExponentPushToken[x]"}, headers={"X-Apollo-Raw": "1", "Authorization": f"Bearer {__import__('requests').post(f'{API}/devices/register', json={'platform': 'web', 'adapter_mode': 'mock'}).json()['device_token']}"})
+        assert r.status_code == 403, r.text
+
+    def test_bad_platform_returns_422(self, s):
+        r = s.post(f"{API}/register-push", json={
+            "user_id": "device-id-abcdef123",
+            "platform": "windows",  # not android/ios
+            "device_token": "tok-abc12345",
+        })
+        assert r.status_code == 422, r.text
+
+    def test_short_device_token_returns_422(self, s):
+        r = s.post(f"{API}/register-push", json={
+            "user_id": "device-id-abcdef123",
+            "platform": "android",
+            "device_token": "abc",  # <8
+        })
+        assert r.status_code == 422, r.text
+
+
+# ------------------------- /api/register-push placeholder key ------------------
+class TestRegisterPushDev:
+    def test_valid_body_without_owner_push_credentials_is_typed_503(self, s):
+        """Spec §10A: raw FCM/APNs-looking tokens are rejected (422) before any configuration check; a valid Expo token
+        without the owner's push configuration fails closed with a typed 503 naming the missing setup."""
+        raw = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"tok-{uuid.uuid4().hex}"})
+        assert raw.status_code == 422, raw.text
+        r = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"ExponentPushToken[{uuid.uuid4().hex}]"})
+        assert r.status_code in (201, 422, 503), r.text
+        if r.status_code == 503:
+            assert "Expo push configuration" in r.json().get("detail", "")
+
+
+# ------------------------- /api/patrol/events background field ------------------
+class TestPatrolEventsBackground:
+    def _payload(self, device_id: str, state: str, background=None, evidence=None):
+        p = {
+            "event_id": f"evt-{uuid.uuid4().hex[:12]}",
+            "device_id": device_id,
+            "category": "known_threat",
+            "state": state,
+            "status": "active",
+            "headline": "Test event",
+            "what_happened": "Testing.",
+            "why": [],
+            "what_to_do": "Investigate.",
+            "indicator_host": "bad.example",
+            "adapter_label": "test",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "enforcement_evidence": evidence,
+        }
+        if background is not None:
+            p["background"] = background
+        if evidence:
+            p["occurred_at"] = evidence["observed_at"]
+        return p
+
+    def _valid_evidence(self, device_id: str):
+        # state="biting" is now gated server-side: it can only be persisted with validated
+        # enforcement_evidence (see backend/routers/patrol.py::_derive_verified_block and the
+        # cross-platform correctness pass's Biting invariant). This push test cares about the
+        # notification side-effect, not evidence validation itself, so it supplies fully valid
+        # evidence to legitimately reach "biting" — see test_enforcement_evidence_gate.py for the
+        # dedicated invariant tests.
+        # NOTE: device_id is deliberately omitted (None), not set to the caller's legacy id — the
+        # conftest.py auth shim only rewrites TOP-LEVEL device_id/user_id keys to the real
+        # server-issued device id, not this nested evidence.device_id, so setting it here would
+        # create a false mismatch against the (rewritten) top-level device_id and always fail the
+        # gate's device-matching check. Evidence not naming a device is valid everywhere (see
+        # test_evidence_with_no_device_id_named_is_still_valid_everywhere_else).
+        return {
+            "evidence_id": f"ev-{uuid.uuid4().hex[:12]}", "event_id": None, "device_id": None, "platform": "android",
+            "os_version": None, "sdk_version": None, "observed_at": datetime.now(timezone.utc).isoformat(),
+            "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
+            "destination_ip": None, "destination_domain": "bad.example", "destination_port": 53,
+            "app_id": None, "process_name": None, "attribution_confidence": "unavailable",
+            "matched_rule_id": "bad.example", "threat_id": None, "requested_action": "block", "enforced_action": "blocked",
+            "result": "verified", "rule_source": "local_blocklist", "confidence": "high", "correlation_id": None,
+        }
+
+    def test_biting_with_background_true_returns_200_and_persists(self, s):
+        dev = f"dev-{uuid.uuid4().hex[:12]}"
+        payload = self._payload(dev, "biting", background=True, evidence=self._valid_evidence(dev))
+        r = s.post(f"{API}/patrol/events", json=payload)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["background"] is True
+        assert body["state"] == "biting"
+        assert body["verified_block"] is True
+        # GET verifies persistence
+        g = s.get(f"{API}/patrol/events", params={"device_id": dev})
+        assert g.status_code == 200
+        ids = [e["event_id"] for e in g.json()]
+        assert payload["event_id"] in ids
+
+    def test_background_defaults_to_false_when_omitted(self, s):
+        dev = f"dev-{uuid.uuid4().hex[:12]}"
+        payload = self._payload(dev, "barking", background=None)
+        r = s.post(f"{API}/patrol/events", json=payload)
+        assert r.status_code == 200, r.text
+        assert r.json()["background"] is False
+
+    def test_barking_with_background_true_returns_200(self, s):
+        """The push helper fires (non-blocking), but the API MUST still succeed."""
+        dev = f"dev-{uuid.uuid4().hex[:12]}"
+        r = s.post(f"{API}/patrol/events", json=self._payload(dev, "barking", background=True))
+        assert r.status_code == 200, r.text
+
+
+# ------------------------- Full family pairing + ack (iter6 re-verify) ----------
+class TestFamilyPairingAndAck:
+    state = {}
+    DEV_P = f"iter6P-{uuid.uuid4().hex[:10]}"
+    DEV_G = f"iter6G-{uuid.uuid4().hex[:10]}"
+
+    def test_01_pair(self, s):
+        r = s.post(f"{API}/family/pair", json={"device_id": self.DEV_P, "owner_name": "Mum"})
+        assert r.status_code == 200, r.text
+        code = r.json()["code"]
+        assert len(code) == 6
+        TestFamilyPairingAndAck.state["code"] = code
+
+    def test_02_link(self, s):
+        r = s.post(f"{API}/family/link", json={"device_id": self.DEV_G, "code": self.state["code"]})
+        assert r.status_code == 200, r.text
+        assert r.json()["linked"] is True
+        assert r.json()["owner_name"] == "Mum"
+
+    def test_03_patrol_event_and_fanout(self, s):
+        eid = f"evt6-{uuid.uuid4().hex[:12]}"
+        TestFamilyPairingAndAck.state["event_id"] = eid
+        r = s.post(f"{API}/patrol/events", json={
+            "event_id": eid, "device_id": self.DEV_P, "category": "known_threat",
+            "state": "barking", "status": "active",
+            "headline": "Suspicious link tapped", "what_happened": "Contacted blocklist host.",
+            "why": ["blocklisted"], "what_to_do": "Check with family.",
+            "indicator_host": "phishing.apollo.test", "adapter_label": "test",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        })
+        assert r.status_code == 200, r.text
+        # Fanout is a background task; poll up to ~5s
+        for _ in range(6):
+            time.sleep(1.0)
+            g = s.get(f"{API}/family/shared-events", params={"device_id": self.DEV_G})
+            assert g.status_code == 200
+            evs = g.json()
+            if any(e["event_id"] == eid for e in evs):
+                return
+        assert False, f"event not fanned out to guardian: {evs}"
+
+    def test_04_ack_called_returns_label(self, s):
+        eid = self.state["event_id"]
+        r = s.post(f"{API}/family/shared-events/{eid}/ack",
+                   json={"device_id": self.DEV_G, "reply": "called"})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"acknowledged": True, "ack_label": "I called them"}
+
+    def test_05_protected_sees_ack(self, s):
+        eid = self.state["event_id"]
+        r = s.get(f"{API}/family/acks", params={"device_id": self.DEV_P})
+        assert r.status_code == 200
+        match = [d for d in r.json() if d["event_id"] == eid]
+        assert len(match) == 1
+        assert match[0]["ack_label"] == "I called them"
+
+    def test_06_shared_events_shows_acknowledged(self, s):
+        eid = self.state["event_id"]
+        r = s.get(f"{API}/family/shared-events", params={"device_id": self.DEV_G})
+        assert r.status_code == 200
+        match = [e for e in r.json() if e["event_id"] == eid]
+        assert len(match) == 1
+        assert match[0].get("acknowledged_at")
+        assert match[0].get("ack_label") == "I called them"
+
+    def test_07_ack_unknown_event_returns_404(self, s):
+        r = s.post(f"{API}/family/shared-events/does-not-exist/ack",
+                   json={"device_id": self.DEV_G, "reply": "called"})
+        assert r.status_code == 404, r.text

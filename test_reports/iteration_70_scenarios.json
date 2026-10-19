@@ -1,0 +1,249 @@
+{
+  "generated_at": 1789896471.5635266,
+  "provider": "Gemini",
+  "scenarios": [
+    {
+      "name": "realistic_scam_screenshot",
+      "input": {
+        "type": "screenshot",
+        "description": "Synthetic bank-alert screenshot claiming a $4,820 payment, with an unofficial domain and callback number.",
+        "ocr": {
+          "sender": "CommBank Alert",
+          "text": "CommBank Alert\n\nA $4,820 payment was detected.\n\nSecure your account immediately.\n\ncommbank-secure-verify.xyz/login\n\nCall 02 8000 1234",
+          "urls": [
+            "commbank-secure-verify.xyz/login"
+          ]
+        },
+        "screenshot_raw_retained_by_apollo": false
+      },
+      "status_code": 200,
+      "risk": "warning",
+      "gemini_used": true,
+      "apollo_findings": [
+        {
+          "status": "suspicious",
+          "title": "Unofficial web address",
+          "detail": "The link provided uses a .xyz domain, which contradicts the bank's official domain, commbank.com.au. A domain is the unique name that identifies a website on the internet.",
+          "source_ids": [
+            "official-4"
+          ]
+        },
+        {
+          "status": "suspicious",
+          "title": "Local pattern warning",
+          "detail": "Apollo is growling at this one, as the message structure matches patterns often associated with unwanted solicitations.",
+          "source_ids": [
+            "local-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Website unreachable",
+          "detail": "Apollo could not inspect this source. The failure neither confirms nor clears the concern.",
+          "source_ids": [
+            "page-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Phone reputation",
+          "detail": "The current reputation lookup found no strong abuse signal, but it does not authenticate the caller or sender.",
+          "source_ids": [
+            "phone-1"
+          ]
+        }
+      ],
+      "entities": {
+        "claimed_organisations": [
+          "CommBank"
+        ],
+        "sender_details": [
+          "CommBank Alert"
+        ],
+        "callback_details": [
+          "02 8000 1234"
+        ],
+        "links": [
+          "commbank-secure-verify.xyz"
+        ],
+        "requested_actions": [
+          "call the number supplied in the message",
+          "Call the number supplied in the message",
+          "Secure account via the provided link"
+        ],
+        "transaction_claims": [
+          "$4,820"
+        ]
+      },
+      "higgins_exact_response": "A link to an unofficial domain (.xyz). Unofficial links are frequently used to collect login details. I could not establish: the identity of the sender. Log in to your official CommBank app or website directly to check your transactions.",
+      "next_action": "Log in to your official CommBank app or website directly to check your transactions.",
+      "action_offered": "Check official app",
+      "could_not_establish": [
+        "The identity of the sender",
+        "The current content of the unreachable website"
+      ],
+      "supporting_sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "Local message patterns produced a barking warning; this is not proof of sender identity or a packet block."
+        },
+        {
+          "source_id": "link-1",
+          "label": "Apollo link intelligence",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "commbank-secure-verify.xyz: clean; coverage full. No current listing was found; this does not authenticate the site or prove safety."
+        },
+        {
+          "source_id": "page-1",
+          "label": "Isolated webpage inspection",
+          "url": null,
+          "status": "unavailable",
+          "detail": "Inspection unavailable: dns_failed."
+        },
+        {
+          "source_id": "official-4",
+          "label": "CommBank official domain reference",
+          "url": "https://www.commbank.com.au/support/security.html",
+          "status": "contradicts",
+          "detail": "Official domain: commbank.com.au. No submitted link matches."
+        },
+        {
+          "source_id": "phone-1",
+          "label": "Caller-number reputation",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "Reputation result: allow; fraud score 0. This does not authenticate the caller."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "warning_not_block": true,
+      "packet_block_claimed": false
+    },
+    {
+      "name": "genuine_appointment_text",
+      "input": {
+        "sender": "City Dental",
+        "text": "Hi Sarah, your dental appointment is confirmed for Tuesday at 3:30 pm. No payment is due. To reschedule, use the number on our official website.",
+        "urls": []
+      },
+      "status_code": 200,
+      "risk": "uncertain",
+      "gemini_used": true,
+      "apollo_findings": [
+        {
+          "status": "corroborated",
+          "title": "Absence of suspicious links",
+          "detail": "The message contains no links or phone numbers, which reduces the immediate risk of a scam.",
+          "source_ids": [
+            "local-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Sender identity",
+          "detail": "The name 'City Dental' is generic and the message provides no specific contact details to confirm which practice sent it.",
+          "source_ids": [
+            "local-1"
+          ]
+        }
+      ],
+      "entities": {
+        "claimed_organisations": [
+          "City Dental"
+        ],
+        "sender_details": [
+          "City Dental"
+        ],
+        "callback_details": [],
+        "links": [],
+        "requested_actions": [],
+        "transaction_claims": [
+          "Dental appointment confirmation"
+        ]
+      },
+      "higgins_exact_response": "A message confirming a dental appointment for Sarah. The message is low-risk but lacks specific practice details, making it difficult to verify the sender's identity. I could not establish: the specific identity or location of the 'city dental' practice. Verify the appointment time against your own records or contact your usual dentist directly.",
+      "next_action": "Verify the appointment time against your own records or contact your usual dentist directly.",
+      "action_offered": "Review your calendar",
+      "could_not_establish": [
+        "The specific identity or location of the 'City Dental' practice."
+      ],
+      "supporting_sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "supports",
+          "detail": "No strong local scam pattern was found."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "warning_not_block": true,
+      "packet_block_claimed": false
+    },
+    {
+      "name": "ambiguous_new_number_money_request",
+      "input": {
+        "sender": "Unknown mobile",
+        "text": "Hi Mum, I dropped my phone and this is my new number. Can you send $600 today? I will pay you back Friday.",
+        "urls": []
+      },
+      "status_code": 200,
+      "risk": "warning",
+      "gemini_used": true,
+      "apollo_findings": [
+        {
+          "status": "suspicious",
+          "title": "Impersonation pattern",
+          "detail": "The message follows a known script where a sender claims to be a family member with a new number to solicit money.",
+          "source_ids": [
+            "local-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Unverified identity",
+          "detail": "The sender's identity cannot be confirmed from the message alone.",
+          "source_ids": [
+            "local-1"
+          ]
+        }
+      ],
+      "entities": {
+        "claimed_organisations": [],
+        "sender_details": [
+          "Unknown mobile"
+        ],
+        "callback_details": [],
+        "links": [],
+        "requested_actions": [
+          "Send $600"
+        ],
+        "transaction_claims": [
+          "$600"
+        ]
+      },
+      "higgins_exact_response": "Request for $600. Impersonation scams\u2014pretending to be a loved one to steal money\u2014often rely on creating a sense of urgency. I could not establish: the true identity of the sender. Contact your family member on their original, known phone number to verify the situation.",
+      "next_action": "Contact your family member on their original, known phone number to verify the situation.",
+      "action_offered": "Call known number",
+      "could_not_establish": [
+        "The true identity of the sender"
+      ],
+      "supporting_sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "Local message patterns produced a growling warning; this is not proof of sender identity or a packet block."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "warning_not_block": true,
+      "packet_block_claimed": false
+    }
+  ]
+}

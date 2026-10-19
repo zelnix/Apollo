@@ -1,0 +1,51 @@
+{
+  "summary": "Apollo V1 Iteration 14 — GATE 7 (Apps & Device Protection) PASSED end-to-end. Backend pytest test_gate7_app.py = 9/9 (AnyDesk from browser → reputation.remote_access_tool='Anydesk', official_store=false, note contains 'scammers'; 'CommBank Security Update' from browser → impersonates_brand='Commbank'; 'CommBank app' from app_store → impersonates_brand null, official_store true, 'not proof of safety'; 'Microsoft Authenticator' → known_security_vendor='Microsoft Authenticator'; hosts ['phishing.apollo.test','example.com'] → phishing.apollo.test malicious, example.com clean/unknown; empty name → 422; second_opinion=true → 200 with explanation summary/why/recommendation when gemini_used, or null gracefully. POST /api/patrol/events accepts category 'app' (A01) and 'device' (D02), both created and listed via GET.  Frontend UI (390x844 web preview after onboarding-start-button → disclosure-accept-button): Home shows home-check-app-button + home-check-device-button. /app-check A1 (AnyDesk, play_store, remote_support, screen_share, caller-switch ON) → app-state='Barking', app-scenario='A01', verdict includes 'let someone control or view your device' and 'do not give the caller access', app-remote-pill visible, app-open-settings (danger 'Remove / open Settings') present, app-recovery-open (Stay With Me) opens picker with 'I gave someone remote access' → first step 'End the remote-access session'. A2 (Bank Security Update, browser, security, sms+accessibility+overlay) → Barking A03. A3 (Microsoft Authenticator, app_store, security, camera+notifications) → Patrolling A13, verdict says 'didn't find anything worrying', NO Stay With Me open, app-reputation card visible. A5 (Fast Utility, play_store, other, accessibility+overlay+notifications) → Growling A05, why mentions 'read parts of your screen'. app-tech sheet mentions 'Security SDK' and 'iOS'. app-again resets. app-tell-why navigates to /(tabs)/ask with context. /device default → device-status-title='Protected', device-state='Patrolling', device-cannot-see items shown. Toggling device-self-gaveRemoteAccess + device-self-usedBankingDuringAccess → title='Recovery', device-recovery card first step 'End the remote-access session now: turn off Wi‑Fi and mobile data...', findings D01 + D01b with device-open-D01. Toggling only device-self-unexpectedProfile → 'Action required' with device-finding-D02. Adding device-self-managementExpected → drops to Protected/Ears up (info finding). device-save creates a Patrol event ('Saved to Patrol' toast) and then device-recovery-flow-open appears. device-check-app navigates to /app-check. Cross-gate FILE→APP: /file name 'WhatsApp_update.apk' → file-check-app button 'I installed it — check the app' → /app-check?name=WhatsApp_update&source=message&scent=... with prefilled name and message-source chip selected; running with purpose 'update' → Barking with app-linked text 'Connected to: File: ... (Threat Scent).' Home shows 'Connected events (Threat Scent)' card. Patrol tab lists App: (2) and File: (1) events. Cross-gate CALL→APP: /call ask 'Install an app' + claim 'My bank' → call-check-app 'They asked me to install an app — check it' visible → /app-check; checking TeamViewer (remote_support) → Barking A01 with app-linked visible (Threat Scent from recent call event even without app-ctx-caller switch). Regression smoke: /message, /check, /scan, /file all load without red-screen. No deprecated Expo packages detected in Gate-7 code (expo-router, react-native-safe-area-context, react-native-keyboard-controller — all current).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/app-check Acceptance 2 (Bank Security Update / purpose=security)",
+        "issues": [
+          "SPEC vs CODE mismatch: review spec says 'Access card lists 3 permissions with More than it needs pills' for perms sms+accessibility+overlay when purpose=security. In practice only 2 chips are marked 'More than it needs' (sms + overlay), because appAnalysis.ts EXPECTED['security'] includes 'accessibility' (line 45). So accessibility is labeled 'Fits purpose' even in the brand-impersonation Barking scenario A03. State, scenario, verdict, and brand impersonation detection are correct; only the per-row label count differs from the spec. Consider either (a) contextually flagging accessibility as unexpected when off-store + purpose=security + impersonation detected, or (b) updating the acceptance text to '2 of 3 permissions'."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_14.json",
+    "/app/backend/tests/test_gate7_app.py",
+    "/app/test_reports/pytest/pytest_iter14.xml"
+  ],
+  "action_items": [
+    "OPTIONAL / MINOR: Reconcile the Acceptance-2 'Access card lists 3 permissions with More than it needs pills' expectation with the domain code. Currently accessibility is in EXPECTED['security'] (appAnalysis.ts:45), so with purpose=security the accessibility chip renders 'Fits purpose' (only sms + overlay show 'More than it needs'). Option A: when source is off-store AND impersonates_brand is set, mark accessibility as unexpected regardless of purpose. Option B: update the acceptance criterion text. Barking A03 + brand impersonation still fires correctly, so this is a labeling nuance, not a security regression.",
+    "No other blocking issues found. Ready to ship Gate 7."
+  ],
+  "critical_code_review_comments": [
+    "app-check.tsx L79-82: apiPost to /app/analyse wrapped in try/catch that silently falls back to on-device engine on network error — good offline-first behavior matching the spec's 'never pretends' principle.",
+    "app-check.tsx L84: linked-event selection prefers explicit caller/message context, else falls back to any recent scent when a.remoteCapable or a.scenario='A16'. This is what produces the Call→App A01 Barking result even without app-ctx-caller ON, per the spec.",
+    "app-check.tsx L164: RecoveryFlow kinds are chosen based on a.stayWithMe (['remote','banking_during_access','password','code','accessibility']) vs the more general list — sensible split; A01 correctly gets the remote-first list.",
+    "device.tsx L20: TARGET map hard-codes SettingsTarget per finding id (D01..D11). Good — but consider extracting to deviceAnalysis.ts alongside the finding definitions so a new finding id can't ship without an Open-Settings target.",
+    "device.tsx L109: SELF_REPORT is filtered to drop 'unknownSourcesOn' on iOS — correct platform-aware UX. All other self-report toggles use consistent trackColor logic.",
+    "appAnalysis.ts L45: EXPECTED['security'] includes 'accessibility' — semantically correct for legit security apps (password managers, authenticators) but causes the Acceptance-2 labeling nuance noted above.",
+    "server.py Gate-7 endpoint: /api/app/analyse validates name via Pydantic (empty → 422 confirmed), returns clean reputation/hosts/explanation shape, gracefully falls back when Gemini quota returns null. Well-scoped."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_14.json (new)",
+    "/app/test_reports/pytest/pytest_iter14.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests in test_gate7_app.py — App analyse reputation + host intel + validation + second-opinion + patrol app/device categories)",
+    "frontend": "100% functional acceptance across A1/A2/A3/A5, tech sheet, recovery flow, app-again reset, tell-me-why → Ask, /device default→recovery→action→protected→save→recovery-flow-open→device-check-app→app-check, File→App handoff with name prefill + source=message + scent + Threat Scent linked text + Home Connected-events card + Patrol events for both categories, Call→App handoff with A01 Barking. One acceptance labeling nuance on A2 (2 of 3 'More than it needs' chips instead of 3, see design_issues)."
+  },
+  "seed_data_creation": "Fresh device per session via localStorage.clear + onboarding-start-button + disclosure-accept-button. Ephemeral SecureCore mock device_ids. Backend tests use uuid-suffixed 'gate7dev...' device ids; not cleaned but harmless.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "(1) Gate-7 screens depend on setupDone → redirect to '/' if not onboarded. Always onboard first in the same browser context. (2) /app-check produces app-linked text and prefers a linked call event when a.remoteCapable OR scenario='A16', which is why Call→TeamViewer (no context switch) still surfaces the Threat Scent — this is intentional (spec: 'even without the caller switch'). (3) On the web preview accessibility long-press does open app-perm-sheet (verified). (4) The Acceptance-2 3-chip 'More than it needs' expectation vs the domain EXPECTED map is a labeling nuance only — state=Barking + scenario=A03/A16 + brand impersonation still fires correctly. Do not treat it as a blocker. (5) All backend Gate-7 endpoints (POST /api/app/analyse, POST /api/patrol/events with category app/device) validated end-to-end.",
+  "rca_of_issue": "N/A — no bugs. The Acceptance-2 labeling nuance is deterministic (appAnalysis.ts:45 lists accessibility as EXPECTED for purpose='security'). To match the spec exactly, add a rule: when official_store=false AND impersonates_brand!=null, treat accessibility as unexpected regardless of stated purpose."
+}

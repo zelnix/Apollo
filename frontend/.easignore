@@ -1,0 +1,18 @@
+# EAS native-build input only. Keep source/config/assets and exclude local caches or generated artifacts.
+/android
+/ios
+node_modules/
+package-lock.json
+.metro-cache/
+.expo/
+coverage/
+*.log
+*.apk
+*.aab
+**/android/build/
+**/.gradle/
+**/.kotlin/
+ios/build/
+# GuardDog SDK Gradle build outputs — broken symlinks or stale dirs here cause
+# "Failed to create parent directory" errors during EAS cloud builds.
+packages/**/build/

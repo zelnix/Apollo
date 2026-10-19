@@ -1,0 +1,5 @@
+{
+  "platforms": ["android", "apple"],
+  "android": { "modules": ["app.apollo.familyassist.ApolloFamilyAssistModule"] },
+  "apple": { "modules": ["ApolloFamilyAssistModule"] }
+}

@@ -1,0 +1,12 @@
+{
+  email {$ACME_EMAIL}
+  admin off
+}
+
+{$GUARDDOG_ACCEPTANCE_HOST} {
+  @acceptance path /apollo-guarddog-acceptance/v1
+  header @acceptance Content-Type "text/plain; charset=utf-8"
+  header @acceptance Cache-Control "no-store"
+  respond @acceptance "APOLLO_GUARDDOG_ACCEPTANCE_V1\n" 200
+  respond "Not Found\n" 404
+}

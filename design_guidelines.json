@@ -1,0 +1,111 @@
+{
+  "theme": "Light Sentinel",
+  "typography": {
+    "font_family": {
+      "heading": "System, sans-serif",
+      "body": "System, sans-serif"
+    },
+    "sizes": {
+      "h1": "text-3xl font-bold",
+      "h2": "text-2xl font-bold",
+      "h3": "text-xl font-semibold",
+      "body": "text-lg",
+      "small": "text-base"
+    },
+    "rules": [
+      "Use large typography for plain-language accessibility.",
+      "Never center-align paragraphs; left-align for readability.",
+      "Headings must use tight letter spacing.",
+      "Do not use generic fonts if custom fonts are requested, but default to readable System fonts for mobile security apps."
+    ]
+  },
+  "colors": {
+    "primary": "#0F172A",
+    "background": "#F8FAFC",
+    "card": "#FFFFFF",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569",
+    "accent": "#3B82F6",
+    "success": "#16A34A",
+    "warning": "#F59E0B",
+    "danger": "#EF4444",
+    "rules": [
+      "Adhere to 'Light Sentinel' visual system: clean, light-themed, high contrast, secure feel.",
+      "Minimum 4.5:1 contrast ratio for normal text.",
+      "DO NOT use complete transparent background in header, overlays, or any surface that has content under it."
+    ]
+  },
+  "visual enhancers": {
+    "shadows": "Subtle, ambient shadows for cards to indicate elevation without clutter.",
+    "borders": "1px solid #E2E8F0 for clear boundary definition.",
+    "radius": "rounded-xl for cards, rounded-full for buttons."
+  },
+  "component name": {
+    "Navigation": "RootNavigator, Header",
+    "Gates": "GateCard",
+    "Patrol": "PatrolSummary, PatrolFilter, PatrolCard",
+    "Higgins": "HigginsHub, HigginsSection, HigginsChatTranscript",
+    "Learning": "LearningReader, ScamReader",
+    "History": "InvestigationHistoryList, HistoryFilter"
+  },
+  "grids": [
+    "Mobile-first column layout.",
+    "Bento grid for Hub sections if applicable, but mostly vertical stack for standard mobile views."
+  ],
+  "layouts": {
+    "RootNavigation": "Bottom tab bar: Home | Higgins | Gates | Check It | Patrol",
+    "Header": "Shared top-right Settings action. Fix Settings double tap/back state.",
+    "GateCard": "One card per Gate. Vertical layout: Purpose, Current Status, Attention Item, Action.",
+    "PatrolScreen": "Five-state summary at top. Horizontal filter bar: 'All activity, Needs you, Warnings, Threats stopped, Resolved'. Vertical list of PatrolCards.",
+    "HigginsHub": "Independent vertical sections: Ask Higgins, Continue live work, Recent investigations, New scams, Learn with Higgins, Saved reports/explanations.",
+    "HigginsChat": "Child screen for ordinary-chat transcript that preserves hub state when navigated back.",
+    "LearningReader": "Backend-driven list/detail reader with explicit offline/error states.",
+    "InvestigationHistory": "Vertical list with search bar, filters, and pagination controls."
+  },
+  "motion": {
+    "transitions": "Native screen transitions.",
+    "interactions": "Clear opacity/scale feedback on touchable elements."
+  },
+  "accessibility": [
+    "Large/plain-language text sizes.",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "High contrast (APCA/WCAG AA).",
+    "Clear distinction of states (Needs action vs Information)."
+  ],
+  "media": {
+    "images": "Minimal. Focus on clear typography and state indicators.",
+    "icons": "Lucide React Native for explicit, simple metaphors."
+  },
+  "3d libraries": {
+    "usage": "None. Keep the UI flat, fast, and accessible."
+  },
+  "image_urls": {},
+  "component_path": "/app/src/components",
+  "instructions_to_main_agent": [
+    "Preserve the exact root navigation order: Home | Higgins | Gates | Check It | Patrol.",
+    "Settings remains the shared top-right action. Fix navigation guard so double taps resolve properly and Back preserves tab state.",
+    "Gate cards: Render exactly one card per Gate containing purpose, what Apollo is doing now, genuine attention item, and one action.",
+    "Patrol filters: Implement exactly 'All activity, Needs you, Warnings, Threats stopped, Resolved'.",
+    "Higgins hub: Create independently loading sections for Ask Higgins, continue live work, recent investigations, New scams, Learn with Higgins, and saved reports/explanations.",
+    "Learning client: Build a no-store reader. Article bodies MUST NOT ship in the consumer bundle. Implement offline and error states.",
+    "New Scams reader: Incorporate ACSC and Scamwatch advice.",
+    "Investigation history: Implement search, filters, pagination, and delete actions.",
+    "Do not invent new product requirements, web-only UI, admin UI inside the consumer app, or technical diagnostics on consumer cards.",
+    "Use .js files instead of .tsx for React Native components.",
+    "Do not use Playwright, browser journeys, scenarios, testing agents, live Gemini, or runtime mocks."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic outputs; avoid this by creating crisp, highly accessible mobile interfaces.",
+    "Create depth through layered design elements with z-index hierarchy and subtle shadows.",
+    "Never apply universal transitions (e.g., transition: all).",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "Use modern button styles relevant to the app style.",
+    "Avoid using Emoji characters for icons."
+  ],
+  "GENERAL UI UX DESIGN GUIDELINES": [
+    "Focus on Emotion First: The app should feel protective, clear, and reassuring.",
+    "Use generous spacing (2-3x more than typical) to prevent accidental taps and improve legibility.",
+    "Ensure contrast checks pass for all text on colored backgrounds.",
+    "Buttons should explicitly describe the action (e.g., 'View official advice', 'Ask Higgins about this')."
+  ]
+}
