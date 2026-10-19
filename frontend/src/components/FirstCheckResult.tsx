@@ -1,10 +1,10 @@
 // Shared Device First Check / Re-check result UI. Used by onboarding (app/first-check.tsx) and the
 // Check tab Re-check (app/recheck.tsx). Reports exactly what Apollo checked, found, and couldn't
-// check (spec §13), and offers an AI/Higgins plain-English pass over the findings via GateInvestigation.
+// check (spec §13), and offers an AI/Higgins plain-English pass over the findings via InvestigationFlow.
 import React, { useMemo } from "react";
 import { View } from "react-native";
 
-import { GateInvestigation } from "@/src/components/GateInvestigation";
+import { InvestigationFlow } from "@/src/components/InvestigationFlow";
 import { Body, Card, Pill, SectionTitle, toneColor, type Tone } from "@/src/components/ui";
 import { issueContext } from "@/src/domain/higginsHandoff";
 import { FIRST_CHECK_COPY, type FirstCheckCapabilityResult, type FirstCheckChange, type FirstCheckReport, type FirstCheckResultState } from "@/src/domain/firstCheck";
@@ -108,7 +108,7 @@ export function FirstCheckResult({ report, changes, headlineOverride, kind, auto
       <Card testID={`${testID}-higgins`} style={{ gap: spacing.sm, borderColor: colors.navyBorder }}>
         <SectionTitle>Ask Higgins about this check</SectionTitle>
         <Body>Higgins can explain any finding in plain language and tell you the one thing to do next.</Body>
-        <GateInvestigation submission={submission} continuityKey="first-check" context={context} testID={`${testID}-ask`} label="Explain this with Higgins" question="What did you find, and what should I do next?" autoStart={autoStartAsk} />
+        <InvestigationFlow submissionId={submission.submissionId} continuityKey="first-check" context={context} testID={`${testID}-ask`} question="What did you find, and what should I do next?" autoStart={autoStartAsk} />
       </Card>
     </View>
   );

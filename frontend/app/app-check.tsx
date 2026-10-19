@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
@@ -215,14 +216,18 @@ export default function CheckApp() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `app-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={appActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={appActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={appActions} />
+        )}
         {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
         {verifyNote ? <Card testID="app-verify-note"><Body>{verifyNote}</Body></Card> : null}
         <Card testID="app-capability-evidence-note" style={{ gap: spacing.xs }}><Body>An inactive or dormant app keeps those capabilities until you revoke them. Only uninstalling or disabling the app fully removes its access.</Body></Card>

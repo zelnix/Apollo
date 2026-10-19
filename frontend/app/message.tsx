@@ -18,6 +18,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { ImageUploadPrep, type PreparedImage, type UploadSubmissionState } from "@/src/components/ImageUploadPrep";
@@ -296,14 +297,18 @@ export default function CheckMessage() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `msg-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={msgActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={msgActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={msgActions} />
+        )}
         {result.event ? (
           <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" />
         ) : null}

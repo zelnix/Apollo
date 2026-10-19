@@ -9,6 +9,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
@@ -108,14 +109,18 @@ export default function CheckCall() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `call-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={actions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={actions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={actions} />
+        )}
         {result.event ? (
           <RecoveryFlow event={result.event} kinds={["password", "code", "money", "card", "app", "remote", "called", "info"]} testID="call-recovery" />
         ) : null}

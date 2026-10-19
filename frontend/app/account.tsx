@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost, apiUpload } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -166,14 +167,18 @@ export default function CheckAccount() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `acct-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={acctActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={acctActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={acctActions} />
+        )}
         {a.stayWithMe && result.event ? (
           <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" />
         ) : null}

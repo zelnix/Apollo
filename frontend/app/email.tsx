@@ -32,6 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button } from "@/src/components/ui";
@@ -594,14 +595,18 @@ export default function CheckEmail() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `email-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={emailActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={emailActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={emailActions} />
+        )}
         {result.event ? (
           <RecoveryFlow
             event={result.event}

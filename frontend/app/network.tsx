@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
@@ -131,15 +132,17 @@ export default function CheckNetwork() {
     netActions.push({ testID: "network-save", variant: "ghost", label: saved ? "Saved \u2713 — View saved checks" : "Save this check", onPress: () => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "network", title: a.title, subject: a.ssid || "This network", state: a.state, stateName: STATE_NAME[a.state], summary: a.verdict, recommendation: a.recommendation, sections: [{ title: "Why Apollo reacted", lines: a.why }, { title: "Technical details", lines: a.technical }, { title: "Reference", lines: [`Scenario: ${a.scenario}`] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); } });
     netActions.push({ testID: "network-again", variant: "ghost", label: "Check again", onPress: () => { setResult(null); setSaved(false); } });
 
-    return (
-      <CheckResultScreen
+    return result.event ? (
+      <InvestigationCheckScreen
         result={model}
-        investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
+        investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
         investigationQuestion={askPrompt}
-        submissionId={result.event?.event_id ?? `net-${Date.now().toString(36)}`}
-        eventId={result.event?.event_id ?? null}
+        submissionId={result.event.event_id}
+        eventId={result.event.event_id}
         actions={netActions}
       />
+    ) : (
+      <CheckResultScreen result={model} actions={netActions} />
     );
   }
 

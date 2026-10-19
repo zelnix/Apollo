@@ -7,7 +7,6 @@ import Camera from "lucide-react-native/icons/camera";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import Clock from "lucide-react-native/icons/clock";
-import ExternalLink from "lucide-react-native/icons/external-link";
 import Link2 from "lucide-react-native/icons/link-2";
 import Search from "lucide-react-native/icons/search";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
@@ -19,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost, apiUpload } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { EventActions } from "@/src/components/EventActions";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
@@ -76,7 +76,6 @@ const useStyles = makeStyles((c) => ({
   actionCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   actionCardIconWell: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   screenshotIconBg: { backgroundColor: "#E6F4EA" },
-  inspectIconBg: { backgroundColor: "#DBEAFE" },
   actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
   actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   actionCardChevron: { marginLeft: "auto" },
@@ -177,15 +176,6 @@ export default function CheckLink() {
   };
   const photoAccess = useScreenshotAccess(launchPagePicker);
 
-  const crawlPage = async () => {
-    if (!deviceId || !input.trim()) return;
-    try {
-      setPageError(null);
-      const result = await apiPost<{ signals: PageSignals | null; higgins_note: string | null; error: string | null; error_detail: string | null }>("/page/crawl", "page_crawl", { device_id: deviceId, url: input.trim() });
-      if (!result.signals) throw new Error(result.error_detail ?? "Apollo could not inspect that page.");
-      await applyPageSignals(result.signals, result.higgins_note);
-    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not inspect that page."); }
-  };
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" });
   };
@@ -251,14 +241,18 @@ export default function CheckLink() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={liveEvent ? { ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] } : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={outcome.submissionId}
-          eventId={liveEvent?.event_id ?? null}
-          actions={actions}
-        />
+        {liveEvent ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={{ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] }}
+            investigationQuestion={askPrompt}
+            submissionId={outcome.submissionId}
+            eventId={liveEvent.event_id}
+            actions={actions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={actions} />
+        )}
         {liveEvent && liveEvent.state !== "resting" ? (
           <RecoveryFlow event={liveEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="check-recovery" />
         ) : null}
@@ -396,7 +390,7 @@ export default function CheckLink() {
           <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : "Check website link"}</Text>
         </Pressable>
 
-        {/* ── Page analysis results (inline) ── */}
+        {/* ── Screenshot analysis result (from "Take a screenshot" only) ── */}
         {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
         {page ? (
           <Animated.View entering={FadeInDown.duration(350)}>
@@ -428,9 +422,8 @@ export default function CheckLink() {
           <View style={s.orLine} />
         </View>
 
-        {/* ── Two action cards ── */}
+        {/* ── Alternative input: Take a screenshot ── */}
         <View style={s.actionCardsRow}>
-          {/* Take a screenshot */}
           <Pressable
             testID="check-page-screenshot"
             accessibilityRole="button"
@@ -444,23 +437,6 @@ export default function CheckLink() {
               <ChevronRight size={18} color={colors.muted} />
             </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
-          </Pressable>
-
-          {/* Open link safely */}
-          <Pressable
-            testID="check-page-crawl"
-            accessibilityRole="button"
-            accessibilityLabel="Open link safely"
-            onPress={() => void crawlPage()}
-            disabled={!input.trim()}
-            style={({ pressed }) => [s.actionCard, !input.trim() && { opacity: 0.5 }, { opacity: pressed && input.trim() ? 0.85 : 1 }]}
-          >
-            <View style={s.actionCardHeader}>
-              <View style={[s.actionCardIconWell, s.inspectIconBg]}><ExternalLink size={20} color="#1D4ED8" /></View>
-              <Text style={s.actionCardTitle}>Open link safely</Text>
-              <ChevronRight size={18} color={colors.muted} />
-            </View>
-            <Text style={s.actionCardSub}>Apollo will open the link in a protected environment.</Text>
           </Pressable>
         </View>
 

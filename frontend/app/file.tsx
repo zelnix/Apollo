@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { buildFileCheckResult } from "@/src/domain/fileCheckResultAdapter";
@@ -164,14 +165,18 @@ export default function CheckFile() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `file-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={fileActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={fileActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={fileActions} />
+        )}
         {result.event ? (
           <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" />
         ) : null}

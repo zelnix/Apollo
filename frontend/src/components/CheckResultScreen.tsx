@@ -1,11 +1,10 @@
-// Universal Check Result screen component. Apollo investigates. Higgins explains. ONE result,
-// ONE explanation. Every Apollo Gate renders its manual-check outcome through this single
-// component. When investigation context is provided, a genuine Magnum DI case is auto-created
-// and the Higgins-led interactive investigation becomes the primary result experience.
-// Technical evidence stays accessible through progressive disclosure.
+// Universal Check Result screen — presentation only.
+// Displays deterministic / device / technical check results. Every check
+// that does NOT need a Magnum DI investigation renders through this component.
+// Investigation results are handled by InvestigationCheckScreen instead.
 //
-// Operating principle: Apollo identifies the concern. Magnum DI investigates the evidence.
-// Higgins explains the findings and guides the user.
+// Operating principle: Apollo identifies the concern. This screen presents the
+// finding. Technical detail lives behind progressive disclosure.
 
 import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
@@ -17,10 +16,8 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/checkResult";
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
-import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
@@ -60,37 +57,24 @@ const useStyles = makeStyles((c) => ({
 export interface CheckResultScreenProps {
   result: CheckResultModel;
   /** Optional secondary actions (Save / Report / Recover / etc.) — rendered as a
-   *  single row of buttons below the investigation. Keep to 3–4 at most. */
+   *  single row of buttons below the result. Keep to 3–4 at most. */
   actions?: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[];
-  /** @deprecated — replaced by investigationContext. Kept for backward compat (non-scam diagnostics). */
+  /** Optional: navigate to Higgins with context about this result. */
   onAskHiggins?: () => void;
   /** Optional close override — defaults to goBackOrHome. */
   onClose?: () => void;
-  // ── Magnum DI case integration ──
-  /** When provided, a Magnum DI investigation case is auto-created and the Higgins briefing
-   *  becomes the primary result. The static result acts as context while investigating. */
-  investigationContext?: HigginsIssueContext;
-  /** Natural-language question for the investigation turn. */
-  investigationQuestion?: string;
-  /** Stable ID for the check submission (event_id or submission UUID). */
-  submissionId?: string;
-  /** Patrol event ID to link the investigation case to. */
-  eventId?: string | null;
 }
 
-export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose, investigationContext, investigationQuestion, submissionId, eventId }: CheckResultScreenProps) {
+export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose }: CheckResultScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [itemsOpen, setItemsOpen] = useState<Record<string, boolean>>({});
   const [fullOpen, setFullOpen] = useState(false);
-  const [investigationResolved, setInvestigationResolved] = useState(false);
 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
-
-  const hasInvestigation = !!(investigationContext && investigationQuestion && submissionId);
 
   return (
     <View style={s.root} testID="check-result-screen">
@@ -114,10 +98,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing["3xl"] }]}
         testID="check-result-scroll"
       >
-        {/* ── Quick context: Apollo's immediate finding ──
-             Hidden when a Magnum DI investigation is active, because the unified
-             four-tab report (Status Card + Overview) now provides all context. */}
-        {!hasInvestigation ? (
+        {/* ── Apollo's finding ── */}
         <Card style={{ gap: spacing.md }} testID="check-result-main">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
             <Pill tone={result.tone} label={result.checkType} testID="check-result-tone" />
@@ -125,8 +106,6 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
           </View>
           <Text style={s.headline} testID="check-result-headline">{result.headline}</Text>
 
-          {/* When no investigation, show the full static explanation. */}
-            <>
               <View style={{ gap: spacing.xs }}>
                 <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
                 <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
@@ -147,26 +126,9 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
                   ) : null}
                 </View>
               ) : null}
-            </>
         </Card>
-        ) : null}
 
-        {/* ── Magnum DI Investigation — the primary result experience ── */}
-        {hasInvestigation ? (
-          <GateInvestigation
-            submission={{ submissionId }}
-            context={investigationContext!}
-            question={investigationQuestion!}
-            label="View full investigation"
-            testID="check-result-investigation"
-            autoStart
-            eventId={eventId}
-            onResolved={setInvestigationResolved}
-          />
-        ) : null}
-
-        {/* "What Apollo checked" — only shown for non-investigation results. */}
-        {!hasInvestigation ? (
+        {/* ── What Apollo checked ── */}
         <Card style={{ gap: 0 }} testID="check-result-items">
           <Pressable
             accessibilityRole="button"
@@ -196,10 +158,9 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
             </>
           ) : null}
         </Card>
-        ) : null}
 
-        {/* Progressive disclosure — full technical evidence. */}
-        {!hasInvestigation && result.evidence.length > 0 ? (
+        {/* ── Progressive disclosure — full technical evidence ── */}
+        {result.evidence.length > 0 ? (
           <Card style={{ gap: spacing.sm }} testID="check-result-full">
             <Pressable
               accessibilityRole="button"
@@ -224,10 +185,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
           </Card>
         ) : null}
 
-        {/* Secondary row — Ask Higgins (legacy) + gate-specific extras. */}
-        {(onAskHiggins && !hasInvestigation) || actions.length > 0 ? (
+        {/* ── Secondary row — Ask Higgins + extras ── */}
+        {onAskHiggins || actions.length > 0 ? (
           <View style={s.secondary}>
-            {onAskHiggins && !hasInvestigation ? (
+            {onAskHiggins ? (
               <Button
                 testID="check-result-ask-higgins"
                 variant="secondary"

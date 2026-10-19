@@ -1,0 +1,94 @@
+// InvestigationFlow — Manages a Magnum DI investigation lifecycle and renders InvestigationView.
+// Replaces the old Gate-oriented orchestration. Used standalone (e.g. FirstCheckResult "Ask Higgins")
+// or inside InvestigationCheckScreen for full-screen investigation results.
+import React, { useEffect, useRef } from "react";
+import { View } from "react-native";
+
+import { InvestigationView } from "@/src/components/InvestigationView";
+import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
+import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
+import { useInvestigation } from "@/src/investigation/caseStore";
+import { createCaseInput } from "@/src/investigation/fromContext";
+import { spacing } from "@/src/theme";
+
+export interface InvestigationFlowProps {
+  submissionId: string;
+  context: HigginsIssueContext;
+  question: string;
+  testID: string;
+  autoStart?: boolean;
+  eventId?: string | null;
+  continuityKey?: string;
+  onResolved?: (resolved: boolean) => void;
+}
+
+export function InvestigationFlow({
+  submissionId,
+  context,
+  question,
+  testID,
+  autoStart = true,
+  eventId,
+  continuityKey,
+  onResolved,
+}: InvestigationFlowProps) {
+  const operationId = continuityKey
+    ? `${continuityKey}:${submissionId}`
+    : submissionId;
+  const { state, start, ask, continueWith, retry, cancel, remove } =
+    useInvestigation(operationId);
+  const started = useRef<string | null>(null);
+  const busy =
+    state.phase === "creating" ||
+    state.phase === "working" ||
+    state.phase === "reconnecting" ||
+    state.phase === "waiting_device";
+
+  useEffect(() => {
+    onResolved?.(!!state.response);
+  }, [state.response, onResolved]);
+
+  useEffect(() => {
+    if (eventId && state.caseData?.id)
+      void rememberCaseForEvent(eventId, state.caseData.id);
+  }, [eventId, state.caseData?.id]);
+
+  useEffect(() => {
+    if (started.current === submissionId) return;
+    if (!autoStart) return;
+    const { input, files } = createCaseInput(context, question);
+    const boundEventId = eventId ?? null;
+    if (continuityKey && state.caseData) {
+      if (busy) return;
+      started.current = submissionId;
+      void continueWith(input, operationId);
+      return;
+    }
+    started.current = submissionId;
+    const begin =
+      state.caseData && state.operationId !== operationId
+        ? remove().then(() => start(input, files, operationId))
+        : start(input, files, operationId);
+    void begin.then((c) => {
+      if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id);
+    });
+  }, [submissionId, state.caseData?.id, state.phase]);
+
+  return (
+    <View style={{ gap: spacing.sm }} testID={testID}>
+      <InvestigationView
+        state={state}
+        onAnswer={(a) => void ask(a)}
+        onRetry={() => void retry()}
+        onCancel={() => void cancel()}
+        testID={`${testID}-view`}
+        onAction={(action, outcome) => {
+          if (outcome.kind === "observed")
+            void ask(
+              `I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`,
+            );
+        }}
+      />
+    </View>
+  );
+}

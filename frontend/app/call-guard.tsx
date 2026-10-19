@@ -28,7 +28,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
-import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
@@ -438,7 +438,7 @@ export default function CheckNumber() {
     });
 
     return (
-      <CheckResultScreen
+      <InvestigationCheckScreen
         result={enhancedModel}
         investigationContext={callInvContext}
         investigationQuestion={askPrompt}

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
@@ -126,14 +127,18 @@ export default function TextGuard() {
 
     return (
       <>
-        <CheckResultScreen
-          result={model}
-          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
-          investigationQuestion={askPrompt}
-          submissionId={result.event?.event_id ?? `tg-${Date.now().toString(36)}`}
-          eventId={result.event?.event_id ?? null}
-          actions={textActions}
-        />
+        {result.event ? (
+          <InvestigationCheckScreen
+            result={model}
+            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationQuestion={askPrompt}
+            submissionId={result.event.event_id}
+            eventId={result.event.event_id}
+            actions={textActions}
+          />
+        ) : (
+          <CheckResultScreen result={model} actions={textActions} />
+        )}
         {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
         <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender" testID="textguard-verify-sheet">
           <Body>{a.verifySender}</Body>

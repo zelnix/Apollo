@@ -279,7 +279,7 @@ export default function CheckDevice() {
     else void openDeviceSettings(REVIEW_TARGET[r.id] ?? "security", r.settings, (m) => showToast(m, "neutral"));
   };
   const anySelf = Object.values(self).some(Boolean);
-  // Each completed device check is a fresh timestamped observation. GateInvestigation uses a continuity key, so a
+  // Each completed device check is a fresh timestamped observation. InvestigationFlow uses a continuity key, so a
   // new submission appends to the SAME case rather than replacing its accepted history.
   const [submission, setSubmission] = useState<DeviceSubmission | null>(null);
   useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
