@@ -47,6 +47,8 @@ import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectio
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
+import { useCallGuardPipeline } from "@/src/pipelines/callGuardPipeline";
+import { useTextGuardLocalFindings } from "@/src/pipelines/textGuardPipeline";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
@@ -787,29 +789,35 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
     const analysis = analyseMessage(sender, text);
     let urls: MessageUrlResult[] = []; let remoteError: string | null = null;
-    let investigationCaseId: string | null = null;
+    // Gate detection path: local/deterministic analysis + link reputation only.
+    // No backend investigation call — Magnum DI investigates only when the person requests it.
     try {
-      const r = await apiPost<{ urls?: unknown; investigation_case_id?: string | null }>("/message/analyse", "message_check", {
-        device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls,
-        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
-      });
-      // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
-      urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
-      investigationCaseId = typeof r.investigation_case_id === "string" ? r.investigation_case_id : null;
-    } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
+      // Fetch URL reputation for links found in the message (existing intel endpoint, not investigation).
+      for (const rawUrl of analysis.signals.urls.slice(0, 5)) {
+        try {
+          const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value: rawUrl, device_id: deviceId ?? undefined, expand: true });
+          const parsed = parseIntelResult(raw);
+          if (parsed) {
+            urls.push({
+              url: rawUrl, host: parsed.host ?? rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(),
+              verdict: parsed.verdict === "malicious" ? "malicious" : parsed.verdict === "clean" ? "clean" : "unknown",
+              threat_types: parsed.threat_types ?? [], coverage: parsed.source ?? "intel",
+              redirect_chain: parsed.redirect_chain ?? undefined, final_url: parsed.final_url ?? null,
+              domain_info: parsed.domain_info ?? null,
+            });
+          }
+        } catch { urls.push({ url: rawUrl, host: rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(), verdict: "unknown", threat_types: [], coverage: "unavailable" }); }
+      }
+    } catch (e) { remoteError = e instanceof Error ? e.message : "URL reputation check unavailable."; }
     let state = analysis.state; const why = [...analysis.why];
-    // Email Guard / Text Guard: automatic pre-click assessment over every checked link (redirect
-    // chain + RDAP domain-info already included in `urls` from the enriched /message/analyse) plus
-    // any display-text-vs-real-destination mismatch recoverable from the plain pasted text. This can
-    // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
+    // Email Guard / Text Guard: automatic pre-click assessment over every checked link plus
+    // any display-text-vs-real-destination mismatch. This can only raise state to growling/barking.
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
-    // Apollo's deterministic result stands. Magnum DI investigates asynchronously.
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
-    // Magnum DI investigates asynchronously; its findings appear in the investigation experience.
     if (state !== "resting") {
       const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
       const apolloHeadline = analysis.state !== "resting"
@@ -823,7 +831,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         what_to_do: analysis.recommendation,
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
-        investigation_case_id: investigationCaseId,
       }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
       if (event.state !== state) { state = event.state; }
     }
@@ -998,226 +1005,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, [deviceId, showToast]);
 
-  // Call Guard add-on: reads numbers ApolloCallScreeningService saw ringing with no local block/
-  // allow/risk signal (non-destructive read — numbers persist in the native queue until individually
-  // acknowledged after successful processing).
-  // RELIABILITY FIX (12 Oct 2026): Uses explicit CallLookupResult status to distinguish:
-  //   "ok" with no items → genuinely no pending calls (clean).
-  //   "unavailable"      → native module not loaded (Expo Go / web) — reported to diagnostics.
-  //   "error"            → native failure — reported to diagnostics after persistent failure.
-  // Lifecycle:
-  //   Success → acknowledgeCallLookups: number removed from queue.
-  //   Failure → retryCallLookups: attempts counter incremented. After MAX_RETRY_ATTEMPTS (4),
-  //             readPendingLookups auto-purges the entry on the next read.
-  //   "unknown" reputation → number acknowledged (don't re-queue), honest "could not check" event.
-  // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
-  const callPollBusy = useRef(false);
-  const callPollFailureCount = useRef(0);
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      // Overlap guard: prevent concurrent poll operations processing the same queue entry.
-      if (callPollBusy.current) return;
-      callPollBusy.current = true;
-      try {
-        // Consent gate: only submit numbers automatically when the user has opted in.
-        const consent = await storage.getItem("apollo.call.auto_check", null);
-        if (consent !== "true") return; // User hasn't enabled automatic number checking
+  // ── Call Guard Pipeline (extracted to src/pipelines/callGuardPipeline.ts) ──
+  useCallGuardPipeline({
+    deviceId, lowPower, checkNumberRisk, storage,
+    getPendingCallLookups: CallSdk.getPendingCallLookups,
+    acknowledgeCallLookups: CallSdk.acknowledgeCallLookups,
+    retryCallLookups: CallSdk.retryCallLookups,
+    isTrustedCaller,
+  });
 
-        const lookupResult = await CallSdk.getPendingCallLookups();
+  // ── Text Guard Pipeline (extracted to src/pipelines/textGuardPipeline.ts) ──
+  useTextGuardLocalFindings({
+    deviceId, eventsRef, persistEvents,
+    getTextGuardLocalFindings: MessagingSdk.getTextGuardLocalFindings,
+    acknowledgeTextGuardLocalFindings: MessagingSdk.acknowledgeTextGuardLocalFindings,
+  });
 
-        // Explicit failure handling — never treat a failed lookup as a verified empty queue.
-        if (lookupResult.status === "unavailable") {
-          // Native module not present — expected on Expo Go / web. Not an error, but not monitoring.
-          // Report once so diagnostics/protection status can reflect this.
-          if (callPollFailureCount.current === 0) {
-            console.info("[Call Guard] Native call module unavailable — call monitoring inactive.", lookupResult.detail);
-          }
-          callPollFailureCount.current = 1; // cap at 1 for "unavailable" (not a transient failure)
-          return;
-        }
 
-        if (lookupResult.status === "error") {
-          callPollFailureCount.current += 1;
-          console.warn(`[Call Guard] Native queue read failed (attempt ${callPollFailureCount.current}):`, lookupResult.detail);
-          // After 3 consecutive failures, create a one-time diagnostic event so the user knows.
-          if (callPollFailureCount.current === 3) {
-            const current = eventsRef.current;
-            if (!current.some((x) => x.category === "call" && x.headline?.includes("call monitoring issue"))) {
-              const ev: PatrolEvent = {
-                event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
-                status: "active" as const, state: "ears_up" as const,
-                indicator_host: null, indicator_digest: null, local_indicator: null,
-                verified_block: false, adapter_label: securityAdapter.label,
-                occurred_at: new Date().toISOString(), resolved_at: null,
-                trust_allowed: false, why: ["Apollo's call monitoring encountered a persistent error reading the native call queue."],
-                headline: "Apollo detected a call monitoring issue",
-                what_happened: `Apollo's automatic call screening encountered repeated failures. ${lookupResult.detail ?? "The native call module may need attention."}`,
-                what_to_do: "Check that Apollo has the call screening role in your phone settings. You can still check numbers manually.",
-              };
-              await persistEvents([ev, ...current]);
-            }
-          }
-          return;
-        }
-
-        // status === "ok" — genuine successful read. Reset failure counter.
-        callPollFailureCount.current = 0;
-        const items = lookupResult.items;
-
-        const acknowledged: string[] = [];
-        const failed: string[] = [];
-        for (const item of items) {
-          if (cancelled) break;
-          if (!item?.number) continue;
-          // Trusted callers: run the reputation check but suppress routine notification.
-          // Trust influences alert quieting, not detection bypass. If fresh evidence is
-          // concerning, the event is created normally; only benign results stay quiet.
-          const callerTrusted = await isTrustedCaller(item.number);
-          try {
-            const riskResult = await checkNumberRisk(item.number);
-            acknowledged.push(item.number);
-            // If the caller is trusted AND the result is benign (allow or unknown), the reputation was
-            // assessed (or unavailable) but no notification is needed — quiet handling honoured.
-            if (callerTrusted && riskResult && (riskResult.decision === "allow" || riskResult.decision === "unknown")) {
-              continue; // Quiet — trust honoured, but reputation was still assessed.
-            }
-            // Handle "unknown" decision for untrusted callers: create an honest "could not check" event.
-            if (riskResult.decision === "unknown") {
-              const current = eventsRef.current;
-              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
-                const ev: PatrolEvent = {
-                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
-                  status: "active" as const, state: "ears_up" as const,
-                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
-                  verified_block: false, adapter_label: securityAdapter.label,
-                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
-                  trust_allowed: false, why: ["Reputation data was unavailable for this number. This does not mean it is safe or dangerous."],
-                  headline: `Call seen: ${item.number} — could not verify`,
-                  what_happened: `A call from ${item.number} was seen but Apollo could not obtain reputation information. The number's safety is unknown.`,
-                  what_to_do: "Tap 'Check this number' to try again, or verify the caller independently before responding.",
-                };
-                await persistEvents([ev, ...current.filter((x) => x.event_id !== ev.event_id)]);
-                void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: item.number }], data: item, capturedAt: new Date(item.seenAtMs).toISOString() });
-              }
-            }
-          } catch {
-            // Retry once after a short delay before giving up
-            try {
-              await new Promise((r) => setTimeout(r, 2000));
-              const retryResult = await checkNumberRisk(item.number);
-              acknowledged.push(item.number);
-              if (callerTrusted && retryResult && (retryResult.decision === "allow" || retryResult.decision === "unknown")) continue;
-            } catch {
-              // For trusted callers, if reputation service is unavailable, acknowledge quietly.
-              // Creating a "could not check" event for a trusted caller is unnecessary noise.
-              if (callerTrusted) { acknowledged.push(item.number); continue; }
-              failed.push(item.number);
-              // Dedup-safe minimal event so the user knows a call was seen but not assessed.
-              const current = eventsRef.current;
-              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
-                const ev: PatrolEvent = {
-                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
-                  status: "active" as const, state: "ears_up" as const,
-                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
-                  verified_block: false, adapter_label: securityAdapter.label,
-                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
-                  trust_allowed: false, why: ["Apollo could not reach the reputation service for this number after multiple attempts."],
-                  headline: `Missed call: ${item.number}`,
-                  what_happened: `A call from ${item.number} was seen but Apollo could not check it. You can re-check it manually.`,
-                  what_to_do: "Tap 'Check this number' below, or verify the caller independently before responding.",
-                };
-                const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
-                await persistEvents(next);
-                void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: item.number }], data: item, capturedAt: new Date(item.seenAtMs).toISOString() });
-              }
-            }
-          }
-        }
-        // Acknowledge successfully processed numbers — they leave the queue.
-        if (acknowledged.length > 0) await CallSdk.acknowledgeCallLookups(acknowledged);
-        // Bump retry counter for failed numbers — auto-purged after MAX_RETRY_ATTEMPTS.
-        if (failed.length > 0) await CallSdk.retryCallLookups(failed);
-      } finally {
-        callPollBusy.current = false;
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
-    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [checkNumberRisk, lowPower, deviceId, persistEvents]);
-
-  // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
-  // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event
-  // containing only generic rule findings — no sender or message content. Persisted durably via
-  // persistEvents (NOT upsertEvent — local placeholders must never be synced to the backend).
-  // findingId is used directly as event_id (64 hex characters — fits the backend
-  // PatrolEventIn.event_id max_length=64 contract exactly).
-  //
-  // Sequential processing: the for-of loop awaits persistEvents for each finding. persistEvents
-  // synchronously updates eventsRef.current then awaits storage.setItem, so the next iteration
-  // always reads the committed state. No out-of-order overwrites.
-  //
-  // Reconciliation: if a Higgins-projected Patrol event already exists for the same
-  // client_submission_id (set by the investigation projector, end-to-end from the case's
-  // client_submission_id field), the local finding is acknowledged without creating a duplicate.
-  // Full supersession of an existing local placeholder happens in the remote merge effect above
-  // when the projected event arrives — the local placeholder is dropped from the merged list.
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    let cancelled = false;
-    const consumeLocalFindings = async () => {
-      try {
-        const findings = await MessagingSdk.getTextGuardLocalFindings();
-        if (!findings.length || cancelled) return;
-        const acknowledged: string[] = [];
-        for (const finding of findings) {
-          if (cancelled || !finding?.findingId) continue;
-          // findingId IS the event_id — no prefix. SHA-256 hex = 64 characters.
-          const eventId = finding.findingId;
-          // Read from the ref (not the closure) so each sequential iteration sees the latest state.
-          const current = eventsRef.current;
-          // Reconciliation: if a Higgins-projected event already covers this submission,
-          // the authoritative record exists — acknowledge without duplicating.
-          const higginsAlreadyProjected = current.some((ev) =>
-            ev.category === "message" && ev.client_submission_id === finding.submissionId && ev.event_id !== eventId
-          );
-          if (higginsAlreadyProjected) { acknowledged.push(finding.findingId); continue; }
-          // Idempotent: this exact local event already exists (re-read after foreground resume)
-          if (current.some((ev) => ev.event_id === eventId)) { acknowledged.push(finding.findingId); continue; }
-          // Create the local Patrol event with generic rule findings only
-          const ruleReasons = finding.findings.map((f: { ruleId: string; title: string }) => `${f.ruleId}: ${f.title}`).slice(0, 6);
-          const ev: PatrolEvent = {
-            event_id: eventId, device_id: deviceId ?? "local", category: "message" as const,
-            status: "active" as const, state: (finding.state as PatrolEvent["state"]) ?? "ears_up",
-            indicator_host: null, indicator_digest: null, local_indicator: null,
-            verified_block: false, adapter_label: "Text Guard local detection",
-            occurred_at: finding.detectedAt ?? new Date().toISOString(), resolved_at: null,
-            trust_allowed: false, client_submission_id: finding.submissionId,
-            why: ruleReasons.length ? ruleReasons : ["Local analysis detected suspicious patterns."],
-            headline: finding.state === "growling" ? "Suspicious message detected" : "Message worth checking",
-            what_happened: `Apollo's on-device analyzer (${finding.analyzer}) flagged a message based on pattern rules.`,
-            what_to_do: finding.state === "growling" ? "Do not respond to or act on this message until you verify the sender independently." : "Review this message carefully. Verify the sender before responding to any requests.",
-          };
-          // Local-only persistence via persistEvents — NOT upsertEvent (which also syncs to backend).
-          // Local placeholders must never leave the device; the backend creates the authoritative
-          // event when the investigation projector runs. persistEvents updates eventsRef.current
-          // synchronously then awaits storage.setItem — the next loop iteration reads committed state.
-          const next = [ev, ...eventsRef.current.filter((x) => x.event_id !== eventId)];
-          await persistEvents(next);
-          acknowledged.push(finding.findingId);
-        }
-        // Acknowledge native findings only after all events are durably persisted
-        if (acknowledged.length > 0) {
-          await MessagingSdk.acknowledgeTextGuardLocalFindings(acknowledged);
-        }
-      } catch { /* native module unavailable */ }
-    };
-    void consumeLocalFindings();
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
-    return () => { cancelled = true; sub.remove(); };
-  }, [deviceId, persistEvents]);
 
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {

@@ -29,7 +29,10 @@ async function readEmailCapability(): Promise<EmailMonitorCapability> {
     const status = await apiGet<GmailStatusResponse>(`/gmail/status?device_id=${identity.deviceId}`);
     return { checking: status.monitor_state === "checking", configured: status.configured, connected: status.connected, monitoringRequested: status.monitoring_enabled, lastCheckedAt: status.monitor_last_checked_at, lastSuccessAt: status.monitor_last_success_at, lastAssessmentAt: status.monitor_last_assessment_at, lastErrorAt: status.monitor_last_error_at };
   } catch {
-    return { checking: false, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastAssessmentAt: null, lastErrorAt: new Date().toISOString() };
+    // API request failed — this is "unable to verify", NOT "definitely disconnected".
+    // We don't have positive evidence that the email monitor is off; we simply couldn't check.
+    // lastErrorAt records when the observation failed so freshness logic can distinguish this.
+    return { checking: false, configured: true, connected: null, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastAssessmentAt: null, lastErrorAt: new Date().toISOString() };
   }
 }
 

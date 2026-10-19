@@ -173,11 +173,14 @@ function deriveCoverage(gates: GatePresentation[], capabilities: Capability[], p
   const setupAvailable = items.filter((i) => i.state === "setup_available").length;
   const unsupported = items.filter((i) => i.state === "unsupported").length;
   const failed = items.filter((i) => i.state === "temporarily_unavailable").length;
+  const unverified = items.filter((i) => i.state === "unknown" && i.isAutomatic).length;
   const totalAutomatic = automaticItems.length;
 
   let overall: ProtectionCoverage["overall"];
   if (failed > 0) {
     overall = "degraded";
+  } else if (unverified > 0) {
+    overall = "degraded"; // "unable to verify" is honest degradation, not full failure
   } else if (activeVerified === totalAutomatic && totalAutomatic > 0) {
     overall = "full";
   } else if (activeVerified > 0) {
@@ -387,6 +390,17 @@ function deriveProtectionPresentation(
       ? `${failedName} isn't working as expected. ${detail}`
       : `${failedName} isn't working as expected. I'm checking why and whether there's anything you need to do.`;
     return { protectionStatus: "action_needed", protectionGuidance: guidance };
+  }
+
+  // Unable to verify: Apollo couldn't check one or more gates. This is NOT "definitely off".
+  // "failure to observe ≠ observed failure"
+  const unverifiedItems = coverage.items.filter((i) => i.state === "unknown" && i.isAutomatic);
+  if (unverifiedItems.length > 0) {
+    const names = joinNames(unverifiedItems.map((i) => i.name));
+    return {
+      protectionStatus: "reduced",
+      protectionGuidance: `Apollo couldn't verify whether ${names} ${unverifiedItems.length === 1 ? "is" : "are"} working. This doesn't mean there's a threat — the check will be retried.`,
+    };
   }
 
   // Visibility lost (protection can't be verified) — not a threat.

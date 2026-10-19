@@ -16,7 +16,7 @@ import type { GateId } from "./gateRegistry";
 export type AutomaticCapabilityState =
   | "running" | "checking" | "permission_needed" | "setup_needed"
   | "off_by_choice" | "interrupted" | "temporarily_unavailable"
-  | "unsupported" | "not_activated";
+  | "unsupported" | "not_activated" | "unverified";
 
 export type OnDemandCapabilityState = "ready" | "temporarily_unavailable" | "unsupported";
 
@@ -93,6 +93,10 @@ export function resolveProtectionState(input: ProtectionStateInput): ResolvedPro
 
     case "temporarily_unavailable":
       return { statusLabel: "Unable to verify", tone: "unverified", coverageState: "active_unverified", isAutomatic: true };
+
+    case "unverified":
+      // "failure to observe ≠ observed failure" — Apollo couldn't verify the state.
+      return { statusLabel: "Unable to verify", tone: "unverified", coverageState: "unknown", isAutomatic: true };
 
     case "unsupported":
       return { statusLabel: "Unavailable", tone: "unavailable", coverageState: "unsupported", isAutomatic: true };
