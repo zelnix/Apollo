@@ -8,8 +8,6 @@ Magnum DI owns the investigation. See services/higgins/coordinator.py.
 """
 from __future__ import annotations
 
-import json
-import uuid
 import logging
 from typing import Any, Optional, List
 
@@ -20,7 +18,6 @@ from core.models import CallRiskRequest, CallRiskResponse
 from core.redaction import redact_investigation_secrets
 from services.phonerisk import check_phone_risk
 from services.investigation import purpose_limited_url
-from services.higgins import evidence as ev, repository as invest_repo, jobs as invest_jobs
 
 router = APIRouter()
 logger = logging.getLogger("apollo.call")
@@ -139,35 +136,16 @@ async def call_investigate(body: PhoneInvestigateRequest, request: Request):
         initial_findings.append(f"Caller claimed to be: {body.caller_claim}")
 
     try:
-        case = await invest_repo.create_case(owner, "call", None, initiator="user_check")
-        case_id = case["case_id"]
-        # Ingest evidence
-        for sub in submissions:
-            await ev.ingest_text(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", "submitted text"))
-        for idx, intel_item in enumerate(intel_evidence):
-            await ev.ingest_text(owner, case, f"intel-{idx}", json.dumps(intel_item, ensure_ascii=False, default=str),
-                                 origin="apollo_inference", label=intel_item.get("label", "Phone reputation observation"),
-                                 coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
-        for idx, finding in enumerate(initial_findings):
-            await ev.ingest_text(owner, case, f"apollo-finding-{idx}", finding,
-                                 origin="apollo_inference", label="Apollo initial finding",
-                                 coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
-        # Append intel summary to question
-        enriched_question = question
-        for item in intel_evidence:
-            enriched_question += f"\n\nPre-gathered specialist intelligence:\n- {item.get('label', 'Intel')}: {item.get('summary', '')}"
-        # Submit investigation turn
-        turn_id = str(uuid.uuid4())
-        key_digest = invest_repo.digest(f"{owner}:turn:call-{case_id}")
-        payload = {"message": enriched_question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
-        payload_digest = invest_repo.digest(json.dumps(payload, sort_keys=True))
-        job = await invest_repo.create_job(owner, case, turn_id, key_digest, payload_digest, "turn", payload)
-        await invest_repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},
-                              {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn_id}})
-        invest_jobs.launch(owner, case_id, job["job_id"])
+        from routers.investigations import _launch_investigation
+        case_id, job = await _launch_investigation(
+            owner, "call", question, submissions,
+            initial_findings=initial_findings,
+            intel_evidence=intel_evidence,
+            source_metadata={"type": "call", "number": body.phone_number[:30], "submitted_at": __import__("core.db", fromlist=["now_utc"]).now_utc().isoformat()},
+        )
         return PhoneInvestigateResponse(
             investigation_case_id=case_id,
-            job=invest_repo.job_view(job).wire() if job else None,
+            job=job,
             reputation=observation,
         )
     except Exception as exc:

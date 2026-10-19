@@ -15,10 +15,9 @@ import re
 import uuid
 from typing import Optional
 
-from core.db import db, now_utc
+from core.db import db
 from core.redaction import redact_investigation_secrets
 from services.higgins import evidence as ev
-from services.higgins import jobs
 from services.higgins import repository as repo
 from services.higgins.contracts import Submission, SubmitTurn
 
@@ -174,17 +173,12 @@ async def submit_to_investigation_pipeline(
         except Exception as exc:
             log.warning("higgins_pregather_failed case=%s error=%s", case_id[:12], type(exc).__name__)
 
-    # ── Submit first turn (investigation question) ───────────────────────────
+    # ── Submit first turn via canonical _submit_turn ────────────────────────
     job = None
     if question.strip():
+        from routers.investigations import _submit_turn
         turn = SubmitTurn(expected_revision=0, turn_id=str(uuid.uuid4()), message=question)
-        key_digest = repo.digest(f"{owner}:turn:higgins-submit-{case_id}")
-        payload_digest = repo.digest(question)
-        job = await repo.create_job(owner, case, turn.turn_id, key_digest, payload_digest, "turn",
-                                    {"message": question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn.turn_id})
-        await repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},
-                       {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn.turn_id}})
-        jobs.launch(owner, case_id, job["job_id"])
+        job = await _submit_turn(owner, case, turn, f"higgins-submit-{case_id}")
 
     log.info("higgins_pipeline_submit device=%s case=%s gate=%s", owner[:12], case_id[:12], gate)
 
