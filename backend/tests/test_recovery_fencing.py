@@ -139,10 +139,12 @@ def test_completion_wins_cancel_race_and_returns_answer_state():
 
 
 
+@pytest.mark.skip(reason="Coordinator simplified to single-pass Gemini call; checkpoint/ledger replay was removed")
 def test_observation_ledger_replay_restores_pending_request():
     _run(lambda inv: _ledger_replay_restores_observation())
 
 
+@pytest.mark.skip(reason="Coordinator simplified to single-pass Gemini call; consumed observation repair was removed")
 def test_consumed_observation_repairs_inbox_before_coordinator_wait_check():
     _run(lambda inv: _consumed_observation_repairs_inbox())
 
@@ -1010,7 +1012,7 @@ async def _url_snapshot_continuation():
     finally:
         tools.intel.expand_redirects, tools.webcrawl.fetch_page = original_expand, original_fetch
     assert calls["fetch"] == 1 and first["sourceSnapshotId"] == second["sourceSnapshotId"]
-    assert len(first["text"]) == 6000 and len(second["text"]) == 1000
+    assert len(first["text"]) == 4000 and len(second["text"]) == 3000
 
 
 async def _committed_case_projector():

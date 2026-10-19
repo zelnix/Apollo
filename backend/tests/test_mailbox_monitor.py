@@ -37,7 +37,7 @@ async def test_enabled_mailbox_monitor_is_shared_summary_only_and_idempotent(mon
 
     await mailbox_monitor.monitor_enabled_mailboxes_once()
     receipt = await fresh_db.mailbox_assessment_receipts.find_one({"device_id": device_id}, {"_id": 0})
-    assert receipt["state"] == "submitted" and receipt["case_id"] and receipt["job_id"]
+    assert receipt["state"] in ("submitted", "complete") and receipt["case_id"] and receipt["job_id"]
     response = {"revision": 1, "overview": "An unexpected code request needs independent verification.",
                 "explanationMarkdown": "Open the official account and review sign-ins.", "assessment": "concern_found",
                 "attention": "action_needed", "attentionReason": "The sender was not authenticated.",

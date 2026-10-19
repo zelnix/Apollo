@@ -121,7 +121,25 @@ def test_artefact_extraction():
     return passed, failed
 
 
-async def test_pipeline_submission():
+def _run(coro):
+    """Run an async function safely, reusing Motor's event loop if available."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+def test_pipeline_submission():
+    """Test that pipeline submission creates a case with correct initiator."""
+    _run(_pipeline_submission_impl())
+
+
+async def _pipeline_submission_impl():
     """Test that pipeline submission creates a case with correct initiator."""
     from core.db import db, now_utc
     from services.higgins import repository as repo
@@ -223,7 +241,7 @@ async def run_all():
     total_failed += f
 
     # Async tests
-    p, f = await test_pipeline_submission()
+    p, f = await _pipeline_submission_impl()
     total_passed += p
     total_failed += f
 

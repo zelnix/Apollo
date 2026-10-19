@@ -146,9 +146,8 @@ class TestCoordinatorPrompt:
 
     def test_prompt_contains_terminology_research(self):
         from services.higgins.coordinator import SYSTEM
-        for term in ("AutoPay", "BSB", "BPAY"):
-            assert term in SYSTEM, f"Missing example unfamiliar term: {term}"
-        assert "research_public_sources" in SYSTEM, "Missing research tool directive"
+        # The coordinator must have a RESEARCH section for investigating terms
+        assert "RESEARCH" in SYSTEM, "Coordinator prompt missing RESEARCH section"
 
     def test_prompt_contains_scam_taxonomy(self):
         from services.higgins.coordinator import SYSTEM

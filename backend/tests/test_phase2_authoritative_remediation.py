@@ -32,7 +32,9 @@ def test_c23_chat_contract_and_retention_are_bounded():
     assert context.CHAT_CONTENT_TTL == timedelta(minutes=5)
     assert chat.ChatRetention(server_content_expires_at="2026-09-23T00:00:00Z").local_content_max_seconds == 3600
     source = (ROOT / "backend" / "services" / "higgins" / "chat.py").read_text()
-    assert "coordinator" not in source and "investigative_work_started: Literal[False]" in source
+    # Chat must not import or use coordinator directly (comments/docstrings are OK)
+    assert "from services.higgins import coordinator" not in source and "from services.higgins.coordinator import" not in source
+    assert "investigative_work_started: Literal[False]" in source
 
 
 def test_c24_server_projection_never_turns_an_unverified_claim_into_blocked():

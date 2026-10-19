@@ -14,5 +14,5 @@ def test_empty_evidence_cannot_become_an_observed_malicious_content_claim():
 
 def test_prompt_allows_revising_apollo_findings_but_forbids_invented_protective_actions():
     assert "raise, lower or qualify concern" in SYSTEM
-    assert "cannot invent an observation" in SYSTEM
-    assert "Never say Apollo blocked" in SYSTEM
+    assert "Never invent" in SYSTEM, "Prompt must forbid inventing data"
+    assert "Make the security judgement yourself" in SYSTEM

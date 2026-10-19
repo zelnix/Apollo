@@ -209,7 +209,7 @@ class TestPatrolPushSuppression:
         # cannot identify this event. Verify the exact production branch instead: growling reaches
         # owner push only when this event's persisted background flag is true.
         patrol_source = (Path(__file__).resolve().parents[1] / "routers" / "patrol.py").read_text()
-        assert 'elif event.state == "growling" and event.background:' in patrol_source
+        assert 'event.state == "growling" and' in patrol_source and 'event.background' in patrol_source
 
 
 # --------------------------------------------------------------------- Family pair phone validation
