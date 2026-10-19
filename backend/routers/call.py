@@ -14,6 +14,7 @@ from typing import Any, Optional, List
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from core.db import now_utc
 from core.models import CallRiskRequest, CallRiskResponse
 from core.redaction import redact_investigation_secrets
 from services.phonerisk import check_phone_risk
@@ -141,7 +142,7 @@ async def call_investigate(body: PhoneInvestigateRequest, request: Request):
             owner, "call", question, submissions,
             initial_findings=initial_findings,
             intel_evidence=intel_evidence,
-            source_metadata={"type": "call", "number": body.phone_number[:30], "submitted_at": __import__("core.db", fromlist=["now_utc"]).now_utc().isoformat()},
+            source_metadata={"type": "call", "number": body.number[:30], "submitted_at": now_utc().isoformat()},
         )
         return PhoneInvestigateResponse(
             investigation_case_id=case_id,
