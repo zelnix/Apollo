@@ -17,7 +17,6 @@
 
 import { analyseUrlLocally } from "../domain/risk";
 import { analyseMessage, extractSignals } from "../domain/messageAnalysis";
-import { analysePage } from "../domain/pageAnalysis";
 import { assessBrand } from "../domain/brand";
 import { decide } from "../domain/decision";
 import { analyseEmail, parseEmail } from "../domain/emailAnalysis";
@@ -197,14 +196,8 @@ section("1C. Brand Detection");
   assert(r4.claimed?.name === "PayPal" && r4.isOfficial === false, "BRAND-04: paypal.tk → PayPal, not official");
 })();
 
-section("1D. Page Analysis — Wallet FP Fix");
 
-(() => {
-  const r1 = analysePage({ visible_url: "https://app.scamsite.xyz/connect", claimed_brand: null, page_type: "wallet", wallet_connect_request: true, asks_for: ["wallet_connect"], page_signals: [], payment_methods: [] } as any, "https://app.scamsite.xyz/connect");
-  assert(r1.state === "barking", "PAGE-01: wallet_connect_request → barking");
-  const r2 = analysePage({ visible_url: "https://app.uniswap.org/swap", claimed_brand: null, page_type: "wallet", wallet_connect_request: false, asks_for: [], page_signals: [], payment_methods: [] } as any, "https://app.uniswap.org/swap");
-  assert(r2.state !== "barking", "PAGE-02: wallet page WITHOUT connect → NOT barking");
-})();
+// Page Analysis tests removed in Stage 14 — local page verdict replaced by Magnum DI (Stage 13).
 
 
 // ═══════════════════════════════════════════════════════════════

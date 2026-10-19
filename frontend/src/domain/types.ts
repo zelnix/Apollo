@@ -105,14 +105,6 @@ export interface HigginsBriefing {
   version: string;
 }
 
-export interface Reassessment {
-  original_class: RecordClass | null;
-  new_class: RecordClass;
-  reassessed_at: string;
-  reason: string;
-  version: string;
-}
-
 export interface PatrolRecord {
   recordId: string; logicalIssueKey: string; revision: number; supersedes: string | null; sourceEventId: string; sourceType: string;
   category: string; headline: string; summary: string; rawState: string; effectiveState: PatrolDisplayState; effectiveReason: string;
