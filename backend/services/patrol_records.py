@@ -141,6 +141,12 @@ async def append(event: PatrolEventIn, verified: bool) -> dict[str, Any]:
     try:
         await db.patrol_records.insert_one(dict(row))
     except Exception:
+        # Concurrent revision race: another request won the same (owner_id, logical_issue_key, revision) slot.
+        # Try the actual colliding index first, then fall back to fingerprint match.
+        winner = await db.patrol_records.find_one(
+            {"owner_id": event.device_id, "logical_issue_key": logical_key, "revision": revision}, {"_id": 0})
+        if winner:
+            return winner
         winner = await db.patrol_records.find_one({"owner_id": event.device_id, "source_event_id": event.event_id, "source_fingerprint": fingerprint}, {"_id": 0})
         if winner:
             return winner

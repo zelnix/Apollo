@@ -1101,8 +1101,14 @@ async def _upload_control_fences_publication():
 
 async def _provider_call_guard():
     from services.higgins import provider
-    with pytest.raises(AssertionError, match="prohibited"):
-        await provider.generate("system", "prompt")
+    # Temporarily bypass mock mode to verify the env-var prohibition gate
+    original_mode = provider._PROVIDER_MODE
+    provider._PROVIDER_MODE = "live"
+    try:
+        with pytest.raises(AssertionError, match="prohibited"):
+            await provider.generate("system", "prompt", purpose="investigation")
+    finally:
+        provider._PROVIDER_MODE = original_mode
 
 
 async def _ordinary_chat_has_no_case_side_effect(_inv):

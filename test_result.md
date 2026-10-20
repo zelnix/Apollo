@@ -1,3 +1,46 @@
+## 2026-10-20 Backend Test Parallel Isolation Fix + Patrol Race Fix
+
+backend:
+  - task: "Fix pytest-xdist event-loop isolation: remove asyncio.run() wrappers from test_recovery_fencing.py and test_investigation_persistence.py, convert to native async tests"
+    implemented: true
+    working: true
+    file: "backend/tests/test_recovery_fencing.py, backend/tests/test_investigation_persistence.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: _run() wrappers using asyncio.run() create and destroy event loops, poisoning the session-scoped Motor client for subsequent tests on the same xdist worker. FIX: Removed _run() and asyncio.run() wrappers from test_recovery_fencing.py (43 tests) and test_investigation_persistence.py (3 tests). Converted all to native async def test_*() functions compatible with asyncio_mode=auto. Also fixed _provider_call_guard to temporarily bypass mock mode to test the APOLLO_FORBID_PROVIDER_CALLS env-var gate. Also fixed hardcoded BASE_URL in test_iter13_patrol_race.py to use EXPO_PUBLIC_BACKEND_URL from env. Full suite: 829 passed, 0 failed, 20 skipped across 3 consecutive runs."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: All test commands passed successfully. (1) Full suite: 829 passed, 20 skipped, 4 xfailed in 202.60s - no RuntimeError: Event loop is closed errors. (2) test_recovery_fencing.py under parallel mode (-n 2 --dist loadscope): 43 passed, 2 skipped in 2.10s - all tests are now native async, no asyncio.run() wrappers found. (3) test_investigation_persistence.py + test_retention_system.py under parallel mode: 12 passed, 4 skipped in 3.52s - cross-contamination test passed. Event-loop isolation fix is working correctly."
+  - task: "Fix DuplicateKeyError 500 under concurrent patrol event upsert (patrol_records revision race)"
+    implemented: true
+    working: true
+    file: "backend/services/patrol_records.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: In patrol_records.append(), two concurrent requests both compute revision=1, both try insert_one. Loser hits DuplicateKeyError on (owner_id, logical_issue_key, revision) unique index. Catch block only searched by source_fingerprint which differs between requests → winner=None → bare raise → 500. FIX: Added fallback winner lookup by (logical_issue_key, revision) — the actual colliding index — before the fingerprint-based lookup. Preserves existing evidence-binding, lifecycle, verified-block and Patrol-record behaviour. Verified: 15/15 sequential + 10/10 parallel runs of test_iter13_patrol_race.py pass (previously ~25% failure rate under concurrency)."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Patrol race tests passed 5/5 consecutive runs with no 500 errors. Each run: 3 passed in ~2-5s. Tests verified: (1) test_concurrent_upsert_same_event_id - concurrent POSTs with same event_id return 200, no 500s, exactly one row created. (2) test_sequential_upsert_updates_fields - sequential updates work correctly. (3) test_stress_5x_concurrent_no_500 - 5 concurrent requests all return 200. Code review confirms patrol_records.py lines 146-152 now has broadened winner lookup: first tries (logical_issue_key, revision) index, then falls back to fingerprint match. DuplicateKeyError race condition is resolved."
+
+test_plan:
+  current_focus:
+    - "Verify full backend suite passes under pytest -n 2 --dist loadscope with 0 failures"
+    - "Verify test_iter13_patrol_race.py stress tests pass with no 500s"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Fixed two issues: (1) Event-loop isolation in test_recovery_fencing.py and test_investigation_persistence.py by removing asyncio.run() wrappers and converting to native async tests. (2) Patrol records DuplicateKeyError race in patrol_records.py by broadening the winner lookup in the insert catch block. Full suite 829 passed 0 failed across 3 consecutive runs. Please verify."
+  - agent: "testing"
+    message: "VERIFICATION COMPLETE: Both fixes are working correctly. (1) Event-loop isolation: Full suite 829 passed with no RuntimeError: Event loop is closed. test_recovery_fencing.py (43 tests) and test_investigation_persistence.py (3 tests) all converted to native async, tested under parallel mode (-n 2 --dist loadscope) with no issues. (2) Patrol race fix: test_iter13_patrol_race.py passed 5/5 consecutive runs with no 500 errors. All concurrent upsert tests (concurrent_upsert_same_event_id, sequential_upsert_updates_fields, stress_5x_concurrent_no_500) passed consistently. Code review confirms broadened winner lookup in patrol_records.py. Both tasks marked as working=true, needs_retesting=false."
+
+
 ## 2026-09-23 Review closure
 
 ## 2026-10-08 BUGFIX — Ask Higgins chat 503 (response_schema additionalProperties)

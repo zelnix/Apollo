@@ -1,5 +1,4 @@
 """Persistence regressions for R01 (immutable accepted commit, crash repair) and R02 (late writes after deletion). No Gemini calls."""
-import asyncio
 import uuid
 from datetime import timedelta
 
@@ -32,30 +31,16 @@ async def _accepted_case(owner: str):
     return updated, job, commit, commit_id
 
 
-def _run(coro_fn):
-    """Each scenario runs in its own subprocess-free fresh loop with a fresh Motor client (the module-level client is loop-bound)."""
-    import importlib
-    import core.db as core_db
-    async def wrapped():
-        core_db.client = core_db.AsyncIOMotorClient(core_db.os.environ["MONGO_URL"])
-        core_db.db = core_db.client[core_db.os.environ["DB_NAME"]]
-        importlib.reload(repo); importlib.reload(jobs)
-        global db
-        db = core_db.db
-        await coro_fn()
-    asyncio.run(wrapped())
+async def test_crash_after_acceptance_is_repaired_without_second_conclusion():
+    await _crash_repair()
 
 
-def test_crash_after_acceptance_is_repaired_without_second_conclusion():
-    _run(_crash_repair)
+async def test_losing_attempt_cannot_overwrite_accepted_bundle_and_gc_keeps_referenced():
+    await _losing_attempt()
 
 
-def test_losing_attempt_cannot_overwrite_accepted_bundle_and_gc_keeps_referenced():
-    _run(_losing_attempt)
-
-
-def test_late_content_write_after_delete_is_rejected_and_not_publishable():
-    _run(_late_write)
+async def test_late_content_write_after_delete_is_rejected_and_not_publishable():
+    await _late_write()
 
 
 async def _crash_repair():
