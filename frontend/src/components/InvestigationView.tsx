@@ -568,9 +568,9 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
 
       {/* Unavailable / expired notice */}
       {ev.availability === "content_expired" ? (
-        <Text style={s.muted}>Content expired — original evidence was automatically deleted after 24 hours.</Text>
+        <Text style={s.muted}>Apollo&apos;s server copy was deleted after 24 hours. Your copy on this phone is kept until you delete it.</Text>
       ) : ev.availability !== "available" && ev.availability !== "content_expired" ? (
-        <Text style={s.muted}>{ev.availability === "purged" ? "Securely deleted." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
+        <Text style={s.muted}>{ev.availability === "purged" ? "Server copy deleted. Your copy on this phone is kept until you delete it." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
       ) : null}
 
       {/* Label — preserved original submission label */}

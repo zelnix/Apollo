@@ -1,3 +1,20 @@
+## Share pack, case numbers on rows, and the on-device evidence policy (2026-06)
+
+**Share beside Copy.** The Evidence Pack row now has "Copy facts & sources" + "Share" (`tc-evidence-share`, React Native
+`Share.share` with the pack text and the case id as title) so the pack can go straight into email, WhatsApp or Messages.
+
+**Case number on every Threats row.** `app/(tabs)/patrol.tsx` meta line reads `TC-2026-10745 | 15 Oct 2026, 9:00 pm | Device`.
+
+**OWNER POLICY — on-device evidence is never deleted automatically.** The original item the person submitted AND the redacted
+copy Apollo sent both stay on this phone until the person deletes the case, removes the original, or wipes all data. Only copies
+that leave the device are temporary. Code already behaved this way (`src/store/originalSource.ts`, `src/store/imageEvidence.ts`
+and `src/investigation/deviceStore.ts` have no TTL/expiry sweep); the WORDING was wrong and is now fixed:
+- `src/domain/privacyData.ts`: Higgins row clarifies the 15-minute erase applies to the copy on Apollo's services; new
+  "Evidence for your cases (this phone)" row states both copies are never deleted automatically.
+- `src/components/EvidencePopup.tsx`: "Evidence Content Expired" → "Server copy deleted", body/meta rows now say the server
+  copy was deleted and the phone copy is kept ("Server copy deleted" date row, status "Server copy deleted (24h). Device copy kept.").
+- `src/components/InvestigationView.tsx`: the expired/purged notices say the same.
+
 ## Threats row specificity + Evidence Pack + uncoloured Higgins report (2026-06)
 
 **Threats rows name the thing.** `subjectRowLabel(event)` (in `src/domain/threatSubject.ts`) returns "paypal-secure.top",

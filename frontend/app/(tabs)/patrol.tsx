@@ -36,6 +36,7 @@ import {
   STATUS_COLORS,
   categoryLabel,
   formatDateTime,
+  threatCaseId,
   type ThreatCaseStatus,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
@@ -182,8 +183,8 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
         <View style={s.cardContent}>
           <Text style={s.cardTitle} numberOfLines={2}>{title}</Text>
           {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
-          <Text style={s.cardMeta}>
-            {formatDateTime(event.occurred_at)}  |  {si.label}
+          <Text style={s.cardMeta} testID={`threat-card-${event.event_id}-meta`}>
+            {threatCaseId(event)}  |  {formatDateTime(event.occurred_at)}  |  {si.label}
           </Text>
         </View>
         <View style={s.cardRight}>

@@ -222,21 +222,21 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
               {/* Unavailable or expired evidence */}
               {selected.availability === "content_expired" ? (
                 <View style={[s.unavailable, { backgroundColor: colors.surfaceTertiary }]}>
-                  <Text style={[s.unavailableText, { fontFamily: fonts.textMedium }]}>Evidence Content Expired</Text>
+                  <Text style={[s.unavailableText, { fontFamily: fonts.textMedium }]}>Server copy deleted</Text>
                   <Text style={[s.unavailableText, { marginTop: spacing.xs }]}>
-                    This evidence was automatically deleted after 24 hours to protect your privacy.
-                    The investigation findings remain available in your saved report.
+                    Apollo&apos;s server copy of this evidence was deleted after 24 hours to protect your privacy.
+                    Your copy on this phone is kept until you delete it, and the investigation findings remain in your saved report.
                   </Text>
                   {selected.collectedAt ? (
                     <Text style={[s.unavailableText, { marginTop: spacing.xs, fontSize: 12 }]}>
-                      Acquired: {formatDate(selected.collectedAt)} · Expired: {formatDate(selected.expiresAt)}
+                      Acquired: {formatDate(selected.collectedAt)} · Server copy deleted: {formatDate(selected.expiresAt)}
                     </Text>
                   ) : null}
                 </View>
               ) : selected.availability !== "available" ? (
                 <View style={s.unavailable}>
                   <Text style={s.unavailableText}>
-                    {selected.availability === "purged" ? "This evidence has been securely deleted after the retention period."
+                    {selected.availability === "purged" ? "Apollo's server copy was deleted after its retention period. Your copy on this phone is kept until you delete it."
                       : selected.availability === "permission_required" ? "Access to this evidence requires additional permissions."
                       : "Evidence content is not currently available."}
                   </Text>
@@ -258,8 +258,8 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
                 <MetaRow label="Method" value={selected.provenance.acquisitionMethod.replace(/_/g, " ")} s={s} />
               ) : null}
               <MetaRow label="Collected" value={selected.collectedAt ? formatDate(selected.collectedAt) : formatDate(selected.expiresAt)} s={s} />
-              {selected.expiresAt ? <MetaRow label="Content expires" value={formatDate(selected.expiresAt)} s={s} /> : null}
-              {selected.availability === "content_expired" ? <MetaRow label="Status" value="Content deleted (24h privacy retention)" s={s} /> : null}
+              {selected.expiresAt ? <MetaRow label="Server copy deleted" value={formatDate(selected.expiresAt)} s={s} /> : null}
+              {selected.availability === "content_expired" ? <MetaRow label="Status" value="Server copy deleted (24h). Device copy kept." s={s} /> : null}
               {selected.mediaType ? <MetaRow label="Media type" value={selected.mediaType} s={s} /> : null}
               {selected.byteLength ? <MetaRow label="Size" value={formatBytes(selected.byteLength)} s={s} /> : null}
 

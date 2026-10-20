@@ -18,7 +18,7 @@ export interface RetentionItem {
 export const RETENTION_INVENTORY: RetentionItem[] = [
   { key: "higgins_conversations", label: "Higgins conversations", where: "service",
     what: "Your chat with Higgins and anything you deliberately sent him to look at.",
-    retention: "Kept until you clear chat or delete your data. Evidence you submit for a check is held only while that check runs and is erased within 15 minutes." },
+    retention: "Kept until you clear chat or delete your data. When evidence is sent for a check, that copy on Apollo's services is erased within 15 minutes — the original and the redacted copy stay on this phone until you delete them." },
   { key: "investigations", label: "Investigations & saved reports", where: "service",
     what: "Checks you ran and the reports Higgins produced.",
     retention: "Kept until you delete a report or delete all your data." },
@@ -37,6 +37,9 @@ export const RETENTION_INVENTORY: RetentionItem[] = [
   { key: "diagnostics", label: "Diagnostics & app signals", where: "service",
     what: "Device registration, protection-health checks and alert delivery records — no personal content.",
     retention: "Kept until you delete all your data." },
+  { key: "case_evidence", label: "Evidence for your cases (this phone)", where: "device",
+    what: "The original item you submitted and the redacted copy Apollo sent for a check — text, links, images and device readings.",
+    retention: "Never deleted automatically. Both copies stay on this phone until you delete the case, remove the original, or delete all your data." },
   { key: "local_only", label: "On this phone only", where: "device",
     what: "Your settings, saved checks, recent-check history and preferences stored only on this device.",
     retention: "Never leaves this phone. Erased when you delete all your data or uninstall Apollo." },

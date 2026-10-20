@@ -29,7 +29,7 @@ import Search from "lucide-react-native/icons/search";
 import Shield from "lucide-react-native/icons/shield";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useEffect, useState } from "react";
-import { Image, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
@@ -405,27 +405,46 @@ function useCaseInvestigation(event: PatrolEvent): DeviceInvestigation | null {
   return inv;
 }
 
-/** One-tap copy of the recorded facts + sources, for a bank, the police or family. */
+/** One-tap copy or share of the recorded facts + sources, for a bank, the police or family. */
 function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; facts: string[]; sources: CaseSource[] }) {
   const { showToast } = useApollo();
   const [copied, setCopied] = useState(false);
+  const pack = () => buildEvidencePack({ event, facts, sources });
   const copy = async () => {
-    const pack = buildEvidencePack({ event, facts, sources });
     try {
-      await Clipboard.setStringAsync(pack);
+      await Clipboard.setStringAsync(pack());
       setCopied(true);
       showToast("Facts and sources copied. Paste them into an email, message or report.", "neutral");
     } catch {
       showToast("Apollo couldn't copy to the clipboard on this device.", "growling");
     }
   };
+  const share = async () => {
+    try {
+      await Share.share({ message: pack(), title: `Apollo Threat Case ${threatCaseId(event)}` });
+    } catch {
+      showToast("Apollo couldn't open the share sheet on this device.", "growling");
+    }
+  };
   return (
-    <Button
-      testID="tc-evidence-pack"
-      variant="secondary"
-      label={copied ? "Copied — facts & sources" : "Copy facts & sources"}
-      onPress={() => void copy()}
-    />
+    <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      <View style={{ flex: 1 }}>
+        <Button
+          testID="tc-evidence-pack"
+          variant="secondary"
+          label={copied ? "Copied — facts & sources" : "Copy facts & sources"}
+          onPress={() => void copy()}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Button
+          testID="tc-evidence-share"
+          variant="secondary"
+          label="Share"
+          onPress={() => void share()}
+        />
+      </View>
+    </View>
   );
 }
 
