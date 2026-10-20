@@ -20,6 +20,7 @@ from core.config import HIBP_API_KEY, IPQS_API_KEY, SAFE_BROWSING_API_KEY
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
 from services.email import email_configured
+from services.investigation_projector import project_case_started
 from services.storage import storage_configured
 from routers.push import push_configured
 from services.higgins import evidence as ev
@@ -357,6 +358,11 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
             {"$set": {"source_metadata": _source_meta}})
 
     await repo.remember(owner, "create", key, payload_digest, {"caseId": case["case_id"]}, repo.utc(case["expires_at"]))
+
+    # The case is findable from the moment it starts: give it its patrol record now, so an
+    # investigation begun in Ask Higgins is listed in Threats while it runs, not only once it answers.
+    # Same deterministic event id the committed projection updates later — one record per case.
+    await project_case_started({**case, "source_metadata": _source_meta, "owner_id": owner})
 
     # ── Pre-gather specialist evidence for Magnum DI ──────────────────────────
     # Before the expensive Magnum DI reasoning begins, automatically gather all

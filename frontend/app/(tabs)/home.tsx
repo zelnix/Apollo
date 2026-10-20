@@ -362,24 +362,24 @@ export default function Home() {
               </View>
             </View>
             <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5} testID="home-hero-voice">{heroLine?.text ?? voice.text}</Text>
-            {heroLines.length > 1 ? (
-              <Pressable
-                onPress={() => setHeroIndex((i) => (i + 1) % heroLines.length)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={`Item ${heroIndex + 1} of ${heroLines.length}. Tap to see the next one.`}
-                style={s.heroDotsRow}
-                testID="home-hero-dots"
-              >
-                {heroLines.map((line, i) => (
-                  <View key={line.id} style={[s.heroDot, i === heroIndex && s.heroDotActive]} />
-                ))}
-                <Text style={s.heroDotsLabel}>{heroIndex + 1} of {heroLines.length}</Text>
-              </Pressable>
-            ) : null}
           </View>
         </Pressable>
         </GestureDetector>
+        {heroLines.length > 1 ? (
+          <Pressable
+            onPress={() => setHeroIndex((i) => (i + 1) % heroLines.length)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`Item ${heroIndex + 1} of ${heroLines.length}. Tap to see the next one.`}
+            style={s.heroDotsRow}
+            testID="home-hero-dots"
+          >
+            {heroLines.map((line, i) => (
+              <View key={line.id} style={[s.heroDot, i === heroIndex && s.heroDotActive]} />
+            ))}
+            <Text style={s.heroDotsLabel}>{heroIndex + 1} of {heroLines.length}</Text>
+          </Pressable>
+        ) : null}
 
         {/* Last completed Higgins check — links to the Device Check result */}
         <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>

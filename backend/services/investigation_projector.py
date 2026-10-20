@@ -21,6 +21,21 @@ from routers.push import push_owner_alert
 from services.higgins import repository as repo
 
 
+# Gate → patrol category. Every gate Apollo can open must map to a category the patrol record
+# accepts; an unmapped gate (e.g. "vision") previously failed validation and the case never reached
+# the Threats screen at all.
+GATE_CATEGORY: dict[str, str] = {
+    "text": "message", "message": "message", "vision": "message", "screenshot": "message",
+    "email": "email", "call": "call", "app": "app", "file": "file", "account": "account",
+    "device": "device", "network": "connection", "connection": "connection",
+    "link": "link", "site": "website", "website": "website", "family": "family",
+}
+
+
+def patrol_category(gate: str | None) -> str:
+    return GATE_CATEGORY.get(gate or "", "message")
+
+
 def _dog_state(response) -> str:
     if response.assessment == "no_concern_found_within_scope" and response.attention == "none":
         return "resting"
@@ -78,8 +93,7 @@ async def project_committed_cases(limit: int = 100) -> int:
         state = _dog_state(response)
         existing = await db.patrol_events.find_one({"device_id": case["owner_id"], "investigation_case_id": case["case_id"], "deleted_at": None}, {"_id": 0, "event_id": 1})
         event_id = existing["event_id"] if existing else str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-patrol:{case['owner_id']}:{case['case_id']}"))
-        gate = (case.get("gates") or ["text"])[0]
-        category = {"text": "message", "network": "connection", "file": "file", "link": "link", "site": "website"}.get(gate, gate)
+        category = patrol_category((case.get("gates") or ["text"])[0])
         findings = [redact_investigation_secrets(finding.text)[:400] for finding in response.findings[:6]]
         action = response.actions[0].instruction if response.actions else "Review the investigation details in Patrol."
         overview = redact_investigation_secrets(response.overview)
@@ -132,3 +146,62 @@ async def project_committed_cases(limit: int = 100) -> int:
         )
         projected += changed.modified_count
     return projected
+
+
+async def project_open_cases(limit: int = 100) -> int:
+    """Give every investigation a patrol record as soon as it starts.
+
+    An investigation started from Ask Higgins is a case the person should be able to find, follow and
+    come back to — not something that only appears once Magnum DI has answered. This writes the same
+    deterministic patrol event the committed projection later updates (same event_id), so there is one
+    record per case throughout, never two.
+
+    The placeholder states only what is true: Apollo is investigating. It carries no findings, no
+    assessment and no conclusion — those exist only once a response has been validated and committed.
+    """
+    query = {"deleted": False, "$or": [{"response_revision": {"$exists": False}}, {"response_revision": 0}]}
+    rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1,
+                                                 "created_at": 1, "updated_at": 1, "client_submission_id": 1,
+                                                 "source_metadata": 1, "initiator": 1}).limit(limit).to_list(limit)
+    projected = 0
+    for case in rows:
+        projected += 1 if await project_case_started(case) else 0
+    return projected
+
+
+async def project_case_started(case: dict) -> bool:
+    """Write the "investigating" patrol record for one case. Idempotent; safe to call at creation."""
+    # An investigation that began from an existing patrol event already has its record.
+    if case.get("client_submission_id"):
+        return False
+    if case.get("response_revision"):
+        return False
+    existing = await db.patrol_events.find_one(
+        {"device_id": case["owner_id"], "investigation_case_id": case["case_id"], "deleted_at": None},
+        {"_id": 0, "event_id": 1})
+    if existing:
+        return False
+    category = patrol_category((case.get("gates") or ["text"])[0])
+    indicators = await _resolve_intake_metadata(case)
+    event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-patrol:{case['owner_id']}:{case['case_id']}"))
+    document = {
+        "event_id": event_id, "device_id": case["owner_id"], "category": category,
+        # "sniffing": Apollo is looking. Not a finding, not an assessment.
+        "state": "sniffing", "status": "active",
+        "headline": "Apollo is investigating this",
+        "what_happened": "Higgins has started an investigation. Nothing has been established yet.",
+        "why": ["The investigation is still running."],
+        "what_to_do": "Nothing to do right now. Higgins will tell you as soon as the investigation finishes.",
+        "indicator_host": indicators["indicator_host"], "indicator_digest": None, "local_indicator": None,
+        "verified_block": False, "adapter_label": "Magnum DI investigation",
+        "occurred_at": case.get("created_at") or now_utc(), "resolved_at": None, "trust_allowed": False,
+        "claimed_brand": indicators["claimed_brand"], "scenario": indicators["scenario"], "scent_id": None,
+        "background": True, "investigation_case_id": case["case_id"], "client_submission_id": None,
+        "evidence_provenance": "server_projected", "source_metadata": case.get("source_metadata"),
+        "initiator": case.get("initiator", "unknown"), "deleted_at": None, "updated_at": now_utc(),
+    }
+    created_at = now_utc()
+    await db.patrol_events.update_one(
+        {"device_id": case["owner_id"], "event_id": event_id},
+        {"$set": document, "$setOnInsert": {"created_at": created_at}}, upsert=True)
+    return True

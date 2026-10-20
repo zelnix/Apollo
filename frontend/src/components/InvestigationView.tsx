@@ -30,9 +30,7 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { DiReport } from "@/src/components/DiReport";
-import { ReportScamHelper } from "@/src/components/ReportScamHelper";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
-import { findBrandIn } from "@/src/domain/reportingContacts";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -857,7 +855,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             steps: caseData.response.actions.map((a) => a.instruction ? `${a.label}: ${a.instruction}` : a.label),
             uncertainties: caseData.response.uncertainties,
           } : null} /> : null}
-          {caseData ? <ReportScamHelper caseKey={caseData.id} brand={caseData.response ? findBrandIn([caseData.response.overview, ...caseData.response.findings.map((f) => f.text)].join(" ")) : null} /> : null}
 
           {/* Original evidence items — with full source headers and inline content */}
           {originalEvidence.length ? <>

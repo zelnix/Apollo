@@ -98,10 +98,15 @@ function sourceIcon(cat: string, meta?: SourceMetadata | null) {
   }
 }
 
-function sourceTitle(event: PatrolEvent): string {
+function sourceTitle(event: PatrolEvent, original?: OriginalSource | null): string {
   const meta = event.source_metadata;
   if (meta?.subject) return meta.subject;
   if (meta?.preview) return meta.preview.length > 60 ? meta.preview.slice(0, 60) + "…" : meta.preview;
+  // The synced copy of this event is privacy-minimised ("a text message"). The real item is held on
+  // this device, so name it from that rather than leaving the person with a category.
+  const local = (original?.text ?? "").trim().replace(/\s+/g, " ");
+  if (local) return local.length > 60 ? local.slice(0, 60) + "…" : local;
+  if (original?.url) return original.url;
   if (meta?.url) return meta.url;
   if (event.headline && !looksLikeInternalCode(event.headline)) return event.headline;
   if (event.indicator_host) return event.indicator_host;
@@ -109,10 +114,12 @@ function sourceTitle(event: PatrolEvent): string {
   return categoryLabel(event.category) + " threat detected";
 }
 
-function sourceSubtitle(event: PatrolEvent): string {
+function sourceSubtitle(event: PatrolEvent, original?: OriginalSource | null): string {
   const meta = event.source_metadata;
   const parts: string[] = [];
+  const localSender = original?.fields?.find((f) => /from|sender|number/i.test(f.label))?.value;
   if (meta?.sender) parts.push(`From: ${meta.sender}`);
+  else if (localSender) parts.push(`From: ${localSender}`);
   else if (event.category === "call" && event.local_indicator) parts.push(event.local_indicator);
   else if (event.indicator_host) parts.push(event.indicator_host);
   else if (event.claimed_brand) parts.push(event.claimed_brand);
@@ -248,7 +255,7 @@ function CollapseSection({ icon, iconBg, iconFg, title, subtitle, badge, badgeCo
 
 // ── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent; status: ThreatCaseStatus; shownWhatToDo: string }) {
+function OverviewContent({ event, status, shownWhatToDo, original }: { event: PatrolEvent; status: ThreatCaseStatus; shownWhatToDo: string; original: OriginalSource | null }) {
   const s = useStyles();
   const { colors } = useTheme();
   const record = event.patrol_record;
@@ -259,10 +266,16 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
   // The actual thing this case is about — the recorded identifier when there is one, else the
   // finding statement itself. Never a category name.
   const subject = threatSubject(event);
+  const localSender = original?.fields?.find((f) => /from|sender|number/i.test(f.label))?.value?.trim();
+  const localText = (original?.text ?? "").trim();
   const headline = (event.headline || "").trim();
   const subjectLine = subject
     ? subjectDescriptor(subject)
-    : headline && !looksLikeInternalCode(headline) ? headline : categoryLabel(event.category, record?.recordClass);
+    : localSender
+      ? `${categoryLabel(event.category, record?.recordClass)} from ${localSender}`
+      : localText
+        ? localText.replace(/\s+/g, " ").slice(0, 80) + (localText.length > 80 ? "…" : "")
+        : headline && !looksLikeInternalCode(headline) ? headline : categoryLabel(event.category, record?.recordClass);
 
   // Higgins' summary of the evidence — what Apollo established, and what it means where that was
   // separately recorded. Never duplicated.
@@ -300,6 +313,21 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
           <Text style={s.reportBody} testID="tc-overview-todo">{todo}</Text>
         </View>
       </Card>
+
+      {/* The actual item being checked, held on this device and shown verbatim. While an
+          investigation is running this is the only thing Apollo can state as fact. */}
+      {localText || original?.url ? (
+        <Card style={{ gap: spacing.xs }} testID="tc-overview-checking">
+          <Text style={s.sectionTitle}>{status === "investigating" ? "What Apollo is checking" : "What Apollo checked"}</Text>
+          {localSender ? <Text style={s.reportBody} testID="tc-overview-checking-sender">From: {localSender}</Text> : null}
+          {localText ? (
+            <Text style={s.reportBody} testID="tc-overview-checking-text" selectable>
+              {redactInvestigationSecrets(localText)}
+            </Text>
+          ) : null}
+          {original?.url ? <Text style={s.reportBody} testID="tc-overview-checking-url" selectable>{purposeLimitedUrl(original.url)}</Text> : null}
+        </Card>
+      ) : null}
 
       {/* Current status / investigation progress */}
       {hasInvestigation || status === "investigating" ? (
@@ -1046,6 +1074,14 @@ export default function ThreatCaseScreen() {
   const { events, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  // The item itself, as held on this device. Nothing here comes from the server's minimised copy.
+  const [original, setOriginal] = useState<OriginalSource | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!id) return;
+    void getOriginalSource(id).then((o) => { if (active) setOriginal(o); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [id]);
 
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
@@ -1065,8 +1101,8 @@ export default function ThreatCaseScreen() {
   const status = threatCaseStatus(event);
   const statusColor = STATUS_COLORS[status];
   const si = sourceIcon(event.category, event.source_metadata);
-  const title = sourceTitle(event);
-  const subtitle = sourceSubtitle(event);
+  const title = sourceTitle(event, original);
+  const subtitle = sourceSubtitle(event, original);
 
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   const hasSubstantiveData = !!(event.what_happened && event.what_happened.length > 30);
@@ -1118,7 +1154,7 @@ export default function ThreatCaseScreen() {
       {/* Tab content */}
       <ScrollView contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xl }} testID="tc-scroll">
         {activeTab === "overview" ? (
-          <OverviewContent event={event} status={status} shownWhatToDo={shownWhatToDo} />
+          <OverviewContent event={event} status={status} shownWhatToDo={shownWhatToDo} original={original} />
         ) : activeTab === "evidence" ? (
           <EvidenceContent event={event} />
         ) : activeTab === "history" ? (
