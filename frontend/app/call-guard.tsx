@@ -220,7 +220,11 @@ export default function CheckNumber() {
   }, [deviceId, number, asks, claim, transcript]);
 
   // ── Bounded Magnum DI investigation with explicit lifecycle ──
-  const runBoundedInvestigation = useCallback(async () => {
+  // ── Bounded Magnum DI investigation with explicit lifecycle ──
+  // Accepts an optional `existingCaseId` — when checkNumberRisk already created a case,
+  // we skip the POST /call/investigate entirely and just poll for completion (exactly 0
+  // additional Gemini calls). Only when no case exists yet do we create one.
+  const runBoundedInvestigation = useCallback(async (existingCaseId?: string | null) => {
     // Abort any in-flight investigation
     if (investigationAbortRef.current) investigationAbortRef.current.abort();
     const abort = new AbortController();
@@ -232,18 +236,23 @@ export default function CheckNumber() {
     setInvestigationError(null);
 
     try {
-      const body = buildInvestigationBody();
-      const created = await apiPost<{ investigation_case_id?: string; job?: Record<string, unknown>; reputation?: Record<string, unknown> }>("/call/investigate", "call_investigate", body);
+      let caseId = existingCaseId ?? null;
 
-      if (abort.signal.aborted) return;
-
-      const caseId = created.investigation_case_id;
+      // Only create a NEW investigation if checkNumberRisk did not already create one.
       if (!caseId) {
-        // Case creation failed but reputation may be available
-        setInvestigationResult(created.reputation ? { type: "reputation_only", ...created.reputation } : null);
-        setInvestigationPhase(created.reputation ? "completed" : "failed");
-        setInvestigationError(created.reputation ? null : "Investigation could not be started. Reputation information is shown above.");
-        return;
+        const body = buildInvestigationBody();
+        const created = await apiPost<{ investigation_case_id?: string; job?: Record<string, unknown>; reputation?: Record<string, unknown> }>("/call/investigate", "call_investigate", body);
+
+        if (abort.signal.aborted) return;
+
+        caseId = created.investigation_case_id ?? null;
+        if (!caseId) {
+          // Case creation failed but reputation may be available
+          setInvestigationResult(created.reputation ? { type: "reputation_only", ...created.reputation } : null);
+          setInvestigationPhase(created.reputation ? "completed" : "failed");
+          setInvestigationError(created.reputation ? null : "Investigation could not be started. Reputation information is shown above.");
+          return;
+        }
       }
 
       // Poll for investigation completion
@@ -313,8 +322,11 @@ export default function CheckNumber() {
       });
 
       // Step 2: Full Magnum DI investigation (bounded lifecycle)
+      // CRITICAL FIX: checkNumberRisk already creates a Magnum DI case for risky numbers
+      // ("avoid" / "review"). Pass that case ID so runBoundedInvestigation polls it instead
+      // of creating a SECOND investigation (which was the double-Gemini-call bug).
       setBusy(false); // Reputation done — dismiss the checking modal
-      void runBoundedInvestigation();
+      void runBoundedInvestigation(riskResult.investigation_case_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not check this number. Please try again.");
       setBusy(false);

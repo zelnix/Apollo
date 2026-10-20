@@ -125,6 +125,9 @@ export interface CallRiskResult {
   decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured" | "unavailable";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
   assessment?: InvestigationResult | null;
+  /** Set by checkNumberRisk when it already created a Magnum DI case for this number.
+   *  Callers (e.g. call-guard manual flow) MUST poll this case instead of launching a second investigation. */
+  investigation_case_id?: string | null;
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -1049,6 +1052,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: number }], data: result });
       void syncEventRef.current?.(ev);
       showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
+      // Expose the case ID on the result so callers (e.g. call-guard manual flow) know an
+      // investigation is already in flight and MUST NOT launch a second one.
+      result.investigation_case_id = investigationCaseId;
     }
     return result;
   }, [deviceId, showToast]);

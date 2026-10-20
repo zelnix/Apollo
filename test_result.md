@@ -1,3 +1,76 @@
+## 2026-10-20 BUGFIX — Double Investigation Bug Fix in Call Guard Manual Flow
+
+backend:
+  - task: "POST /api/call/risk-check returns reputation data WITHOUT creating investigation"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST /api/call/risk-check returns 200 with reputation data (decision, fraud_score, number, etc.). IPQS is configured and working (source: ipqualityscore, fraud_score: 100 for test number +18007132618). Response does NOT contain investigation_case_id, confirming this endpoint does not create investigations. This is correct behavior - risk-check is for automatic protection only."
+  
+  - task: "POST /api/call/investigate creates investigation independently"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST /api/call/investigate returns 200 with investigation_case_id and job details. Investigation created successfully (case_id: 4530ed50-a33c-4b72-aa41-4f1655c448ec). Response also includes reputation data. This endpoint works independently as expected."
+  
+  - task: "POST /api/investigations works for general investigation creation"
+    implemented: true
+    working: true
+    file: "backend/routers/investigations.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST /api/investigations returns 201 with case and job details. Investigation created successfully for call gate with phone number submission. Case ID and job ID returned correctly."
+  
+  - task: "Regression: POST /api/link/investigate still works"
+    implemented: true
+    working: true
+    file: "backend/routers/analysis.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST /api/link/investigate returns 200 with investigation_case_id, url analysis, domain_info, and job details. Link investigation created successfully. No regression detected."
+  
+  - task: "Regression: POST /api/message/analyse still works"
+    implemented: true
+    working: true
+    file: "backend/routers/analysis.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST /api/message/analyse returns 200 with investigation_case_id and job details. Message analysis completed successfully. No regression detected."
+
+test_plan:
+  current_focus:
+    - "Verify /api/call/risk-check returns reputation WITHOUT creating investigation"
+    - "Verify /api/call/investigate creates investigation independently"
+    - "Verify /api/investigations works for call gate"
+    - "Verify regression tests for link and message gates"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "BACKEND VERIFICATION COMPLETE: All 5 backend API tests PASSED. (1) POST /api/call/risk-check correctly returns reputation data WITHOUT creating investigation - no investigation_case_id in response. IPQS configured and working (fraud_score: 100 for test number). (2) POST /api/call/investigate correctly creates investigation independently - returns investigation_case_id and job details. (3) POST /api/investigations works correctly for call gate submissions. (4) Regression test: POST /api/link/investigate works correctly - no regression. (5) Regression test: POST /api/message/analyse works correctly - no regression. The fix is primarily frontend code-path (checkNumberRisk() now sets investigation_case_id, runBoundedInvestigation() accepts existingCaseId). Backend endpoints unchanged and working correctly. No issues found. Test file: /app/backend_test.py"
+
+
 ## 2026-10-20 Preview vs Production Parity Investigation + ANALYSIS_VERSION revert
 
 backend:
