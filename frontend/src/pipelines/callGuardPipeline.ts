@@ -2,6 +2,8 @@
  * Call Guard Pipeline — owns the automatic call-screening polling loop.
  *
  * Observe → assess (reputation) → act (mark risky if warranted) → record factual result.
+ * When a number is flagged, a Magnum DI investigation is started and linked to the Threat Case
+ * (see checkNumberRisk in ApolloContext) so the Case has both reputation AND investigation data.
  *
  * Extracted from ApolloContext so that the context coordinates application state
  * rather than containing the detailed operational implementation of every Gate.
@@ -10,7 +12,6 @@
  * - Unknown reputation is NOT a threat (no Patrol event).
  * - Operational queue failures are protection-health issues, NOT security findings.
  * - Only "avoid" (high-risk) auto-blocks the number natively.
- * - Magnum DI is NEVER launched automatically for incoming calls.
  *
  * All native module access is injected via deps — this module does not import
  * platform-specific modules directly.

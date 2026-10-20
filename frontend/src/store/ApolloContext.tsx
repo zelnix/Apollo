@@ -1010,6 +1010,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const isAvoid = result.decision === "avoid";
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
       const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
+
+      // Create Magnum DI investigation FIRST so investigation_case_id is on the event from the start.
+      // This ensures the server-side projector finds and updates THIS event instead of creating a duplicate.
+      let investigationCaseId: string | null = null;
+      try {
+        const investigationResult = await apiPost<{ case_id?: string | null }>("/investigations", "number_risk_investigation", {
+          gate: "call",
+          question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
+          submissions: [{ client_item_id: "number-risk", kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
+          initial_findings: why,
+        });
+        investigationCaseId = typeof investigationResult.case_id === "string" ? investigationResult.case_id : null;
+      } catch { /* investigation is async — reputation data still stands */ }
+
       const ev: PatrolEvent = {
         ...(existing ?? {
           event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const, status: "active" as const,
@@ -1022,6 +1036,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           ? `Apollo checked ${result.number} and found strong signs of fraud/spam abuse (fraud score ${result.fraud_score ?? "unknown"}/100).`
           : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
         why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
+        investigation_case_id: investigationCaseId,
       };
       // Attach caller metadata from the risk check for display (country, carrier, line type).
       (ev as unknown as Record<string, unknown>).caller_meta = {
@@ -1033,13 +1048,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
       void saveOriginalSource([ev.event_id], { kind: "call", fields: [{ label: "Number", value: number }], data: result });
       void syncEventRef.current?.(ev);
-      // Stage 12: Fire-and-forget Magnum DI investigation for the risk-flagged number.
-      void apiPost("/investigations", "number_risk_investigation", {
-        gate: "call",
-        question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
-        submissions: [{ client_item_id: "number-risk", kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
-        initial_findings: why,
-      }).catch(() => { /* non-blocking */ });
       showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
     }
     return result;

@@ -97,6 +97,7 @@ function sourceTitle(event: PatrolEvent): string {
   if (meta?.url) return meta.url;
   if (event.headline && !looksLikeInternalCode(event.headline)) return event.headline;
   if (event.indicator_host) return event.indicator_host;
+  if (event.category === "call" && event.local_indicator) return `Call from ${event.local_indicator}`;
   return categoryLabel(event.category) + " threat detected";
 }
 
@@ -104,6 +105,7 @@ function sourceSubtitle(event: PatrolEvent): string {
   const meta = event.source_metadata;
   const parts: string[] = [];
   if (meta?.sender) parts.push(`From: ${meta.sender}`);
+  else if (event.category === "call" && event.local_indicator) parts.push(event.local_indicator);
   else if (event.indicator_host) parts.push(event.indicator_host);
   else if (event.claimed_brand) parts.push(event.claimed_brand);
   return parts.join(" · ");
@@ -307,6 +309,9 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
       <Card style={{ gap: 0 }} testID="tc-overview-facts">
         <FactRow icon={Shield} label="Detected" value={formatDateTime(event.occurred_at)} />
         <FactRow icon={MessageSquare} label="Source" value={sourceLabel(event)} />
+        {event.category === "call" && event.local_indicator ? (
+          <FactRow icon={Phone} label="Number" value={event.local_indicator} />
+        ) : null}
         <FactRow icon={CircleAlert} label="Category" value={categoryLabel(event.category, record?.recordClass)} />
         <FactRow icon={Search} label="Risk level" value={risk.label} valueColor={risk.color} isLast />
       </Card>

@@ -1,3 +1,41 @@
+## 2026-10-20 BUGFIX — Automatic Call Gate not linking Magnum DI investigation to Threat Case
+
+backend:
+  - task: "Verify _effective() returns 'resolved' for resolved events with any state (including biting)"
+    implemented: true
+    working: true
+    file: "backend/services/patrol_records.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "Already fixed in previous change — resolved/trusted check now comes before biting state check."
+
+frontend:
+  - task: "Fix automatic Call Gate → Magnum DI → Threat Case data flow"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/store/ApolloContext.tsx, frontend/app/patrol/[id].tsx, frontend/src/pipelines/callGuardPipeline.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "FIX: (1) checkNumberRisk now awaits the Magnum DI investigation POST, captures case_id, and updates the Patrol event with investigation_case_id — previously fire-and-forget. (2) Phone number (local_indicator) now shown in Overview facts and source header for call events. (3) Source title/subtitle updated to show phone number for call category. (4) Timestamps already use formatDateTime(toLocaleString) consistently. Frontend 206/206 regression pass, backend 829/829 pass."
+
+test_plan:
+  current_focus:
+    - "Verify automatic Call Gate risk check creates and links a Magnum DI investigation"
+    - "Verify phone number appears in Threat Case Overview for call events"
+    - "Verify /investigations endpoint returns case_id for call gate submissions"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Fixed automatic Call Gate data flow: checkNumberRisk now awaits the investigation POST and links the case_id to the Patrol event. Phone number now visible in Threat Case Overview. Please verify the /investigations endpoint works for call gate submissions and returns a case_id."
+
+
 ## 2026-10-20 BUGFIX — "Mark as contained" not persisting for blocked/biting events
 
 backend:
