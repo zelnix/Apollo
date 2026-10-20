@@ -43,58 +43,6 @@ def sub(kind: str, value: str, label: str = "") -> dict:
 # 1. PROMPT STRUCTURE TESTS
 # ================================================================
 
-class TestCoordinatorBriefingStandard:
-    """Verify the coordinator prompt contains the evidence-based briefing standard."""
-
-    def test_evidence_specific_language_requirement(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "EVIDENCE-SPECIFIC LANGUAGE" in SYSTEM
-        # Must instruct to use actual identities and never substitute generic warnings
-        assert "actual identities" in SYSTEM.lower() or "specific findings" in SYSTEM.lower()
-        assert "generic warnings" in SYSTEM.lower() or "generic" in SYSTEM.lower()
-
-    def test_positive_examples_present(self):
-        from services.higgins.coordinator import SYSTEM
-        # Must contain references to verifying claims and evidence-grounded investigation
-        assert "investigation" in SYSTEM.lower()
-        assert "evidence" in SYSTEM.lower()
-
-    def test_connect_evidence_to_deception(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "CONNECT EVIDENCE TO DECEPTION" in SYSTEM
-        assert "mechanism" in SYSTEM.lower() or "explain" in SYSTEM.lower()
-
-    def test_educate_through_investigation(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "EDUCATE THROUGH THE INVESTIGATION" in SYSTEM
-        assert "ABN" in SYSTEM  # Must know ABN context
-
-    def test_briefing_structure(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "Principal findings" in SYSTEM or "principal findings" in SYSTEM.lower()
-        assert "opening" in SYSTEM.lower()
-        assert "Assessment" in SYSTEM
-
-    def test_proportionate_depth(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "PROPORTIONATE DEPTH" in SYSTEM
-        # Must instruct that depth is proportionate to complexity
-        assert "straightforward" in SYSTEM.lower() or "complex" in SYSTEM.lower()
-
-    def test_accuracy_requirements(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "ACCURACY REQUIREMENTS" in SYSTEM
-        assert "Never invent company names" in SYSTEM
-        assert "Never present model knowledge as live verified research" in SYSTEM
-        # Must distinguish confirmed facts from inferences
-        assert "confirmed facts" in SYSTEM.lower() or "reasonable inferences" in SYSTEM.lower()
-
-    def test_financial_explanation_standard(self):
-        from services.higgins.coordinator import SYSTEM
-        # Coordinator must handle financial claims with evidence-specific approach
-        assert "registration" in SYSTEM.lower() or "licence" in SYSTEM.lower() or "financial" in SYSTEM.lower()
-
-
 class TestHigginsVoice:
     """Verify HIGGINS_VOICE contains the communication standard."""
 
@@ -159,29 +107,6 @@ class TestChatPrompt:
         from services.higgins.chat import SYSTEM
         assert "follow-up" in SYSTEM.lower() or "existing investigation" in SYSTEM.lower()
 
-
-class TestInvestigationPrompt:
-    """Verify investigation prompt alignment — now in the Magnum DI coordinator."""
-
-    def test_investigation_evidence_specific(self):
-        from services.higgins.coordinator import SYSTEM
-        # Coordinator prompt should contain evidence-grounded instructions
-        assert "evidence" in SYSTEM.lower()
-
-    def test_investigation_education(self):
-        from services.higgins.coordinator import SYSTEM
-        # Coordinator handles education through its investigation response
-        assert "explain" in SYSTEM.lower() or "investigation" in SYSTEM.lower()
-
-    def test_investigation_no_generic_warnings(self):
-        from services.higgins.coordinator import SYSTEM
-        # Coordinator should instruct against fabrication
-        assert "fabricat" in SYSTEM.lower() or "invent" in SYSTEM.lower() or "never claim" in SYSTEM.lower()
-
-
-# ================================================================
-# 2. OUTPUT DEPTH TESTS
-# ================================================================
 
 class TestOutputDepth:
     """Verify output token limits support comprehensive investigations."""

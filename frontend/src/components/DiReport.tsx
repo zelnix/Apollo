@@ -174,8 +174,9 @@ export function DiReport({ caseId }: { caseId: string | null }) {
                 The actual final request produced at the Gemini boundary. Attachments are the post-redaction form that
                 would be transmitted — originals are never shown here.
               </Text>
-              <DiBlock testID={`tc-di-system-${index}`} title="System / coordinator prompt" body={record.request.systemPrompt || "not recorded"} />
-              <DiBlock testID={`tc-di-prompt-${index}`} title="Investigation prompt and context" body={record.request.investigationPrompt || "not recorded"} />
+              <DiBlock testID={`tc-di-system-${index}`} title="System / coordinator prompt"
+                body={record.request.systemPrompt || "None. Apollo sends no system prompt: the request is the question, the case evidence, and the required response schema."} />
+              <DiBlock testID={`tc-di-prompt-${index}`} title="Question and evidence sent" body={record.request.investigationPrompt || "not recorded"} />
               <DiRow label="Tools:" value={(record.request.tools ?? []).join(", ") || "none"} />
               <DiRow label="Attachments:" value={String(record.request.attachmentCount ?? 0)} />
               {(record.request.attachments ?? []).map((a, i) => (

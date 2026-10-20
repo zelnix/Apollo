@@ -12,6 +12,8 @@ import uuid
 from typing import Optional
 
 import httpx
+import inspect
+
 import pytest
 
 from services.higgins.contracts import Gate
@@ -109,55 +111,48 @@ class TestVisionGateContract:
 
 # ------------------------------------------------------------------ coordinator prompt
 
-class TestCoordinatorPrompt:
-    """Verify the investigation framework is correctly embedded in the prompt."""
+class TestGeminiRequestContract:
+    """The investigation request contains exactly: the question, the complete evidence, the schema."""
 
-    def test_prompt_contains_universal_framework(self):
-        from services.higgins.coordinator import SYSTEM
-        required_sections = [
-            "SOURCE",
-            "IDENTITY",
-            "PURPOSE",
-            "SCAM MECHANISM",
-            "RESEARCH",
-            "CORROBORATION",
-            "ASSESSMENT",
-            "GUIDANCE",
-        ]
-        for section in required_sections:
-            assert section in SYSTEM, f"Missing investigation framework section: {section}"
+    def test_coordinator_has_no_system_prompt(self):
+        from services.higgins import coordinator
+        assert not hasattr(coordinator, "SYSTEM"), "the investigation request must carry no system prompt"
+        source = inspect.getsource(coordinator.run_turn)
+        assert 'provider.generate("", contents' in source, "the system argument must be empty"
+        assert "response_schema=RESPONSE_SCHEMA" in source, "the response shape must come from the schema"
+        assert "google_search" in inspect.getsource(coordinator), "Google Search stays attached as a tool"
 
-    def test_prompt_contains_evidence_classification(self):
-        from services.higgins.coordinator import SYSTEM
-        for basis in ("observation", "inference"):
-            assert basis in SYSTEM.lower(), f"Missing evidence basis: {basis}"
-        for conf in ("high", "medium", "low"):
-            assert conf in SYSTEM.lower(), f"Missing confidence level: {conf}"
+    def test_request_is_question_then_evidence(self):
+        from services.higgins import coordinator
+        source = inspect.getsource(coordinator.run_turn)
+        assert 'types.Part(text=payload["message"]), *evidence_parts' in source, \
+            "the request must be the question followed by the evidence parts"
+        assert "INVESTIGATION BRIEF" not in source, "the investigation brief must be gone"
+        assert "evidenceInventory" not in inspect.getsource(coordinator), "no second representation of evidence"
 
-    def test_prompt_contains_magnum_di_identity(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "Magnum DI" in SYSTEM, "SYSTEM prompt missing Magnum DI identity"
-        assert "investigate the situation" in SYSTEM.lower(), "Missing 'investigate the situation' directive"
+    def test_schema_matches_the_validator_contract(self):
+        from services.higgins.contracts import ModelResponse
+        from services.higgins.response_schema import RESPONSE_SCHEMA
+        schema_fields = set(RESPONSE_SCHEMA.properties.keys())
+        wire_fields = {field.alias or name for name, field in ModelResponse.model_fields.items()}
+        assert schema_fields == wire_fields, f"schema drift: {schema_fields ^ wire_fields}"
+        # extra="forbid" on the contract: the schema must not invite unknown fields
+        for name in ("overview", "explanationMarkdown", "assessment", "attention", "completion"):
+            assert name in (RESPONSE_SCHEMA.required or []), f"{name} must be required"
 
-    def test_prompt_requires_evidence_provenance(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "evidenceId" in SYSTEM or "evidenceIds" in SYSTEM, "Missing evidence provenance requirement"
-        assert "sourceId" in SYSTEM or "sourceIds" in SYSTEM, "Missing source provenance requirement"
+    def test_evidence_is_complete_and_labelled_once(self):
+        from services.higgins import evidence as ev
+        source = inspect.getsource(ev.model_parts)
+        assert "[evidence {row['evidence_id']} · kind={row['kind']}" in source, "evidence must carry id and kind"
+        assert "2000" not in source and "INLINE_TEXT_CHARS" not in source, "evidence must not be truncated"
+        assert "inventory" not in source, "evidence must not be duplicated into an inventory"
 
-    def test_prompt_contains_terminology_research(self):
-        from services.higgins.coordinator import SYSTEM
-        # The coordinator must have a RESEARCH section for investigating terms
-        assert "RESEARCH" in SYSTEM, "Coordinator prompt missing RESEARCH section"
-
-    def test_prompt_contains_scam_taxonomy(self):
-        from services.higgins.coordinator import SYSTEM
-        scam_types = ["impersonation", "phishing", "credential theft", "invoice fraud", "romance", "deepfake"]
-        for scam in scam_types:
-            assert scam.lower() in SYSTEM.lower(), f"Missing scam type: {scam}"
-
-    def test_prompt_corroboration_not_assumption(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "Unfamiliar is not automatically fraudulent" in SYSTEM, "Missing 'unfamiliar ≠ fraudulent' principle"
+    def test_triage_intelligence_is_registered_as_evidence(self):
+        from services.higgins import coordinator
+        source = inspect.getsource(coordinator._register_triage_evidence)
+        assert "triage_provider_evidence" in source
+        assert "compact_evidence_for_magnum_di" not in inspect.getsource(coordinator), \
+            "pre-gathered intelligence must be sent raw, not summarised"
 
 
 # ------------------------------------------------------------------ higgins voice

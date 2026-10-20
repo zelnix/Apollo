@@ -86,7 +86,7 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         listed = set(model.remaining_evidence_ids)
         unlisted = sorted(material_gaps - listed)
         if unlisted:
-            errors.append(f"completion 'complete' is not supported: evidence {unlisted[:4]} has unexamined material content. Read it with read_evidence, or set completion 'partial' and list it in remainingEvidenceIds")
+            errors.append(f"completion 'complete' is not supported: evidence {unlisted[:4]} has unexamined material content. Set completion 'partial' and list it in remainingEvidenceIds")
         else:
             errors.append(f"completion 'complete' is not supported: evidence listed in remainingEvidenceIds {sorted(material_gaps)[:4]} still has unexamined material content. Set completion 'partial'")
 

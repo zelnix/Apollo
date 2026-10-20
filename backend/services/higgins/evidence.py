@@ -24,7 +24,6 @@ MAX_CASE_BYTES = 64 * 1024 * 1024
 MAX_PAGES = 200
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_EXPANDED = 64 * 1024 * 1024
-INLINE_TEXT_CHARS = 24_000  # longer text is read by range through read_evidence
 READ_CHARS = 12_000  # Fix 2: capped from 30K; full text accessible via range pagination
 SUPPORTED = {"application/pdf": "document", "image/png": "image", "image/jpeg": "image", "text/plain": "text",
              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document"}
@@ -733,72 +732,45 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
         "coverage.status": "examined" if parent_complete else "partial", "coverage.materialGap": parent_gap or not parent_complete}})
 
 
-async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[int], end: Optional[int], pages: Optional[list[int]]) -> dict:
-    row = await repo.get_evidence(owner, case_id, evidence_id)
-    if row["kind"] in ("image", "document", "attachment", "audio"):
-        children = row.get("related_evidence_ids") or []
-        if row["kind"] == "image":
-            return {"evidenceId": evidence_id, "kind": "image", "note": "Image parts are supplied inline to the model; describe what you observe in the image itself.",
-                    "coverage": row["coverage"]}
-        if not children:
-            return {"evidenceId": evidence_id, "kind": row["kind"], "availability": "unavailable", "coverage": row["coverage"], "note": row["coverage"].get("reason")}
-        row = await repo.get_evidence(owner, case_id, children[0])
-        evidence_id = row["evidence_id"]
-    text = (await repo.read_bytes(owner, case_id, evidence_id)).decode("utf-8", errors="replace")
-    meta = await repo.evidence_meta(row)
-    if pages and meta.get("pages"):
-        selected = [p for p in meta["pages"] if p["page"] in pages]
-        if not selected:
-            return {"evidenceId": evidence_id, "error": "unknown page numbers", "availablePages": len(meta["pages"])}
-        start, end = selected[0]["start"], selected[-1]["end"]
-    start = max(0, start or 0)
-    end = min(len(text), end if end is not None else start + READ_CHARS, start + READ_CHARS)
-    return {"evidenceId": evidence_id, "totalCharacters": len(text), "start": start, "end": end, "content": text[start:end],
-            "hasMore": end < len(text), "pages": meta.get("pages", [])[:MAX_PAGES] if pages is None and meta.get("pages") else None,
-            "pageInventory": {"total": len(meta.get("pages", [])), "returned": min(MAX_PAGES, len(meta.get("pages", []))),
-                              "hasMore": len(meta.get("pages", [])) > MAX_PAGES} if pages is None and meta.get("pages") else None,
-            "_pendingMark": [evidence_id, start, end, len(text)]}  # applied by the coordinator after the model has actually received this range
+async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[tuple[str, int, int, int]]]:
+    """The complete case evidence as Gemini parts, each labelled with its id and kind.
 
+    The request sent to Gemini is: the person's question, this evidence, and the response schema.
+    Therefore:
+    - Evidence is sent COMPLETE. Text is not truncated and nothing is summarised or filtered.
+    - Each item appears ONCE. An image is sent as its bytes with a single identifying line; it is
+      never also described in a second, textual representation.
+    - The label carries only the identifier and kind, so findings can cite real evidenceIds. It is
+      not instruction or interpretation.
+    - Unavailable items are named, with the recorded reason, so the absence is visible and their ids
+      stay referable — Apollo never silently drops evidence it holds but cannot supply.
 
-async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[dict], list[tuple[str, int, int, int]]]:
-    """Inline short text and images; long text is summarised by inventory and read by range via tools.
-    Returns pending examination marks (evidence_id, start, end, total) to apply only after Gemini succeeds.
+    Returns the parts and the pending examination marks (evidence_id, start, end, total), applied
+    only after Gemini succeeds.
 
-    Privacy: This function assembles evidence for INVESTIGATION purpose only.
-    - Text content is credential-stripped by the provider boundary before the Gemini call.
-    - Submitted images are analysed: the device redacts detected credentials (or refuses to send the image) before
-      upload; document-derived images pass the pre-transmission credential text-layer check.
-    - The Gemini gateway applies enforce_boundary(Purpose.INVESTIGATION, ...) to all text parts.
-    - Images containing visual-only credential content are a documented limitation.
-    - The person authorised the investigation by submitting the evidence; Gemini receives it
-      for the authorised case through the single privacy-enforced gateway.
+    Privacy: text parts are credential-stripped by the provider boundary before the call; images were
+    screened and redacted on the device (or refused) before upload. Images carrying visual-only
+    credential content remain a documented limitation.
     """
-    parts, inventory, marks = [], [], []
+    parts: list[types.Part] = []
+    marks: list[tuple[str, int, int, int]] = []
     for row in rows:
-        entry = {"evidenceId": row["evidence_id"], "kind": row["kind"], "origin": row["origin"], "label": row.get("label", ""), "parentId": row.get("parent_id"),
-                 "availability": row["availability"], "coverage": row["coverage"], "simulation": row.get("simulation"), "transformations": row.get("transformations", [])}
-        if row.get("clue_inventory"):
-            entry["clueInventory"] = row["clue_inventory"]
+        label = f"[evidence {row['evidence_id']} · kind={row['kind']}"
+        if row.get("label"):
+            label += f" · {row['label']}"
         if row["availability"] != "available":
-            inventory.append(entry)
+            reason = (row.get("coverage") or {}).get("reason") or row["availability"]
+            parts.append(types.Part(text=f"{label} · unavailable: {reason}]"))
             continue
+        label += "]"
         if row["kind"] in ("text", "url", "observation", "source_snapshot"):
             text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
-            if len(text) <= INLINE_TEXT_CHARS:
-                entry["content"] = text
-                if row["coverage"].get("unit") == "characters":
-                    marks.append((row["evidence_id"], 0, len(text), len(text)))
-            else:
-                entry["content"] = text[:2000]
-                entry["note"] = f"{len(text)} characters total; only the first 2000 are inline. Use read_evidence with ranges/pages to examine the rest before concluding."
-                marks.append((row["evidence_id"], 0, 2000, len(text)))
+            parts.append(types.Part(text=f"{label}\n{text}"))
+            if row["coverage"].get("unit") == "characters":
+                marks.append((row["evidence_id"], 0, len(text), len(text)))
         elif row["kind"] == "image":
-            # Image evidence submitted for this investigation (credentials handled on-device before upload).
-            # Only images with availability=="available" reach here.
-            transformations = row.get("transformations", [])
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
+            parts.append(types.Part(text=label))
             parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
-            entry["note"] = "submitted image supplied inline (previous part)"
             marks.append((row["evidence_id"], 0, len(data), len(data)))
-        inventory.append(entry)
-    return parts, inventory, marks
+    return parts, marks

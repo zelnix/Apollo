@@ -319,13 +319,12 @@ class TestEvidenceIntegrity:
 # ── 7. System Prompt Verification ───────────────────────────────────────────
 
 class TestSystemPromptStandard:
-    """Verify system prompts contain the essential investigation and communication framework."""
+    """Chat keeps its system prompt. The INVESTIGATION request deliberately has none — its required
+    response shape is carried by `response_schema.py` (see test_magnum_di_acceptance.py)."""
 
-    def test_coordinator_system_prompt(self):
-        from services.higgins.coordinator import SYSTEM
-        # Magnum DI investigation framework sections
-        for section in ["SOURCE", "IDENTITY", "PURPOSE", "SCAM MECHANISM", "RESEARCH", "CORROBORATION", "ASSESSMENT", "GUIDANCE"]:
-            assert section in SYSTEM, f"Coordinator system prompt must contain {section}"
+    def test_investigation_request_has_no_system_prompt(self):
+        from services.higgins import coordinator
+        assert not hasattr(coordinator, "SYSTEM")
 
     def test_chat_system_prompt(self):
         from services.higgins.chat import SYSTEM
@@ -333,16 +332,6 @@ class TestSystemPromptStandard:
         assert "APOLLO DETECTS" in SYSTEM
         assert "COMMUNICATES" in SYSTEM or "EXPLAINS" in SYSTEM
         assert "SCOPE" in SYSTEM
-
-    def test_coordinator_prohibits_fabrication(self):
-        from services.higgins.coordinator import SYSTEM
-        assert "invent" in SYSTEM.lower() or "fabricat" in SYSTEM.lower() or "never say Apollo blocked" in SYSTEM
-
-    def test_coordinator_requires_directive_language(self):
-        from services.higgins.coordinator import SYSTEM
-        # The coordinator must require evidence-specific explanations and proportionate guidance
-        assert "make the security judgement yourself" in SYSTEM.lower() or "Make the security judgement yourself" in SYSTEM
-        assert "EVIDENCE-SPECIFIC" in SYSTEM or "evidence-specific" in SYSTEM.lower()
 
     def test_chat_read_only_restrictions(self):
         from services.higgins.chat import SYSTEM

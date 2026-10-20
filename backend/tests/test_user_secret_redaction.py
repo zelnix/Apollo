@@ -6,11 +6,7 @@ simplified Higgins architecture (deterministic context routing + single Gemini c
 """
 from pathlib import Path
 
-def test_higgins_prompt_forbids_requesting_or_repeating_secrets():
-    from services.higgins.coordinator import SYSTEM
-    # Coordinator must forbid asking for user secrets
-    assert "Never ask for passwords" in SYSTEM or "Never invent" in SYSTEM, \
-        "Coordinator prompt must forbid requesting or inventing secret data"
+def test_secrets_are_redacted_before_they_reach_the_provider():
     # Chat module must redact secrets from investigation content
     chat_source = (Path(__file__).resolve().parents[1] / "services" / "higgins" / "chat.py").read_text()
     assert "redact_investigation_secrets" in chat_source, \

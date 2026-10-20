@@ -12,6 +12,7 @@ from google.genai import types
 from core.config import GEMINI_API_KEY
 from core.redaction import redact_investigation_secrets
 from services.higgins import coordinator, provider, report_store
+from services.higgins.response_schema import RESPONSE_SCHEMA
 from services.higgins.validation import validate
 
 EVIDENCE_ID = "health-fixture-observation"
@@ -23,7 +24,7 @@ PROMPT = ("HEALTH_CHECK (synthetic, not a user submission): A fictional practice
           "Use only evidence ID health-fixture-observation for cited observations; no sources, "
           "capabilities, questions, URLs or external lookups. Return the full Higgins JSON contract, "
           "completion complete, attention none, assessment uncertain. Never claim Apollo blocked anything.")
-SYSTEM = coordinator.SYSTEM + "\nHEALTH_CHECK: fixed synthetic input only. Do not call tools, fetch public sources, or claim an actual device observation."
+# No system prompt: like a real investigation, the required response shape is carried by the schema.
 
 
 class HealthFailure(Exception):
@@ -65,8 +66,9 @@ async def investigate() -> dict:
     if not GEMINI_API_KEY:
         raise HealthFailure("provider_not_configured")
     try:
-        result = await provider.generate(SYSTEM, [types.Content(role="user", parts=[types.Part(text=PROMPT)])],
-                                         json_output=True, capability="json", model=provider.TEXT_MODEL, purpose=provider.Purpose.INVESTIGATION, correlation_id="health-check", trigger_source="health_check")
+        result = await provider.generate("", [types.Content(role="user", parts=[types.Part(text=PROMPT)])],
+                                         json_output=True, response_schema=RESPONSE_SCHEMA, capability="json", model=provider.TEXT_MODEL,
+                                         purpose=provider.Purpose.INVESTIGATION, correlation_id="health-check", trigger_source="health_check")
     except provider.ProviderFailure as exc:
         code = "provider_timeout" if exc.code in ("timeout", "budget_exhausted") else "provider_unavailable"
         raise HealthFailure(code) from None

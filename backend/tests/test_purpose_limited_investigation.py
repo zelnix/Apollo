@@ -32,10 +32,18 @@ def test_deterministic_extraction_finds_actual_concern():
     assert any("8000" in p for p in entities.callback_details)
 
 
-def test_dns_failure_cannot_be_rewritten_as_site_inactive():
-    # The rule lives in the coordinator prompt: a DNS failure is a limitation, not takedown or safety.
-    from services.higgins.coordinator import SYSTEM
-    assert "DNS failure" in SYSTEM and "not proof of fraud, takedown or safety" in SYSTEM
+def test_unsupported_observation_cannot_become_a_finding():
+    """A DNS failure, unreachable page or empty reputation is a limitation, not proof. With no prompt
+    to state that, the enforcement is the validator: an 'observation' finding must cite real evidence."""
+    from services.higgins.validation import validate
+    body = {"overview": "o", "explanationMarkdown": "e", "assessment": "concern_found", "attention": "review",
+            "attentionReason": "r", "findings": [{"text": "The site is inactive.", "basis": "observation",
+            "confidence": "high", "evidenceIds": [], "sourceIds": [], "supersedesFindingIds": []}],
+            "uncertainties": ["dns"], "scope": "s", "sourceIds": [], "remainingEvidenceIds": [], "actions": [],
+            "recommendedActionIndex": None, "question": None, "completion": "complete"}
+    response, errors = validate(body, revision=1, evidence_ids=set(), source_ids=set(), capability_ids=set(),
+                               pending_question=None, provider_complete=True)
+    assert response is None and any("observation" in e for e in errors)
 
 
 @pytest.mark.asyncio

@@ -2221,3 +2221,21 @@ Sample rows read as "not tappable" on a real device because the filled field sit
 ## DI tab — copy the Gemini request and response (Jun 2026)
 `src/domain/diTransactionText.ts` (new, pure) renders one DI transaction as plain text: `diRequestText()` = everything the "Sent to Gemini" card shows (system prompt, investigation prompt, tools, attachment metadata, payload size) and `diResponseText()` = the complete response plus finish reason and the recorded processing/cost statistics. Attachment bodies are never included — only the recorded metadata.
 `DiReport.tsx` puts a Copy button in each of those two card headers (`tc-di-request-copy-N`, `tc-di-response-copy-N`): tap copies, long-press shares, button shows "Copied" for 3s and the toast says where to paste. Simulated transactions are labelled as the simulator response and keep the "no Gemini API call was made" note in the copied text.
+
+## Gemini investigation request rewritten (Jun 2026)
+The Magnum DI request now contains exactly three things and nothing else:
+1. **Question** — the person's message, once, as the first part.
+2. **All case evidence** — complete. `evidence.model_parts()` sends each item once, labelled `[evidence <id> · kind=<kind> · <label>]`, with the FULL text (the 2,000-char inline cut and `INLINE_TEXT_CHARS` are gone). Images are sent as bytes with a single identifying line — no second textual description. Unavailable items are named with their recorded reason so their ids stay referable.
+3. **Response schema** — `services/higgins/response_schema.py` (`RESPONSE_SCHEMA`, Gemini structured output). The required shape is stated ONLY there; it is never repeated or explained in the prompt. A test asserts the schema's properties equal `ModelResponse`'s wire fields exactly, so drift fails fast.
+
+Removed: the entire `coordinator.SYSTEM` prompt (Magnum DI framework, Higgins briefing standard, JSON-shape instructions), the `INVESTIGATION BRIEF (JSON)` block (device profile, previous turns, open question, registered sources, evidence inventory) and the summarised triage intelligence. `health_check.py` also sends no system prompt and uses the same schema.
+
+Kept: **Google Search** as a tool — verified against current Google docs (2026-10-20): Gemini 3 models support structured outputs combined with built-in tools including Google Search, and the app runs `gemini-3.8-flash`. (An earlier web search claiming incompatibility was wrong; the docs page `ai.google.dev/gemini-api/docs/structured-output` §"Structured outputs with tools" is authoritative.)
+
+Apollo's pre-gathered specialist intelligence (RDAP, Safe Browsing, IPQualityScore, HIBP) is now registered **as case evidence**, verbatim, by `coordinator._register_triage_evidence()` (client item id `apollo-triage-intelligence`, kind `observation`, origin `apollo_inference`, idempotent) so it is sent whole and can be cited — never summarised into a prompt.
+
+Dead code removed with it: `read_evidence` function declaration + dispatch branch and `evidence.read_text()` (the range-reading path had no remaining caller), plus the obsolete prompt-text tests (`test_round1_investigation_prompt.py` deleted; prompt assertions in `test_higgins_authority.py`, `test_higgins_briefing_acceptance.py`, `test_purpose_limited_investigation.py`, `test_user_secret_redaction.py` replaced with runtime/validator assertions).
+
+DI tab now states plainly that no system prompt is sent, and the request card reads "Question and evidence sent".
+
+Tests: `tests/test_gemini_request_shape.py` (new, 2) proves system == "", question first and once, every following part labelled, full text present, triage intel raw, schema attached, validator accepts the response; `test_magnum_di_acceptance.py` gained `TestGeminiRequestContract` (5). 97 pass across the six affected files. Pre-existing unrelated failure: `test_recovery_fencing.py::test_committed_case_projects_once_into_patrol_without_model_call` ('vision' category literal).
