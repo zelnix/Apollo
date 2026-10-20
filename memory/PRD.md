@@ -1914,3 +1914,10 @@ GTK/pkg-config dependency (container limitation), not a code error.
 - Server-investigated sources (monitored email, captured texts): ApolloContext downloads root user_submission evidence content once (before 24h expiry) and saves it.
 - Evidence tab shows OriginalSourceView first inside the Original card (fallback explains originals not saved for older cases). InvestigationView Evidence also shows it.
 - Reopen case: patrol/[id] "Reopen case" (confirm) on resolved cases → reopenEvent: local + PATCH /patrol/events/{id} {reopen:true}; merge honours reopened_at; patrol_records appends new revision when returning to an earlier payload. Tests: tests/test_reopen_case.py.
+
+## Government feed edge blocks (Akamai) — fingerprint + proxy rotation (Jun 2026)
+- services/outbound.py: `public_get` now rotates 4 header profiles (Apollo bot UA → bot-style Mozilla → desktop Chrome → iOS Safari) when an edge answers 403/406/429/503 or drops the connection; the winning profile is remembered per host (`_host_profile`) so healthy feeds cost one attempt. All profiles keep `Accept-Encoding: identity` (bounded reader still refuses compressed bodies). Read timeout raised to 8s (connect 4s).
+- Optional egress proxies: set `OUTBOUND_PROXIES` (comma separated) in the production backend env; each proxy is tried with every header profile. Empty/unset = direct egress (unchanged). SSRF guard unchanged: the target is still resolved and validated as public before any request, and pinned-IP connect is only skipped when a proxy terminates the hop.
+- Preview verified: scamwatch.gov.au 200 (HEAD 403 → GET 200, profile 0 sticky), consumer.ftc.gov 200. cyber.gov.au returns 403 on all 4 fingerprints = pod-IP block, needs a proxy.
+- Tests: tests/test_p0_outbound_unit.py (rotation + sticky, transport fallthrough, proxy env parsing). Full suite 832 passed.
+- Production needs a redeploy for this to take effect; if Scamwatch still 403s in prod, the prod IP is IP-blocked and `OUTBOUND_PROXIES` must be set.

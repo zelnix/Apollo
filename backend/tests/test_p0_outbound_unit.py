@@ -197,7 +197,7 @@ async def test_head_405_then_get_headers_only_no_body_consumption(monkeypatch):
     methods: list[str] = []
 
     @asynccontextmanager
-    async def _fake_stream(method: str, _url: str):
+    async def _fake_stream(method: str, _url: str, **_kwargs):
         methods.append(method)
         if method == "HEAD":
             yield _Resp(status=405, headers={"content-length": "9999999"}, chunks=[])
@@ -288,3 +288,55 @@ async def test_concurrency_permit_released_after_failure(monkeypatch):
     assert ok.status_code == 200
     assert ok.content == b"ok"
     outbound._slots = original
+
+@pytest.mark.asyncio
+async def test_blocked_edge_rotates_fingerprint_and_sticks_to_winner(monkeypatch):
+    """403 from the edge must be retried with the next header profile, then remembered."""
+    seen: list[int] = []
+
+    @asynccontextmanager
+    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None):
+        if method == "GET":
+            seen.append(profile)
+        status = 403 if profile == 0 else 200
+        yield _Resp(status=status, headers={"content-length": "2"}, chunks=[b"ok"] if method == "GET" else [])
+
+    outbound._host_profile.pop("example.com", None)
+    monkeypatch.setattr(outbound, "public_stream", _fake_stream)
+
+    first = await outbound.public_get("https://example.com/feed")
+    assert first.status_code == 200
+    assert seen == [0, 1]
+    assert outbound._host_profile["example.com"] == 1
+
+    seen.clear()
+    second = await outbound.public_get("https://example.com/feed")
+    assert second.status_code == 200
+    assert seen == [1]  # sticky: the known-good fingerprint is tried first
+    outbound._host_profile.pop("example.com", None)
+
+
+@pytest.mark.asyncio
+async def test_transport_failure_falls_through_to_next_profile(monkeypatch):
+    attempts: list[int] = []
+
+    @asynccontextmanager
+    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None):
+        attempts.append(profile)
+        if profile == 0:
+            raise outbound.httpx.ReadTimeout("hung")
+        yield _Resp(status=200, headers={"content-length": "2"}, chunks=[b"ok"] if method == "GET" else [])
+
+    outbound._host_profile.pop("example.com", None)
+    monkeypatch.setattr(outbound, "public_stream", _fake_stream)
+    result = await outbound.public_get("https://example.com/feed")
+    assert result.status_code == 200
+    assert attempts[0] == 0 and 1 in attempts
+    outbound._host_profile.pop("example.com", None)
+
+
+def test_proxy_rotation_reads_environment(monkeypatch):
+    monkeypatch.delenv("OUTBOUND_PROXIES", raising=False)
+    assert outbound._proxies() == [None]
+    monkeypatch.setenv("OUTBOUND_PROXIES", "http://a:3128, http://b:3128")
+    assert outbound._proxies() == ["http://a:3128", "http://b:3128"]

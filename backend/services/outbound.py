@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
+import os
 import socket
 from contextlib import asynccontextmanager
 from urllib.parse import urljoin, urlsplit
@@ -16,6 +18,55 @@ import httpx
 MAX_BYTES = 1_500_000
 _slots = asyncio.Semaphore(8)
 REDIRECTS = {301, 302, 303, 307, 308}
+# Edge/WAF rejections worth retrying with a different client fingerprint.
+BLOCKED_STATUS = {403, 406, 429, 503}
+logger = logging.getLogger("apollo")
+
+# Request fingerprints tried in order until an edge stops refusing us. Every profile keeps
+# `Accept-Encoding: identity` because the bounded reader refuses compressed bodies.
+HEADER_PROFILES: tuple[dict[str, str], ...] = (
+    {'User-Agent': 'Apollo-Security-Check/1.0'},
+    {
+        'User-Agent': 'Mozilla/5.0 (compatible; Apollo-Security-Check/1.0; +https://apollo.security/bot)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-AU,en;q=0.9',
+    },
+    {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-AU,en;q=0.9',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+    },
+    {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 '
+                      '(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-AU,en;q=0.9',
+    },
+)
+
+# Sticky per-host fingerprint: once a profile works we keep using it instead of re-probing.
+_host_profile: dict[str, int] = {}
+
+
+def _proxies() -> list[str | None]:
+    """Optional egress proxies (comma separated in OUTBOUND_PROXIES); direct egress when unset."""
+    raw = [item.strip() for item in os.environ.get('OUTBOUND_PROXIES', '').split(',') if item.strip()]
+    return raw or [None]
+
+
+def _profile_order(host: str) -> list[int]:
+    indexes = list(range(len(HEADER_PROFILES)))
+    sticky = _host_profile.get(host)
+    if sticky is not None and sticky in indexes:
+        indexes.remove(sticky)
+        indexes.insert(0, sticky)
+    return indexes
 
 
 class OutboundBlocked(ValueError):
@@ -73,17 +124,24 @@ async def resolve_public(host: str, port: int) -> list[str]:
 
 
 @asynccontextmanager
-async def public_stream(method: str, url: str):
+async def public_stream(method: str, url: str, profile: int = 0, proxy: str | None = None):
     """One pinned hop. Caller must consume inside this context; total deadline includes queue/DNS."""
     async with asyncio.timeout(12), _slots:
         target = parse_target(url)
         ips = await resolve_public(target.host, target.port or (443 if target.scheme == 'https' else 80))
-        pinned = target.copy_with(host=ips[0])
-        async with httpx.AsyncClient(timeout=4, follow_redirects=False, trust_env=False) as http:
-            async with http.stream(method, pinned, headers={
-                'Host': target.netloc.decode('ascii'), 'Accept-Encoding': 'identity',
-                'User-Agent': 'Apollo-Security-Check/1.0',
-            }, extensions={'sni_hostname': target.host}) as response:
+        headers = {'Host': target.netloc.decode('ascii'), 'Accept-Encoding': 'identity',
+                   **HEADER_PROFILES[profile % len(HEADER_PROFILES)]}
+        options: dict = {'timeout': httpx.Timeout(8.0, connect=4.0), 'follow_redirects': False,
+                         'trust_env': False}
+        if proxy:
+            # A proxy terminates the connect itself, so the hostname URL is sent as-is. The public
+            # resolution above still runs first, so private/internal targets never reach the proxy.
+            options['proxy'] = proxy
+            request_url, extensions = target, {}
+        else:
+            request_url, extensions = target.copy_with(host=ips[0]), {'sni_hostname': target.host}
+        async with httpx.AsyncClient(**options) as http:
+            async with http.stream(method, request_url, headers=headers, extensions=extensions) as response:
                 yield response
 
 
@@ -101,13 +159,13 @@ async def bounded_body(response: httpx.Response, limit: int = MAX_BYTES) -> byte
     return bytes(data)
 
 
-async def public_get(url: str, max_hops: int = 3) -> httpx.Response:
+async def _fetch(url: str, max_hops: int, profile: int, proxy: str | None) -> httpx.Response:
     async with asyncio.timeout(15):
         for hop in range(max_hops + 1):
             # Preflight every hop with headers only. A server may not implement HEAD (or may reject
             # it), in which case the bounded GET below is the explicit fallback. Redirect targets
             # are re-parsed and re-resolved before any request reaches them.
-            async with public_stream('HEAD', url) as preflight:
+            async with public_stream('HEAD', url, profile=profile, proxy=proxy) as preflight:
                 if preflight.status_code in REDIRECTS:
                     if hop == max_hops or not preflight.headers.get('location'):
                         raise OutboundBlocked('too_many_redirects')
@@ -116,7 +174,7 @@ async def public_get(url: str, max_hops: int = 3) -> httpx.Response:
                 if preflight.status_code not in (400, 403, 405):
                     # Validate advertised size/encoding without consuming a response body.
                     await bounded_body(preflight)
-            async with public_stream('GET', url) as response:
+            async with public_stream('GET', url, profile=profile, proxy=proxy) as response:
                 if response.status_code in REDIRECTS:
                     if hop == max_hops or not response.headers.get('location'):
                         raise OutboundBlocked('too_many_redirects')
@@ -126,3 +184,31 @@ async def public_get(url: str, max_hops: int = 3) -> httpx.Response:
                 return httpx.Response(response.status_code, headers=response.headers, content=content,
                                       request=httpx.Request('GET', url))
     raise OutboundBlocked('fetch_failed')
+
+
+async def public_get(url: str, max_hops: int = 3) -> httpx.Response:
+    """Fetch a public URL, rotating client fingerprint (and optional egress proxy) past edge blocks."""
+    host = parse_target(url).host
+    attempts = [(profile, proxy) for proxy in _proxies() for profile in _profile_order(host)]
+    response = None
+    failure: Exception | None = None
+    for profile, proxy in attempts:
+        try:
+            response = await _fetch(url, max_hops, profile, proxy)
+        except httpx.HTTPError as exc:
+            # Transport-level refusals (resets, hangs) are how some edges drop unwanted clients.
+            failure = exc
+            logger.info('outbound transport failed host=%s profile=%s proxied=%s error=%s',
+                        host, profile, bool(proxy), type(exc).__name__)
+            continue
+        if response.status_code not in BLOCKED_STATUS:
+            _host_profile[host] = profile
+            return response
+        logger.info('outbound edge refused host=%s status=%s profile=%s proxied=%s',
+                    host, response.status_code, profile, bool(proxy))
+    _host_profile.pop(host, None)
+    if response is None:
+        raise OutboundBlocked('fetch_failed') from failure
+    logger.warning('outbound blocked by edge for every fingerprint host=%s status=%s', host,
+                   response.status_code)
+    return response
