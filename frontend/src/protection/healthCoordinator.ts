@@ -59,6 +59,15 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     readMessaging, readCalls, readEmailCapability(), storage.getItem<boolean>(DESIRED_KEY, false),
   ]);
   const callAutoCheckEnabled = (await storage.getItem("apollo.call.auto_check", null)) === "true";
+  // Security rules: only adapters whose platform can report rule state implement this. A missing
+  // method means "Apollo cannot observe this here", which the UI states plainly; a failed read is
+  // reported by the adapter as unknown. Neither is ever read as "rules are current".
+  const ruleBundle = securityAdapter.getRuleBundleStatus
+    ? await securityAdapter.getRuleBundleStatus().catch(() => ({
+        observable: true, current: null, expiresAt: null,
+        detail: "Apollo couldn't read the state of its security rules. This is not a confirmation that they are current.",
+      }))
+    : null;
   // Gate 8 (Account Breach): fetch backend configuration status. Failure → unavailable, never running.
   let breachLookupConfigured = false;
   try { const acctStatus = await apiGet<{ breach_lookup_configured: boolean }>("/account/status"); breachLookupConfigured = acctStatus.breach_lookup_configured === true; } catch { /* treat as unavailable */ }
@@ -74,7 +83,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
   else if (attempt?.kind === "restore_site" && (trigger === "foreground" || trigger === "boot")) {
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
-  const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
+  const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network, ruleBundle };
   const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn, messagingReadFailed, callsReadFailed });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates, lastCheckFailure: null };
   publishProtectionHealth(next);

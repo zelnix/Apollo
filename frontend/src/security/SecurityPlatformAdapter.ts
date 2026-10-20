@@ -86,6 +86,20 @@ export interface NetworkStatus {
   checkedAt: string;
 }
 
+/**
+ * State of the security rules the protection runtime enforces with.
+ * `observable` is false when this platform/build cannot report rule state at all — Apollo then says
+ * the check isn't available here rather than implying the rules are fine. `current: null` means the
+ * read failed or the runtime gave no expiry: unknown, never "current".
+ */
+export interface RuleBundleStatus {
+  observable: boolean;
+  current: boolean | null;
+  expiresAt: string | null;
+  /** Plain-English statement of what was actually observed. */
+  detail: string;
+}
+
 export interface SecuritySignal {
   code: string;
   severity: "info" | "growl" | "bark";
@@ -147,4 +161,6 @@ export interface SecurityPlatformAdapter {
   getPrivateDnsStatus?(): Promise<import("@/src/domain/types").PrivateDnsStatus>;
   /** Trigger an urgent rule bundle refresh (from Link Gate intelligence). */
   triggerUrgentRuleRefresh?(): Promise<void>;
+  /** State of the enforced security rules. Omitted by adapters whose platform cannot report it. */
+  getRuleBundleStatus?(): Promise<RuleBundleStatus>;
 }

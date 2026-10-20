@@ -11,13 +11,14 @@
 //  • CLEAR only when enough meaningful checks actually executed.
 
 import type { DevicePlatform, DeviceSignals, OsThreatReportSignal } from "./deviceAnalysis";
+import type { NetworkStatus, RuleBundleStatus } from "@/src/security/SecurityPlatformAdapter";
 
 export type FirstCheckResultState =
   | "PASS" | "INFORMATION" | "CAUTION" | "SUSPICIOUS" | "CONFIRMED_THREAT" | "NOT_AVAILABLE" | "ERROR";
 
 export type FirstCheckOverall = "CLEAR" | "ATTENTION" | "HIGH_RISK" | "CONFIRMED_THREAT" | "LIMITED_CHECK" | "ERROR";
 
-export type FirstCheckCategory = "os_threat" | "device_integrity" | "application_risk" | "network_config" | "apollo_integrity" | "os_security";
+export type FirstCheckCategory = "os_threat" | "device_integrity" | "application_risk" | "network_config" | "apollo_integrity" | "os_security" | "connection";
 export type FirstCheckConfidence = "low" | "medium" | "high";
 export type FirstCheckSeverity = "none" | "info" | "low" | "medium" | "high";
 
@@ -52,6 +53,10 @@ export interface FirstCheckInputs {
   protection: { requested: boolean; operational: boolean; enforcementMethod: string; adapterLabel: string } | null;
   /** Always supplied by the platform adapter — an explicit NOT_AVAILABLE when the OS offers no trusted report. */
   osReportedThreat: OsThreatReportSignal;
+  /** Live connection reading, or null when Apollo could not read it. */
+  connection?: NetworkStatus | null;
+  /** Security-rule state, or null when this platform cannot report it. */
+  ruleBundle?: RuleBundleStatus | null;
 }
 
 export interface FirstCheckReport {
@@ -249,6 +254,56 @@ function apolloIntegrityCheck(i: FirstCheckInputs): Row {
     explanation: "Higgins couldn't read Apollo's protection component just now.", platformLimitation: null, action: "Try the check again shortly." };
 }
 
+function securityRulesCheck(i: FirstCheckInputs): Row {
+  const base = { id: "security_rules", category: "apollo_integrity" as const, title: "Apollo's security rules" };
+  const rules = i.ruleBundle ?? null;
+  if (!i.nativeHost || !rules || !rules.observable) {
+    return notAvailable(base, "Higgins couldn't read the state of Apollo's security rules on this device.",
+      !i.nativeHost ? PREVIEW_LIMIT : "This device doesn't report the state of Apollo's security rules.");
+  }
+  if (rules.current === null) {
+    return { ...base, supported: true, executed: false, result: "ERROR", confidence: "low", severity: "low", evidenceRef: null,
+      evidence: null, explanation: rules.detail, platformLimitation: null, action: "Run the check again in a moment." };
+  }
+  if (rules.current === false) {
+    return { ...base, supported: true, executed: true, result: "CAUTION", confidence: "high", severity: "medium", evidenceRef: "rules:expiry",
+      evidence: rules.detail,
+      explanation: "Apollo's security rules are out of date, so the newest known dangerous websites may not be blocked yet.",
+      platformLimitation: null, action: "Open Apollo's protection and run the check again so it can fetch fresh rules." };
+  }
+  return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: "rules:expiry",
+    evidence: rules.detail, explanation: "Apollo's security rules are up to date.", platformLimitation: null, action: null };
+}
+
+function connectionCheck(i: FirstCheckInputs): Row {
+  const base = { id: "connection", category: "connection" as const, title: "Internet connection" };
+  const n = i.connection ?? null;
+  if (!n) {
+    return notAvailable(base, "Higgins couldn't read this device's internet connection.",
+      !i.nativeHost ? PREVIEW_LIMIT : "This device didn't report its connection state.");
+  }
+  const where = n.type === "wifi" ? `Wi-Fi${n.ssid ? ` "${n.ssid}"` : ""}` : n.type === "cellular" ? "mobile data" : n.type === "none" ? "no connection" : `a ${n.type} connection`;
+  const evidence = `${where} · reachable: ${n.isInternetReachable === null ? "not revealed" : n.isInternetReachable ? "yes" : "no"}${n.wifiSecurity && n.wifiSecurity !== "n/a" ? ` · security: ${n.wifiSecurity}` : ""}`;
+  if (!n.connected || n.isInternetReachable === false) {
+    return { ...base, supported: true, executed: true, result: "INFORMATION", confidence: "high", severity: "info", evidenceRef: "signals:connection",
+      evidence, explanation: "This device isn't online at the moment, so the checks that need the internet couldn't run.",
+      platformLimitation: null, action: null };
+  }
+  if (n.captivePortal) {
+    return { ...base, supported: true, executed: true, result: "CAUTION", confidence: "high", severity: "low", evidenceRef: "signals:connection",
+      evidence, explanation: "This connection is asking you to sign in before it lets you online. Sign-in pages on public networks are a common place for fake login screens.",
+      platformLimitation: null, action: "Only sign in on a network you recognise, and never enter banking details on a sign-in page." };
+  }
+  if (n.type === "wifi" && n.wifiSecurity === "open") {
+    return { ...base, supported: true, executed: true, result: "CAUTION", confidence: "high", severity: "low", evidenceRef: "signals:connection",
+      evidence, explanation: "This Wi-Fi has no password, so other people nearby can see more of what this device sends.",
+      platformLimitation: null, action: "Use mobile data for anything private while you're on this network." };
+  }
+  return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: "signals:connection",
+    evidence, explanation: `This device is online through ${where}, and nothing unusual was found about the connection.`,
+    platformLimitation: n.inspectable ? null : "This platform doesn't let Apollo inspect the connection in detail.", action: null };
+}
+
 // --- Platform capability explanation -------------------------------------------------------------------
 
 const PLATFORM_NOTE: Record<DevicePlatform, string> = {
@@ -281,6 +336,8 @@ export function runFirstCheck(inputs: FirstCheckInputs, now: string = new Date()
     networkConfigCheck(inputs),
     osSecurityCheck(inputs),
     apolloIntegrityCheck(inputs),
+    securityRulesCheck(inputs),
+    connectionCheck(inputs),
   ];
   const overall = deriveOverall(checks);
   const concerns = checks.filter((c) => CONCERN_STATES.includes(c.result)).map((c) => `${c.title}: ${c.explanation}`);

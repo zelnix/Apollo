@@ -21,9 +21,13 @@ import type { PatrolEvent } from "@/src/domain/types";
 
 export interface ProtectionFacts {
   serviceRunning: boolean;
-  vpnActive: boolean;
+  /** Apollo's secure connection (the protection permission the device grants Apollo). */
+  secureConnectionActive: boolean;
   gates: GateFact[];
+  /** true = rules current, false = out of date, null = Apollo could not read or observe them. */
   rulesCurrent: boolean | null;
+  /** Plain-English statement of what was observed about the security rules. */
+  rulesDetail: string;
   currentIssues: string[];
   checkedAt: string | null;
   network: NetworkFact | null;
@@ -81,12 +85,17 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
   const serviceRunning = !!health.protection && health.protection.state !== "off";
 
   const issues: string[] = issueGates.map((g) => `${g.title}: ${g.limitation || g.statusLabel}`);
+  if (health.ruleBundle?.current === false) issues.push(`Security rules: ${health.ruleBundle.detail}`);
 
+  const rules = health.ruleBundle;
   const facts: ProtectionFacts = {
     serviceRunning,
-    vpnActive: !!vpnActive,
+    secureConnectionActive: !!vpnActive,
     gates,
-    rulesCurrent: null, // TODO: wire from GuardDog bundle state when available
+    rulesCurrent: rules ? rules.current : null,
+    rulesDetail: rules
+      ? rules.detail
+      : "This device can't report the state of Apollo's security rules, so that check isn't available here.",
     currentIssues: issues,
     checkedAt: health.checkedAt,
     network: health.network ? {
@@ -167,10 +176,10 @@ export function getCurrentIssues(health: ProtectionHealthSnapshot, extra?: { eve
 
   // ── Network issues ──
   if (health.network && !health.network.connected) {
-    issues.push("No network connection. Some protections may be limited.");
+    issues.push("No internet connection. Some protections are limited until the connection is back.");
   }
   if (health.network?.privateDnsActive) {
-    issues.push("Private DNS is active. This may bypass Apollo's DNS protection.");
+    issues.push("Another service on this device is handling its internet lookups, which can bypass Apollo's website protection.");
   }
 
   return {
@@ -220,11 +229,11 @@ export function getVpnStatus(health: ProtectionHealthSnapshot): DiagnosticResult
 
   const parts: string[] = [];
   if (vpnActive) {
-    parts.push("Apollo's VPN is active.");
-    if (siteRunning) parts.push("Website protection is using it to inspect DNS queries and protect you from malicious websites.");
+    parts.push("Apollo's secure connection is on.");
+    if (siteRunning) parts.push("Website protection is using it to check the addresses your device looks up and block dangerous websites.");
     else parts.push("However, website protection is not currently running.");
   } else {
-    parts.push("Apollo's VPN is not active.");
+    parts.push("Apollo's secure connection is off, so website protection can't run.");
     // Use the gate's own limitation/status text rather than generating independently.
     if (siteGate) {
       const reason = siteGate.capability.automatic?.limitation || siteGate.currentHelp;
@@ -234,7 +243,7 @@ export function getVpnStatus(health: ProtectionHealthSnapshot): DiagnosticResult
 
   // Read Private DNS from the site gate's limitation (it's already been evaluated there).
   if (health.network?.privateDnsActive) {
-    parts.push("Note: Private DNS is active on your device, which may bypass Apollo's DNS protection.");
+    parts.push("Note: another service on this device is handling its internet lookups, which can bypass Apollo's website protection. (Technical detail: Private DNS is active.)");
   }
 
   return {
@@ -296,9 +305,13 @@ function buildProtectionSummary(facts: ProtectionFacts, activeCount: number, tot
     parts.push("Apollo's protection service is not running. This means your device is not actively protected.");
   }
 
-  if (facts.vpnActive) {
-    parts.push("The VPN is active.");
+  if (facts.secureConnectionActive) {
+    parts.push("Apollo's secure connection is on.");
   }
+
+  if (facts.rulesCurrent === true) parts.push("Its security rules are up to date.");
+  else if (facts.rulesCurrent === false) parts.push("Its security rules are out of date.");
+  else parts.push(facts.rulesDetail);
 
   if (facts.currentIssues.length > 0) {
     parts.push(`${facts.currentIssues.length} ${facts.currentIssues.length === 1 ? "issue needs" : "issues need"} attention: ${facts.currentIssues.join("; ")}.`);

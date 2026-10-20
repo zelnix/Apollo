@@ -2203,3 +2203,17 @@ GTK/pkg-config dependency (container limitation), not a code error.
 - `src/higgins/checkIntent.ts` (new, deterministic, no AI): when a chat message pairs a check intent with a subject (email / message / call / link / app / file / photo / device), Higgins acknowledges and opens the matching input form pre-filled with the person's words. Wired into `app/(tabs)/ask.tsx` submit() before the local intent router.
 - Chat starters now lead with "I want to check an email / a message / a call".
 - `app/(tabs)/patrol.tsx` threat card reorganised: full-width title (3 lines), subject line, then a meta row (status pill + source · date) with the Case ID beneath; chevron moved out of the right column so the title is no longer squeezed.
+
+## Higgins Check gaps closed (Jun 2026)
+Audit against the "Developer Instructions — Higgins Check" brief found 5 real gaps; all fixed without a new engine, backend or results system.
+1. **Security rules wired for real** — `SecurityPlatformAdapter.RuleBundleStatus` + optional `getRuleBundleStatus()`; implemented only in `GuardDogProductionSecurityAdapter` from the runtime's own `ruleExpiresAt`/`productionAuthority`. Carried on `ProtectionHealthSnapshot.ruleBundle`; `diagnosticCore.rulesCurrent` no longer a TODO. Failed read = unknown, missing method = "not available on this device" — never "current".
+2. **Device Check now renders on the shared Check Results screen** — new pure mapper `src/domain/firstCheckResultModel.ts` (report → `CheckResultModel`): one headline, items (NOT_AVAILABLE → `not_performed`, ERROR → `error`, never `clear`), ONE action from the most severe check that has one plus one in-app destination (`actionRoute`), limitations as evidence rows. `app/recheck.tsx` rewritten to use `CheckResultScreen`; the auto-starting "Ask Higgins about this check" investigation card was removed (user-initiated "Ask Higgins about this result" only) so there is no second narrative.
+3. **Real progress** — `collectFirstCheck(onProgress)` emits the 4 stages it actually performs (`FIRST_CHECK_STAGES`); `/recheck` shows "Step n of 4" + the live stage label, no timed animation.
+4. **Home "checked by Higgins"** — new `home-higgins-check` row reads the stored completed check (`firstCheckStore.getBaseline().checkedAt`) and links to `/recheck`; opening the app never counts as a check.
+5. **Plain-English pass** — Diagnostic Core now says "secure connection" (not VPN), "security rules", "internet connection", and explains Private DNS in plain words with the technical term in brackets.
+Also added: `connection` check row (internet connection, captive portal, open Wi-Fi) in a category deliberately excluded from `MEANINGFUL_CATEGORIES` so it can't flip a LIMITED_CHECK into CLEAR.
+Still intentionally absent: controlled-threat generation (no check attempts a block; the THREAT_BLOCKED enforcement-evidence gate in `backend/routers/patrol.py` is untouched).
+Tests: `frontend/tests/deviceCheckResult.test.ts` (5 pass), `tests/firstCheck.test.ts` (14 pass).
+
+## Higgins check sheet — tap feedback (Jun 2026)
+Sample rows read as "not tappable" on a real device because the filled field sits below the sample list. `Sheet` now accepts a `scrollRef`; selecting a sample marks that row "Selected", shows a confirmation line, and scrolls straight to the filled field + submit button.

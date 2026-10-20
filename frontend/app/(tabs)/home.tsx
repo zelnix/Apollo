@@ -36,6 +36,7 @@ import {
   formatDateTime,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { getBaseline } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useProtectionHealth } from "@/src/protection/healthStore";
@@ -146,6 +147,9 @@ const useStyles = makeStyles((c) => ({
   heroDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(22,34,53,0.25)" },
   heroDotActive: { backgroundColor: c.brand, width: 18 },
   heroDotsLabel: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginLeft: spacing.xs },
+  checkedRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  checkedText: { flex: 1, fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
+  checkedAction: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroContentWrap: { flex: 1, flexShrink: 1 },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
@@ -228,6 +232,17 @@ export default function Home() {
     React.useCallback(() => {
       void refresh(0);
     }, [refresh])
+  );
+
+  // The last time Higgins actually completed a Device Check on this device. Read from the stored
+  // check itself — opening the app never counts as a check.
+  const [lastHigginsCheckAt, setLastHigginsCheckAt] = React.useState<string | null>(null);
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      void getBaseline().then((baseline) => { if (active) setLastHigginsCheckAt(baseline?.checkedAt ?? null); }).catch(() => undefined);
+      return () => { active = false; };
+    }, [])
   );
 
   // ── Auto-retrofit on first load ──
@@ -365,6 +380,23 @@ export default function Home() {
           </View>
         </Pressable>
         </GestureDetector>
+
+        {/* Last completed Higgins check — links to the Device Check result */}
+        <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
+          <Pressable
+            testID="home-higgins-check"
+            accessibilityRole="button"
+            accessibilityLabel={lastHigginsCheckAt ? `Protection checked by Higgins ${timeAgo(lastHigginsCheckAt)}. Open the result.` : "Higgins hasn't checked this device yet. Run a check."}
+            onPress={() => router.push("/recheck")}
+            style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <ShieldCheck size={16} color={colors.resting} />
+            <Text style={s.checkedText} numberOfLines={2} testID="home-higgins-check-text">
+              {lastHigginsCheckAt ? `Protection checked by Higgins · ${timeAgo(lastHigginsCheckAt)}` : "Higgins hasn't checked this device yet"}
+            </Text>
+            <Text style={s.checkedAction}>{lastHigginsCheckAt ? "View" : "Run check"}</Text>
+          </Pressable>
+        </View>
 
         {/* Recovery banner */}
         <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>

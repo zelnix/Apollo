@@ -12,8 +12,8 @@
 
 import { Asset } from "expo-asset";
 import * as ImagePicker from "expo-image-picker";
-import React, { useCallback, useEffect, useState } from "react";
-import { Linking, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Linking, ScrollView, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 
 import { Sheet } from "./Sheet";
@@ -193,6 +193,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [screening, setScreening] = useState<ScreeningResult | null>(null);
   const [prepError, setPrepError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
+  const [selectedSample, setSelectedSample] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
 
   const config = category ? CATEGORY_CONFIG[category] : null;
 
@@ -206,6 +208,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setScreening(null);
       setPrepError(null);
       setCameraBlocked(false);
+      setSelectedSample(null);
     }
   }, [visible, category]);
 
@@ -259,9 +262,12 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
   // Preview-only: fill the field with a sample. The person still submits, and the submission runs
   // Apollo's real check — nothing here decides or pre-empts a verdict.
-  const fillSample = useCallback((text: string, suggestedQuestion?: string) => {
+  const fillSample = useCallback((id: string, text: string, suggestedQuestion?: string) => {
     setContent(text);
+    setSelectedSample(id);
     if (suggestedQuestion) setQuestion((q) => q.trim() || suggestedQuestion);
+    // The field sits below the sample list, so bring it into view — otherwise the tap looks ignored.
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
   const fillSampleScreenshot = useCallback(async (id: string) => {
@@ -272,7 +278,9 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       const asset = Asset.fromModule(sample.asset);
       await asset.downloadAsync();
       setImageUri(asset.localUri ?? asset.uri);
+      setSelectedSample(sample.id);
       setQuestion((q) => q.trim() || sample.question);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     } catch (err) {
       console.warn("[HigginsArtifactInput] Sample screenshot error:", err);
     } finally {
@@ -314,7 +322,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       onClose={onClose}
       title={config.title}
       testID="higgins-artifact-sheet"
+      scrollRef={scrollRef}
     >
+      {selectedSample ? (
+        <Text style={s.helper} testID="higgins-artifact-sample-loaded">
+          Sample loaded below. Check it reads the way you expect, then tap &ldquo;Ask Higgins to investigate&rdquo;.
+        </Text>
+      ) : null}
       {/* Screenshot: image picker + optional question */}
       {category === "screenshot" ? (
         <>
@@ -328,6 +342,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               probes: x.probes,
             }))}
             onSelect={(id) => void fillSampleScreenshot(id)}
+            selectedId={selectedSample}
             disabled={picking}
           />
           {imageUri ? (
@@ -394,9 +409,10 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
             }))}
             onSelect={(id) => {
               const sample = SIMULATED_DEVICE_CONCERNS.find((x) => x.id === id);
-              if (sample) fillSample(sample.concern);
+              if (sample) fillSample(sample.id, sample.concern);
             }}
-          />
+          selectedId={selectedSample}
+              />
           <Text style={s.label}>Describe your concern (optional)</Text>
           <TextInput
             testID="higgins-artifact-content"
@@ -419,9 +435,10 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               items={SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, probes: x.probes }))}
               onSelect={(id) => {
                 const sample = SIMULATED_LINKS.find((x) => x.id === id);
-                if (sample) fillSample(sample.url, "Is this website safe?");
+                if (sample) fillSample(sample.id, sample.url, "Is this website safe?");
               }}
-            />
+            selectedId={selectedSample}
+              />
           ) : null}
 
           {category === "messages_calls" ? (
@@ -438,8 +455,9 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
                 }))}
                 onSelect={(id) => {
                   const sample = SIMULATED_TEXTS.find((x) => x.id === id);
-                  if (sample) fillSample(`From ${sample.sender}:\n${sample.text}`, "Is this message a scam?");
+                  if (sample) fillSample(sample.id, `From ${sample.sender}:\n${sample.text}`, "Is this message a scam?");
                 }}
+              selectedId={selectedSample}
               />
               <SimulatedPicker
                 testID="higgins-sample-calls"
@@ -455,11 +473,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
                   const sample = SIMULATED_CALLS.find((x) => x.id === id);
                   if (sample) {
                     fillSample(
+                      sample.id,
                       sample.name ? `${sample.number} (saved as ${sample.name})` : sample.number,
                       "Who called me from this number?",
                     );
                   }
                 }}
+              selectedId={selectedSample}
               />
             </>
           ) : null}
@@ -479,12 +499,14 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
                 const sample = SIMULATED_EMAILS.find((x) => x.id === id);
                 if (sample) {
                   fillSample(
+                    sample.id,
                     `From: ${sample.from}\nSubject: ${sample.subject}\n\n${sample.body}`,
                     "Is this email legitimate?",
                   );
                 }
               }}
-            />
+            selectedId={selectedSample}
+              />
           ) : null}
 
           {category === "apps_files" ? (
@@ -503,11 +525,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
                   const sample = SIMULATED_APPS.find((x) => x.id === id);
                   if (sample) {
                     fillSample(
+                      sample.id,
                       `${sample.appName} (${sample.packageId}) by ${sample.developer}`,
                       "Is this app safe to use?",
                     );
                   }
                 }}
+              selectedId={selectedSample}
               />
               <SimulatedPicker
                 testID="higgins-sample-files"
@@ -522,9 +546,10 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
                 onSelect={(id) => {
                   const sample = SIMULATED_FILES.find((x) => x.id === id);
                   if (sample) {
-                    fillSample(`${sample.name} (${sample.mime})`, "Is this file safe to open?");
+                    fillSample(sample.id, `${sample.name} (${sample.mime})`, "Is this file safe to open?");
                   }
                 }}
+              selectedId={selectedSample}
               />
             </>
           ) : null}

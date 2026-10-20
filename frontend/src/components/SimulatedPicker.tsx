@@ -33,13 +33,14 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, marginTop: spacing.xs,
   },
+  rowSelected: { backgroundColor: c.restingTint },
   rowPrimary: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
   rowSecondary: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurface, marginTop: 1 },
   rowProbe: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary, marginTop: 2 },
 }));
 
 export function SimulatedPicker({
-  title, note, items, onSelect, disabled, testID,
+  title, note, items, onSelect, disabled, testID, selectedId,
 }: {
   title: string;
   note: string;
@@ -47,6 +48,8 @@ export function SimulatedPicker({
   onSelect: (id: string) => void;
   disabled?: boolean;
   testID: string;
+  /** The sample currently loaded into the field, so the tap is visibly acknowledged. */
+  selectedId?: string | null;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -66,14 +69,16 @@ export function SimulatedPicker({
           accessibilityLabel={`Check the simulated item ${item.primary}`}
           disabled={disabled}
           onPress={() => onSelect(item.id)}
-          style={({ pressed }) => [s.row, { opacity: pressed || disabled ? 0.7 : 1 }]}
+          style={({ pressed }) => [s.row, item.id === selectedId && s.rowSelected, { opacity: pressed || disabled ? 0.7 : 1 }]}
         >
           <View style={{ flex: 1 }}>
             <Text style={s.rowPrimary} numberOfLines={1}>{item.primary}</Text>
             {item.secondary ? <Text style={s.rowSecondary} numberOfLines={2}>{item.secondary}</Text> : null}
             <Text style={s.rowProbe} numberOfLines={2}>{item.probes}</Text>
           </View>
-          <Text style={{ color: colors.muted, fontFamily: fonts.textSemibold, fontSize: 13 }}>Check</Text>
+          <Text style={{ color: item.id === selectedId ? colors.resting : colors.muted, fontFamily: fonts.textSemibold, fontSize: 13 }}>
+            {item.id === selectedId ? "Selected" : "Use this"}
+          </Text>
         </Pressable>
       ))}
     </View>

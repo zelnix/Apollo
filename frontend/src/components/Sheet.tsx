@@ -14,7 +14,7 @@ const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.md },
 }));
 
-export function Sheet({ visible, onClose, title, children, testID }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode; testID?: string }) {
+export function Sheet({ visible, onClose, title, children, testID, scrollRef }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode; testID?: string; scrollRef?: React.RefObject<ScrollView | null> }) {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   return (
@@ -24,7 +24,7 @@ export function Sheet({ visible, onClose, title, children, testID }: { visible: 
         <View style={s.sheet} testID={testID}>
           <View style={s.handle} />
           <Text style={s.title}>{title}</Text>
-          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" nestedScrollEnabled>{children}</ScrollView>
+          <ScrollView ref={scrollRef} contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" nestedScrollEnabled>{children}</ScrollView>
         </View>
       </View>
     </Modal>

@@ -1,7 +1,7 @@
 import type { Capability } from "@/src/domain/types";
 import type { DnsThreatObservation, PrivateDnsStatus } from "@/src/domain/types";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "@/src/security/PlatformCapabilityProfile";
-import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
+import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, RuleBundleStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
@@ -99,6 +99,33 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
       const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
       return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable",
         explanation: `Apollo couldn't read this device's Private DNS setting (${reason}). This is not a confirmation that Private DNS is off.` };
+    }
+  }
+
+  // ── Security rule state ───────────────────────────────────────────────────
+  // Read from the production runtime's own status. A failed read is reported as unknown — never as
+  // "rules are current" — and the expiry the runtime reports is the only thing that decides currency.
+  async getRuleBundleStatus(): Promise<RuleBundleStatus> {
+    try {
+      await this.ensureConfigured();
+      const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
+      const expiresAt = status.ruleExpiresAt ?? null;
+      if (!expiresAt) {
+        return { observable: true, current: null, expiresAt: null,
+          detail: "Apollo's protection reported no expiry for its security rules, so their age could not be confirmed." };
+      }
+      const live = Date.parse(expiresAt) > Date.now();
+      const authority = status.productionAuthority === true;
+      return { observable: true, current: live && authority, expiresAt,
+        detail: live && authority
+          ? `Apollo's security rules are current and valid until ${new Date(expiresAt).toLocaleString()}.`
+          : !authority
+            ? "Apollo's protection is not running on its production rules."
+            : `Apollo's security rules expired on ${new Date(expiresAt).toLocaleString()} and have not been refreshed.` };
+    } catch (error) {
+      const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
+      return { observable: true, current: null, expiresAt: null,
+        detail: `Apollo couldn't read the state of its security rules (${reason}). This is not a confirmation that they are current.` };
     }
   }
 

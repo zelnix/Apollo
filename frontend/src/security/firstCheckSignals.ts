@@ -17,11 +17,25 @@ export function currentPlatform(): DevicePlatform {
   return os === "ios" ? "ios" : os === "android" ? "android" : os === "windows" ? "windows" : os === "macos" ? "macos" : "web";
 }
 
+/** The stages this collector actually performs, in order. Progress is reported as each one really
+ *  starts — it is never a timed animation. */
+export const FIRST_CHECK_STAGES = [
+  "Reading this device's security signals",
+  "Reading Apollo's protection state",
+  "Reading Apollo's security rules",
+  "Working out what it means",
+] as const;
+
+export type FirstCheckProgress = { step: number; total: number; label: string };
+
 /** Runs the baseline. A failure to READ the device signals is reported as an ERROR report naming the
  *  failed read — Apollo never substitutes empty signals and then grades the device as if it had read them. */
-export async function collectFirstCheck(): Promise<FirstCheckReport> {
+export async function collectFirstCheck(onProgress?: (p: FirstCheckProgress) => void): Promise<FirstCheckReport> {
   const platform = currentPlatform();
+  const total = FIRST_CHECK_STAGES.length;
+  const stage = (step: number) => onProgress?.({ step, total, label: FIRST_CHECK_STAGES[step - 1] });
   try {
+    stage(1);
     // Desktop hosts (Windows/macOS) read their signals through the Tauri adapter; phones through the native module.
     const desktop = platform === "windows" || platform === "macos";
     let raw;
@@ -35,10 +49,20 @@ export async function collectFirstCheck(): Promise<FirstCheckReport> {
         `Higgins couldn't read this device's security signals, so no part of the check could run (${detail}).`);
     }
     const signals = { ...EMPTY_SIGNALS(platform), ...raw };
-    const [facts, protection] = await Promise.all([
+    stage(2);
+    const [facts, protection, connection] = await Promise.all([
       securityAdapter.getDeviceProfileFacts?.().catch(() => null) ?? Promise.resolve(null),
       securityAdapter.getProtectionStatus().catch(() => null),
+      securityAdapter.getNetworkStatus().catch(() => null),
     ]);
+    stage(3);
+    // Only platforms that can report rule state implement this; a failed read stays unknown.
+    const ruleBundle = securityAdapter.getRuleBundleStatus
+      ? await securityAdapter.getRuleBundleStatus().catch(() => ({
+          observable: true, current: null as boolean | null, expiresAt: null,
+          detail: "Apollo couldn't read the state of its security rules. This is not a confirmation that they are current.",
+        }))
+      : null;
     const inputs: FirstCheckInputs = {
       platform,
       nativeHost: IS_NATIVE_HOST,
@@ -47,7 +71,10 @@ export async function collectFirstCheck(): Promise<FirstCheckReport> {
       protection: protection ? { requested: protection.requested, operational: protection.operational, enforcementMethod: protection.enforcementMethod, adapterLabel: protection.adapterLabel } : null,
       // Each platform adapter supplies its trusted OS threat report when it has one; otherwise an explicit NOT_AVAILABLE.
       osReportedThreat: signals.osThreatReport ?? osThreatNotAvailable(platform, IS_NATIVE_HOST),
+      connection,
+      ruleBundle,
     };
+    stage(4);
     return runFirstCheck(inputs);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
