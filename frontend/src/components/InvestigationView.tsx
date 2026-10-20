@@ -1,4 +1,4 @@
-// Unified Investigation Report: three-tab structure — Overview | Evidence | History.
+// Unified Investigation Report: four-tab structure — Overview | Evidence | History | DI.
 // Default to Overview. Matches the approved Threat Case reporting experience.
 // Apollo detects. Magnum DI investigates. Higgins explains findings and guides users.
 // Evidence tab shows original evidentiary sources, not summaries or interpretations.
@@ -29,6 +29,7 @@ import { API_BASE } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
+import { DiReport } from "@/src/components/DiReport";
 import { ReportScamHelper } from "@/src/components/ReportScamHelper";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
 import { findBrandIn } from "@/src/domain/reportingContacts";
@@ -44,11 +45,12 @@ const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = "overview" | "evidence" | "history";
+type TabId = "overview" | "evidence" | "history" | "di";
 const TAB_LABELS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "evidence", label: "Evidence" },
   { id: "history", label: "History" },
+  { id: "di", label: "DI" },
 ];
 
 // ── Styles ───────────────────────────────────────────────────────────────────
@@ -971,6 +973,13 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Magnum DI asks: {scrubMessage(question.reasonNeeded)}</Text>
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
       {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
+
+    {/* ── DI tab: the Magnum DI processing record (evidence is untouched by this view) ── */}
+    {activeTab === "di" && showTabs ? (
+      <View testID="inv-tab-di-content">
+        <DiReport caseId={caseData?.id ?? null} />
+      </View>
+    ) : null}
 
     {/* ── Lifecycle notice ── */}
     {state.notice ? <Card style={s.card} testID="inv-lifecycle-notice"><Body>{state.notice}</Body></Card> : null}

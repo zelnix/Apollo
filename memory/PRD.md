@@ -1,3 +1,31 @@
+## Preview Gemini simulator + DI tab (2026-06)
+
+**Simulator at the boundary only.** New provider mode `APOLLO_PROVIDER_MODE=simulated` (set in the preview backend .env;
+production stays `live`). `services/higgins/preview_simulator.py` builds nothing of its own: `provider.generate()` runs the real
+request composition (real Magnum DI/Higgins system prompt, real evidence brief, real privacy screening + redaction, real
+post-redaction attachment parts), then the EXTERNAL CALL ONLY is replaced. It always succeeds and returns one fixed V1 response
+(`FIXED_PREVIEW_RESPONSE`, the owner's text verbatim) — delivered in the shape the caller asked for, so the REAL validator,
+the REAL commit and the REAL Higgins workflow process it unchanged (verified: `validate()` returns no errors). Usage is recorded
+with `extra.simulated=True`. Magnum DI, evidence handling, privacy/redaction, Higgins, findings, state and reporting are untouched.
+
+**DI transaction record (production feature too).** `services/higgins/di_record.py` persists one `di_transactions` document per
+boundary call — live and simulated: the actual system prompt, the actual investigation prompt/context, each attachment
+(MIME, size, image dimensions read from the bytes, privacy-screening and redaction status, transmitted post-redaction form —
+never an original), the complete provider response, and processing stats (tokens with estimated/simulated provenance, cache
+status, attachment count, payload size, measured duration, Gemini calls, retries, estimated cost). Served by
+`GET /api/investigations/{case_id}/di`, authorised against the case document directly so an expired case can still show how it
+was processed. `provider.register_di_owner()` scopes records to the owning device.
+
+**DI tab.** `src/components/DiReport.tsx` renders Investigation / Sent to Gemini / Gemini (or Simulator) response / Processing,
+with the dashed "SIMULATED — No Gemini API call was made" banner, "Simulated"/"Estimated"/"Measured" labels on every number, and
+cost never presented as Gemini billing in preview. Added as the fourth tab on BOTH the Threat Case screen (`app/patrol/[id].tsx`)
+and the Investigation Report (`src/components/InvestigationView.tsx`): Overview | Evidence | History | DI. Evidence is unchanged —
+it remains the original evidentiary source; DI is only Magnum DI's processing record.
+
+**Verified end-to-end in preview:** simulated bank-impersonation email → real Triage escalation → Magnum DI → simulator →
+validated response → Higgins narrative on Overview → DI tab showing Preview/Simulated, model `gemini-3.8-flash`, status success,
+the real prompts, the response and the processing statistics.
+
 ## Preview simulated selections: messages, calls, apps, files (2026-06)
 
 Preview has no SMS list, no call log, no installed-app list and nothing in the file picker, so those checks couldn't be

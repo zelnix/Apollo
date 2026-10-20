@@ -205,6 +205,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     await progress("assess", "Magnum DI is examining the evidence.")
     job_source = job.get("source", "user_initiated")
     search_tool = types.Tool(google_search=types.GoogleSearch())
+    # The DI transaction record is device-scoped: tell the gateway who owns this correlation id.
+    provider.register_di_owner(f"case-{case['case_id']}", owner)
     result = await provider.generate(SYSTEM, contents, model=job_model, tools=[search_tool],
                                      capability="search", purpose=provider.Purpose.INVESTIGATION,
                                      correlation_id=f"case-{case['case_id']}", trigger_source=job_source)

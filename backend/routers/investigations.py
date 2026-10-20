@@ -536,6 +536,21 @@ async def get_case(case_id: str, request: Request):
     return JSONResponse(await _case_json(case), headers=NO_STORE)
 
 
+@router.get("/investigations/{case_id}/di")
+async def get_di_transactions(case_id: str, request: Request):
+    """The Magnum DI processing record(s) for this case: what was prepared for Gemini, what the
+    provider (live or the preview simulator) returned, and the processing statistics. Evidence is
+    untouched by this view."""
+    from services.higgins.di_record import get_di_records
+    owner = owner_of(request)
+    # Authorise against the case document itself: the DI record outlives the evidence retention
+    # window, so an expired or cleaned-up case must still be able to show how it was processed.
+    if not await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 1}):
+        raise http(404, "not_found", "No investigation with that reference belongs to this device.")
+    records = await get_di_records(owner, case_id)
+    return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
+
+
 @router.delete("/investigations/{case_id}")
 async def delete_case(case_id: str, request: Request):
     owner = owner_of(request)

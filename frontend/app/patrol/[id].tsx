@@ -57,6 +57,7 @@ import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
 import { subjectDescriptor, threatSubject } from "@/src/domain/threatSubject";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
+import { DiReport } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
@@ -72,11 +73,12 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
-type TabKey = "overview" | "evidence" | "history";
+type TabKey = "overview" | "evidence" | "history" | "di";
 const TAB_LABELS: { id: TabKey; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "evidence", label: "Evidence" },
   { id: "history", label: "History" },
+  { id: "di", label: "DI" },
 ];
 
 // ── Source icon/label by type ────────────────────────────────────────────────
@@ -126,6 +128,8 @@ const useStyles = makeStyles((c) => ({
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
   statusPill: { paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+  diNotice: { borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: c.gold, backgroundColor: c.surfaceSecondary, padding: spacing.md },
+  diNoticeText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   sourceBadgeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   statusPillText: { fontFamily: fonts.textSemibold, fontSize: 12 },
   // Source identity card
@@ -1117,8 +1121,10 @@ export default function ThreatCaseScreen() {
           <OverviewContent event={event} status={status} shownWhatToDo={shownWhatToDo} />
         ) : activeTab === "evidence" ? (
           <EvidenceContent event={event} />
-        ) : (
+        ) : activeTab === "history" ? (
           <HistoryContent event={event} />
+        ) : (
+          <DiReport caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null} />
         )}
       </ScrollView>
     </View>

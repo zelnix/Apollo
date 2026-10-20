@@ -4,6 +4,10 @@ No prompt/response logging, hidden-reasoning display, implicit model switches or
 Public research must be called with an explicitly minimised query, never a private prompt.
 
 PROVIDER MODE (APOLLO_PROVIDER_MODE):
+    simulated — Preview. The real request is built (real Magnum DI prompt, real evidence, real
+               privacy/redaction, real post-redaction attachments) and then the EXTERNAL GEMINI CALL
+               ONLY is replaced by the preview simulator, which always succeeds with the fixed V1
+               response. Magnum DI and Higgins continue through the real workflow.
     mock     — Default in preview/dev. All generate() calls route to the deterministic
                mock provider. Zero external Gemini calls, $0 cost. NEVER falls back to
                the paid Gemini key.
@@ -56,8 +60,8 @@ def _validate_mode_at_import() -> None:
         raise RuntimeError(
             "APOLLO_PROVIDER_MODE=live_test requires GEMINI_DEV_API_KEY to be set. "
             "Use a free-tier Google AI Studio development project key.")
-    if _PROVIDER_MODE not in ("mock", "live", "live_test"):
-        raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test.")
+    if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
+        raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
 
 _validate_mode_at_import()
 
@@ -257,6 +261,24 @@ def _audit_payload(system: str, contents: Any, tools: list[types.Tool] | None) -
     return audit
 
 
+_DI_OWNERS: dict[str, str] = {}
+
+
+def register_di_owner(correlation_id: str, owner: str) -> None:
+    """Magnum DI tells the gateway which device owns a correlation id, so the DI record can be
+    returned only to that device. Bounded to the most recent cases."""
+    if not correlation_id or not owner:
+        return
+    _DI_OWNERS[correlation_id] = owner
+    if len(_DI_OWNERS) > 500:
+        for key in list(_DI_OWNERS)[:100]:
+            _DI_OWNERS.pop(key, None)
+
+
+def _owner_for(correlation_id: str | None) -> str | None:
+    return _DI_OWNERS.get(correlation_id or "")
+
+
 async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
@@ -270,6 +292,28 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     In live_test mode: uses GEMINI_DEV_API_KEY (separate from production).
     In live mode: uses the production GEMINI_API_KEY.
     """
+    # ── Preview simulator gate (fail-closed) ─────────────────────────────
+    # The request below is the REAL one. Only the external call is replaced.
+    if _PROVIDER_MODE == "simulated":
+        from services.higgins import di_record as _di
+        from services.higgins.preview_simulator import simulate_generate
+        _audit = _audit_payload(system, contents, tools)
+        _t0 = time.monotonic()
+        _result = await simulate_generate(
+            system, contents, model=model, capability=capability, json_output=json_output,
+            tools=tools, timeout=timeout, response_schema=response_schema, purpose=purpose,
+            correlation_id=correlation_id, trigger_source=trigger_source, payload_audit=_audit)
+        await _di.save_di_record(
+            correlation_id=correlation_id, owner=_owner_for(correlation_id),
+            investigation_id=(correlation_id or "").removeprefix("case-") or None,
+            model=model, purpose=purpose.value if hasattr(purpose, "value") else str(purpose),
+            simulated=True, environment="Preview", status="success",
+            request=_di.describe_request(system, contents, tools),
+            response_text=_result.text, finish_reason=_result.finish_reason,
+            usage=_result.usage, duration_ms=int((time.monotonic() - _t0) * 1000),
+            retries=0, calls=0)
+        return _result
+
     # ── Mock mode gate (fail-closed) ──────────────────────────────────────
     if _PROVIDER_MODE == "mock":
         from services.higgins.mock_provider import mock_generate
@@ -405,6 +449,20 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
 
     # Track successful usage
     await _track(True, usage=usage)
+
+    # DI transaction record for the real call (production as well as preview).
+    try:
+        from services.higgins import di_record as _di
+        await _di.save_di_record(
+            correlation_id=correlation_id, owner=_owner_for(correlation_id),
+            investigation_id=(correlation_id or "").removeprefix("case-") or None,
+            model=model, purpose=purpose.value if hasattr(purpose, "value") else str(purpose),
+            simulated=False, environment="Production", status="success",
+            request=_di.describe_request(system, contents, tools),
+            response_text=text, finish_reason=finish, usage=usage,
+            duration_ms=int((time.monotonic() - t0) * 1000), retries=0, calls=1)
+    except Exception:
+        _gateway_log.warning("di_record: could not record live DI transaction", exc_info=True)
 
     return GeminiResult(text, candidate.content, finish, usage,
                         candidate.grounding_metadata.model_dump(mode="json", exclude_none=True) if candidate.grounding_metadata else None, model)
