@@ -1,3 +1,10 @@
+## Bug fix: reopening the example case didn't stick (2026-06)
+
+Cause: the example-case refresh added earlier replaced the stored event wholesale with `MOCK_THREAT_EVENT` on every app start,
+overwriting the reopen (so the case showed "Resolved" again when re-entered). `ApolloContext` now refreshes only the sample
+wording and preserves what the person did with it: `status`, `state`, `resolved_at`, `reopened_at`, `previously_resolved_at`.
+Verified: reopen → full reload → case stays "Attention" with the re-check action and the History reopen step.
+
 ## Reopen recorded in History + re-check after action + status pill moved (2026-06)
 
 **History records the reopen.** `PatrolEvent.previously_resolved_at` (new, client-set) preserves the resolution time a reopen

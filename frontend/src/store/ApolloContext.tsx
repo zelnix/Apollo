@@ -536,9 +536,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           setSetupDone(!!done);
           if (ev) {
             const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent)
-              // The example case is sample data: always restore it from the current definition so an
-              // older stored copy never shows outdated example text.
-              .map((event) => (event.event_id === MOCK_THREAT_EVENT.event_id ? MOCK_THREAT_EVENT : event));
+              // The example case is sample data: refresh its wording from the current definition,
+              // but never overwrite what the person did with it (resolved, reopened, state).
+              .map((event) => (event.event_id === MOCK_THREAT_EVENT.event_id
+                ? {
+                    ...MOCK_THREAT_EVENT,
+                    status: event.status,
+                    state: event.state,
+                    resolved_at: event.resolved_at,
+                    reopened_at: event.reopened_at,
+                    previously_resolved_at: event.previously_resolved_at,
+                  }
+                : event));
             eventsRef.current = restored;
             alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state]));
             setEvents(restored);
