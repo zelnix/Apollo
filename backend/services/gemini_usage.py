@@ -22,12 +22,19 @@ COLLECTION = "gemini_usage"
 # IMPORTANT: These are ESTIMATES for reconciliation. Actual Google billing
 # charges may differ due to caching, tiered pricing, or rate changes.
 
-PRICING_VERSION = "2026-10-16"
+PRICING_VERSION = "2026-10-20"
 
 # Each entry: { input, output, thinking, cached_input } in USD per 1M tokens.
 # "thinking" tokens are billed at the output rate for most models.
 # "cached_input" is the discounted rate for context-cached input tokens.
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Magnum DI's investigation model (standard tier, ai.google.dev/gemini-api/docs/pricing).
+    "gemini-3.1-flash-lite": {
+        "input": 0.25,          # text / image / video
+        "output": 1.50,
+        "thinking": 1.50,       # same as output
+        "cached_input": 0.025,
+    },
     "gemini-3.8-flash": {
         "input": 0.75,
         "output": 3.75,

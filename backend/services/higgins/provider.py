@@ -68,14 +68,18 @@ _validate_mode_at_import()
 _gateway_log = _logging.getLogger("apollo.gateway")
 _gateway_log.info("provider_mode=%s gemini_key_configured=%s dev_key_configured=%s",
                   _PROVIDER_MODE, bool(GEMINI_API_KEY), bool(_GEMINI_DEV_API_KEY))
-TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
-VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", TEXT_MODEL)
+# Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
+# input, Search grounding and structured outputs, which is everything the investigation request uses.
+TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
+# Vision extraction and advisory generation stay on their existing model — unchanged by the
+# Magnum DI model switch.
+VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.8-flash")
 RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
-ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", TEXT_MODEL)
+ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", "gemini-3.8-flash")
 TRIAGE_MODEL = os.getenv("GEMINI_TRIAGE_MODEL", "gemini-2.5-flash-lite")
 CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
-_LITE_CAPS = {"text", "json"}  # Lite models: text + JSON only, no tools/search/vision
+_LITE_CAPS = {"text", "json"}  # Older lite models: text + JSON only, no tools/search/vision
 CAPABILITIES = {
     "gemini-3.5-flash": _TEXT_CAPS,
     "gemini-3.8-flash": _TEXT_CAPS,
@@ -84,7 +88,9 @@ CAPABILITIES = {
     "gemini-2.5-flash-lite": _LITE_CAPS,
     "gemini-2.5-pro": _TEXT_CAPS,
     "gemini-3.1-pro-preview": _TEXT_CAPS,
-    "gemini-3.1-flash-lite": _LITE_CAPS,
+    # Per the model card: text/image/video/audio/PDF in, function calling, Search grounding and
+    # structured outputs are all supported on 3.1 Flash-Lite.
+    "gemini-3.1-flash-lite": _TEXT_CAPS,
     "gemini-3.5-flash-lite": _LITE_CAPS,
 }
 _client: genai.Client | None = None

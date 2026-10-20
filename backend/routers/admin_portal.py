@@ -23,6 +23,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from core.db import db, now_utc
+from services.higgins import provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
     get_dashboard_health, check_integrations, get_usage_and_costs,
@@ -2539,8 +2540,8 @@ async def system_page(request: Request):
 
     <h2>Environment</h2>
     <table>
-        <tr><td>Gemini Text Model</td><td><code>{html_mod.escape(os.getenv('GEMINI_TEXT_MODEL','gemini-3.8-flash'))}</code></td></tr>
-        <tr><td>Gemini Vision Model</td><td><code>{html_mod.escape(os.getenv('GEMINI_VISION_MODEL','gemini-3.8-flash'))}</code></td></tr>
+        <tr><td>Gemini Text Model</td><td><code>{html_mod.escape(provider.TEXT_MODEL)}</code></td></tr>
+        <tr><td>Gemini Vision Model</td><td><code>{html_mod.escape(provider.VISION_MODEL)}</code></td></tr>
         <tr><td>Admin Email</td><td><code>{html_mod.escape(ADMIN_EMAIL or 'not set')}</code></td></tr>
         <tr><td>Cookie Secure</td><td><code>{os.getenv('COOKIE_SECURE','false')}</code></td></tr>
     </table>
@@ -2572,7 +2573,7 @@ async def releases(request: Request):
     <table>
         <tr><td>Frontend</td><td><code>1.0.0</code></td></tr>
         <tr><td>Backend</td><td><code>Expo + FastAPI</code></td></tr>
-        <tr><td>Gemini Model</td><td><code>{html_mod.escape(os.getenv('GEMINI_TEXT_MODEL','gemini-3.8-flash'))}</code></td></tr>
+        <tr><td>Gemini Model</td><td><code>{html_mod.escape(provider.TEXT_MODEL)}</code></td></tr>
     </table>
 
     <h2>Recent Migrations</h2>

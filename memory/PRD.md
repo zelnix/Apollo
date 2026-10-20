@@ -2239,3 +2239,11 @@ Dead code removed with it: `read_evidence` function declaration + dispatch branc
 DI tab now states plainly that no system prompt is sent, and the request card reads "Question and evidence sent".
 
 Tests: `tests/test_gemini_request_shape.py` (new, 2) proves system == "", question first and once, every following part labelled, full text present, triage intel raw, schema attached, validator accepts the response; `test_magnum_di_acceptance.py` gained `TestGeminiRequestContract` (5). 97 pass across the six affected files. Pre-existing unrelated failure: `test_recovery_fencing.py::test_committed_case_projects_once_into_patrol_without_model_call` ('vision' category literal).
+
+## Magnum DI model → Gemini 3.1 Flash-Lite (Jun 2026)
+`provider.TEXT_MODEL` default is now `gemini-3.1-flash-lite` (stable, May 2026). Verified from the model card: text/image/video/audio/PDF input, function calling, **Search grounding** and **structured outputs** are all supported, 1,048,576 input / 65,536 output tokens — everything the new investigation request uses (the 16,384-token output budget is well inside the limit).
+- `CAPABILITIES["gemini-3.1-flash-lite"]` corrected from `_LITE_CAPS` ({text, json}) to `_TEXT_CAPS`; the old entry would have made the capability gate reject the `search` capability on the investigation call.
+- `VISION_MODEL` and `ADVISORY_MODEL` are now pinned explicitly to `gemini-3.8-flash` (they previously defaulted to TEXT_MODEL) so vision extraction and advisory generation keep their existing model — the switch is Magnum DI only.
+- `gemini_usage.MODEL_PRICING` gained real 3.1 Flash-Lite rates ($0.25 in / $1.50 out / $0.025 cached per 1M, standard tier) and `PRICING_VERSION` → `2026-10-20`; without it, cost reporting would have fallen back to the conservative $1/$5 default and overstated every investigation.
+- `admin_health.py` and `admin_portal.py` now read `provider.TEXT_MODEL`/`VISION_MODEL` instead of re-defaulting the model string, so the admin views can't drift from the real configuration.
+Items 1–6 of this brief were already delivered in the previous change (see "Gemini investigation request rewritten"). Tests: 64 pass across the acceptance/request-shape/authority files.

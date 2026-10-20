@@ -10,6 +10,8 @@ Protection rule: never create or fake THREAT_BLOCKED / verified_block / Apollo i
 from __future__ import annotations
 
 import os
+
+from services.higgins import provider
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -275,7 +277,7 @@ async def check_integrations() -> dict[str, dict]:
         "name": "Gemini / Magnum DI",
         "status": CONNECTED if ai["status"] == OK else DEGRADED if ai["status"] == DEGRADED else UNABLE,
         "detail": ai["detail"],
-        "model": os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash"),
+        "model": provider.TEXT_MODEL,
     }
 
     # Google Safe Browsing / Threat Intelligence

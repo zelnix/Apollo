@@ -66,18 +66,18 @@ def sub(kind: str, value: str, label: str = "") -> dict:
 # ------------------------------------------------------------------ model configuration
 
 class TestModelConfiguration:
-    """Verify Gemini 3.8 Flash is configured globally."""
+    """Magnum DI investigates with Gemini 3.1 Flash-Lite; other paths keep their existing model."""
 
-    def test_models_are_gemini_38_flash(self):
+    def test_models(self):
         from services.higgins.provider import TEXT_MODEL, VISION_MODEL, ADVISORY_MODEL
-        assert TEXT_MODEL == "gemini-3.8-flash", f"TEXT_MODEL is {TEXT_MODEL}"
+        assert TEXT_MODEL == "gemini-3.1-flash-lite", f"TEXT_MODEL is {TEXT_MODEL}"
         assert VISION_MODEL == "gemini-3.8-flash", f"VISION_MODEL is {VISION_MODEL}"
         assert ADVISORY_MODEL == "gemini-3.8-flash", f"ADVISORY_MODEL is {ADVISORY_MODEL}"
 
     def test_capabilities_registered(self):
         from services.higgins.provider import CAPABILITIES
-        caps = CAPABILITIES.get("gemini-3.8-flash")
-        assert caps is not None, "gemini-3.8-flash not in CAPABILITIES"
+        caps = CAPABILITIES.get("gemini-3.1-flash-lite")
+        assert caps is not None, "gemini-3.1-flash-lite not in CAPABILITIES"
         for req in ("functions", "vision", "search", "json", "text"):
             assert req in caps, f"Missing capability: {req}"
 
