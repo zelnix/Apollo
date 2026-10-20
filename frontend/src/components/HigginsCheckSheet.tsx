@@ -4,7 +4,7 @@
  *
  * Presents the six protection categories as the entry point for
  * user-initiated checks through Higgins:
- *   1. Screenshot (first-class, top option)
+ *   1. Screenshot or photo (first-class, top option)
  *   2. Websites & Links
  *   3. Messages & Calls
  *   4. Email & Accounts
@@ -49,8 +49,8 @@ interface CategoryItem {
 const CATEGORIES: CategoryItem[] = [
   {
     id: "screenshot",
-    label: "Screenshot",
-    description: "Select a screenshot and ask Higgins to check it",
+    label: "Screenshot or photo",
+    description: "Pick a screenshot, or take a photo of a QR code, letter or screen",
     icon: Camera,
     bg: "#E09430",
   },

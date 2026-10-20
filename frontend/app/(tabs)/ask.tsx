@@ -26,6 +26,7 @@ import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext
 import { clearLocalChat, loadLocalChat, saveLocalChat } from "@/src/higgins/chatMemory";
 import { clearStarterMemory, loadStarterMemory, recordStarter, topStarters } from "@/src/higgins/starterMemory";
 import { classifyIntent } from "@/src/higgins/intentRouter";
+import { detectCheckIntent } from "@/src/higgins/checkIntent";
 import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStatus, getVpnStatus, getNotificationDiagnostic } from "@/src/higgins/diagnosticCore";
 import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage } from "@/src/higgins/localResponder";
 import { getNotificationHealth, type NotificationHealth } from "@/src/push/notifications";
@@ -38,7 +39,7 @@ import { buildDailyActivity } from "@/src/domain/dailyActivity";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
-const STARTERS = ["Why is Apollo barking?", "Is my device protected?", "Explain a scam warning."];
+const STARTERS = ["I want to check an email", "I want to check a message", "I want to check a call", "Why is Apollo barking?", "Is my device protected?"];
 const ABOUT = "Higgins is Apollo’s trusted handler. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right check or protection screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
@@ -102,6 +103,7 @@ export default function Ask() {
   const [checkSheetOpen, setCheckSheetOpen] = useState(false);
   const [artifactCategory, setArtifactCategory] = useState<HigginsCheckCategory | null>(null);
   const [artifactSheetOpen, setArtifactSheetOpen] = useState(false);
+  const [artifactQuestion, setArtifactQuestion] = useState("");
   // Notification health — detect whether notifications + Apollo alerts channel are enabled
   const [notifHealth, setNotifHealth] = useState<NotificationHealth | null>(null);
   const notifReminderShown = useRef(false);
@@ -314,6 +316,19 @@ export default function Ask() {
     setChatMessages((current) => { const next = [...current, userMsg]; void saveLocalChat(next); return next; });
     setText("");
 
+    // "Check this email / message / call / link / app / photo" → open the matching input form.
+    // Decided on-device; the person still supplies the artifact and submits it for the real check.
+    const checkIntent = detectCheckIntent(clean);
+    if (checkIntent) {
+      const ack: HigginsChatMessage = { id: Crypto.randomUUID(), turnId: Crypto.randomUUID(), role: "higgins", content: checkIntent.acknowledgement, createdAt: new Date().toISOString(), conversationId: conversationId.current };
+      setChatMessages((current) => { const next = [...current, ack]; void saveLocalChat(next); return next; });
+      setArtifactQuestion(clean);
+      setArtifactCategory(checkIntent.category);
+      setArtifactSheetOpen(true);
+      void recordStarter(clean).then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
+      return;
+    }
+
     // Route through intent classifier — local-first
     const handledLocally = handleLocalIntent(clean);
     if (!handledLocally) {
@@ -367,6 +382,7 @@ export default function Ask() {
 
   // ── Higgins check flow handlers ─────────────────────────────────────────
   const handleCheckCategorySelect = useCallback((category: HigginsCheckCategory) => {
+    setArtifactQuestion("");
     setArtifactCategory(category);
     setArtifactSheetOpen(true);
   }, []);
@@ -374,6 +390,7 @@ export default function Ask() {
   const handleArtifactSubmit = useCallback((result: ArtifactResult) => {
     setArtifactSheetOpen(false);
     setArtifactCategory(null);
+    setArtifactQuestion("");
     if (!deviceId) return;
 
     // Build submissions from the artifact
@@ -425,7 +442,7 @@ export default function Ask() {
 
   const caseStatus = state.phase === "answered" ? "Magnum DI has finished this investigation." : state.phase === "waiting_user" ? "Magnum DI needs one answer from you" : state.phase === "failed" ? `Investigation incomplete${state.error ? ` — ${state.error}` : ""}.${state.failure || state.caseData ? " Retry available." : ""}` : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Magnum DI is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
-  const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 4), [starters]);
+  const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 5), [starters]);
   const showRepeatRow = !investigationMode && chatMessages.length > 0 && !text.trim() && starters.length > 0;
 
   return <View style={s.root} testID="higgins-screen">
@@ -510,7 +527,7 @@ export default function Ask() {
     </KeyboardAvoidingView>
 
     <HigginsCheckSheet visible={checkSheetOpen} onClose={() => setCheckSheetOpen(false)} onSelect={handleCheckCategorySelect} />
-    <HigginsArtifactInput visible={artifactSheetOpen} category={artifactCategory} initialQuestion={text} onClose={() => { setArtifactSheetOpen(false); setArtifactCategory(null); }} onSubmit={handleArtifactSubmit} />
+    <HigginsArtifactInput visible={artifactSheetOpen} category={artifactCategory} initialQuestion={artifactQuestion || text} onClose={() => { setArtifactSheetOpen(false); setArtifactCategory(null); setArtifactQuestion(""); }} onSubmit={handleArtifactSubmit} />
 
     <Sheet visible={aboutOpen} onClose={() => setAboutOpen(false)} title="About Higgins" testID="higgins-about-sheet">
       <Image source={require("../../assets/images/higgins-apollo-portrait.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins with Apollo" />

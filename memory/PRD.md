@@ -2194,3 +2194,12 @@ GTK/pkg-config dependency (container limitation), not a code error.
 - Preview verified: scamwatch.gov.au 200 (HEAD 403 → GET 200, profile 0 sticky), consumer.ftc.gov 200. cyber.gov.au returns 403 on all 4 fingerprints = pod-IP block, needs a proxy.
 - Tests: tests/test_p0_outbound_unit.py (rotation + sticky, transport fallthrough, proxy env parsing). Full suite 832 passed.
 - Production needs a redeploy for this to take effect; if Scamwatch still 403s in prod, the prod IP is IP-blocked and `OUTBOUND_PROXIES` must be set.
+
+## Ask Higgins check flow — preview samples, camera, intent routing, threat card (Jun 2026)
+- `src/components/HigginsArtifactInput.tsx`: every category in "What do you want to check?" now shows PREVIEW-ONLY sample pickers (screenshots, links, messages, callers, emails, apps, files, device concerns). Selecting one only FILLS the field (+ a suggested question); the person still submits and the submission runs the real Triage → Magnum DI path. Apps & Files shows two sections (apps, files).
+- Screenshot category gained "Take a photo" (expo-image-picker camera) with the full permission contract: check → request → respect canAskAgain → "Open Settings" via Linking.openSettings(); denial only removes photo capture, gallery still works. Sheet label is now "Screenshot or photo" (QR codes, letters, other screens).
+- Sample screenshots are real bundled PNGs drawn by `/app/scripts/make_preview_screenshots.py` into `frontend/assets/images/preview/`; resolved to a local file with expo-asset so Apollo's real screening reads real bytes.
+- `src/preview/simulatedItems.ts`: added SIMULATED_LINKS, SIMULATED_DEVICE_CONCERNS, SIMULATED_SCREENSHOTS.
+- `src/higgins/checkIntent.ts` (new, deterministic, no AI): when a chat message pairs a check intent with a subject (email / message / call / link / app / file / photo / device), Higgins acknowledges and opens the matching input form pre-filled with the person's words. Wired into `app/(tabs)/ask.tsx` submit() before the local intent router.
+- Chat starters now lead with "I want to check an email / a message / a call".
+- `app/(tabs)/patrol.tsx` threat card reorganised: full-width title (3 lines), subject line, then a meta row (status pill + source · date) with the Case ID beneath; chevron moved out of the right column so the title is no longer squeezed.

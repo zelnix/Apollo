@@ -166,3 +166,109 @@ export const SIMULATED_FILES: SimulatedFile[] = [
     probes: "An archive attachment of the kind used to carry an executable past filters.",
   },
 ];
+
+// ── Samples used by the Ask Higgins check sheet (preview only) ──────────────
+//
+// The categories in "What do you want to check?" collect typed input. In the preview there is
+// nothing to paste from (no real inbox, no real gallery, no real call log), so these samples supply
+// that INPUT. Selecting one only fills the field — the person still submits, and the submission runs
+// Apollo's real Triage and, only where Triage escalates, the real Magnum DI investigation.
+
+export interface SimulatedLink {
+  id: string;
+  url: string;
+  probes: string;
+}
+
+export const SIMULATED_LINKS: SimulatedLink[] = [
+  {
+    id: "sim-link-known",
+    url: "https://www.servicesaustralia.gov.au/mygov",
+    probes: "A well-known Australian government domain.",
+  },
+  {
+    id: "sim-link-bank-lookalike",
+    url: "http://commbank-cancel.co/stop",
+    probes: "A bank-lookalike domain served over plain http.",
+  },
+  {
+    id: "sim-link-toll",
+    url: "https://linkt-au-pay.top/settle",
+    probes: "A toll-payment lookalike on an unusual top-level domain.",
+  },
+  {
+    id: "sim-link-shortener",
+    url: "https://bit.ly/3xRq7Kp",
+    probes: "A shortened link that hides its destination.",
+  },
+  {
+    id: "sim-link-punycode",
+    url: "https://xn--myov-9na.net/login",
+    probes: "A punycode domain that displays as a familiar name.",
+  },
+];
+
+export interface SimulatedDeviceConcern {
+  id: string;
+  concern: string;
+  probes: string;
+}
+
+export const SIMULATED_DEVICE_CONCERNS: SimulatedDeviceConcern[] = [
+  {
+    id: "sim-dev-none",
+    concern: "Nothing specific — I just want my phone and internet connection checked.",
+    probes: "A routine check with no reported symptom.",
+  },
+  {
+    id: "sim-dev-remote",
+    concern:
+      "A man who said he was from my internet provider asked me to install an app so he could fix my connection, and my screen moved on its own while we were on the phone.",
+    probes: "Reports remote access during an unsolicited support call.",
+  },
+  {
+    id: "sim-dev-wifi",
+    concern:
+      "I joined a free wifi called 'Airport_Free_WiFi' at the shops and afterwards my banking app asked me to sign in again.",
+    probes: "Reports an open public network followed by a re-authentication prompt.",
+  },
+  {
+    id: "sim-dev-popups",
+    concern:
+      "My phone keeps showing pop-ups saying it is infected and the battery is going flat by lunchtime.",
+    probes: "Reports persistent pop-ups and unusual battery drain.",
+  },
+];
+
+export interface SimulatedScreenshot {
+  id: string;
+  label: string;
+  /** Bundled image, resolved to a real local file before Apollo's real screening runs. */
+  asset: number;
+  question: string;
+  probes: string;
+}
+
+export const SIMULATED_SCREENSHOTS: SimulatedScreenshot[] = [
+  {
+    id: "sim-shot-sms-bank",
+    label: "Text message from +61 448 221 905",
+    asset: require("../../assets/images/preview/sim-shot-sms-bank.png"),
+    question: "Is this message from my bank real?",
+    probes: "A bank pretext with a lookalike link, a password request and a 2-hour deadline.",
+  },
+  {
+    id: "sim-shot-email-invoice",
+    label: "Email about invoice 4471",
+    asset: require("../../assets/images/preview/sim-shot-email-invoice.png"),
+    question: "Should I pay this invoice?",
+    probes: "An invoice with changed bank details, a reply-only instruction and a .pdf.exe attachment.",
+  },
+  {
+    id: "sim-shot-delivery",
+    label: "AusPost delivery notice",
+    asset: require("../../assets/images/preview/sim-shot-delivery.png"),
+    question: "Is this delivery message a scam?",
+    probes: "A plain delivery notice: no link, no request, no urgency.",
+  },
+];

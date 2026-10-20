@@ -147,12 +147,13 @@ const useStyles = makeStyles((c) => ({
   card: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, backgroundColor: c.surfaceSecondary, flexDirection: "row", overflow: "hidden", borderWidth: 1, borderColor: c.border },
   cardAccent: { width: 4 },
   cardBody: { flex: 1, flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.md },
-  cardIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
-  cardContent: { flex: 1, gap: 2 },
+  cardIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  cardContent: { flex: 1, gap: 4 },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, lineHeight: 21 },
   cardSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  cardMeta: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
-  cardRight: { alignItems: "flex-end", gap: spacing.sm, justifyContent: "center" },
+  cardMetaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: 2 },
+  cardMeta: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  cardCaseId: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
   // Status pill
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
   statusPillText: { fontFamily: fonts.textSemibold, fontSize: 11 },
@@ -181,18 +182,19 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
           <IconEl size={22} color={si.fg} />
         </View>
         <View style={s.cardContent}>
-          <Text style={s.cardTitle} numberOfLines={2}>{title}</Text>
+          <Text style={s.cardTitle} numberOfLines={3}>{title}</Text>
           {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
-          <Text style={s.cardMeta} testID={`threat-card-${event.event_id}-meta`}>
-            {threatCaseId(event)}  |  {formatDateTime(event.occurred_at)}  |  {si.label}
-          </Text>
-        </View>
-        <View style={s.cardRight}>
-          <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
-            <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
+          <View style={s.cardMetaRow}>
+            <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
+              <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
+            </View>
+            <Text style={s.cardMeta} testID={`threat-card-${event.event_id}-meta`}>
+              {si.label} · {formatDateTime(event.occurred_at)}
+            </Text>
           </View>
-          <ChevronRight size={18} color={colors.muted} />
+          <Text style={s.cardCaseId}>{threatCaseId(event)}</Text>
         </View>
+        <ChevronRight size={18} color={colors.muted} />
       </View>
     </Pressable>
   );
