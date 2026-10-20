@@ -1219,7 +1219,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [deviceId, persistTrust, qc, showToast, trust, upsertEvent]);
 
   const resolveEvent = useCallback(async (event: PatrolEvent) => {
-    await upsertEvent({ ...event, status: "resolved", resolved_at: new Date().toISOString() });
+    const resolvedAt = new Date().toISOString();
+    // Resolve the tapped event AND all scent-linked siblings (same logical incident).
+    // Without this, marking one copy as contained leaves identical-looking duplicates active.
+    const siblings = event.scent_id
+      ? eventsRef.current.filter((e) => e.scent_id === event.scent_id && !e.resolved_at && e.event_id !== event.event_id)
+      : [];
+    await upsertEvent({ ...event, status: "resolved", resolved_at: resolvedAt });
+    for (const sib of siblings) await upsertEvent({ ...sib, status: "resolved", resolved_at: resolvedAt });
     showToast("Marked as handled. Apollo will rest after a fresh check.", "neutral");
   }, [showToast, upsertEvent]);
 

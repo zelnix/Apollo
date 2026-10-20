@@ -56,10 +56,13 @@ def _fingerprint(event: PatrolEventIn, verified: bool) -> str:
 
 
 def _effective(event: PatrolEventIn, verified: bool) -> tuple[str, str]:
-    if event.state == "biting":
-        return ("blocked", "fresh_packet_drop_evidence") if verified else ("danger", "unverified_block_claim_rejected")
+    # Resolution/trust takes priority over any threat state — a resolved biting event is resolved,
+    # not "blocked". Without this, the patrol record shows effectiveState:"blocked" even after the
+    # user marks it contained, and the client never sees the resolution in the records feed.
     if event.status in {"resolved", "trusted"}:
         return "resolved", "recorded_resolution"
+    if event.state == "biting":
+        return ("blocked", "fresh_packet_drop_evidence") if verified else ("danger", "unverified_block_claim_rejected")
     # Use a human-readable reason for the effective state
     if event.investigation_case_id:
         return DISPLAY[event.state], "Based on Magnum DI\u2019s investigation findings"

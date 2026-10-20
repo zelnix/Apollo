@@ -1,3 +1,45 @@
+## 2026-10-20 BUGFIX — "Mark as contained" not persisting for blocked/biting events
+
+backend:
+  - task: "Fix _effective() in patrol_records.py to prioritize resolved/trusted status over biting state"
+    implemented: true
+    working: true
+    file: "backend/services/patrol_records.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: _effective() checked state=='biting' before status=='resolved', so resolved biting events got effectiveState:'blocked' instead of 'resolved'. The client's patrol records feed never showed them as resolved. FIX: Moved the resolved/trusted check before the biting check. Full backend suite 829 passed 0 failed."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Fix is working correctly. Created comprehensive test scenario: (1) Registered device, (2) Created biting event with verified enforcement evidence (android dns_filter, port 53, verified result), (3) Verified patrol record shows effectiveState:'blocked' initially, (4) Resolved the event (status:'resolved', state downgraded to 'barking', no enforcement evidence), (5) Verified patrol record NOW shows effectiveState:'resolved' with effectiveReason:'recorded_resolution' (THE KEY FIX), (6) Verified event in events list has status:'resolved' and resolved_at set. All 3 test steps PASSED. Full backend suite: 829 passed, 20 skipped, 4 xfailed. Patrol race tests: 3 passed. The _effective() function in patrol_records.py lines 62-63 correctly checks 'if event.status in {\"resolved\", \"trusted\"}' BEFORE checking 'if event.state == \"biting\"' on line 64. This ensures resolved biting events return ('resolved', 'recorded_resolution') instead of ('blocked', 'fresh_packet_drop_evidence'). Mark as contained now persists correctly."
+
+frontend:
+  - task: "Fix resolveEvent to resolve all scent-linked events (same logical incident)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: resolveEvent only resolved the single tapped event. When 3 identical-looking events existed (same threat detected 3 times with different event_ids), the user resolved one but the other two remained active with 'Blocked' badge. FIX: resolveEvent now also resolves all scent-linked siblings (same scent_id) in a single action. Frontend regression suite 206/206 pass."
+
+test_plan:
+  current_focus:
+    - "Verify patrol records show resolved effectiveState for resolved biting events"
+    - "Verify resolving one event also resolves scent-linked siblings"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Fixed two issues causing 'Mark as contained' to not persist: (1) Backend _effective() now returns 'resolved' for resolved biting events. (2) Frontend resolveEvent now resolves all scent-linked siblings. Backend 829/829 pass, frontend regression 206/206 pass. Please verify the patrol records endpoint returns correct effectiveState for resolved events."
+  - agent: "testing"
+    message: "BACKEND VERIFICATION COMPLETE: The 'Mark as contained' fix is working correctly. Created and ran comprehensive test scenario (test_patrol_resolved_biting.py) that exactly follows the review request: register device → create biting/blocked event with verified enforcement evidence → verify effectiveState:'blocked' → resolve event → verify effectiveState:'resolved'. All tests PASSED. The fix in patrol_records.py _effective() function (lines 62-63) correctly prioritizes status in {'resolved', 'trusted'} check BEFORE the state=='biting' check (line 64). Full backend suite: 829 passed, 20 skipped, 4 xfailed. Patrol race tests: 3/3 passed. No issues found. Frontend testing not performed (as per system prompt)."
+
+
 ## 2026-10-20 Backend Test Parallel Isolation Fix + Patrol Race Fix
 
 backend:
