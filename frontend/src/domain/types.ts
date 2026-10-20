@@ -150,6 +150,8 @@ export interface PatrolEvent {
   resolved_at: string | null;
   /** Set when the user reopened a case they had marked contained/handled (wins over an older server resolution). */
   reopened_at?: string | null;
+  /** The resolution time a reopen cleared — kept so History still records that the case was closed. */
+  previously_resolved_at?: string | null;
   /** Set by the server when genuinely new detection evidence arrives for a previously resolved event.
    *  Used by the merge to distinguish fresh detection from stale server state. The client never sets this. */
   detection_updated_at?: string | null;

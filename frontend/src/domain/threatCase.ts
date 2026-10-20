@@ -280,18 +280,31 @@ export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): T
     });
   }
 
-  // 6. Resolution (only if actually resolved)
-  if (event.resolved_at) {
+  // 6. Resolution (only if it actually happened — including one a reopen later cleared)
+  const resolvedAt = event.resolved_at ?? event.previously_resolved_at ?? null;
+  if (resolvedAt) {
     const resolution = record?.resolution;
     entries.push({
       id: `tl-${idx++}`,
-      timestamp: event.resolved_at,
+      timestamp: resolvedAt,
       title: "Resolved",
       description: resolution?.status
         ? `Status: ${resolution.status.replace(/_/g, " ")}`
-        : "This threat case has been resolved.",
+        : "This threat case was closed.",
       dotColor: "#059669",
       iconId: "resolution",
+    });
+  }
+
+  // 7. Reopened by the person — recorded, with its own time.
+  if (event.reopened_at) {
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: event.reopened_at,
+      title: "Reopened by you",
+      description: "You reopened this case, so Apollo is tracking it again.",
+      dotColor: "#D97706",
+      iconId: "recovery",
     });
   }
 

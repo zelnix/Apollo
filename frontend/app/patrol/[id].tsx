@@ -57,6 +57,7 @@ import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
 import { subjectDescriptor, threatSubject } from "@/src/domain/threatSubject";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
+import { recheckPlan } from "@/src/domain/recheckPlan";
 import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
 import { TriageSummary } from "@/src/components/TriageSummary";
@@ -125,6 +126,7 @@ const useStyles = makeStyles((c) => ({
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
   statusPill: { paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+  sourceBadgeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   statusPillText: { fontFamily: fonts.textSemibold, fontSize: 12 },
   // Source identity card
   sourceCard: { marginHorizontal: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, flexDirection: "row", gap: spacing.md, alignItems: "center", marginBottom: spacing.xs },
@@ -311,6 +313,7 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
 
       {/* Actions */}
       {event.resolved_at ? <ReopenCase event={event} /> : <EventActions event={event} hideAsk />}
+      {!event.resolved_at && event.reopened_at ? <RecheckCase event={event} /> : null}
 
       {/* Patrol facts */}
       <Card style={{ gap: 0 }} testID="tc-overview-facts">
@@ -328,6 +331,71 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
 
       {/* Connected incidents */}
       {event.scent_id ? <ScentSection event={event} /> : null}
+    </View>
+  );
+}
+
+/** After a reopen, Apollo can look again. This re-runs the same pipeline — detection → Triage →
+ *  Magnum DI if Triage escalates — and opens the fresh result, or sends the person to the Gate that
+ *  performs the live read. It never pretends to re-check something it can no longer see. */
+function RecheckCase({ event }: { event: PatrolEvent }) {
+  const s = useStyles();
+  const router = useRouter();
+  const { checkLink, checkMessage, checkNumberRisk, showToast } = useApollo();
+  const [busy, setBusy] = useState(false);
+  const plan = recheckPlan(event);
+
+  const openResult = (fresh: PatrolEvent | null, nothingFound: string) => {
+    if (fresh) router.replace(`/patrol/${encodeURIComponent(fresh.event_id)}`);
+    else showToast(nothingFound, "neutral");
+  };
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      if (plan.kind === "link") {
+        const outcome = await checkLink(plan.url, event.scent_id ?? undefined);
+        openResult(outcome.event, "Apollo re-checked the website and found nothing to flag this time.");
+      } else if (plan.kind === "message") {
+        const original = await getOriginalSource(event.event_id).catch(() => null);
+        const text = (original?.text ?? "").trim();
+        if (!text) {
+          showToast("Apollo can't re-check this one here — the original message isn't stored with this case. Open the Text or Email check and submit it again.", "growling");
+          return;
+        }
+        const from = original?.fields?.find((f) => /from|sender/i.test(f.label))?.value ?? event.source_metadata?.sender ?? "";
+        const outcome = await checkMessage(from, text);
+        openResult(outcome.event, "Apollo re-checked the message and found nothing to flag this time.");
+      } else if (plan.kind === "number") {
+        const risk = await checkNumberRisk(plan.number);
+        showToast(`Re-check complete: ${risk.higgins.headline}`, "neutral");
+      }
+    } catch (error) {
+      showToast(`Apollo couldn't finish the re-check (${error instanceof Error ? error.message : "reason not recorded"}).`, "growling");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (plan.kind === "none") {
+    return <Text style={s.provenanceNote} testID="tc-recheck-unavailable">{plan.reason}</Text>;
+  }
+
+  if (plan.kind === "gate") {
+    return (
+      <View style={{ gap: spacing.xs }}>
+        <Button testID="tc-recheck" variant="secondary" label={plan.label} onPress={() => router.push(plan.route as never)} />
+        <Text style={s.provenanceNote}>{plan.note}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <Button testID="tc-recheck" variant="secondary" label={busy ? "Re-checking…" : plan.label} disabled={busy} onPress={() => void run()} />
+      <Text style={s.provenanceNote}>
+        Apollo runs the whole check again — his own checks first, and a Magnum DI investigation only if those find a possible threat. The result opens as a fresh case.
+      </Text>
     </View>
   );
 }
@@ -1014,9 +1082,6 @@ export default function ThreatCaseScreen() {
         <Text style={s.headerTitle} numberOfLines={1} testID="tc-case-id">
           Threat Case #{caseId}
         </Text>
-        <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
-          <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
-        </View>
       </View>
 
       {/* Source identity card */}
@@ -1025,7 +1090,12 @@ export default function ThreatCaseScreen() {
           <si.Icon size={22} color={si.fg} />
         </View>
         <View style={s.sourceInfo}>
-          <View style={s.sourceBadge}><Text style={s.sourceBadgeText}>{si.label}</Text></View>
+          <View style={s.sourceBadgeRow}>
+            <View style={s.sourceBadge}><Text style={s.sourceBadgeText}>{si.label}</Text></View>
+            <View style={[s.statusPill, { backgroundColor: statusColor.bg }]} testID="tc-status-pill">
+              <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
+            </View>
+          </View>
           <Text style={s.sourceTitle} numberOfLines={2}>{title}</Text>
           {subtitle ? <Text style={s.sourceSub} numberOfLines={1}>{subtitle}</Text> : null}
           <Text style={s.sourceTime}>{formatDateTime(event.occurred_at)}</Text>

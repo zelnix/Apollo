@@ -1383,7 +1383,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Undo "contained/handled": reopen locally and on the server (PATCH reopen clears resolved_at).
   const reopenEvent = useCallback(async (event: PatrolEvent) => {
     const status = event.state === "biting" && event.verified_block ? "blocked" : "active";
-    const reopened = { ...event, status, resolved_at: null, reopened_at: new Date().toISOString() } as PatrolEvent;
+    const reopened = {
+      ...event, status, resolved_at: null, reopened_at: new Date().toISOString(),
+      // Keep the moment it was closed so History still records the resolution it had.
+      previously_resolved_at: event.resolved_at ?? event.previously_resolved_at ?? null,
+    } as PatrolEvent;
     await persistEvents([reopened, ...eventsRef.current.filter((x) => x.event_id !== event.event_id)]);
     if (deviceId && (event.device_id === "local" || event.device_id === deviceId)) {
       try { await apiPatch(`/patrol/events/${event.event_id}?device_id=${deviceId}`, { reopen: true, status }); }

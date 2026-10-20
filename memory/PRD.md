@@ -1,3 +1,20 @@
+## Reopen recorded in History + re-check after action + status pill moved (2026-06)
+
+**History records the reopen.** `PatrolEvent.previously_resolved_at` (new, client-set) preserves the resolution time a reopen
+clears, so `buildTimeline` still shows "Resolved" and adds a "Reopened by you" step at `reopened_at` ("You reopened this case,
+so Apollo is tracking it again."). `ApolloContext.reopenEvent` sets it.
+
+**Re-check after you've taken action.** New pure `src/domain/recheckPlan.ts` → `recheckPlan(event)` decides, from the case record
+only, what Apollo can honestly re-run: `link` (re-runs `checkLink` on the recorded URL), `message` (re-runs `checkMessage` from
+the original kept on this device; honest toast when the original isn't there), `number` (re-runs `checkNumberRisk`), `gate`
+(device/app/connection/account/file → opens the Gate that performs the live read, with the reason), or `none` with the reason.
+`RecheckCase` renders on the Overview when a case is reopened and still open; a direct re-run opens the fresh case, and the
+helper text states the pipeline ("his own checks first, and a Magnum DI investigation only if those find a possible threat").
+Tested: `tests/recheckPlan.test.ts` 4/4.
+
+**Status pill moved** out of the screen header onto the category-badge line in the source card, aligned far right
+(`tc-status-pill`), giving the case title the full width.
+
 ## Share pack, case numbers on rows, and the on-device evidence policy (2026-06)
 
 **Share beside Copy.** The Evidence Pack row now has "Copy facts & sources" + "Share" (`tc-evidence-share`, React Native
