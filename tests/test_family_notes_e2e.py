@@ -10,7 +10,7 @@ import uuid
 
 from playwright.async_api import async_playwright
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://privacy-receipts.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://uat-loop-fix.preview.emergentagent.com").rstrip("/")
 
 
 def api_post(path, body):

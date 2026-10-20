@@ -16,137 +16,106 @@ from services.higgins import repository as repo
 from services.higgins.contracts import DeviceResult
 
 
-def _run(coro_fn):
-    """Fresh loop + fresh Motor client per scenario (the module-level client is loop-bound)."""
-    import importlib
-    import core.db as core_db
-    async def wrapped():
-        original_client, original_db = core_db.client, core_db.db
-        core_db.client = core_db.AsyncIOMotorClient(core_db.os.environ["MONGO_URL"])
-        core_db.db = core_db.client[core_db.os.environ["DB_NAME"]]
-        import services.higgins.retention as retention
-        import routers.family as family
-        import routers.patrol as patrol
-        import services.higgins.tools as tools_module
-        import services.higgins.context as higgins_context
-        import services.higgins.chat as higgins_chat
-        import services.government_alerts as government_alerts
-        import services.investigation_projector as projector
-        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector)
-        import routers.investigations as inv
-        import routers.ask as ask_router
-        importlib.reload(inv)
-        importlib.reload(ask_router)
-        global db
-        db = core_db.db
-        fresh_client = core_db.client
-        try:
-            await coro_fn(inv)
-        finally:
-            fresh_client.close()
-            core_db.client, core_db.db = original_client, original_db
-            db = original_db
-            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector); importlib.reload(inv); importlib.reload(ask_router)
-    asyncio.run(wrapped())
+import routers.investigations as inv
 
 
-def test_upload_finalisation_takeover_is_exclusive():
-    _run(lambda inv: _upload_takeover_race())
+async def test_upload_finalisation_takeover_is_exclusive():
+    await _upload_takeover_race()
 
 
-def test_device_submission_stage_claim_is_exclusive_and_renewable():
-    _run(lambda inv: _device_submission_stage_race(inv))
+async def test_device_submission_stage_claim_is_exclusive_and_renewable():
+    await _device_submission_stage_race(inv)
 
 
-def test_device_submission_happy_path_still_resumes_the_job():
-    _run(lambda inv: _device_submission_happy_path(inv))
+async def test_device_submission_happy_path_still_resumes_the_job():
+    await _device_submission_happy_path(inv)
 
 
-def test_backfill_work_epochs_is_idempotent_and_revives_nothing():
-    _run(lambda inv: _backfill_work_epochs())
+async def test_backfill_work_epochs_is_idempotent_and_revives_nothing():
+    await _backfill_work_epochs()
 
 
-def test_scanned_pdf_page_is_rendered_without_crashing():
-    _run(lambda inv: _scanned_pdf_no_crash())
+async def test_scanned_pdf_page_is_rendered_without_crashing():
+    await _scanned_pdf_no_crash()
 
 
-def test_coverage_aggregates_across_text_and_image_children():
-    _run(lambda inv: _coverage_aggregation_across_children())
+async def test_coverage_aggregates_across_text_and_image_children():
+    await _coverage_aggregation_across_children()
 
 
-def test_truncated_text_never_reaches_examined():
-    _run(lambda inv: _truncated_text_never_reaches_examined())
+async def test_truncated_text_never_reaches_examined():
+    await _truncated_text_never_reaches_examined()
 
 
-def test_ordinary_partial_read_still_reaches_examined_once_complete():
-    _run(lambda inv: _partial_then_complete_read_reaches_examined())
+async def test_ordinary_partial_read_still_reaches_examined_once_complete():
+    await _partial_then_complete_read_reaches_examined()
 
 
-def test_upload_replay_rejects_a_different_file_under_the_same_client_item():
-    _run(lambda inv: _upload_replay_digest_mismatch_is_rejected(inv))
+async def test_upload_replay_rejects_a_different_file_under_the_same_client_item():
+    await _upload_replay_digest_mismatch_is_rejected(inv)
 
 
-def test_upload_replay_binds_to_identical_content_from_a_different_upload():
-    _run(lambda inv: _upload_replay_digest_match_binds(inv))
+async def test_upload_replay_binds_to_identical_content_from_a_different_upload():
+    await _upload_replay_digest_match_binds(inv)
 
 
-def test_device_observation_metadata_without_content_is_reingested():
-    _run(lambda inv: _device_observation_missing_content_is_reingested(inv))
+async def test_device_observation_metadata_without_content_is_reingested():
+    await _device_observation_missing_content_is_reingested(inv)
 
 
-def test_lease_renewal_detects_loss_and_stops_the_work():
-    _run(lambda inv: _lease_renewal_detects_loss(inv))
+async def test_lease_renewal_detects_loss_and_stops_the_work():
+    await _lease_renewal_detects_loss(inv)
 
 
-def test_device_submission_resumes_from_a_crashed_storing_state():
-    _run(lambda inv: _device_submission_resumes_from_storing(inv))
+async def test_device_submission_resumes_from_a_crashed_storing_state():
+    await _device_submission_resumes_from_storing(inv)
 
 
-def test_device_submission_is_not_acknowledged_before_job_consumes_it():
-    _run(lambda inv: _device_submission_waits_for_authoritative_consumption(inv))
+async def test_device_submission_is_not_acknowledged_before_job_consumes_it():
+    await _device_submission_waits_for_authoritative_consumption(inv)
 
 
-def test_incomplete_evidence_attempt_is_invisible_until_root_publication():
-    _run(lambda inv: _evidence_publication_is_atomic())
+async def test_incomplete_evidence_attempt_is_invisible_until_root_publication():
+    await _evidence_publication_is_atomic()
 
 
-def test_device_tool_request_replay_uses_one_durable_request_identity():
-    _run(lambda inv: _device_request_identity_is_durable())
+async def test_device_tool_request_replay_uses_one_durable_request_identity():
+    await _device_request_identity_is_durable()
 
 
-def test_legacy_content_discard_migration_runs_only_once():
-    _run(lambda inv: _legacy_content_discard_is_one_time())
+async def test_legacy_content_discard_migration_runs_only_once():
+    await _legacy_content_discard_is_one_time()
 
 
-def test_published_evidence_root_cannot_be_discarded_as_incomplete():
-    _run(lambda inv: _published_root_survives_discard())
+async def test_published_evidence_root_cannot_be_discarded_as_incomplete():
+    await _published_root_survives_discard()
 
 
-def test_published_root_replays_when_upload_projection_was_interrupted():
-    _run(lambda inv: _published_root_repairs_upload_projection(inv))
+async def test_published_root_replays_when_upload_projection_was_interrupted():
+    await _published_root_repairs_upload_projection(inv)
 
 
-def test_stale_cancellation_cannot_clear_a_newer_active_turn():
-    _run(lambda inv: _stale_cancel_preserves_new_turn(inv))
+async def test_stale_cancellation_cannot_clear_a_newer_active_turn():
+    await _stale_cancel_preserves_new_turn(inv)
 
 
-def test_duplicate_cancellation_is_idempotent_and_cleanup_complete():
-    _run(lambda inv: _duplicate_cancel(inv))
+async def test_duplicate_cancellation_is_idempotent_and_cleanup_complete():
+    await _duplicate_cancel(inv)
 
 
-def test_completion_wins_cancel_race_and_returns_answer_state():
-    _run(lambda inv: _completion_wins_cancel(inv))
+async def test_completion_wins_cancel_race_and_returns_answer_state():
+    await _completion_wins_cancel(inv)
 
 
 
 @pytest.mark.skip(reason="Coordinator simplified to single-pass Gemini call; checkpoint/ledger replay was removed")
-def test_observation_ledger_replay_restores_pending_request():
-    _run(lambda inv: _ledger_replay_restores_observation())
+async def test_observation_ledger_replay_restores_pending_request():
+    await _ledger_replay_restores_observation()
 
 
 @pytest.mark.skip(reason="Coordinator simplified to single-pass Gemini call; consumed observation repair was removed")
-def test_consumed_observation_repairs_inbox_before_coordinator_wait_check():
-    _run(lambda inv: _consumed_observation_repairs_inbox())
+async def test_consumed_observation_repairs_inbox_before_coordinator_wait_check():
+    await _consumed_observation_repairs_inbox()
 
 
 def test_document_continuation_removes_only_the_extracted_page_gap():
@@ -157,76 +126,76 @@ def test_document_continuation_removes_only_the_extracted_page_gap():
     ]
 
 
-def test_document_continuation_publishes_a_later_pdf_slice():
-    _run(lambda inv: _document_continuation_publishes_slice())
+async def test_document_continuation_publishes_a_later_pdf_slice():
+    await _document_continuation_publishes_slice()
 
 
-def test_clue_cap_has_replayable_continuation_instead_of_silent_omission():
-    _run(lambda inv: _clue_continuation_is_replayable())
+async def test_clue_cap_has_replayable_continuation_instead_of_silent_omission():
+    await _clue_continuation_is_replayable()
 
 
-def test_structured_device_observation_preserves_provenance_fields():
-    _run(lambda inv: _structured_observation_preserves_provenance())
+async def test_structured_device_observation_preserves_provenance_fields():
+    await _structured_observation_preserves_provenance()
 
 
-def test_settings_confirmation_is_user_reported_evidence():
-    _run(lambda inv: _settings_confirmation_is_user_reported(inv))
+async def test_settings_confirmation_is_user_reported_evidence():
+    await _settings_confirmation_is_user_reported(inv)
 
 
-def test_patrol_investigation_binding_is_owner_scoped_and_idempotent():
-    _run(lambda inv: _patrol_investigation_binding())
+async def test_patrol_investigation_binding_is_owner_scoped_and_idempotent():
+    await _patrol_investigation_binding()
 
 
-def test_background_text_intake_is_idempotent_without_live_provider():
-    _run(lambda inv: _background_text_intake(inv))
+async def test_background_text_intake_is_idempotent_without_live_provider():
+    await _background_text_intake(inv)
 
 
-def test_gmail_manual_and_monitored_scans_share_one_cursor_lease():
-    _run(lambda inv: _gmail_shared_cursor())
+async def test_gmail_manual_and_monitored_scans_share_one_cursor_lease():
+    await _gmail_shared_cursor()
 
 
-def test_url_continuation_reads_retained_snapshot_without_refetch():
-    _run(lambda inv: _url_snapshot_continuation())
+async def test_url_continuation_reads_retained_snapshot_without_refetch():
+    await _url_snapshot_continuation()
 
 
-def test_committed_case_projects_once_into_patrol_without_model_call():
-    _run(lambda inv: _committed_case_projector())
+async def test_committed_case_projects_once_into_patrol_without_model_call():
+    await _committed_case_projector()
 
 
-def test_document_continuation_replay_repairs_manifest_and_delivers_images():
-    _run(lambda inv: _document_continuation_replay_delivers_images())
+async def test_document_continuation_replay_repairs_manifest_and_delivers_images():
+    await _document_continuation_replay_delivers_images()
 
 
-def test_publication_manifest_excludes_late_or_wrong_attempt_children():
-    _run(lambda inv: _publication_manifest_is_attempt_isolated())
+async def test_publication_manifest_excludes_late_or_wrong_attempt_children():
+    await _publication_manifest_is_attempt_isolated()
 
 
-def test_concurrent_device_results_merge_under_checkpoint_revision():
-    _run(lambda inv: _concurrent_device_results_merge(inv))
+async def test_concurrent_device_results_merge_under_checkpoint_revision():
+    await _concurrent_device_results_merge(inv)
 
 
-def test_upload_control_document_fences_publication_takeover():
-    _run(lambda inv: _upload_control_fences_publication())
+async def test_upload_control_document_fences_publication_takeover():
+    await _upload_control_fences_publication()
 
 
-def test_bounded_tests_prohibit_provider_calls():
-    _run(lambda inv: _provider_call_guard())
+async def test_bounded_tests_prohibit_provider_calls():
+    await _provider_call_guard()
 
 
-def test_ordinary_higgins_chat_creates_no_investigation_records():
-    _run(lambda inv: _ordinary_chat_has_no_case_side_effect(inv))
+async def test_ordinary_higgins_chat_creates_no_investigation_records():
+    await _ordinary_chat_has_no_case_side_effect(inv)
 
 
-def test_explicit_investigation_endpoint_is_the_separate_transition():
-    _run(lambda inv: _explicit_investigation_transition(inv))
+async def test_explicit_investigation_endpoint_is_the_separate_transition():
+    await _explicit_investigation_transition(inv)
 
 
-def test_higgins_context_is_owner_scoped_redacted_and_fresh_only():
-    _run(lambda inv: _higgins_context_boundaries())
+async def test_higgins_context_is_owner_scoped_redacted_and_fresh_only():
+    await _higgins_context_boundaries()
 
 
-def test_higgins_history_is_owner_scoped_and_redacted():
-    _run(lambda inv: _higgins_history_boundaries())
+async def test_higgins_history_is_owner_scoped_and_redacted():
+    await _higgins_history_boundaries()
 
 
 def test_government_alert_parser_accepts_only_allowlisted_official_links():

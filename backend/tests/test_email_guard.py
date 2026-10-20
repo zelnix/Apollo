@@ -13,7 +13,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_BACKEND_URL", "https://privacy-receipts.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_BACKEND_URL", "https://uat-loop-fix.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 

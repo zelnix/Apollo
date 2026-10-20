@@ -9,7 +9,7 @@ import sys
 import requests
 
 # Backend URL from environment
-BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "https://privacy-receipts.preview.emergentagent.com")
+BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "https://uat-loop-fix.preview.emergentagent.com")
 API_BASE = f"{BACKEND_URL}/api"
 
 def register_device():

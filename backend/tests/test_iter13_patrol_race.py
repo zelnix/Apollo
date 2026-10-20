@@ -9,7 +9,12 @@ import aiohttp
 import pytest
 import requests
 
-BASE_URL = "https://privacy-receipts.preview.emergentagent.com"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
 
 DEVICE_ID = f"race-{uuid.uuid4().hex[:12]}"
