@@ -34,7 +34,8 @@ TRIAGE_EVIDENCE_ITEM_ID = "apollo-triage-intelligence"
 async def _register_triage_evidence(owner: str, case: dict) -> None:
     """Store the raw triage provider results as a case evidence item, once."""
     pre_gathered = case.get("triage_provider_evidence")
-    if not pre_gathered:
+    # An empty envelope (no provider consulted, no lookups) is bookkeeping, not intelligence.
+    if not pre_gathered or not ev.has_intelligence(pre_gathered):
         return
     existing = await repo.list_evidence(owner, case["case_id"])
     if any(row.get("client_item_id") == TRIAGE_EVIDENCE_ITEM_ID for row in existing):

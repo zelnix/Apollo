@@ -36,10 +36,6 @@ export function diRequestText(record: DiTransaction): string {
     "",
     ...header(record),
     "",
-    "SYSTEM / COORDINATOR PROMPT",
-    r.systemPrompt ||
-      "None. Apollo sends no system prompt: the request is the question, the case evidence, and the required response schema.",
-    "",
     "QUESTION AND EVIDENCE SENT",
     r.investigationPrompt || "not recorded",
     "",

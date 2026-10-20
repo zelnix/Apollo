@@ -5,6 +5,7 @@ Originals are stored as encrypted chunks for the case lifetime only. Extraction 
 from __future__ import annotations
 
 import io
+import json
 import re
 import uuid
 import zipfile
@@ -732,19 +733,65 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
         "coverage.status": "examined" if parent_complete else "partial", "coverage.materialGap": parent_gap or not parent_complete}})
 
 
+def _as_json(text: str) -> object:
+    """Parsed JSON when the item IS a JSON envelope, otherwise the text itself."""
+    stripped = text.strip()
+    if stripped.startswith("{"):
+        try:
+            return json.loads(stripped)
+        except ValueError:
+            return text
+    return text
+
+
+def has_intelligence(payload: object) -> bool:
+    """True when a specialist lookup actually returned something.
+
+    Apollo's triage records a result envelope even when no provider was consulted
+    ("providers_consulted": [], "total_lookups": 0). An empty envelope carries no intelligence, so it
+    is not evidence and is never sent to Gemini.
+    """
+    if not isinstance(payload, dict):
+        return bool(payload)
+    summary = payload.get("_summary")
+    if isinstance(summary, dict):
+        if summary.get("providers_consulted") or summary.get("total_lookups"):
+            return True
+    # Any section other than the bookkeeping summary that holds real content.
+    return any(key != "_summary" and value not in (None, "", [], {}) for key, value in payload.items())
+
+
+# Workflow metadata recorded when a check starts. It describes HOW the check was initiated, not what
+# was observed, so it is kept locally but never sent as evidence.
+_WORKFLOW_METADATA = re.compile(r"^(user-initiated|automatic|auto)\b.*\b(check|investigation)\b", re.IGNORECASE)
+
+
+def is_workflow_metadata(text: str) -> bool:
+    return bool(_WORKFLOW_METADATA.match(text.strip()))
+
+
 # Maximum words of written evidence Apollo will send in one investigation, across every document and
 # item combined. Over this, Apollo sends NOTHING: it never quietly shortens, samples or drops evidence.
 EVIDENCE_WORD_LIMIT = 10_000
 
 
 async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[tuple[str, int, int, int]], int]:
-    """The complete case evidence as Gemini parts, each labelled with its id and kind.
+    """The case evidence as Gemini parts, each labelled with its id and kind.
 
     The request sent to Gemini is: the person's question, this evidence, and the response schema.
     Therefore:
-    - Evidence is sent COMPLETE. Text is not truncated and nothing is summarised or filtered.
+    - Evidence is sent COMPLETE. Text is never truncated, shortened or summarised.
     - Each item appears ONCE. An image is sent as its bytes with a single identifying line; it is
       never also described in a second, textual representation.
+    - Derived items that add nothing are not retransmitted. A link or phone clue extracted from a
+      message is, verbatim, already inside that message, so sending it again is the same information
+      twice. The clue records stay in Apollo for specialist lookups and evidence relationships; they
+      are only withheld from the request, and only while their parent is being sent. A clue that
+      carries its own lookup result (a snapshot, a provider finding) is NOT a duplicate and is sent.
+    - Workflow metadata ("user-initiated check via ...") describes how the check started, not what was
+      observed, so it is not sent.
+    - Empty specialist-intelligence envelopes (no provider consulted, no lookups) carry nothing and
+      are not sent.
     - The label carries only the identifier and kind, so findings can cite real evidenceIds. It is
       not instruction or interpretation.
     - Unavailable items are named, with the recorded reason, so the absence is visible and their ids
@@ -758,6 +805,20 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
     screened and redacted on the device (or refused) before upload. Images carrying visual-only
     credential content remain a documented limitation.
     """
+    available = [row for row in rows if row["availability"] == "available"]
+    texts: dict[str, str] = {}
+    for row in available:
+        if row["kind"] in ("text", "url", "observation", "source_snapshot"):
+            texts[row["evidence_id"]] = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
+
+    def redundant(row: dict) -> bool:
+        """A derived item whose whole content is already inside the parent item being sent."""
+        parent_id = row.get("parent_id")
+        text = texts.get(row["evidence_id"], "").strip()
+        if not parent_id or not text or parent_id not in texts:
+            return False
+        return text in texts[parent_id]
+
     parts: list[types.Part] = []
     marks: list[tuple[str, int, int, int]] = []
     words = 0
@@ -771,7 +832,9 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
             continue
         label += "]"
         if row["kind"] in ("text", "url", "observation", "source_snapshot"):
-            text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
+            text = texts[row["evidence_id"]]
+            if redundant(row) or is_workflow_metadata(text) or not has_intelligence(_as_json(text)):
+                continue
             parts.append(types.Part(text=f"{label}\n{text}"))
             words += len(text.split())
             if row["coverage"].get("unit") == "characters":

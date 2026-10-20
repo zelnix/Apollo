@@ -134,7 +134,7 @@ export default function Ask() {
     router.setParams({ screenshotUri: "", screenshotName: "", screenshotType: "", prompt: "" });
     setInvestigationMode(true); setText(""); setRouteError(null); setChatError(null); setLastAction(null);
     const operationId = Crypto.randomUUID(); router.setParams({ operationId });
-    const input = { gate: null as string | null, question, submissions: [] as { clientItemId: string; kind: "text" | "url"; value: string; label: string }[], initialFindingRefs: [] as string[], initialFindings: ["User-initiated screenshot investigation from Check tab"] };
+    const input = { gate: null as string | null, question, submissions: [] as { clientItemId: string; kind: "text" | "url"; value: string; label: string }[], initialFindingRefs: [] as string[], initialFindings: [] as string[] };
     void start(input, [{ uri, name, mediaType: type }], operationId);
   }, [params.screenshotUri, params.screenshotName, params.screenshotType, params.prompt, deviceId, router, start]);
 
@@ -424,7 +424,8 @@ export default function Ask() {
       question,
       submissions,
       initialFindingRefs: [] as string[],
-      initialFindings: [`User-initiated check via Ask Higgins: ${result.category.replace("_", " ")}`],
+      // How the check was started is workflow metadata, not an Apollo observation — it is not evidence.
+      initialFindings: [] as string[],
     };
 
     // For screenshots with an image, include the file (the analysis copy); keep original + copy as local evidence.

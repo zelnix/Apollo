@@ -159,3 +159,61 @@ async def test_evidence_within_the_limit_still_runs():
     parts, _marks, words = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
     assert words == 9999
     assert parts and "word" in parts[0].text
+
+
+SMS = ("From +61 448 221 905:\n"
+       "CommBank: A payment of $920.00 to CRYPTO EXCHANGE LTD is pending. If this wasn't you, cancel it "
+       "now at http://commbank-cancel.co/stop and confirm your NetBank password.")
+
+
+async def test_derived_clues_workflow_metadata_and_empty_triage_are_not_sent():
+    """The SMS is the evidence. The phone and link clues extracted from it are the same information
+    again, so they stay in Apollo but are not retransmitted. Workflow metadata and an empty triage
+    envelope are not evidence at all."""
+    owner = f"req-dupe-{uuid.uuid4().hex[:8]}"
+    case = await repo.create_case(owner, "text", None)
+    await ev.ingest_text(owner, case, "sms-1", SMS, kind="text", origin="user_submission", label="messages calls")
+    await ev.ingest_text(owner, case, "apollo-finding-0", "User-initiated check via Ask Higgins: messages calls",
+                         origin="apollo_inference", label="Apollo initial finding")
+    await ev.ingest_text(owner, case, "intel-0", '{"_summary": {"providers_consulted": [], "total_lookups": 0}}',
+                         origin="apollo_inference", label="Pre-gathered specialist intelligence")
+
+    rows = await repo.list_evidence(owner, case["case_id"])
+    # Apollo still holds the clue records for specialist lookups and evidence relationships.
+    assert any(row["label"] == "phone clue" for row in rows)
+    assert any(str(row["label"]).startswith("link clue") for row in rows)
+
+    parts, _marks, words = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
+    texts = [p.text for p in parts if getattr(p, "text", None)]
+
+    assert len(texts) == 1, texts                      # the SMS, and nothing else
+    assert "messages calls" in texts[0] and "CommBank" in texts[0]
+    assert "User-initiated check" not in texts[0]
+    assert "providers_consulted" not in " ".join(texts)
+    assert words == len(SMS.split())
+
+
+async def test_a_clue_with_its_own_lookup_result_is_still_sent():
+    """Withholding applies only to verbatim duplicates. A child item carrying new information — a page
+    snapshot taken from the link — is evidence in its own right and is sent."""
+    owner = f"req-child-{uuid.uuid4().hex[:8]}"
+    case = await repo.create_case(owner, "text", None)
+    parent = await ev.ingest_text(owner, case, "sms-1", SMS, kind="text", origin="user_submission", label="messages calls")
+    await ev.ingest_text(owner, case, "sms-1.source", "Page title: Verify your NetBank details. Form fields: password.",
+                         kind="source_snapshot", origin="external_source", parent_id=parent.id, label="page snapshot")
+
+    rows = await repo.list_evidence(owner, case["case_id"])
+    parts, _marks, _words = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
+    texts = [p.text for p in parts if getattr(p, "text", None)]
+    assert any("Page title" in t for t in texts), texts
+
+
+async def test_empty_triage_envelope_is_never_registered_as_evidence():
+    owner = f"req-empty-{uuid.uuid4().hex[:8]}"
+    case = await repo.create_case(owner, "text", None)
+    await db.investigation_cases.update_one(
+        {"owner_id": owner, "case_id": case["case_id"]},
+        {"$set": {"triage_provider_evidence": {"_summary": {"providers_consulted": [], "total_lookups": 0}}}})
+    await coordinator._register_triage_evidence(owner, await repo.get_case(owner, case["case_id"]))
+    rows = await repo.list_evidence(owner, case["case_id"])
+    assert not any(row.get("client_item_id") == coordinator.TRIAGE_EVIDENCE_ITEM_ID for row in rows)

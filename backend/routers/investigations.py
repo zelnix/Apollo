@@ -255,8 +255,11 @@ async def _launch_investigation(
                                      sub["value"],
                                      label=sub.get("label", "submitted text"))
 
-        # Ingest pre-gathered specialist intelligence as evidence items
+        # Ingest pre-gathered specialist intelligence as evidence items. An item where no provider
+        # returned anything holds no intelligence, so it is not recorded as evidence.
         for idx, intel_item in enumerate(intel_evidence or []):
+            if not ev.has_intelligence(intel_item):
+                continue
             await ev.ingest_text(
                 owner, case, f"intel-{idx}",
                 json.dumps(intel_item, ensure_ascii=False, default=str),
