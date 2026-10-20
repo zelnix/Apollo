@@ -3,14 +3,18 @@
 // returned, and the processing statistics. Shown as the DI tab on both the Threat Case screen and the
 // Investigation Report. Evidence is never modified to build this view.
 
+import * as Clipboard from "expo-clipboard";
+import Copy from "lucide-react-native/icons/copy";
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Share, Text, View } from "react-native";
 
 import { apiGet } from "@/src/api/client";
 import { Card } from "@/src/components/ui";
 import { formatBytes, provenanceLabel, type DiTransaction } from "@/src/domain/diTransaction";
+import { diRequestText, diResponseText } from "@/src/domain/diTransactionText";
+import { useApollo } from "@/src/store/ApolloContext";
 import { formatDateTime } from "@/src/domain/threatCase";
-import { fonts, makeStyles, radius, spacing } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
@@ -23,7 +27,46 @@ const useStyles = makeStyles((c) => ({
   provenanceNote: { fontFamily: fonts.text, fontSize: 11, lineHeight: 15, color: c.onSurfaceSecondary, marginTop: 2 },
   diNotice: { borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: c.gold, backgroundColor: c.surfaceSecondary, padding: spacing.md },
   diNoticeText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs },
+  copyBtn: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  copyBtnText: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.onSurface },
 }));
+
+/** One-tap copy (long-press to share) of exactly what this card shows. */
+function CardCopy({ text, label, testID }: { text: string; label: string; testID: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const { showToast } = useApollo();
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await Clipboard.setStringAsync(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+      showToast(`${label} copied. Paste it into an email, message or report.`, "neutral");
+    } catch {
+      showToast("Apollo couldn't copy to the clipboard on this device.", "growling");
+    }
+  };
+  const share = async () => {
+    try { await Share.share({ message: text, title: label }); }
+    catch { showToast("Apollo couldn't open the share sheet on this device.", "growling"); }
+  };
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={`Copy ${label}`}
+      accessibilityHint="Long press to share instead"
+      onPress={() => void copy()}
+      onLongPress={() => void share()}
+      style={({ pressed }) => [s.copyBtn, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <Copy size={14} color={colors.onSurface} />
+      <Text style={s.copyBtnText}>{copied ? "Copied" : "Copy"}</Text>
+    </Pressable>
+  );
+}
 
 function DiRow({ label, value, note }: { label: string; value: string; note?: string }) {
   const s = useStyles();
@@ -123,7 +166,10 @@ export function DiReport({ caseId }: { caseId: string | null }) {
             </Card>
 
             <Card testID={`tc-di-request-${index}`}>
-              <Text style={s.sectionTitle}>Sent to Gemini</Text>
+              <View style={s.cardHeader}>
+                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>Sent to Gemini</Text>
+                <CardCopy text={diRequestText(record)} label="The request sent to Gemini" testID={`tc-di-request-copy-${index}`} />
+              </View>
               <Text style={s.provenanceNote}>
                 The actual final request produced at the Gemini boundary. Attachments are the post-redaction form that
                 would be transmitted — originals are never shown here.
@@ -146,7 +192,10 @@ export function DiReport({ caseId }: { caseId: string | null }) {
             </Card>
 
             <Card testID={`tc-di-response-${index}`}>
-              <Text style={s.sectionTitle}>{record.simulated ? "Simulator response" : "Gemini response"}</Text>
+              <View style={s.cardHeader}>
+                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>{record.simulated ? "Simulator response" : "Gemini response"}</Text>
+                <CardCopy text={diResponseText(record)} label={record.simulated ? "The simulator response" : "The Gemini response"} testID={`tc-di-response-copy-${index}`} />
+              </View>
               <DiBlock testID={`tc-di-response-text-${index}`} title="Complete response" body={record.response.text || "not recorded"} />
               <DiRow label="Finish reason:" value={record.response.finishReason ?? "not recorded"} />
             </Card>

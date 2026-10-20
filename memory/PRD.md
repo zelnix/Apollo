@@ -2217,3 +2217,7 @@ Tests: `frontend/tests/deviceCheckResult.test.ts` (5 pass), `tests/firstCheck.te
 
 ## Higgins check sheet — tap feedback (Jun 2026)
 Sample rows read as "not tappable" on a real device because the filled field sits below the sample list. `Sheet` now accepts a `scrollRef`; selecting a sample marks that row "Selected", shows a confirmation line, and scrolls straight to the filled field + submit button.
+
+## DI tab — copy the Gemini request and response (Jun 2026)
+`src/domain/diTransactionText.ts` (new, pure) renders one DI transaction as plain text: `diRequestText()` = everything the "Sent to Gemini" card shows (system prompt, investigation prompt, tools, attachment metadata, payload size) and `diResponseText()` = the complete response plus finish reason and the recorded processing/cost statistics. Attachment bodies are never included — only the recorded metadata.
+`DiReport.tsx` puts a Copy button in each of those two card headers (`tc-di-request-copy-N`, `tc-di-response-copy-N`): tap copies, long-press shares, button shows "Copied" for 3s and the toast says where to paste. Simulated transactions are labelled as the simulator response and keep the "no Gemini API call was made" note in the copied text.
