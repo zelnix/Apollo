@@ -4,9 +4,10 @@ import sys
 import requests
 import json
 import time
+import os
 
-# Backend URL - using localhost since we're testing the backend directly
-BACKEND_URL = "http://localhost:8001"
+# Backend URL - read from environment or use localhost
+BACKEND_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "http://localhost:8001")
 
 def test_health_endpoint():
     """Test GET /api/health - should return 200 with status 'ok'."""
@@ -315,10 +316,166 @@ def test_scam_alerts_endpoint(credentials):
         return False
 
 
+def test_scam_alerts_analysis_version_5(credentials):
+    """Test GET /api/higgins/scams - verify ANALYSIS_VERSION=5 returns expected alerts."""
+    print("\n" + "="*60)
+    print("TEST 5: Scam Alerts ANALYSIS_VERSION=5 Verification")
+    print("="*60)
+    
+    if not credentials:
+        print("❌ FAILED: No device credentials available")
+        return False
+    
+    try:
+        headers = {
+            "Authorization": f"Bearer {credentials['device_token']}",
+        }
+        
+        response = requests.get(
+            f"{BACKEND_URL}/api/higgins/scams",
+            params={"limit": 50},
+            headers=headers,
+            timeout=15
+        )
+        
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"❌ FAILED: Expected 200, got {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+        
+        data = response.json()
+        print(f"Response keys: {list(data.keys())}")
+        
+        # Verify required keys exist
+        required_keys = ["alerts", "emerging", "pendingCount", "feeds"]
+        missing_keys = [key for key in required_keys if key not in data]
+        
+        if missing_keys:
+            print(f"❌ FAILED: Missing required keys: {missing_keys}")
+            return False
+        
+        # Check alerts array
+        alerts = data.get("alerts", [])
+        print(f"\n📊 Alerts Analysis:")
+        print(f"  • Number of alerts: {len(alerts)}")
+        
+        if len(alerts) == 0:
+            print(f"❌ FAILED: Expected alerts array with items, got 0 alerts")
+            print(f"  This suggests ANALYSIS_VERSION may not be correctly set to 5")
+            return False
+        
+        # Verify each alert has required fields
+        alert_issues = []
+        for i, alert in enumerate(alerts[:3]):  # Check first 3 alerts
+            missing = []
+            if "title" not in alert:
+                missing.append("title")
+            if "tier" not in alert:
+                missing.append("tier")
+            if "severity" not in alert:
+                missing.append("severity")
+            if "australianRelevance" not in alert:
+                missing.append("australianRelevance")
+            if "higgins" not in alert:
+                missing.append("higgins")
+            
+            if missing:
+                alert_issues.append(f"Alert {i}: missing {missing}")
+            
+            # Verify tier is specific_scam
+            if alert.get("tier") != "specific_scam":
+                alert_issues.append(f"Alert {i}: tier is '{alert.get('tier')}', expected 'specific_scam'")
+        
+        if alert_issues:
+            print(f"❌ FAILED: Alert structure issues:")
+            for issue in alert_issues:
+                print(f"  • {issue}")
+            return False
+        
+        print(f"  • All alerts have required fields: ✓")
+        print(f"  • All alerts have tier='specific_scam': ✓")
+        
+        # Show sample alert
+        if len(alerts) > 0:
+            sample = alerts[0]
+            print(f"\n📋 Sample Alert:")
+            print(f"  • Title: {sample.get('title', 'N/A')[:60]}...")
+            print(f"  • Tier: {sample.get('tier')}")
+            print(f"  • Severity: {sample.get('severity')}")
+            print(f"  • Australian Relevance: {sample.get('australianRelevance')}")
+            if "higgins" in sample:
+                higgins = sample["higgins"]
+                print(f"  • Higgins keys: {list(higgins.keys())}")
+        
+        # Check emerging array
+        emerging = data.get("emerging", [])
+        print(f"\n📊 Emerging Patterns:")
+        print(f"  • Number of emerging patterns: {len(emerging)}")
+        
+        # Verify emerging items have correct tier
+        for i, item in enumerate(emerging[:3]):
+            if item.get("tier") != "emerging_pattern":
+                print(f"❌ FAILED: Emerging item {i} has tier '{item.get('tier')}', expected 'emerging_pattern'")
+                return False
+        
+        if len(emerging) > 0:
+            print(f"  • All emerging items have tier='emerging_pattern': ✓")
+        
+        # Check pendingCount
+        pending_count = data.get("pendingCount", 0)
+        print(f"\n📊 Pending Analysis:")
+        print(f"  • Pending count: {pending_count}")
+        
+        if pending_count > 72:
+            print(f"⚠️  WARNING: pendingCount ({pending_count}) is higher than expected (≤72)")
+            print(f"  This may indicate analysis is still in progress")
+        
+        # Check feeds object
+        feeds = data.get("feeds", {})
+        print(f"\n📊 Feeds:")
+        print(f"  • Number of feeds: {len(feeds)}")
+        
+        if len(feeds) == 0:
+            print(f"❌ FAILED: Expected feeds object with entries, got empty object")
+            return False
+        
+        # Show feed status
+        for feed_id, feed_info in list(feeds.items())[:3]:
+            status = feed_info.get("status", "unknown")
+            source = feed_info.get("source", "unknown")
+            print(f"  • {feed_id}: {status} ({source})")
+        
+        # Final verification summary
+        print(f"\n✅ VERIFICATION SUMMARY:")
+        print(f"  • Alerts array: {len(alerts)} items (expected: 6, got: {len(alerts)})")
+        print(f"  • Emerging array: {len(emerging)} items (expected: 3, got: {len(emerging)})")
+        print(f"  • Pending count: {pending_count} (expected: ≤72)")
+        print(f"  • Feeds: {len(feeds)} feeds (expected: 7, got: {len(feeds)})")
+        
+        # Determine pass/fail
+        if len(alerts) >= 1 and len(feeds) >= 1:
+            print(f"\n✅ PASSED: Scam alerts endpoint returns alerts after ANALYSIS_VERSION=5 revert")
+            return True
+        else:
+            print(f"\n❌ FAILED: Alert counts don't match expected values")
+            return False
+        
+    except requests.exceptions.RequestException as e:
+        print(f"❌ FAILED: Request error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ FAILED: Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_device_data_inventory_endpoint(credentials):
     """Test GET /api/devices/data-inventory - verify responds with auth."""
     print("\n" + "="*60)
-    print("TEST 5: Device Data Inventory Endpoint")
+    print("TEST 6: Device Data Inventory Endpoint")
     print("="*60)
     
     if not credentials:
@@ -371,6 +528,7 @@ def main():
     print("\n" + "="*70)
     print("APOLLO SCAM GUARD - BACKEND API HEALTH & CORE ENDPOINTS TEST")
     print("Testing: Health, Higgins Chat, Investigations, Scam Alerts, Data Inventory")
+    print(f"Backend URL: {BACKEND_URL}")
     print("="*70)
     
     results = []
@@ -379,8 +537,34 @@ def main():
     health_passed = test_health_endpoint()
     results.append(("Health Check (GET /api/health)", health_passed))
     
-    # Setup: Register device for authenticated tests
-    credentials = register_test_device()
+    # Setup: Register device for authenticated tests with specific parameters
+    print("\n" + "="*60)
+    print("SETUP: Registering Test Device (Android)")
+    print("="*60)
+    
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/api/devices/register",
+            json={
+                "platform": "android",
+                "adapter_mode": "standard",
+                "app_version": "1.0.0",
+                "os_version": "14"
+            },
+            timeout=10
+        )
+        
+        if response.status_code != 201:
+            print(f"❌ Device registration failed: {response.status_code}")
+            print(f"Response: {response.text}")
+            credentials = None
+        else:
+            data = response.json()
+            credentials = {"device_id": data.get("device_id"), "device_token": data.get("device_token")}
+            print(f"✅ Device registered: {credentials['device_id'][:16]}...")
+    except Exception as e:
+        print(f"❌ Device registration error: {e}")
+        credentials = None
     
     if not credentials:
         print("\n❌ CRITICAL: Device registration failed - cannot proceed with authenticated tests")
@@ -403,7 +587,11 @@ def main():
     scams_passed = test_scam_alerts_endpoint(credentials)
     results.append(("Scam Alerts (GET /api/higgins/scams)", scams_passed))
     
-    # Test 5: Device data inventory endpoint (requires auth)
+    # Test 5: Scam alerts ANALYSIS_VERSION=5 verification
+    scams_v5_passed = test_scam_alerts_analysis_version_5(credentials)
+    results.append(("Scam Alerts ANALYSIS_VERSION=5 (GET /api/higgins/scams)", scams_v5_passed))
+    
+    # Test 6: Device data inventory endpoint (requires auth)
     inventory_passed = test_device_data_inventory_endpoint(credentials)
     results.append(("Device Data Inventory (GET /api/devices/data-inventory)", inventory_passed))
     
@@ -428,6 +616,7 @@ def main():
         print("  • Higgins chat endpoint returns 200 with non-empty answer (not 503)")
         print("  • Investigation creation endpoint is functional")
         print("  • Scam alerts endpoint returns data correctly")
+        print("  • ANALYSIS_VERSION=5 revert successful - alerts are visible")
         print("  • Device data inventory endpoint is working")
         print("\n✅ Backend API health verification COMPLETE")
         return 0

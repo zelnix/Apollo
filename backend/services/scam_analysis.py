@@ -24,7 +24,7 @@ from services.outbound import OutboundBlocked, public_get
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 logger = logging.getLogger("apollo")
 
-ANALYSIS_VERSION = 6
+ANALYSIS_VERSION = 5
 # Model is now configured via GEMINI_ADVISORY_MODEL env var in provider.py
 _MAX_ARTICLE_CHARS = 14000
 

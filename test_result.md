@@ -1,3 +1,29 @@
+## 2026-10-20 Preview vs Production Parity Investigation + ANALYSIS_VERSION revert
+
+backend:
+  - task: "Revert ANALYSIS_VERSION from 6 back to 5 so existing alert-worthy items are visible"
+    implemented: true
+    working: true
+    file: "backend/services/scam_analysis.py"
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "The v5→v6 bump hid all 11 alert-worthy items behind a version gate. Reverted to 5. Preview now shows 6 alerts + 3 emerging. Backend 829/829 pass."
+
+test_plan:
+  current_focus:
+    - "Verify /api/higgins/scams returns alerts with device auth"
+    - "Verify ANALYSIS_VERSION is 5"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Reverted ANALYSIS_VERSION to 5. Preview /api/higgins/scams now returns 6 alerts + 3 emerging with device auth. Investigation found production's 1-alert issue is caused by scamwatch CDN blocking the production server IP, not classification rules. Backend 829/829 pass. Please verify scams endpoint returns alerts."
+
+
 ## 2026-10-20 BUGFIX — Automatic Call Gate not linking Magnum DI investigation to Threat Case
 
 backend:
