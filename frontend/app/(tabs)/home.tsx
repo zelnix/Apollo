@@ -146,9 +146,10 @@ const useStyles = makeStyles((c) => ({
   heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroGradient: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroOverlay: {
-    padding: spacing.lg, gap: spacing.md, flexDirection: "row",
-    alignItems: "flex-start",
+    padding: spacing.lg, gap: spacing.md, flexDirection: "column",
+    alignItems: "stretch",
   },
+  heroTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroContentWrap: { flex: 1, flexShrink: 1 },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
@@ -157,7 +158,8 @@ const useStyles = makeStyles((c) => ({
   heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
-  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, flexShrink: 1 },
+  // Runs the full width of the card, stopping short of the artwork on the right.
+  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, paddingRight: spacing.xl },
 
   // ── Two side-by-side cards ──
   twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
@@ -294,29 +296,28 @@ export default function Home() {
             colors={["rgba(232,245,238,0.95)", "rgba(232,245,238,0.85)", "rgba(232,245,238,0.3)", "transparent"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            locations={[0, 0.5, 0.75, 1]}
+            locations={[0, 0.62, 0.88, 1]}
             style={s.heroGradient}
           />
           <View style={[s.heroOverlay, compact && { padding: spacing.md }]}>
-            <View style={[s.heroImageWrap, compact && { width: 68, height: 68, borderRadius: 34 }]}>
-              <Image
-                source={gif ? gif.src : FALLBACK_IMAGE}
-                style={[s.heroImage, compact && { width: 68, height: 68 }]}
-                contentFit="cover"
-                autoplay
-                accessibilityLabel={gif?.label ?? "Apollo"}
-                testID="home-hero-gif"
-              />
-            </View>
-            <View style={s.heroContentWrap}>
-              <View style={s.heroContent}>
-                <View style={s.heroStatusRow}>
-                  <ShieldCheck size={compact ? 14 : 16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
-                  <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={1}>{stateLabel}</Text>
-                </View>
-                <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]}>{voice.text}</Text>
+            {/* Apollo + his state on one row; the line he's saying runs the full width underneath. */}
+            <View style={s.heroTopRow}>
+              <View style={[s.heroImageWrap, compact && { width: 68, height: 68, borderRadius: 34 }]}>
+                <Image
+                  source={gif ? gif.src : FALLBACK_IMAGE}
+                  style={[s.heroImage, compact && { width: 68, height: 68 }]}
+                  contentFit="cover"
+                  autoplay
+                  accessibilityLabel={gif?.label ?? "Apollo"}
+                  testID="home-hero-gif"
+                />
+              </View>
+              <View style={s.heroStatusRow}>
+                <ShieldCheck size={compact ? 14 : 16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
+                <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={2}>{stateLabel}</Text>
               </View>
             </View>
+            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={3} testID="home-hero-voice">{voice.text}</Text>
           </View>
         </Pressable>
 

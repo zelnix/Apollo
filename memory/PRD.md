@@ -1,3 +1,24 @@
+## Home hero: short line, text under Apollo, full width (2026-06)
+
+**Wording.** `buildHomeVoice` no longer pastes the case narrative into the hero. One short line only:
+single finding → "Apollo found <the specific thing or 'something in the X check'>. It needs your decision." (barking) /
+"Apollo flagged <…>." ; driving-event path (3c) → "Apollo is reacting to <the specific thing / something in the X check>."
+No case title and no what-to-do steps — both live in the case. `tests/developerCorrectionRegression.test.ts` T17 updated to
+accept "needs your decision".
+
+**Layout.** `app/(tabs)/home.tsx` hero is now a column: Apollo's avatar and his state sit on one row, and the line he's
+saying runs the full width underneath (`home-hero-voice`, max 3 lines, right padding so it stops before the artwork). The
+readability gradient was extended (locations 0 / 0.62 / 0.88 / 1) to cover the wider text.
+
+**Also verified for the owner:** status changes stick across a full reload — Resolved → Reopen (Attention) → Mark as handled
+(Resolved) → reload → still Resolved; `mergeLocalAndRemoteEvents` keeps a local resolution unless genuinely newer evidence
+arrives, and a user reopen beats an older server resolution.
+
+**OPEN (awaiting owner decision):** `tests/architecturalRegression.test.ts`, `tests/phase2Corrections.test.ts` and
+`tests/higginsBehavioural.test.ts` all import the deleted `src/domain/protectionDetails.ts` (`buildProtectionFindings`,
+`countDistinctFindings`) — they fail to load, so ~40 assertions are silently dead. Options offered: rewrite against the
+current protection code, strip only the dead assertions, or defer.
+
 ## Bug fix: reopening the example case didn't stick (2026-06)
 
 Cause: the example-case refresh added earlier replaced the stored event wholesale with `MOCK_THREAT_EVENT` on every app start,

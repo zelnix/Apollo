@@ -193,11 +193,13 @@ export function buildHomeVoice(input: {
     const primaryProblem = (primary.problem || "").trim();
 
     if (securityFindings.length === 1) {
-      // One specific concern — name it, explain it, link directly to the investigation.
-      const opener = state === "barking"
-        ? (primaryProblem ? `Apollo found ${primaryProblem} — this needs your action now` : `Apollo found something in ${primary.gate} that needs your action now`)
-        : (primaryProblem ? `Apollo flagged ${primaryProblem}` : `Apollo flagged something in ${primary.gate}`);
-      const text = `${opener}. Open it and I'll tell you exactly what to do.`;
+      // ONE short line: the specific thing Apollo reacted to, or the check it came from. The case
+      // title and the what-to-do steps live in the case itself — the hero must stay glanceable.
+      const subject = primary.event ? threatSubject(primary.event) : null;
+      const what = subject ? subjectDescriptor(subject) : `something in the ${primary.gate} check`;
+      const text = state === "barking"
+        ? `Apollo found ${what}. It needs your decision.`
+        : `Apollo flagged ${what}.`;
       return {
         text,
         ctaLabel: "View what Apollo found",
@@ -262,16 +264,12 @@ export function buildHomeVoice(input: {
 
   // 3c) A driving event exists but didn't surface as a dedicated attention item.
   if (drivingEvent) {
-    const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
-    const problem = hasLocalEvidence(drivingEvent) ? rawProblem : "";
     const subject = threatSubject(drivingEvent);
     const named = subject ? subjectDescriptor(subject) : "";
-    const verb = state === "barking" ? "barking" : "growling";
-    const text = problem
-      ? `Apollo is ${verb}${named ? ` at ${named}` : ""} — he flagged ${problem}. Open it and I'll tell you exactly what to do.`
-      : named
-        ? `Apollo is ${verb} at ${named}. Open it and I'll walk you through what's happening.`
-        : `Apollo is ${verb} about a security concern. Open it and I'll walk you through what's happening.`;
+    const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
+    const text = named
+      ? `Apollo is reacting to ${named}.`
+      : `Apollo is reacting to something in the ${gateName} check.`;
     return {
       text,
       ctaLabel: "View what Apollo found",
