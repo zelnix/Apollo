@@ -70,8 +70,10 @@ def _json_object(text: str) -> Optional[dict]:
 class Outcome:
     def __init__(self, kind: str, *, commit: Optional[TurnCommit] = None, request: Optional[dict] = None, case: Optional[dict] = None,
                  errors: Optional[list[str]] = None, provider_text: Optional[str] = None, finish_reason: Optional[str] = None,
-                 model: Optional[str] = None):
+                 model: Optional[str] = None, evidence_words: Optional[int] = None):
         self.kind, self.commit, self.request, self.case, self.errors = kind, commit, request, case, errors or []
+        # Set only for "evidence_too_large": the real word count, so Higgins can state it.
+        self.evidence_words = evidence_words
         # Real provider output kept verbatim for the technical details — never reshaped into a result.
         self.provider_text, self.finish_reason, self.model = provider_text, finish_reason, model
 
@@ -92,7 +94,14 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     await progress("ingest", "Assembling the case evidence.")
     await _register_triage_evidence(owner, case)
     rows = await repo.list_evidence(owner, case["case_id"])
-    evidence_parts, pending_marks = await ev.model_parts(owner, case, rows)
+    evidence_parts, pending_marks, evidence_words = await ev.model_parts(owner, case, rows)
+
+    # Too much written evidence for one investigation. Apollo sends NOTHING rather than quietly
+    # shortening, sampling or dropping any of it, and no evidence is marked as examined.
+    if evidence_words > ev.EVIDENCE_WORD_LIMIT:
+        return Outcome("evidence_too_large", evidence_words=evidence_words,
+                       errors=[f"written evidence is {evidence_words} words; Apollo's limit for one investigation is {ev.EVIDENCE_WORD_LIMIT}"])
+
     contents = [types.Content(role="user", parts=[types.Part(text=payload["message"]), *evidence_parts])]
 
     # Mark evidence as examined now that it has been sent to Gemini

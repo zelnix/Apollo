@@ -732,7 +732,12 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
         "coverage.status": "examined" if parent_complete else "partial", "coverage.materialGap": parent_gap or not parent_complete}})
 
 
-async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[tuple[str, int, int, int]]]:
+# Maximum words of written evidence Apollo will send in one investigation, across every document and
+# item combined. Over this, Apollo sends NOTHING: it never quietly shortens, samples or drops evidence.
+EVIDENCE_WORD_LIMIT = 10_000
+
+
+async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[tuple[str, int, int, int]], int]:
     """The complete case evidence as Gemini parts, each labelled with its id and kind.
 
     The request sent to Gemini is: the person's question, this evidence, and the response schema.
@@ -745,8 +750,9 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
     - Unavailable items are named, with the recorded reason, so the absence is visible and their ids
       stay referable — Apollo never silently drops evidence it holds but cannot supply.
 
-    Returns the parts and the pending examination marks (evidence_id, start, end, total), applied
-    only after Gemini succeeds.
+    Returns the parts, the pending examination marks (evidence_id, start, end, total) applied only
+    after Gemini succeeds, and the total word count of the written evidence (labels excluded, images
+    contribute no words) so the caller can enforce EVIDENCE_WORD_LIMIT before any call is made.
 
     Privacy: text parts are credential-stripped by the provider boundary before the call; images were
     screened and redacted on the device (or refused) before upload. Images carrying visual-only
@@ -754,6 +760,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
     """
     parts: list[types.Part] = []
     marks: list[tuple[str, int, int, int]] = []
+    words = 0
     for row in rows:
         label = f"[evidence {row['evidence_id']} · kind={row['kind']}"
         if row.get("label"):
@@ -766,6 +773,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
         if row["kind"] in ("text", "url", "observation", "source_snapshot"):
             text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
             parts.append(types.Part(text=f"{label}\n{text}"))
+            words += len(text.split())
             if row["coverage"].get("unit") == "characters":
                 marks.append((row["evidence_id"], 0, len(text), len(text)))
         elif row["kind"] == "image":
@@ -773,4 +781,4 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
             parts.append(types.Part(text=label))
             parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
             marks.append((row["evidence_id"], 0, len(data), len(data)))
-    return parts, marks
+    return parts, marks, words

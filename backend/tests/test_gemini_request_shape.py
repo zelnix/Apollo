@@ -99,8 +99,63 @@ async def test_evidence_appears_once_per_item():
     case = await repo.create_case(owner, "text", None)
     await ev.ingest_text(owner, case, "item-1", "https://commbank-cancel.co/stop", kind="url", label="the link")
     rows = await repo.list_evidence(owner, case["case_id"])
-    parts, _marks = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
+    parts, _marks, _words = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
     ids = [row["evidence_id"] for row in rows]
     for evidence_id in ids:
         mentions = sum(1 for p in parts if getattr(p, "text", None) and evidence_id in p.text)
         assert mentions == 1, f"evidence {evidence_id} was sent {mentions} times"
+
+
+async def test_evidence_over_the_word_limit_is_not_sent():
+    """Over 10,000 words of written evidence: Apollo sends nothing, shortens nothing, and Higgins
+    explains the limit and points to the person's own AI assistant."""
+    from services.higgins.evidence import EVIDENCE_WORD_LIMIT
+    from services.higgins.jobs import evidence_too_large_message
+
+    owner = f"req-big-{uuid.uuid4().hex[:8]}"
+    case = await repo.create_case(owner, "text", None)
+    # Two documents that are each within the limit but together exceed it.
+    await ev.ingest_text(owner, case, "doc-1", "word " * 6000, kind="text", origin="user_submission", label="contract part 1")
+    await ev.ingest_text(owner, case, "doc-2", "word " * 5000, kind="text", origin="user_submission", label="contract part 2")
+    job = await repo.create_job(owner, await repo.get_case(owner, case["case_id"]), str(uuid.uuid4()),
+                                repo.digest("ledger"), repo.digest("payload"), "turn", {"message": "Is this contract genuine?"})
+
+    called = False
+
+    async def must_not_be_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("Gemini must not be called when the evidence exceeds the word limit")
+
+    original = coordinator.provider.generate
+    coordinator.provider.generate = must_not_be_called
+    try:
+        outcome = await coordinator.run_turn(owner, await repo.get_case(owner, case["case_id"]),
+                                             await repo.get_job(owner, case["case_id"], job["job_id"]), _progress)
+    finally:
+        coordinator.provider.generate = original
+
+    assert called is False
+    assert outcome.kind == "evidence_too_large"
+    assert outcome.evidence_words == 11000
+    assert outcome.evidence_words > EVIDENCE_WORD_LIMIT
+
+    # Nothing was marked as examined — the evidence was not read, shortened or sampled.
+    for row in await repo.list_evidence(owner, case["case_id"]):
+        assert row["coverage"].get("status") in (None, "not_started"), row["coverage"]
+
+    message = evidence_too_large_message(outcome.evidence_words)
+    assert "11,000 words" in message and "10,000 words" in message
+    assert "haven't sent any of it" in message
+    for assistant in ("Gemini", "Claude", "Copilot"):
+        assert assistant in message
+
+
+async def test_evidence_within_the_limit_still_runs():
+    owner = f"req-ok-{uuid.uuid4().hex[:8]}"
+    case = await repo.create_case(owner, "text", None)
+    await ev.ingest_text(owner, case, "doc-1", "word " * 9999, kind="text", origin="user_submission", label="long letter")
+    rows = await repo.list_evidence(owner, case["case_id"])
+    parts, _marks, words = await ev.model_parts(owner, await repo.get_case(owner, case["case_id"]), rows)
+    assert words == 9999
+    assert parts and "word" in parts[0].text

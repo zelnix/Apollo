@@ -15,6 +15,7 @@ from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
 from services.higgins import coordinator, provider
 from services.higgins import repository as repo
+from services.higgins.evidence import EVIDENCE_WORD_LIMIT
 from services.higgins.capacity import WORK_SECONDS
 from services.higgins.contracts import DiagnosticDetail, Failure, RetryAttempt
 
@@ -45,6 +46,19 @@ HIGGINS_EXHAUSTED: dict[str, str] = {
     "budget_exhausted": "Magnum DI ran out of processing time. I'll show you any findings already collected and the technical details so we can identify what needs fixing.",
     "evidence_expired": "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence is needed.",
 }
+
+
+def evidence_too_large_message(words: int) -> str:
+    """Higgins explains the size limit plainly, and points to the person's own AI assistant.
+    No evidence was sent, shortened or left out quietly — nothing was investigated."""
+    return (
+        f"There is too much written material in this case for Apollo's standard investigation — about {words:,} words, "
+        f"and Apollo's limit is {EVIDENCE_WORD_LIMIT:,} words for one investigation. "
+        "I haven't sent any of it to be investigated, and nothing has been shortened or left out behind your back. "
+        "For documents this long, open them in your own AI assistant — such as Gemini, Claude or Copilot on your "
+        "device — where you can work through the whole document yourself. "
+        "If you'd like Apollo to investigate, remove some of the material from this case and run the check again."
+    )
 
 # Fallback for unknown codes
 HIGGINS_UNKNOWN = "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing."
@@ -257,6 +271,17 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             await _fail(owner, case, job, Failure(code="response_invalid",
                 message=HIGGINS_EXHAUSTED["response_invalid"],
                 retryable=True, diagnostics=diag, retry_history=retry_history), partial=True)
+            return
+        if outcome.kind == "evidence_too_large":
+            # Deliberate stop before any Gemini call: the evidence exceeds Apollo's word limit.
+            words = outcome.evidence_words or 0
+            diag = DiagnosticDetail(component="magnum_di", service="Apollo", operation="evidence_size_check",
+                original_error_code="evidence_too_large",
+                original_message="; ".join(outcome.errors)[:400],
+                timestamp=now_utc().isoformat(), final_status="failed")
+            await _fail(owner, case, job, Failure(code="evidence_too_large",
+                message=evidence_too_large_message(words),
+                retryable=False, diagnostics=diag, retry_history=retry_history), partial=False)
             return
         if outcome.kind == "superseded":
             await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "cancelled", "lease_until": None}})
