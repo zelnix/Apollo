@@ -55,6 +55,36 @@ export function threatCaseStatus(event: PatrolEvent): ThreatCaseStatus {
   return "monitoring";
 }
 
+/** The one true "current status" line for a case, derived from the case itself.
+ *  Never claims work is running on a case that is closed, and never claims it has finished when it
+ *  has not. Returns null when there is nothing to state. */
+export function caseStatusLine(event: PatrolEvent): { title: string; detail: string; running: boolean } | null {
+  const status = threatCaseStatus(event);
+  const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
+
+  if (event.resolved_at) {
+    return {
+      title: status === "no_threat" ? "Closed — no threat found" : "Closed",
+      detail: `Nothing is running on this case. Closed ${new Date(event.resolved_at).toLocaleString([], {
+        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`,
+      running: false,
+    };
+  }
+  if (status === "investigating") {
+    return { title: "Investigating with Magnum DI", detail: "Analysing sender, links and content…", running: true };
+  }
+  if (hasInvestigation) {
+    return { title: "Investigation finished", detail: "The findings are shown above. This case is still open.", running: false };
+  }
+  if (status === "blocked") {
+    return { title: "Blocked by Apollo", detail: "Apollo stopped this and the block was verified.", running: false };
+  }
+  if (status === "attention") {
+    return { title: "Waiting for you", detail: "Apollo has finished looking. Your next step is shown above.", running: false };
+  }
+  return { title: "Being monitored", detail: "Apollo is keeping an eye on this. Nothing is running right now.", running: false };
+}
+
 export const STATUS_LABELS: Record<ThreatCaseStatus, string> = {
   investigating: "Investigating",
   blocked: "Blocked",
