@@ -69,7 +69,17 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
 
 export function runProtectionHealthCheck(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot> {
   if (inFlight) return inFlight;
-  inFlight = collect(trigger).finally(() => { inFlight = null; });
+  inFlight = collect(trigger).catch((err) => {
+    // If the health check fails, reset checking=false so the protection categories
+    // remain visible with their last known state. Without this, checking stays true
+    // and the categories disappear permanently until app restart.
+    const current = protectionHealthSnapshot();
+    if (current.checking) {
+      publishProtectionHealth({ ...current, checking: false });
+    }
+    console.warn("[ProtectionHealth] check failed, restoring last state:", err);
+    return current;
+  }).finally(() => { inFlight = null; });
   return inFlight;
 }
 
