@@ -23,6 +23,8 @@ import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
+import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SIMULATED_TEXTS } from "@/src/preview/simulatedItems";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -92,6 +94,16 @@ export default function TextGuard() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+
+  // `source` lets a simulated selection be checked immediately; the flow below is the same real
+  // check a pasted or shared message runs (checkMessage → Triage → Magnum DI only if Triage escalates).
+  const runWith = async (source?: { sender: string; text: string }) => {
+    if (source) { setSender(source.sender); setText(source.text); }
+    setBusy(true); setError(null);
+    try { setResult(await checkMessage(source?.sender ?? sender, source?.text ?? text)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); }
+    finally { setBusy(false); }
+  };
 
   const run = async () => {
     if (!text.trim()) return;
@@ -199,6 +211,15 @@ export default function TextGuard() {
             </View>
           </View>
         ) : null}
+
+        <SimulatedPicker
+          testID="textguard-simulated"
+          title="Simulated messages"
+          note="This is NOT your real message list and no texts are read from this device. These samples exist so the real message check can be exercised in the preview. Apollo runs his own checks on whichever you pick and decides the outcome himself."
+          disabled={busy}
+          items={SIMULATED_TEXTS.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, probes: m.probes }))}
+          onSelect={(id) => { const m = SIMULATED_TEXTS.find((x) => x.id === id); if (m) void runWith({ sender: m.sender, text: m.text }); }}
+        />
 
         <View>
           <SectionTitle>Paste a message</SectionTitle>

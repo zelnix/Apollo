@@ -1,3 +1,25 @@
+## Preview simulated selections: messages, calls, apps, files (2026-06)
+
+Preview has no SMS list, no call log, no installed-app list and nothing in the file picker, so those checks couldn't be
+exercised. `src/preview/simulatedItems.ts` now supplies INPUT ONLY — `SIMULATED_TEXTS` (6), `SIMULATED_CALLS` (5),
+`SIMULATED_APPS` (4), `SIMULATED_FILES` (4) — each item carrying a `probes` note describing what it CONTAINS, never a verdict.
+`src/components/SimulatedPicker.tsx` renders them identically on every screen (dashed gold border, "PREVIEW ONLY" tag, explicit
+"this is not your real list / nothing is read from this device" note) and only when `PREVIEW_SIMULATION`
+(`Platform.OS === "web" || IS_PREVIEW_HARNESS`).
+
+Wiring — all through the screens' existing real flows, no preview path, no mock Triage/Magnum DI, no predetermined verdicts:
+- `app/text-guard.tsx`: `runWith({sender,text})` calls the same `checkMessage`.
+- `app/call-guard.tsx`: `runInvestigation(pickedNumber?)` — same reputation check then real Magnum DI where it escalates
+  (the `number` state was renamed `numberState` so the picked value can shadow it inside the function).
+- `app/app-check.tsx`: fills the same answers a person gives (name, developer, package, source, purpose, permissions) and an
+  effect then runs the ordinary `run()`.
+- `app/file.tsx`: `checkSimulatedFile` writes the sample to a REAL temporary file (Blob URL on web, `Paths.cache` via
+  expo-file-system on native) and calls the same `analyseAsset`, so Apollo's own inspection reads real bytes.
+
+Verified in preview: text sample ran the real message check; app sample escalated and the real Magnum DI reported honestly that
+its analysis service isn't configured here (no Gemini key in this environment); file sample was genuinely inspected
+("Filename: Invoice_4471.pdf.exe, Size: 48 bytes"); call and text cards render and feed their real checks.
+
 ## Preview email inbox simulation (2026-06)
 
 **Purpose: input only.** `src/preview/simulatedInbox.ts` holds 10 sample emails (`SIMULATED_EMAILS`) with `from`, `subject`,

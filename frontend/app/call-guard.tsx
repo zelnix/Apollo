@@ -37,6 +37,8 @@ import { Body, Button } from "@/src/components/ui";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
+import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SIMULATED_CALLS } from "@/src/preview/simulatedItems";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -156,7 +158,7 @@ export default function CheckNumber() {
   const inputRef = useRef<TextInput>(null);
 
   // ── State ──
-  const [number, setNumber] = useState("");
+  const [numberState, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CallRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,14 +212,14 @@ export default function CheckNumber() {
 
   // ── Build investigation request body ──
   const buildInvestigationBody = useCallback((): Record<string, unknown> => {
-    const body: Record<string, unknown> = { device_id: deviceId ?? "local", number: number.trim() };
+    const body: Record<string, unknown> = { device_id: deviceId ?? "local", number: numberState.trim() };
     const _region = Localization.getLocales()[0]?.regionCode;
     if (_region) body.country = _region;
     if (asks.length > 0 && !asks.includes("nothing")) body.caller_asks = asks;
     if (claim !== "unknown") body.caller_claim = claim;
     if (transcript.trim()) body.transcript = transcript.trim();
     return body;
-  }, [deviceId, number, asks, claim, transcript]);
+  }, [deviceId, numberState, asks, claim, transcript]);
 
   // ── Bounded Magnum DI investigation with explicit lifecycle ──
   // ── Bounded Magnum DI investigation with explicit lifecycle ──
@@ -313,7 +315,12 @@ export default function CheckNumber() {
   }, [buildInvestigationBody]);
 
   // ── Primary investigation action ──
-  const runInvestigation = async () => {
+  // `pickedNumber` lets a simulated selection be checked immediately. Everything below is the same
+  // real flow a typed number runs: real reputation check, then the real Magnum DI investigation only
+  // where that escalates.
+  const runInvestigation = async (pickedNumber?: string) => {
+    const number = pickedNumber ?? numberState;
+    if (pickedNumber) setNumber(pickedNumber);
     if (!number.trim()) return;
     setBusy(true);
     setError(null);
@@ -352,7 +359,7 @@ export default function CheckNumber() {
   };
 
   const retryInvestigation = () => {
-    if (!number.trim() || !deviceId) return;
+    if (!numberState.trim() || !deviceId) return;
     // Retry uses the same bounded lifecycle — cannot leave UI permanently investigating
     void runBoundedInvestigation();
   };
@@ -483,7 +490,7 @@ export default function CheckNumber() {
   // (removed full-screen view in favour of modal popup)
 
   // ── MAIN INPUT VIEW ──
-  const hasValidNumber = number.replace(/[\s\-()]/g, "").length >= 7;
+  const hasValidNumber = numberState.replace(/[\s\-()]/g, "").length >= 7;
 
   // Helper: format date for recent call rows
   const formatCallDate = (ts: number) => {
@@ -542,6 +549,15 @@ export default function CheckNumber() {
         <Text style={s.description}>
           Choose a number from your recent calls or enter one yourself.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
+
+        <SimulatedPicker
+          testID="callguard-simulated"
+          title="Simulated recent calls"
+          note="This is NOT your real call log and nothing is read from this device. These sample numbers exist so the real number check can be exercised in the preview. Apollo checks whichever you pick and decides the outcome himself."
+          disabled={busy}
+          items={SIMULATED_CALLS.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, probes: c.probes }))}
+          onSelect={(id) => { const c = SIMULATED_CALLS.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}
+        />
 
         {/* ── Recent Calls Dropdown (above phone input) ── */}
         <View style={s.recentDropdown} testID="callguard-recent-section">
@@ -623,7 +639,7 @@ export default function CheckNumber() {
               ref={inputRef}
               testID="callguard-number"
               style={s.phoneInput}
-              value={number}
+              value={numberState}
               onChangeText={setNumber}
               placeholder="Enter or paste a phone number"
               placeholderTextColor={colors.muted}
@@ -631,7 +647,7 @@ export default function CheckNumber() {
               returnKeyType="done"
               accessibilityLabel="Phone number"
             />
-            {number.length > 0 ? (
+            {numberState.length > 0 ? (
               <Pressable testID="callguard-clear" accessibilityRole="button" accessibilityLabel="Clear number" onPress={() => setNumber("")} style={s.clearBtn}>
                 <CircleX size={20} color={colors.muted} />
               </Pressable>
@@ -667,7 +683,7 @@ export default function CheckNumber() {
       <CheckingModal
         visible={busy}
         title="Checking number"
-        subject={number.trim() || undefined}
+        subject={numberState.trim() || undefined}
         description={"Looking up reputation data and running\nMagnum DI analysis. This usually takes\na few seconds."}
       />
     </View>

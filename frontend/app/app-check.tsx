@@ -29,6 +29,8 @@ import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
+import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SIMULATED_APPS } from "@/src/preview/simulatedItems";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";
@@ -97,6 +99,8 @@ export default function CheckApp() {
   const [installedApps, setInstalledApps] = useState<InstalledAppRef[] | null>(null);
   const [appsLoading, setAppsLoading] = useState(false);
   const [pickedPackage, setPickedPackage] = useState<string | null>(null);
+  // Set when a simulated app has been filled in and the ordinary check should run once the fields land.
+  const [autoRun, setAutoRun] = useState<string | null>(null);
   const [appQuery, setAppQuery] = useState("");
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
@@ -133,6 +137,14 @@ export default function CheckApp() {
 
   // Threat Scent: non-resting events from other gates inside the window (call → link → download → install).
   const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && LINKED_CATEGORIES.has(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
+
+  // A simulated app selection fills the same answers a person would give, then runs the ordinary check.
+  useEffect(() => {
+    if (!autoRun || name !== autoRun || busy) return;
+    setAutoRun(null);
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, name]);
 
   const run = async () => {
     setBusy(true);
@@ -271,6 +283,22 @@ export default function CheckApp() {
         {!result ? (
           <>
             <Text style={s.subtitle}>Pick an app from your device or enter the name to check.</Text>
+
+            <SimulatedPicker
+              testID="app-simulated"
+              title="Simulated installed apps"
+              note="This is NOT your real app list and nothing is read from this device. These samples stand in for apps and their stated permissions so the real app check can be exercised in the preview. Apollo checks whichever you pick and decides the outcome himself."
+              disabled={busy}
+              items={SIMULATED_APPS.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, probes: a.probes }))}
+              onSelect={(id) => {
+                const a = SIMULATED_APPS.find((x) => x.id === id);
+                if (!a) return;
+                // Fill the same fields the person would answer, then let the normal check run.
+                setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
+                setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
+                setAutoRun(a.appName);
+              }}
+            />
 
             {/* ── Device-First: Pick from installed apps (Android) ── */}
             {canPickApps ? (

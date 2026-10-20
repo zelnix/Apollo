@@ -2,7 +2,7 @@
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
@@ -20,6 +20,8 @@ import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
 import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
 import { type PatrolEvent } from "@/src/domain/types";
+import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SIMULATED_FILES } from "@/src/preview/simulatedItems";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -90,6 +92,27 @@ export default function CheckFile() {
   const sharedFile = shared?.files?.[0];
   const incomingUri = sharedFile?.path || params.uri;
   useEffect(() => { if (!incomingUri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, incomingUri]);
+  // A simulated file is written to a REAL temporary file so Apollo's own inspection reads real bytes
+  // and runs the same check a picked file runs — no preview-only analysis path.
+  const checkSimulatedFile = async (sim: { name: string; mime: string; content: string }) => {
+    setPickerError(null);
+    try {
+      const size = sim.content.length;
+      if (Platform.OS === "web") {
+        const blob = new Blob([sim.content], { type: sim.mime });
+        await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false);
+        return;
+      }
+      const target = new File(Paths.cache, sim.name);
+      if (target.exists) target.delete();
+      target.create();
+      target.write(sim.content);
+      await analyseAsset({ uri: target.uri, name: sim.name, mimeType: sim.mime, size }, "unknown", true);
+    } catch (error) {
+      setPickerError(error instanceof Error ? error.message : "Apollo could not prepare the simulated file.");
+    }
+  };
+
   const pick = async () => {
     setPickerError(null);
     try {
@@ -195,6 +218,14 @@ export default function CheckFile() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         <Text style={s.subtitle}>Check any file for known threats and suspicious patterns.</Text>
+        <SimulatedPicker
+          testID="file-simulated"
+          title="Simulated files"
+          note="These are NOT files from this device. Each sample is written to a real temporary file so Apollo's own inspection reads real bytes and runs the real file check. Apollo decides the outcome himself."
+          disabled={busy}
+          items={SIMULATED_FILES.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, probes: f.probes }))}
+          onSelect={(id) => { const f = SIMULATED_FILES.find((x) => x.id === id); if (f) void checkSimulatedFile(f); }}
+        />
         <Button testID="file-pick" label={busy ? "Inspecting file\u2026" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
         {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
         {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
