@@ -333,8 +333,9 @@ function ArticleThumb({ category, size, thumbnailPath }: { category: string; siz
   const bg = thumbnailColor(category);
   const iconColor = thumbnailIconColor(category);
   const Icon = TOPIC_TILES.find((t) => t.category === category?.toLowerCase())?.icon ?? MessageSquare;
+  const [imageError, setImageError] = React.useState(false);
 
-  if (thumbnailPath) {
+  if (thumbnailPath && !imageError) {
     const apiBase = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
     const uri = `${apiBase}/api/learning/image/${thumbnailPath}`;
     return (
@@ -343,6 +344,7 @@ function ArticleThumb({ category, size, thumbnailPath }: { category: string; siz
           source={{ uri }}
           style={{ width: size, height: size }}
           resizeMode="cover"
+          onError={() => setImageError(true)}
         />
       </View>
     );
