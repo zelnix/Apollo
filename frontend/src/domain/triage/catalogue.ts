@@ -1,0 +1,1547 @@
+// GENERATED from backend/content/triage_catalogue.json — the single source of truth for Apollo's
+// deterministic Triage rules. Do not hand-edit: change the backend catalogue and re-copy.
+// tests/triage.test.ts fails if this drifts from the backend file.
+
+const CATALOGUE = {
+  "version": 1,
+  "updated": "2026-06",
+  "outcomes": [
+    "NO_THREAT_IDENTIFIED",
+    "POSSIBLE_THREAT_IDENTIFIED",
+    "LIMITED_UNABLE_TO_DETERMINE"
+  ],
+  "coverageGapCodes": [
+    {
+      "code": "PLATFORM_CAPABILITY_UNAVAILABLE",
+      "recoverable": false,
+      "plain": "This device doesn't make that information available to Apollo."
+    },
+    {
+      "code": "PERMISSION_UNAVAILABLE",
+      "recoverable": true,
+      "plain": "Apollo needs a permission before it can complete this check."
+    },
+    {
+      "code": "INTELLIGENCE_PROVIDER_UNAVAILABLE",
+      "recoverable": true,
+      "plain": "A reputation service didn't answer in time."
+    },
+    {
+      "code": "NETWORK_CHECK_FAILED",
+      "recoverable": true,
+      "plain": "Apollo couldn't reach the network to complete this check."
+    },
+    {
+      "code": "CONTENT_NOT_ACCESSIBLE",
+      "recoverable": true,
+      "plain": "The content couldn't be opened for inspection."
+    },
+    {
+      "code": "UNSUPPORTED_FILE_TYPE",
+      "recoverable": false,
+      "plain": "Apollo can't inspect this kind of file."
+    },
+    {
+      "code": "ENCRYPTED_CONTENT",
+      "recoverable": false,
+      "plain": "The contents are encrypted, so Apollo couldn't inspect them."
+    },
+    {
+      "code": "EMAIL_HEADERS_UNAVAILABLE",
+      "recoverable": false,
+      "plain": "The technical sender information wasn't available."
+    },
+    {
+      "code": "BROWSER_VISIBILITY_UNAVAILABLE",
+      "recoverable": false,
+      "plain": "Apollo can't see inside the browser session on this device."
+    },
+    {
+      "code": "INSUFFICIENT_EVIDENCE",
+      "recoverable": false,
+      "plain": "There wasn't enough evidence to decide either way."
+    },
+    {
+      "code": "DETERMINISTIC_CHECK_ERROR",
+      "recoverable": true,
+      "plain": "A check failed while running and didn't recover."
+    }
+  ],
+  "retryPolicy": {
+    "attempts": 3,
+    "transientOnly": true,
+    "appliesTo": [
+      "INTELLIGENCE_PROVIDER_UNAVAILABLE",
+      "NETWORK_CHECK_FAILED",
+      "CONTENT_NOT_ACCESSIBLE",
+      "DETERMINISTIC_CHECK_ERROR"
+    ]
+  },
+  "rules": [
+    {
+      "id": "LINK-01",
+      "category": "link",
+      "title": "Authoritative reputation reports the destination as malicious",
+      "evidence": [
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "LINK-02",
+      "category": "link",
+      "title": "An observed redirect destination is confirmed malicious",
+      "evidence": [
+        "redirect",
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "LINK-03",
+      "category": "link",
+      "title": "Local URL engine reaches malicious through deception-gated rules",
+      "evidence": [
+        "local_level",
+        "local_signals"
+      ]
+    },
+    {
+      "id": "LINK-04",
+      "category": "link",
+      "title": "Known deterministic threat indicator match",
+      "evidence": [
+        "indicator_match"
+      ]
+    },
+    {
+      "id": "LINK-05",
+      "category": "link",
+      "title": "Brand-lookalike domain with credential, login, payment or account interaction",
+      "evidence": [
+        "local_signals",
+        "credential_interaction"
+      ]
+    },
+    {
+      "id": "LINK-06",
+      "category": "link",
+      "title": "Credentials embedded in the URL",
+      "evidence": [
+        "credentials_in_url"
+      ]
+    },
+    {
+      "id": "LINK-07",
+      "category": "link",
+      "title": "Credential lure with an unrelated or deceptive destination",
+      "evidence": [
+        "credential_interaction",
+        "brand_mismatch"
+      ]
+    },
+    {
+      "id": "LINK-08",
+      "category": "link",
+      "title": "Displayed link materially differs from the actual destination",
+      "evidence": [
+        "displayed_host",
+        "actual_host"
+      ]
+    },
+    {
+      "id": "LINK-09",
+      "category": "link",
+      "title": "Brand presented in the link or path while the destination is unrelated, with a sensitive action",
+      "evidence": [
+        "local_signals",
+        "credential_interaction"
+      ]
+    },
+    {
+      "id": "LINK-10",
+      "category": "link",
+      "title": "Newly registered domain with a credential, payment, security-code or identity form",
+      "evidence": [
+        "domain_age",
+        "credential_interaction"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "LINK-11",
+      "category": "link",
+      "title": "Multiple URL-risk indicators reach the suspicious threshold and intelligence cannot resolve them",
+      "evidence": [
+        "local_level",
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "LINK-12",
+      "category": "link",
+      "title": "Suspicious URL evidence correlates with another suspicious event",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "QR-01",
+      "category": "link",
+      "title": "QR code contains a URL \u2014 the destination is triaged as a link",
+      "evidence": [
+        "qr_payload"
+      ]
+    },
+    {
+      "id": "QR-02",
+      "category": "link",
+      "title": "QR destination with brand or domain deception",
+      "evidence": [
+        "qr_payload",
+        "brand_mismatch"
+      ]
+    },
+    {
+      "id": "QR-03",
+      "category": "link",
+      "title": "QR destination with a credential or payment lure and a suspicious, unrated or newly registered destination",
+      "evidence": [
+        "qr_payload",
+        "credential_interaction",
+        "domain_age"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "DATA-01",
+      "category": "link",
+      "title": "data: or blob: content collecting credentials in a deceptive brand context",
+      "evidence": [
+        "scheme",
+        "credential_interaction"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "BITM-01",
+      "category": "link",
+      "title": "Sensitive credential interaction with observable real-time relay and an inconsistent destination",
+      "evidence": [
+        "credential_interaction",
+        "realtime_relay",
+        "destination_consistency",
+        "deception_evidence"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "BITM-02",
+      "category": "link",
+      "title": "Brand authentication presented through an unauthorised origin with relay or strong deception",
+      "evidence": [
+        "auth_origin",
+        "realtime_relay",
+        "deception_evidence"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "BITM-03",
+      "category": "link",
+      "title": "Message, email, QR or call leads to a site presenting another brand's authentication with relay behaviour",
+      "evidence": [
+        "correlation",
+        "auth_origin",
+        "realtime_relay"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "BITM-04",
+      "category": "link",
+      "title": "MFA or security-code interaction on an unrelated authentication origin with observable relay evidence",
+      "evidence": [
+        "code_interaction",
+        "auth_origin",
+        "realtime_relay"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "BITM-05",
+      "category": "link",
+      "title": "Destination matches authoritative intelligence for active BitM/AiTM phishing infrastructure",
+      "evidence": [
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "MSG-01",
+      "category": "message",
+      "title": "OTP, MFA or security code requested",
+      "evidence": [
+        "signals.code_request"
+      ]
+    },
+    {
+      "id": "MSG-02",
+      "category": "message",
+      "title": "Password, PIN or login credential requested",
+      "evidence": [
+        "signals.login_request",
+        "signals.identity_request"
+      ]
+    },
+    {
+      "id": "MSG-03",
+      "category": "message",
+      "title": "Banking or card credentials requested",
+      "evidence": [
+        "signals.identity_request"
+      ]
+    },
+    {
+      "id": "MSG-04",
+      "category": "message",
+      "title": "Transfer to a safe or protected account requested",
+      "evidence": [
+        "signals.safe_account"
+      ]
+    },
+    {
+      "id": "MSG-05",
+      "category": "message",
+      "title": "Gift-card payment requested",
+      "evidence": [
+        "signals.gift_cards"
+      ]
+    },
+    {
+      "id": "MSG-06",
+      "category": "message",
+      "title": "Remote access or screen sharing requested in a suspicious context",
+      "evidence": [
+        "signals.remote_access"
+      ]
+    },
+    {
+      "id": "MSG-07",
+      "category": "message",
+      "title": "App or software installation requested in a suspicious context",
+      "evidence": [
+        "signals.remote_access",
+        "signals.install_request"
+      ]
+    },
+    {
+      "id": "MSG-08",
+      "category": "message",
+      "title": "Government or authority impersonation with payment, credential, code or threat",
+      "evidence": [
+        "signals.brand_kind",
+        "signals.payment_request",
+        "signals.threat"
+      ]
+    },
+    {
+      "id": "MSG-09",
+      "category": "message",
+      "title": "Extortion",
+      "evidence": [
+        "signals.extortion"
+      ]
+    },
+    {
+      "id": "MSG-10",
+      "category": "message",
+      "title": "Advance-fee mechanics",
+      "evidence": [
+        "signals.advance_fee"
+      ]
+    },
+    {
+      "id": "MSG-11",
+      "category": "message",
+      "title": "Fake-payment mechanics",
+      "evidence": [
+        "signals.fake_payment"
+      ]
+    },
+    {
+      "id": "MSG-12",
+      "category": "message",
+      "title": "Malicious or deceptive link in the message",
+      "evidence": [
+        "link_outcome"
+      ]
+    },
+    {
+      "id": "MSG-13",
+      "category": "message",
+      "title": "Family or new-number impersonation with a money, credential or code request",
+      "evidence": [
+        "signals.family_claim",
+        "signals.new_number",
+        "signals.money_request"
+      ]
+    },
+    {
+      "id": "MSG-14",
+      "category": "message",
+      "title": "Brand impersonation with a consequential action and inconsistent contact or destination",
+      "evidence": [
+        "signals.claimed_brand",
+        "brand_mismatch"
+      ]
+    },
+    {
+      "id": "MSG-15",
+      "category": "message",
+      "title": "Guaranteed-return or investment approach with payment or crypto transfer",
+      "evidence": [
+        "signals.guaranteed_returns",
+        "signals.crypto"
+      ]
+    },
+    {
+      "id": "MSG-16",
+      "category": "message",
+      "title": "Job offer with advance payment, crypto, gift cards or credential harvesting",
+      "evidence": [
+        "signals.job_offer",
+        "signals.payment_request"
+      ]
+    },
+    {
+      "id": "MSG-17",
+      "category": "message",
+      "title": "Romance interaction with a suspicious financial request",
+      "evidence": [
+        "signals.romance_escalation"
+      ]
+    },
+    {
+      "id": "MSG-18",
+      "category": "message",
+      "title": "Sensitive identity request with impersonation or anomaly",
+      "evidence": [
+        "signals.identity_request",
+        "signals.claimed_brand"
+      ]
+    },
+    {
+      "id": "MSG-19",
+      "category": "message",
+      "title": "Platform switching combined with another scam mechanic",
+      "evidence": [
+        "signals.platform_switch"
+      ]
+    },
+    {
+      "id": "MSG-20",
+      "category": "message",
+      "title": "Urgency or threat with a consequential action and a supporting anomaly",
+      "evidence": [
+        "signals.urgency",
+        "signals.threat"
+      ]
+    },
+    {
+      "id": "MSG-21",
+      "category": "message",
+      "title": "Claimed or uncertain identity with a consequential action and another deterministic anomaly",
+      "evidence": [
+        "signals.unknown_sender",
+        "signals.claimed_brand"
+      ]
+    },
+    {
+      "id": "MSG-22",
+      "category": "message",
+      "title": "Multiple moderate scam indicators form a coherent scam pattern",
+      "evidence": [
+        "signals"
+      ]
+    },
+    {
+      "id": "PAY-01",
+      "category": "message",
+      "title": "Instant-payment request with authority, family or business impersonation",
+      "evidence": [
+        "signals.instant_payment",
+        "signals.claimed_brand"
+      ]
+    },
+    {
+      "id": "PAY-02",
+      "category": "message",
+      "title": "Instant-payment request with urgency or threat and a sender anomaly",
+      "evidence": [
+        "signals.instant_payment",
+        "signals.urgency"
+      ]
+    },
+    {
+      "id": "PAY-03",
+      "category": "message",
+      "title": "Unexpected change of payment destination with an immediate-payment request",
+      "evidence": [
+        "signals.instant_payment",
+        "signals.payment_change"
+      ]
+    },
+    {
+      "id": "FWD-01",
+      "category": "message",
+      "title": "Instruction to enter a forwarding service code in a suspicious account or authority context",
+      "evidence": [
+        "signals.forwarding_code",
+        "signals.claimed_brand"
+      ]
+    },
+    {
+      "id": "FWD-02",
+      "category": "message",
+      "title": "Instruction designed to redirect calls, messages or security codes to another number",
+      "evidence": [
+        "signals.forwarding_intent"
+      ]
+    },
+    {
+      "id": "CB-01",
+      "category": "message",
+      "title": "Claimed charge or account problem with a supplied callback number inconsistent with the claimed organisation",
+      "evidence": [
+        "signals.callback_request",
+        "signals.alleged_charge"
+      ]
+    },
+    {
+      "id": "CB-02",
+      "category": "message",
+      "title": "Urgent cancellation, refund or security lure with a suspicious callback number",
+      "evidence": [
+        "signals.callback_request",
+        "signals.urgency"
+      ]
+    },
+    {
+      "id": "CB-03",
+      "category": "message",
+      "title": "Callback number reputation is clean but strong impersonation evidence remains",
+      "evidence": [
+        "signals.callback_request",
+        "phone_reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "CALL-01",
+      "category": "call",
+      "title": "OTP or security code requested",
+      "evidence": [
+        "asks.code"
+      ]
+    },
+    {
+      "id": "CALL-02",
+      "category": "call",
+      "title": "Password or PIN requested",
+      "evidence": [
+        "asks.password"
+      ]
+    },
+    {
+      "id": "CALL-03",
+      "category": "call",
+      "title": "Banking or card credentials requested",
+      "evidence": [
+        "asks.bankdetails"
+      ]
+    },
+    {
+      "id": "CALL-04",
+      "category": "call",
+      "title": "Safe-account transfer requested",
+      "evidence": [
+        "asks.transfer",
+        "claim"
+      ]
+    },
+    {
+      "id": "CALL-05",
+      "category": "call",
+      "title": "Gift-card payment requested",
+      "evidence": [
+        "asks.giftcards"
+      ]
+    },
+    {
+      "id": "CALL-06",
+      "category": "call",
+      "title": "Suspicious cryptocurrency transfer requested",
+      "evidence": [
+        "asks.crypto"
+      ]
+    },
+    {
+      "id": "CALL-07",
+      "category": "call",
+      "title": "Remote access or screen sharing requested",
+      "evidence": [
+        "asks.remote",
+        "asks.screen"
+      ]
+    },
+    {
+      "id": "CALL-08",
+      "category": "call",
+      "title": "Software or app installation requested",
+      "evidence": [
+        "asks.install"
+      ]
+    },
+    {
+      "id": "CALL-09",
+      "category": "call",
+      "title": "Call or SMS forwarding instruction",
+      "evidence": [
+        "asks.forwarding"
+      ]
+    },
+    {
+      "id": "CALL-10",
+      "category": "call",
+      "title": "Government or authority payment threat",
+      "evidence": [
+        "claim",
+        "asks.transfer"
+      ]
+    },
+    {
+      "id": "CALL-11",
+      "category": "call",
+      "title": "Unsolicited technical support seeking device access",
+      "evidence": [
+        "claim",
+        "asks.remote"
+      ]
+    },
+    {
+      "id": "CALL-12",
+      "category": "call",
+      "title": "Suspicious investment solicitation with a consequential financial action",
+      "evidence": [
+        "claim",
+        "asks.transfer"
+      ]
+    },
+    {
+      "id": "CALL-13",
+      "category": "call",
+      "title": "Claimed authority with a sensitive action and suspicious behaviour",
+      "evidence": [
+        "claim",
+        "asks"
+      ]
+    },
+    {
+      "id": "CALL-14",
+      "category": "call",
+      "title": "Unexpected refund or payment manipulation",
+      "evidence": [
+        "asks.refund"
+      ]
+    },
+    {
+      "id": "CALL-15",
+      "category": "call",
+      "title": "Reputation evidence with matching scam behaviour",
+      "evidence": [
+        "phone_reputation",
+        "asks"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "CALL-16",
+      "category": "call",
+      "title": "Call followed by a remote-access app, permission or device change forms a coherent sequence",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "EMAIL-01",
+      "category": "email",
+      "title": "Claimed brand with sender-domain mismatch and a consequential action",
+      "evidence": [
+        "sender_domain",
+        "claimed_brand"
+      ]
+    },
+    {
+      "id": "EMAIL-02",
+      "category": "email",
+      "title": "Freemail or unrelated domain impersonates a brand with a sensitive request",
+      "evidence": [
+        "sender_domain",
+        "claimed_brand"
+      ]
+    },
+    {
+      "id": "EMAIL-03",
+      "category": "email",
+      "title": "Account or security alert with an off-domain, lookalike or deceptive link",
+      "evidence": [
+        "link_domains",
+        "findings"
+      ]
+    },
+    {
+      "id": "EMAIL-04",
+      "category": "email",
+      "title": "Credential request",
+      "evidence": [
+        "findings"
+      ]
+    },
+    {
+      "id": "EMAIL-05",
+      "category": "email",
+      "title": "OTP or security-code request",
+      "evidence": [
+        "findings"
+      ]
+    },
+    {
+      "id": "EMAIL-06",
+      "category": "email",
+      "title": "Invoice or payment request with changed bank details",
+      "evidence": [
+        "findings"
+      ]
+    },
+    {
+      "id": "EMAIL-07",
+      "category": "email",
+      "title": "Executive or BEC impersonation with an unusual financial request and sender anomaly",
+      "evidence": [
+        "findings",
+        "sender_domain"
+      ]
+    },
+    {
+      "id": "EMAIL-08",
+      "category": "email",
+      "title": "Material From/Reply-To mismatch with a consequential action",
+      "evidence": [
+        "reply_to",
+        "sender_domain"
+      ]
+    },
+    {
+      "id": "EMAIL-09",
+      "category": "email",
+      "title": "An embedded link produces a link-triage Possible Threat",
+      "evidence": [
+        "link_outcome"
+      ]
+    },
+    {
+      "id": "EMAIL-10",
+      "category": "email",
+      "title": "An attachment produces a file-triage Possible Threat",
+      "evidence": [
+        "attachment_outcome"
+      ]
+    },
+    {
+      "id": "EMAIL-11",
+      "category": "email",
+      "title": "Authentication failure with a consequential request or anomaly",
+      "evidence": [
+        "auth_results"
+      ],
+      "gapCode": "EMAIL_HEADERS_UNAVAILABLE"
+    },
+    {
+      "id": "EMAIL-12",
+      "category": "email",
+      "title": "Authenticated legitimate sender with changed payment details, malicious link, unusual credential request or dangerous attachment",
+      "evidence": [
+        "auth_results",
+        "findings"
+      ]
+    },
+    {
+      "id": "EMAIL-13",
+      "category": "email",
+      "title": "Multiple moderate email anomalies form a coherent scam pattern",
+      "evidence": [
+        "findings"
+      ]
+    },
+    {
+      "id": "CAL-01",
+      "category": "email",
+      "title": "External or unverified calendar invitation with a malicious or deceptive link",
+      "evidence": [
+        "calendar",
+        "link_outcome"
+      ],
+      "platformDependent": true,
+      "gapCode": "CONTENT_NOT_ACCESSIBLE"
+    },
+    {
+      "id": "CAL-02",
+      "category": "email",
+      "title": "Calendar invitation with a suspicious financial or account lure and a callback number",
+      "evidence": [
+        "calendar",
+        "signals.callback_request"
+      ],
+      "platformDependent": true,
+      "gapCode": "CONTENT_NOT_ACCESSIBLE"
+    },
+    {
+      "id": "CAL-03",
+      "category": "email",
+      "title": "Calendar invitation with a credential or payment collection destination",
+      "evidence": [
+        "calendar",
+        "credential_interaction"
+      ],
+      "platformDependent": true,
+      "gapCode": "CONTENT_NOT_ACCESSIBLE"
+    },
+    {
+      "id": "FORM-01",
+      "category": "email",
+      "title": "Legitimate form service requesting a password, MFA or security code",
+      "evidence": [
+        "form_host",
+        "credential_interaction"
+      ]
+    },
+    {
+      "id": "FORM-02",
+      "category": "email",
+      "title": "Legitimate form host collecting banking or card credentials in a suspicious originating context",
+      "evidence": [
+        "form_host",
+        "findings"
+      ]
+    },
+    {
+      "id": "FORM-03",
+      "category": "email",
+      "title": "Legitimate form host collecting sensitive identity with impersonation or account-security lure",
+      "evidence": [
+        "form_host",
+        "claimed_brand"
+      ]
+    },
+    {
+      "id": "BREACH-01",
+      "category": "account",
+      "title": "Confirmed exposed credential evidence alongside current credential-harvesting or takeover activity",
+      "evidence": [
+        "breach",
+        "findings"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "APP-01",
+      "category": "app",
+      "title": "Remote-access app or activity follows a suspicious call, message or site",
+      "evidence": [
+        "correlation",
+        "app_capabilities"
+      ]
+    },
+    {
+      "id": "APP-02",
+      "category": "app",
+      "title": "Sideload follows a suspicious link or message",
+      "evidence": [
+        "provenance",
+        "correlation"
+      ]
+    },
+    {
+      "id": "APP-03",
+      "category": "app",
+      "title": "Sideloaded app impersonates a known brand",
+      "evidence": [
+        "provenance",
+        "brand_mismatch"
+      ]
+    },
+    {
+      "id": "APP-04",
+      "category": "app",
+      "title": "Sideloaded app impersonates update, security or system software",
+      "evidence": [
+        "provenance",
+        "claimed_role"
+      ]
+    },
+    {
+      "id": "APP-05",
+      "category": "app",
+      "title": "App communicates with a confirmed malicious destination",
+      "evidence": [
+        "destinations",
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "APP-06",
+      "category": "app",
+      "title": "Unexpected accessibility access with suspicious provenance or Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "provenance"
+      ]
+    },
+    {
+      "id": "APP-07",
+      "category": "app",
+      "title": "Unexpected device-admin with suspicious provenance or Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "provenance"
+      ]
+    },
+    {
+      "id": "APP-08",
+      "category": "app",
+      "title": "Unexpected screen sharing with suspicious provenance or Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "provenance"
+      ]
+    },
+    {
+      "id": "APP-09",
+      "category": "app",
+      "title": "Unexpected install-app capability with suspicious provenance or Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "provenance"
+      ]
+    },
+    {
+      "id": "APP-10",
+      "category": "app",
+      "title": "Multiple high-impact permissions with suspicious installation provenance",
+      "evidence": [
+        "app_capabilities",
+        "provenance"
+      ]
+    },
+    {
+      "id": "APP-11",
+      "category": "app",
+      "title": "Install, then sensitive permission change, then suspicious network activity forms a coherent sequence",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "PWA-01",
+      "category": "app",
+      "title": "PWA installation originates from a deceptive or known-malicious site",
+      "evidence": [
+        "pwa_origin",
+        "reputation"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "PWA-02",
+      "category": "app",
+      "title": "Newly registered or unrated PWA origin with brand impersonation and login, payment or account interaction",
+      "evidence": [
+        "pwa_origin",
+        "domain_age",
+        "credential_interaction"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "PWA-03",
+      "category": "app",
+      "title": "PWA installation immediately follows a correlated scam message, email or link",
+      "evidence": [
+        "pwa_origin",
+        "correlation"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "FILE-01",
+      "category": "file",
+      "title": "Executable or script disguised as a document or image",
+      "evidence": [
+        "declared_type",
+        "actual_type"
+      ]
+    },
+    {
+      "id": "FILE-02",
+      "category": "file",
+      "title": "Dangerous double extension",
+      "evidence": [
+        "filename"
+      ]
+    },
+    {
+      "id": "FILE-03",
+      "category": "file",
+      "title": "Right-to-left filename deception",
+      "evidence": [
+        "filename"
+      ]
+    },
+    {
+      "id": "FILE-04",
+      "category": "file",
+      "title": "Unexpected executable or script",
+      "evidence": [
+        "extension",
+        "provenance"
+      ]
+    },
+    {
+      "id": "FILE-05",
+      "category": "file",
+      "title": "Suspicious APK",
+      "evidence": [
+        "extension",
+        "provenance"
+      ]
+    },
+    {
+      "id": "FILE-06",
+      "category": "file",
+      "title": "APK impersonates a brand or update",
+      "evidence": [
+        "extension",
+        "brand_mismatch"
+      ]
+    },
+    {
+      "id": "FILE-07",
+      "category": "file",
+      "title": "Unexpected configuration profile",
+      "evidence": [
+        "extension"
+      ]
+    },
+    {
+      "id": "FILE-08",
+      "category": "file",
+      "title": "Unexpected trust certificate",
+      "evidence": [
+        "extension"
+      ]
+    },
+    {
+      "id": "FILE-09",
+      "category": "file",
+      "title": "Macro-enabled document with suspicious provenance",
+      "evidence": [
+        "extension",
+        "provenance"
+      ]
+    },
+    {
+      "id": "FILE-10",
+      "category": "file",
+      "title": "Embedded malicious or deceptive URL",
+      "evidence": [
+        "embedded_urls",
+        "link_outcome"
+      ]
+    },
+    {
+      "id": "FILE-11",
+      "category": "file",
+      "title": "Dangerous PDF JavaScript, launch or embedded content",
+      "evidence": [
+        "pdf_features"
+      ],
+      "gapCode": "UNSUPPORTED_FILE_TYPE"
+    },
+    {
+      "id": "FILE-12",
+      "category": "file",
+      "title": "Dangerous Office macro, external template or embedded object",
+      "evidence": [
+        "office_features"
+      ],
+      "gapCode": "UNSUPPORTED_FILE_TYPE"
+    },
+    {
+      "id": "FILE-13",
+      "category": "file",
+      "title": "Archive contains an executable, script or dangerous nested content",
+      "evidence": [
+        "archive_entries"
+      ],
+      "gapCode": "ENCRYPTED_CONTENT"
+    },
+    {
+      "id": "FILE-14",
+      "category": "file",
+      "title": "Archive contains path traversal or deceptive filenames",
+      "evidence": [
+        "archive_entries"
+      ],
+      "gapCode": "ENCRYPTED_CONTENT"
+    },
+    {
+      "id": "FILE-15",
+      "category": "file",
+      "title": "Actual type materially contradicts the claimed type",
+      "evidence": [
+        "declared_type",
+        "actual_type"
+      ]
+    },
+    {
+      "id": "ARCH-01",
+      "category": "file",
+      "title": "Password-protected archive with the password supplied in the originating message and a dangerous payload",
+      "evidence": [
+        "archive_encrypted",
+        "correlation",
+        "archive_entries"
+      ]
+    },
+    {
+      "id": "ARCH-02",
+      "category": "file",
+      "title": "Password supplied separately but correlated to the same case with a dangerous payload",
+      "evidence": [
+        "archive_encrypted",
+        "correlation",
+        "archive_entries"
+      ]
+    },
+    {
+      "id": "ARCH-03",
+      "category": "file",
+      "title": "Password-protected archive with a suspicious sender or lure and contents that cannot be inspected",
+      "evidence": [
+        "archive_encrypted",
+        "correlation"
+      ],
+      "gapCode": "ENCRYPTED_CONTENT"
+    },
+    {
+      "id": "FQR-01",
+      "category": "file",
+      "title": "QR code detected in a file or image \u2014 destination is triaged as a link",
+      "evidence": [
+        "qr_payload"
+      ]
+    },
+    {
+      "id": "DEV-01",
+      "category": "device",
+      "title": "Trusted OS security facility reports malware or a threat",
+      "evidence": [
+        "os_threat"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "DEV-02",
+      "category": "device",
+      "title": "Remote-access activation correlates with suspicious activity",
+      "evidence": [
+        "remote_access_active",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-03",
+      "category": "device",
+      "title": "Unexpected management or profile change with suspicious activity",
+      "evidence": [
+        "management_change",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-04",
+      "category": "device",
+      "title": "Unexpected trusted certificate with suspicious activity",
+      "evidence": [
+        "certificate_change",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-05",
+      "category": "device",
+      "title": "New app with unexpected accessibility and relevant Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-06",
+      "category": "device",
+      "title": "New app with unexpected device-admin and relevant Threat Scent",
+      "evidence": [
+        "app_capabilities",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-07",
+      "category": "device",
+      "title": "Suspicious VPN installation or change with suspicious app or scam activity",
+      "evidence": [
+        "vpn_change",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DEV-08",
+      "category": "device",
+      "title": "Multiple device-security changes form a coherent high-risk sequence",
+      "evidence": [
+        "device_changes"
+      ]
+    },
+    {
+      "id": "DEV-09",
+      "category": "device",
+      "title": "System-integrity indicators with supporting compromise evidence",
+      "evidence": [
+        "integrity",
+        "correlation"
+      ]
+    },
+    {
+      "id": "DNS-01",
+      "category": "device",
+      "title": "DNS, Private DNS or DoH configuration unexpectedly changed with correlated suspicious activity",
+      "evidence": [
+        "dns_change",
+        "correlation"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "DNS-02",
+      "category": "device",
+      "title": "DNS server matches authoritative malicious infrastructure",
+      "evidence": [
+        "dns_server",
+        "reputation"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "DNS-03",
+      "category": "device",
+      "title": "DNS change with a preceding suspicious app installation or permission event",
+      "evidence": [
+        "dns_change",
+        "correlation"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "PUSH-01",
+      "category": "device",
+      "title": "Browser notification from a deceptive origin with a fake security or financial warning and an action lure",
+      "evidence": [
+        "push_origin",
+        "credential_interaction"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "PUSH-02",
+      "category": "device",
+      "title": "Notification impersonates Apollo, the OS, a bank or a known service with an inconsistent destination",
+      "evidence": [
+        "push_origin",
+        "brand_mismatch"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "PUSH-03",
+      "category": "device",
+      "title": "Web-push notification leads to a malicious or deceptive URL",
+      "evidence": [
+        "push_origin",
+        "link_outcome"
+      ],
+      "platformDependent": true,
+      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+    },
+    {
+      "id": "NET-01",
+      "category": "network",
+      "title": "Confirmed malicious destination observed",
+      "evidence": [
+        "destinations",
+        "reputation"
+      ],
+      "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+    },
+    {
+      "id": "NET-02",
+      "category": "network",
+      "title": "Captive-portal destination triggers a link Possible Threat",
+      "evidence": [
+        "captive_url",
+        "link_outcome"
+      ]
+    },
+    {
+      "id": "NET-03",
+      "category": "network",
+      "title": "Unexpected VPN change with suspicious app or device activity",
+      "evidence": [
+        "vpn_change",
+        "correlation"
+      ]
+    },
+    {
+      "id": "NET-04",
+      "category": "network",
+      "title": "Network behaviour correlates with an existing suspicious incident",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "NET-05",
+      "category": "network",
+      "title": "App, site or device sequence communicates with malicious infrastructure",
+      "evidence": [
+        "destinations",
+        "correlation"
+      ]
+    },
+    {
+      "id": "TLS-01",
+      "category": "network",
+      "title": "HTTPS certificate validation fails unexpectedly during a sensitive interaction in a suspicious network context",
+      "evidence": [
+        "tls_validation",
+        "credential_interaction"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "TLS-02",
+      "category": "network",
+      "title": "Unexpected self-signed or untrusted certificate presented for a legitimate sensitive service",
+      "evidence": [
+        "tls_validation"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "TLS-03",
+      "category": "network",
+      "title": "Certificate identity does not match the requested legitimate domain",
+      "evidence": [
+        "tls_identity"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "TLS-04",
+      "category": "network",
+      "title": "Newly introduced trusted root certificate with correlated suspicious network behaviour",
+      "evidence": [
+        "certificate_change",
+        "correlation"
+      ],
+      "platformDependent": true,
+      "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"
+    },
+    {
+      "id": "CORR-01",
+      "category": "correlation",
+      "title": "Suspicious call requesting remote access, then remote-access install, then accessibility or screen-sharing permission",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-02",
+      "category": "correlation",
+      "title": "Message, then deceptive link, then APK or PWA installation",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-03",
+      "category": "correlation",
+      "title": "Email, then changed bank details, then instant-payment request",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-04",
+      "category": "correlation",
+      "title": "Email or QR, then deceptive authentication site, then BitM/AiTM indicators",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-05",
+      "category": "correlation",
+      "title": "Callback lure followed by a suspicious call with matching claimed identity",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-06",
+      "category": "correlation",
+      "title": "Suspicious app installation followed by a DNS, VPN or accessibility change",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-07",
+      "category": "correlation",
+      "title": "Website or download, then executable, then malicious destination",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-08",
+      "category": "correlation",
+      "title": "Password-protected archive with the password supplied in the originating message or email",
+      "evidence": [
+        "correlation"
+      ]
+    },
+    {
+      "id": "CORR-09",
+      "category": "correlation",
+      "title": "Scam site, then notification permission, then a later deceptive web-push lure",
+      "evidence": [
+        "correlation"
+      ]
+    }
+  ],
+  "neverAloneAThreat": {
+    "link": [
+      "http scheme",
+      "bare IP address",
+      "punycode",
+      "unusual port",
+      "risky TLD",
+      "shortener",
+      "long URL",
+      "deep subdomains",
+      "encoded characters",
+      "newly registered domain",
+      "QR code itself",
+      "data: or blob: scheme",
+      "WebSocket/WebRTC/Socket.IO traffic",
+      "binary payloads",
+      "message frequency",
+      "high-entropy traffic"
+    ],
+    "message": [
+      "unknown sender",
+      "urgency",
+      "ordinary payment discussion",
+      "PayID/Osko use",
+      "brand mention",
+      "job, investment or romance discussion without scam mechanics",
+      "star/hash service code without context"
+    ],
+    "call": [
+      "unknown caller",
+      "number not in contacts",
+      "caller identity unavailable",
+      "unknown number reputation",
+      "negative reputation without matching behaviour"
+    ],
+    "email": [
+      "calendar invitation",
+      "form-builder domain",
+      "valid SPF/DKIM/DMARC from a form provider",
+      "breach appearance alone"
+    ],
+    "app": [
+      "official-store provenance",
+      "expected permissions",
+      "PWA installation alone"
+    ],
+    "file": [
+      "encryption or password protection alone",
+      "ordinary file characteristics",
+      "QR code itself"
+    ],
+    "device": [
+      "expected management or device administration",
+      "expected accessibility",
+      "Apollo or trusted VPN",
+      "developer options",
+      "custom DNS or DoH provider",
+      "notification permission",
+      "platform-unavailable signals"
+    ],
+    "network": [
+      "public Wi-Fi",
+      "open or WEP Wi-Fi",
+      "unknown Wi-Fi",
+      "lookalike SSID",
+      "captive portal",
+      "trusted home or work connection",
+      "cellular connection"
+    ],
+    "correlation": [
+      "time proximity"
+    ]
+  }
+} as const;
+
+export default CATALOGUE;

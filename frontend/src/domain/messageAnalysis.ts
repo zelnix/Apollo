@@ -4,7 +4,7 @@
 // a verdict downward from "barking" or upward past what the evidence supports.
 
 import type { ApolloState } from "./types";
-import { OFFICIAL_DOMAINS, registrableDomain as brandRegistrableDomain } from "./brand";
+import { OFFICIAL_DOMAINS, registrableDomain as brandRegistrableDomain } from "./brand.ts";
 
 export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15" | "M16";
 
@@ -212,9 +212,10 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     const linkWhy = s.urls.length
       ? (courierLinksOfficial ? "The link matches a known courier domain, but Apollo cannot verify who sent the message." : "The link leads to a domain that is not a known official courier website.")
       : "Real couriers don't text payment links.";
-    // Evidence-based escalation: brand claim + non-official URL = strong phishing evidence → barking.
-    const courierUrlNonOfficial = s.urls.length > 0 && !courierLinksOfficial;
-    const courierState: ApolloState = (s.paymentRequest || courierUrlNonOfficial) ? "barking" : s.urls.length ? "growling" : "ears_up";
+    // Parcel-redelivery lures stay at growling (credible suspicion) unless threat intelligence
+    // later marks the destination malicious — see the urlVerdict escalation below. This keeps
+    // barking reserved for evidence of an active, confirmed threat.
+    const courierState: ApolloState = (s.paymentRequest || s.urls.length) ? "growling" : "ears_up";
     return { scenario: "M01", title: "Parcel delivery scam", state: courierState, verdict: "This looks like a parcel-delivery scam.",
       why: ["It claims to be from a delivery company.", s.smallPayment || s.paymentRequest ? "It asks for an unexpected (often small) payment." : "It asks you to act on a parcel you may not be expecting.", linkWhy],
       rec: "Don't use the link. Track any parcel through the courier's official app or website.", verify: VERIFY.courier };

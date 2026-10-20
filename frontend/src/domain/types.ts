@@ -179,6 +179,10 @@ export interface PatrolEvent {
   /** Source metadata — actual recorded identifiers from intake, NOT Gemini-inferred.
    *  Used by the Original Item Summary to show what was investigated. */
   source_metadata?: SourceMetadata | null;
+  /** The completed deterministic Triage Investigation for this item: rules applicable, rules
+   *  checked, results, evidence, coverage gaps, retries, correlation and the final outcome.
+   *  Present for every outcome — No Threat, Possible Threat and Limited alike. */
+  triage_investigation?: import("./triage/contract").TriageInvestigationRecord | null;
 }
 
 /** Recorded identifiers from the original submitted item. Every field is actual

@@ -104,6 +104,9 @@ async def _claim_evidence_binding(body: PatrolEventIn, fingerprint: str) -> tupl
 @router.post("/patrol/events", response_model=PatrolEvent)
 async def upsert_event(body: PatrolEventIn):
     ts = now_utc()
+    # triage_investigation is SERVER-OWNED: only services/triage/store.py writes it. A client
+    # submission can never introduce or overwrite a Triage Investigation record.
+    body.triage_investigation = None
     existing = await db.patrol_events.find_one({'event_id': body.event_id, 'device_id': body.device_id})
     fingerprint = _evidence_fingerprint(body.enforcement_evidence) if body.enforcement_evidence else None
     if body.enforcement_evidence:

@@ -25,6 +25,8 @@ import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/do
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
+import { evaluateTriage } from "@/src/domain/triage/engine";
+import { callTriageEvidence, linkTriageEvidence, messageTriageEvidence, numberRiskTriageEvidence, type CorrelationInput } from "@/src/domain/triage/evidence";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
@@ -807,8 +809,31 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return e;
   }, [persistEvents, syncEvent]);
 
-  const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
-    const analysis = analyseMessage(sender, text);
+  // ── Triage correlation (deterministic) ───────────────────────────────────
+  // Related evidence (same Threat Scent / same indicator) with a compatible mechanic belongs to ONE
+  // case. When that case already has a Magnum DI investigation, Triage must reuse it so a correlated
+  // incident never spends a second Gemini call.
+  const correlationFor = useCallback((args: { indicator?: string | null; scentId?: string | null; mechanics: string[] }): { correlation: CorrelationInput; existingCaseId: string | null } => {
+    const windowMs = 4 * 60 * 60 * 1000;
+    const now = Date.now();
+    const related = eventsRef.current.filter((e) =>
+      !e.resolved_at && now - Date.parse(e.occurred_at) <= windowMs &&
+      ((args.scentId && e.scent_id === args.scentId) ||
+       (args.indicator && (e.local_indicator === args.indicator || e.indicator_host === args.indicator))));
+    const existingCaseId = related.find((e) => !!e.investigation_case_id)?.investigation_case_id ?? null;
+    return {
+      correlation: {
+        related: related.slice(0, 6).map((e) => ({ category: e.category, event_id: e.event_id, occurred_at: e.occurred_at })),
+        mechanics: args.mechanics,
+        // Time proximity alone is never enough: a correlated sibling must itself carry concern.
+        supporting_evidence: related.some((e) => e.state !== "resting"),
+        case_key: related[0]?.scent_id ?? args.scentId ?? null,
+      },
+      existingCaseId,
+    };
+  }, []);
+
+  const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {    const analysis = analyseMessage(sender, text);
     let urls: MessageUrlResult[] = []; let remoteError: string | null = null;
     // Gate detection path: local/deterministic analysis + link reputation only.
     // No backend investigation call — Magnum DI investigates only when the person requests it.
@@ -839,17 +864,30 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
     let investigationCaseId: string | null = null;
+
+    // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
+    const linkOutcome = urls.some((u) => u.verdict === "malicious") ? "POSSIBLE_THREAT_IDENTIFIED" as const
+      : urls.some((u) => u.coverage === "unavailable") ? "LIMITED_UNABLE_TO_DETERMINE" as const
+      : urls.length ? "NO_THREAT_IDENTIFIED" as const : null;
+    const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation }));
+
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
-    if (state !== "resting") {
-      // Stage 12: Create a Magnum DI investigation via the canonical compat adapter.
-      // The investigation runs asynchronously — the local analysis still drives the immediate UX.
-      try {
-        const remote = await apiPost<{ investigation_case_id?: string | null }>("/message/analyse", "message_investigation", {
-          device_id: deviceId ?? undefined, text, sender,
-          local_state: state, local_findings: why.slice(0, 12),
-        });
-        investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
-      } catch { /* investigation is async — local analysis still stands */ }
+    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+      // Tier 2: exactly ONE Magnum DI investigation per correlated case.
+      if (existingCaseId) {
+        investigationCaseId = existingCaseId;
+      } else {
+        try {
+          const remote = await apiPost<{ investigation_case_id?: string | null }>("/message/analyse", "message_investigation", {
+            device_id: deviceId ?? undefined, text, sender,
+            local_state: state, local_findings: why.slice(0, 12),
+          });
+          investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+        } catch { /* investigation is async — local analysis still stands */ }
+      }
+    }
+    if (state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
       const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
       const apolloHeadline = analysis.state !== "resting"
         ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
@@ -863,12 +901,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
+        triage_investigation: triage,
       }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
     return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, explanation: null, assessment: null, remoteError, event };
-  }, [deviceId, upsertEvent]);
+  }, [correlationFor, deviceId, upsertEvent]);
 
   // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
   // default messaging app (opt-in, Settings > Notification access — never READ_SMS) and runs each
@@ -956,10 +995,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const checkCall = useCallback(async (input: CallInput) => {
     const analysis = analyseCall(input);
     let event: PatrolEvent | null = null;
-    if (analysis.state !== "resting") {
-      // Stage 12: Create a Magnum DI investigation via the canonical /investigations endpoint.
-      let investigationCaseId: string | null = null;
-      try {
+    // ── Triage Investigation (deterministic, 0 Gemini calls) ──
+    const { correlation, existingCaseId } = correlationFor({ indicator: input.number?.trim() || null, mechanics: ["remote_access", "scam_call"] });
+    const triage = evaluateTriage(callTriageEvidence({ input, analysis, correlation }));
+    if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
+      // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat — once per correlated case.
+      let investigationCaseId: string | null = existingCaseId;
+      if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) {
         const callSummary = [
           input.claim ? `Caller said: ${input.claim}` : null,
           input.brandName ? `Claimed brand: ${input.brandName}` : null,
@@ -967,20 +1009,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           input.asks.length ? `Asked for: ${input.asks.join(", ")}` : null,
           input.transcript ? `Transcript: ${input.transcript}` : null,
         ].filter(Boolean).join("\n");
-        const remote = await apiPost<{ case_id?: string | null }>("/investigations", "call_investigation", {
-          gate: "call",
-          question: `Investigate this phone call.\n\n${callSummary}`,
-          submissions: [{ client_item_id: "call-content", kind: "text", value: callSummary, label: "Call details" }],
-          initial_findings: analysis.why.slice(0, 12),
-        });
-        investigationCaseId = typeof remote.case_id === "string" ? remote.case_id : null;
-      } catch { /* investigation is async — local analysis still stands */ }
+        try {
+          const remote = await apiPost<{ case_id?: string | null }>("/investigations", "call_investigation", {
+            gate: "call",
+            question: `Investigate this phone call.\n\n${callSummary}`,
+            submissions: [{ client_item_id: "call-content", kind: "text", value: callSummary, label: "Call details" }],
+            initial_findings: analysis.why.slice(0, 12),
+          });
+          investigationCaseId = typeof remote.case_id === "string" ? remote.case_id : null;
+        } catch { /* investigation is async — local analysis still stands */ }
+      }
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
         headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: analysis.why, what_to_do: analysis.recommendation,
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
+        triage_investigation: triage,
       }, { kind: "call", fields: [
         ...(input.number?.trim() ? [{ label: "Number", value: input.number }] : []),
         { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
@@ -989,7 +1034,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
     }
     return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event };
-  }, [deviceId, upsertEvent]);
+  }, [correlationFor, deviceId, upsertEvent]);
 
   // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see
   // services/phonerisk.py). Used by the "Check this number" quick action AND the pending-lookup poll
@@ -1014,10 +1059,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
       const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
 
-      // Create Magnum DI investigation FIRST so investigation_case_id is on the event from the start.
-      // This ensures the server-side projector finds and updates THIS event instead of creating a duplicate.
-      let investigationCaseId: string | null = null;
-      try {
+      // Triage first (deterministic, 0 Gemini calls). Magnum DI runs ONLY for a Possible Threat,
+      // and reuses the correlated case when one already exists.
+      const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
+      const triage = evaluateTriage(numberRiskTriageEvidence({
+        decision: result.decision, fraudScore: result.fraud_score ?? null,
+        recentAbuse: result.recent_abuse ?? null, voip: result.voip ?? null, correlation,
+      }));
+      let investigationCaseId: string | null = existingCaseId;
+      if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) try {
         const investigationResult = await apiPost<{ case_id?: string | null }>("/investigations", "number_risk_investigation", {
           gate: "call",
           question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
@@ -1040,6 +1090,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
         why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
         investigation_case_id: investigationCaseId,
+        triage_investigation: triage,
       };
       // Attach caller metadata from the risk check for display (country, carrier, line type).
       (ev as unknown as Record<string, unknown>).caller_meta = {
@@ -1057,7 +1108,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       result.investigation_case_id = investigationCaseId;
     }
     return result;
-  }, [deviceId, showToast]);
+  }, [correlationFor, deviceId, showToast]);
 
   // ── Call Guard Pipeline (extracted to src/pipelines/callGuardPipeline.ts) ──
   useCallGuardPipeline({
@@ -1139,13 +1190,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     let decision = decide(local, intel, trusted);
     let assessment: InvestigationResult | null = null; let investigationError: string | null = null;
     let investigationCaseId: string | null = null;
-    try {
-      const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string }>("/link/investigate", "link_investigation", {
-        device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
-        local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
-      });
-      investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
-    } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not start the investigation."; }
+    // ── Triage Investigation (deterministic, 0 Gemini calls) ──
+    const { correlation, existingCaseId } = correlationFor({ indicator: local.host, scentId, mechanics: ["deceptive_link", "download", "malicious_destination"] });
+    const triage = evaluateTriage(linkTriageEvidence({
+      local, intel, intelError, correlation,
+      credentialInteraction: local.signals.some((s) => s.code === "credential_lure" || s.code === "credentials_in_url"),
+    }));
+    // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat, once per correlated case.
+    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+      if (existingCaseId) investigationCaseId = existingCaseId;
+      else try {
+        const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string }>("/link/investigate", "link_investigation", {
+          device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
+          local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
+        });
+        investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+      } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not start the investigation."; }
+    }
     // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
     const isEvent = decision.state !== "resting" || trusted;
     const ev: PatrolEvent = {
@@ -1159,6 +1220,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
       claimed_brand: decision.claimed_brand ?? null,
       investigation_case_id: investigationCaseId,
+      triage_investigation: triage,
       // Scent handoff: when checkLink is invoked from a message flow, the caller provides the
       // message event's scent_id so that findScentFor can discover the correlation.
       ...(scentId ? { scent_id: scentId } : {}),
@@ -1171,7 +1233,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       securityAdapter.triggerUrgentRuleRefresh().catch(() => { /* non-critical — periodic refresh continues */ });
     }
     return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
-  }, [deviceId, trust, upsertEvent]);
+  }, [correlationFor, deviceId, trust, upsertEvent]);
 
   const blockEvent = useCallback(async (event: PatrolEvent) => {
     const host = event.indicator_host ?? "";

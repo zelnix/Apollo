@@ -290,25 +290,30 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     )
 
     if not triage_result.should_escalate:
-        # Tier 0 or Tier 1 resolved SAFE → no case, no investigation, no Threats entry.
+        # Deterministic Triage resolved NO THREAT or LIMITED → no case, no Gemini call.
         await db.mailbox_assessment_receipts.update_one(key, {"$set": {
             "state": "complete",
             "screening_result": "clear",
-            "triage_tier": triage_result.tier.value,
-            "triage_verdict": triage_result.verdict.value,
+            "triage_outcome": triage_result.outcome.value,
             "triage_reason": triage_result.reason,
-            "triage_cost_usd": triage_result.cost_usd,
+            "triage_cost_usd": 0.0,
             "triage_cached": triage_result.cached,
             "screening_findings_count": len(local_findings),
             "processed_at": now_utc(),
             "updated_at": now_utc(),
         }})
-        logger.info("triage_resolved device=%s digest=%s tier=%d verdict=%s cost=$%.6f cached=%s",
-                     device_id, digest[:12], triage_result.tier.value, triage_result.verdict.value,
-                     triage_result.cost_usd, triage_result.cached)
-        return True  # Email screened and resolved — no case needed
+        logger.info("triage_resolved device=%s digest=%s outcome=%s cached=%s",
+                     device_id, digest[:12], triage_result.outcome.value, triage_result.cached)
+        if triage_result.investigation is not None:
+            from services.triage import record_triage_history
+            try:
+                await record_triage_history(device_id, triage_result.investigation, category="email",
+                                            subject=str(message.get("subject", ""))[:200])
+            except Exception as exc:
+                logger.warning("triage_history_write_failed device=%s error=%s", device_id, type(exc).__name__)
+        return True  # Email screened and resolved — no case needed, zero Gemini calls
 
-    # ─── Triage escalation: SUSPICIOUS or UNCERTAIN → create case + Magnum DI ───
+    # ─── Triage escalation: POSSIBLE THREAT → create case + exactly one Magnum DI call ───
     # Budget check before launching paid investigation.
     from services.gemini_usage import check_automated_budget
     budget_ok, budget_spent, budget_limit = await check_automated_budget()
@@ -316,17 +321,16 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
         await db.mailbox_assessment_receipts.update_one(key, {"$set": {
             "state": "budget_paused",
             "screening_result": "suspicious",
-            "triage_tier": triage_result.tier.value,
-            "triage_verdict": triage_result.verdict.value,
+            "triage_outcome": triage_result.outcome.value,
             "triage_reason": triage_result.reason,
             "triage_escalation_reason": triage_result.escalation_reason,
-            "triage_cost_usd": triage_result.cost_usd,
+            "triage_cost_usd": 0.0,
             "budget_spent": budget_spent,
             "budget_limit": budget_limit,
             "updated_at": now_utc(),
         }})
         logger.warning("mailbox_budget_paused device=%s spent=$%.2f limit=$%.2f triage=%s",
-                        device_id, budget_spent, budget_limit, triage_result.verdict.value)
+                        device_id, budget_spent, budget_limit, triage_result.outcome.value)
         return False  # Budget exhausted — paused, will not launch Magnum DI
 
     # ─── Case creation (only for escalated items) ───
@@ -351,9 +355,8 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     # Pre-gathered specialist intelligence is delivered to Magnum DI as structured
     # Apollo observations via the case's triage_provider_evidence field — not injected
     # into the investigation prompt.
-    logger.info("triage_escalation device=%s digest=%s tier=%d verdict=%s escalation=%s providers=%s",
-                 device_id, digest[:12], triage_result.tier.value, triage_result.verdict.value,
-                 (triage_result.escalation_reason or "")[:80], triage_result.providers_used)
+    logger.info("triage_escalation device=%s digest=%s outcome=%s escalation=%s providers=%s",
+                 device_id, digest[:12], triage_result.outcome.value, (triage_result.escalation_reason or "")[:80], triage_result.providers_used)
     turn_id = str(uuid.uuid4())
     investigation_prompt = (
         "Investigate this monitored email. Verify its sender, claims and every material link; "
@@ -391,15 +394,22 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     await db.mailbox_assessment_receipts.update_one(key, {"$set": {
         "state": "submitted",
         "screening_result": "suspicious",
-        "triage_tier": triage_result.tier.value,
-        "triage_verdict": triage_result.verdict.value,
+            "triage_outcome": triage_result.outcome.value,
         "triage_reason": triage_result.reason,
         "triage_escalation_reason": triage_result.escalation_reason,
-        "triage_cost_usd": triage_result.cost_usd,
+        "triage_cost_usd": 0.0,
         "case_id": case["case_id"],
         "job_id": job["job_id"],
         "updated_at": now_utc(),
     }})
+    if triage_result.investigation is not None:
+        from services.triage import record_triage_history
+        try:
+            await record_triage_history(device_id, triage_result.investigation, category="email",
+                                        subject=str(message.get("subject", ""))[:200],
+                                        investigation_case_id=case["case_id"])
+        except Exception as exc:
+            logger.warning("triage_history_write_failed device=%s error=%s", device_id, type(exc).__name__)
     jobs.launch(device_id, case["case_id"], job["job_id"])
     return True
 

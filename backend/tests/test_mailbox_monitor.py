@@ -34,16 +34,16 @@ async def test_enabled_mailbox_monitor_is_shared_summary_only_and_idempotent(mon
     monkeypatch.setattr(mailbox_monitor.gmail, "scan_inbox_page", fake_scan)
     monkeypatch.setattr(mailbox_monitor.jobs, "launch", lambda *_args: None)
 
-    # Mock triage to return a suspicious verdict so the monitor escalates to investigation
+    # Mock Triage to return POSSIBLE THREAT so the monitor escalates to one Magnum DI call
     from unittest.mock import AsyncMock
     from types import SimpleNamespace
+    from services.triage import Outcome
     fake_triage = AsyncMock(return_value=SimpleNamespace(
         should_escalate=True,
-        tier=SimpleNamespace(value=3),
-        verdict=SimpleNamespace(value="suspicious"),
+        outcome=Outcome.POSSIBLE_THREAT,
         reason="Unexpected verification-code wording.",
         escalation_reason="Sender not authenticated.",
-        cost_usd=0.0,
+        investigation=None,
         cached=True,
         provider_evidence=None,
         providers_used=[],

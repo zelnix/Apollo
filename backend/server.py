@@ -70,6 +70,8 @@ async def lifespan(_: FastAPI):
     await ensure_maintenance_indexes()
     await gemini_usage.ensure_indexes()
     await triage_engine.ensure_indexes()
+    from services.triage.store import ensure_indexes as ensure_triage_history_indexes
+    await ensure_triage_history_indexes()
     await db.admin_sessions.create_index("expires_at", expireAfterSeconds=0)
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()

@@ -275,6 +275,10 @@ class PatrolEventIn(BaseModel):
     # Set by the investigation projector from the case's client_submission_id; the frontend may also
     # set it on local placeholder events for reconciliation. The server value is authoritative.
     client_submission_id: Optional[str] = Field(default=None, max_length=64)
+    # Full deterministic Triage Investigation record (rules applicable/checked/met, coverage gaps,
+    # retries, correlation, outcome, reason, geminiCalls). Server-owned: only the triage projector
+    # writes it (services/triage/store.py); never accepted from client submissions.
+    triage_investigation: Optional[dict] = None
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):

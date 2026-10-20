@@ -326,7 +326,15 @@ export default function CheckNumber() {
       // ("avoid" / "review"). Pass that case ID so runBoundedInvestigation polls it instead
       // of creating a SECOND investigation (which was the double-Gemini-call bug).
       setBusy(false); // Reputation done — dismiss the checking modal
-      void runBoundedInvestigation(riskResult.investigation_case_id);
+      // Triage decides: Magnum DI runs ONLY when deterministic Triage reached POSSIBLE THREAT
+      // (checkNumberRisk creates the case in that single situation). No threat / limited stays
+      // at the reputation result with zero Gemini calls.
+      if (riskResult.investigation_case_id) {
+        void runBoundedInvestigation(riskResult.investigation_case_id);
+      } else {
+        setInvestigationResult({ type: "reputation_only", ...(riskResult.higgins ?? {}) } as Record<string, unknown>);
+        setInvestigationPhase("completed");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not check this number. Please try again.");
       setBusy(false);

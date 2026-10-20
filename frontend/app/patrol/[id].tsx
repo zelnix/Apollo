@@ -55,6 +55,7 @@ import { hasLocalEvidence } from "@/src/domain/higginsNarration";
 import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { ReportScamHelper } from "@/src/components/ReportScamHelper";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
+import { TriageSummary } from "@/src/components/TriageSummary";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
@@ -315,6 +316,9 @@ function OverviewContent({ event, status, shownWhatToDo }: { event: PatrolEvent;
         <FactRow icon={CircleAlert} label="Category" value={categoryLabel(event.category, record?.recordClass)} />
         <FactRow icon={Search} label="Risk level" value={risk.label} valueColor={risk.color} isLast />
       </Card>
+
+      {/* Triage investigation — the stored deterministic record. No model call. */}
+      {event.triage_investigation ? <TriageSummary record={event.triage_investigation} /> : null}
 
       {/* Connected incidents */}
       {event.scent_id ? <ScentSection event={event} /> : null}

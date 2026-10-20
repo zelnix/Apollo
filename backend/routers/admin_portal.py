@@ -2388,12 +2388,12 @@ async def triage_dashboard(request: Request):
         <div style="background:var(--card);border-radius:10px;padding:16px;flex:1;min-width:220px;">
             <h3 style="margin:0 0 8px;">{label}</h3>
             <div style="font-size:2em;font-weight:700;{kpi_cls}">${avg:.6f}</div>
-            <div style="font-size:0.82em;color:var(--muted);margin-top:4px;">avg cost/item (target: $0.001)</div>
+            <div style="font-size:0.82em;color:var(--muted);margin-top:4px;">avg cost/item (target: $0 — Triage never calls Gemini)</div>
             <div style="margin-top:12px;font-size:0.88em;">
                 <div>Items screened: <strong>{items:,}</strong></div>
-                <div>Tier 0 ($0 local): <strong>{stats['tier0_local']:,}</strong> ({d['tier0_pct']}%)</div>
-                <div>Tier 1 (AI triage): <strong>{stats['tier1_ai_triage']:,}</strong> ({d['tier1_pct']}%)</div>
-                <div>Tier 2 (Magnum DI): <strong>{stats['tier2_escalations']:,}</strong> ({d['tier2_pct']}%)</div>
+                <div>No threat identified: <strong>{stats['outcomes']['NO_THREAT_IDENTIFIED']:,}</strong> ({d['no_threat_pct']}%)</div>
+                <div>Limited / unable to determine: <strong>{stats['outcomes']['LIMITED_UNABLE_TO_DETERMINE']:,}</strong> ({d['limited_pct']}%)</div>
+                <div>Possible threat → Magnum DI: <strong>{stats['magnum_di_escalations']:,}</strong> ({d['possible_threat_pct']}%)</div>
                 <div>Cached: <strong>{stats['cached_resolutions']:,}</strong></div>
                 <div>Gemini calls prevented: <strong>{prevented:,}</strong></div>
                 <div>Total cost: <strong>${stats['total_cost_usd']:.6f}</strong></div>

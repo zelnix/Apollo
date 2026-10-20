@@ -382,6 +382,22 @@ class BackgroundTextIn(Wire):
     original_characters: int = Field(ge=1, le=10_000_000)
 
 
+async def _record_triage_history(owner: str, triage_result, *, category: str, subject: str = "",
+                                 client_submission_id: str | None = None,
+                                 investigation_case_id: str | None = None) -> None:
+    """Save a completed Triage Investigation to Patrol History — every outcome, zero Gemini calls."""
+    from services.triage import record_triage_history
+    if triage_result.investigation is None:
+        return  # cache replay of an already-recorded investigation
+    try:
+        await record_triage_history(owner, triage_result.investigation, category=category, subject=subject,
+                                    client_submission_id=client_submission_id,
+                                    investigation_case_id=investigation_case_id)
+    except Exception as exc:
+        __import__("logging").getLogger("apollo.triage").warning(
+            "triage_history_write_failed owner=%s error=%s", owner, type(exc).__name__)
+
+
 @router.post("/investigations/background/text", status_code=202)
 async def background_text_intake(body: BackgroundTextIn, request: Request):
     """One durable intake path shared by the OS worker and foreground drain.
@@ -415,10 +431,12 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
     )
 
     if not triage_result.should_escalate:
-        # Triage resolved SAFE → acknowledge intake without launching Magnum DI
+        # Deterministic Triage resolved NO THREAT or LIMITED → acknowledge intake, zero Gemini calls.
         _log_triage = __import__("logging").getLogger("apollo.triage")
-        _log_triage.info("background_text_triage_safe device=%s submission=%s tier=%d cost=$%.6f",
-                          owner, body.submission_id[:12], triage_result.tier.value, triage_result.cost_usd)
+        _log_triage.info("background_text_triage device=%s submission=%s outcome=%s",
+                          owner, body.submission_id[:12], triage_result.outcome.value)
+        await _record_triage_history(owner, triage_result, category="message", subject=body.sender or "text message",
+                                     client_submission_id=body.submission_id)
         return JSONResponse({
             "caseId": None,
             "jobId": None,
@@ -457,6 +475,9 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
     await db.investigation_cases.update_one(
         {"owner_id": owner_of(request), "case_id": data["case"]["id"]},
         {"$set": case_update})
+    await _record_triage_history(owner, triage_result, category="message", subject=body.sender or "text message",
+                                 client_submission_id=body.submission_id,
+                                 investigation_case_id=data["case"]["id"])
     return JSONResponse({"caseId": data["case"]["id"], "jobId": data.get("job", {}).get("id") if data.get("job") else None,
                          "acceptedAt": now_utc().isoformat(),
                          "triage": triage_result.wire()}, status_code=202, headers=NO_STORE)

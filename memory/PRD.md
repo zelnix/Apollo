@@ -1,3 +1,11 @@
+## Triage hardening close-out + parcel-scam severity correction (2026-06)
+
+**Client spoofing of Triage records — CLOSED.** `triage_investigation` is strictly server-owned: `routers/patrol.py::upsert_event` nulls any client-supplied value, and only `services/triage/store.py` ever writes it. New live regression test `tests/test_triage_live_api.py::test_client_cannot_spoof_triage_investigation` posts a forged record (`geminiCalls: 99`) and asserts both the response and the stored Patrol event carry no triage payload. Backend triage suites green: 27 passed (contract + live API, 0 Gemini calls).
+
+**Parcel-delivery severity (owner decision).** `src/domain/messageAnalysis.ts` no longer escalates courier/parcel lures to **barking** on a non-official URL or payment request alone — they now settle at **growling** (credible suspicion), consistent with the toll scenario (M03). Barking is still reached when threat intelligence marks the destination malicious (`urlVerdict === "malicious"` override). `tests/messageAnalysis.test.ts` 23/23 green (M01 restored to growling); gate5 + round1MessageRegression + triage suites unaffected (38/38).
+
+**Note on the frontend test runner:** `node --test tests/*.test.ts` reports ~25 file-level failures that are NOT product bugs — they are `ERR_MODULE_NOT_FOUND` from Node's type-stripping requiring explicit `.ts` extensions on relative imports (e.g. `src/domain/gates.ts` imports `./gateRegistry`). Metro bundles these fine. Verified by A/B run: the pre-change tree failed 26, the post-change tree fails 25 (one fixed, none broken).
+
 ## Universal Check Result — shared screen + Link Gate reference (Phase 1) (2026-06)
 
 **Standing principle:** Apollo investigates. Higgins explains. ONE result, ONE Higgins paragraph, ONE itemised list, ONE actions row. No competing verdict cards, no auto-asked follow-up questions, no repetition. Technical evidence preserved behind progressive disclosure.

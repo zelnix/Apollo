@@ -906,8 +906,10 @@ async def _background_text_intake(inv):
     request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
     submission_id = uuid.uuid4().hex
     body = inv.BackgroundTextIn(submissionId=submission_id, sourceKey="notification:key", revisionDigest=uuid.uuid4().hex,
-                                sender="Sender", text="Please review this link", capturedAt=now_utc(), expiresAt=now_utc() + timedelta(minutes=15),
-                                contentComplete=True, originalCharacters=23)
+                                # Deterministic Triage must reach POSSIBLE THREAT (MSG-01) for a case to exist at all.
+                                sender="Sender", text="Reply with the 6-digit verification code to unlock your account",
+                                capturedAt=now_utc(), expiresAt=now_utc() + timedelta(minutes=15),
+                                contentComplete=True, originalCharacters=62)
     launched = inv.jobs.launch; inv.jobs.launch = lambda *args, **kwargs: None
     try:
         first = json.loads((await inv.background_text_intake(body, request)).body)

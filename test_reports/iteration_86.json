@@ -1,0 +1,44 @@
+{
+  "summary": "Live-API acceptance of the 2-tier Triage → Magnum DI contract plus mobile smoke of Check / Call Guard / Patrol detail. 9/9 live backend tests pass (tests/test_triage_live_api.py). Benign SMS → caseId null, geminiCalls 0, outcome NO_THREAT_IDENTIFIED. Scam SMS ('verification code to unlock') → one caseId, outcome POSSIBLE_THREAT_IDENTIFIED, rulesMet contains MSG-01, idempotency verified (same submission_id → same case). POST /api/call/risk-check still returns a reputation decision. Every triage outcome is now visible via GET /api/patrol/events with adapter_label 'Apollo Triage (deterministic)' and full triage_investigation payload (rulesApplicable/rulesChecked/rulesMet/coverageGaps/retries/correlation/reason/geminiCalls=0). Frontend home/Call Guard/Patrol detail routes render with no red-screen errors.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/patrol/events",
+        "issue": "The PatrolEvent response_model was missing a triage_investigation field, so even though services/triage/store.py writes the full deterministic record into Mongo, Pydantic serialization stripped it from the HTTP response for ALL three outcomes (NO_THREAT / LIMITED / POSSIBLE_THREAT). Frontend had no way to display triage rulesChecked/coverageGaps/retries. Fixed by adding `triage_investigation: Optional[dict]` to PatrolEventIn in /app/backend/core/models.py and restarting backend. Verified by live test.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_triage_live_api.py",
+    "/app/test_reports/pytest/triage_live_api.xml",
+    "/app/test_reports/iter_triage_home.jpeg",
+    "/app/test_reports/iter_triage_callguard.jpeg"
+  ],
+  "action_items": [
+    "Review and keep the PatrolEvent.triage_investigation field (core/models.py). Confirm this doesn't need to be mirrored into PatrolEventPatch (currently read-only server-projected — correct).",
+    "Consider also surfacing the inner rulesMet/coverageGaps at the top-level of the POST /investigations/background/text 'triage' object; today the deterministic record lives under `triage.investigation.*`, which required test adaptation. The outer object only exposes outcome / reason / cached / source_type / providers_used / geminiCalls. Frontend TriageSummary already reads from `.investigation.*`, so this is a documentation note, not a bug."
+  ],
+  "critical_code_review_comments": [
+    "services/triage/store.py correctly persists the full investigation wire into patrol_events.triage_investigation and into the dedicated triage_investigations collection — both are written for every outcome and idempotent on (device_id, investigation_id).",
+    "routers/investigations.py background_text_intake() flow is correct: _record_triage_history is called for the non-escalating path AND for the escalating path (with investigation_case_id bound). geminiCalls=0 is a hard-coded property of TriageResult.wire() — safe.",
+    "core/models.py: because PatrolEventIn is also used as the client submission schema (POST /patrol/events), consider marking triage_investigation as server-only via an explicit guard in routers/patrol.py upsert_event. Today a malicious client could submit a bogus triage_investigation payload. Not exploited in tests but worth hardening."
+  ],
+  "updated_files": [
+    "/app/backend/core/models.py (added triage_investigation field to PatrolEventIn)",
+    "/app/backend/tests/test_triage_live_api.py (new live acceptance suite — 9 tests)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% smoke (3/3 routes rendered, no red-screen)"},
+  "seed_data_creation": "Each test registers its own anonymous device via /api/devices/register. No persistent seed. Patrol events created during tests are left in Mongo (short-lived test devices).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Live backend 2-tier triage flow is green end-to-end. The one bug found (triage_investigation stripped from /patrol/events response) was fixed in core/models.py and verified. If main agent regresses PatrolEventIn or renames the triage_investigation field, these tests will immediately fail.",
+  "rca_of_issue": "Root cause: triage_investigation was written to Mongo by services/triage/store.py but PatrolEventIn (which backs the response_model of GET /patrol/events) did not declare the field, so FastAPI/Pydantic stripped it during serialization. Reproduction before fix: POST /api/investigations/background/text with any text → GET /api/patrol/events?device_id=... → event present with adapter_label 'Apollo Triage (deterministic)' but no triage_investigation key. Mitigation: Optional[dict] = None added to PatrolEventIn."
+}
