@@ -1,3 +1,25 @@
+## Preview email inbox simulation (2026-06)
+
+**Purpose: input only.** `src/preview/simulatedInbox.ts` holds 10 sample emails (`SIMULATED_EMAILS`) with `from`, `subject`,
+`body` and a `probes` note describing WHAT EACH CONTAINS — never a verdict. Coverage: ordinary receipt (no links/requests),
+normal newsletter with a well-known domain, bank impersonation with lookalike domain + deadline + credential request,
+government/ATO impersonation with arrest threat + voucher payment + TFN/safe-account request, CEO gift-card request from free
+webmail, delivery pretext asking for the SMS one-time code, tech-support remote-access/installer, crypto extortion,
+advance-fee inheritance, and a plain booking email whose only link is an unfamiliar domain reputation services may not know.
+
+**No separate path.** `app/email.tsx` `run()` now takes an optional `source` ({from, subject, raw}); selecting a simulated email
+calls that same `run()` — same `analyseEmail`, same `POST /message/analyse` (real deterministic Triage, and real Magnum DI only
+where Triage escalates), same `evaluateLinkGuardFindings`, same `upsertEvent`. No mock Triage, no mock Magnum DI, no
+predetermined verdict, no alternative engine. Checks recorded from it are tagged `account: "Simulated inbox (preview)"`.
+
+**Clearly marked.** The card (`email-simulated-inbox`) has a dashed gold border, the heading "Simulated inbox" with a
+"PREVIEW ONLY" tag, and states it is not a connected mailbox, that no real email is read, and that Apollo decides each outcome
+himself. It renders only where a real mailbox isn't reachable (`Platform.OS === "web" || isMock`) and never when Gmail is connected.
+
+**Verified in preview:** benign sample → "Ordinary email… Nothing to do" (deterministic, no AI); bank-impersonation sample →
+Triage escalated and the real Magnum DI ran, reporting honestly that its analysis service isn't configured in this environment
+(no Gemini key here) rather than inventing a result.
+
 ## Home polish round (2026-06)
 
 - "Important for you" card: the summary sentence was removed (the title is descriptive enough) and `threatReason()` deleted

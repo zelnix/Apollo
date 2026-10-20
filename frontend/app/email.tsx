@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -51,6 +52,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { getShareIntake } from "@/src/share/shareIntake";
+import { SIMULATED_EMAILS } from "@/src/preview/simulatedInbox";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import {
   listEmailAccounts,
@@ -133,6 +135,15 @@ const useStyles = makeStyles((c) => ({
 
   // Email row
   emailRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
+  // Simulated inbox (preview only) — deliberately marked so it can never read as a real mailbox.
+  simInbox: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: c.gold, backgroundColor: c.surfaceSecondary, paddingVertical: spacing.md },
+  simInboxHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
+  simInboxTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
+  simInboxTag: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: c.gold },
+  simInboxTagText: { fontFamily: fonts.textSemibold, fontSize: 10, letterSpacing: 0.5, color: "#1B2437" },
+  simInboxSub: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, marginTop: spacing.xs },
+  simRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, marginTop: spacing.xs },
+  simRowProbe: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary, marginTop: 2 },
   emailRowIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   emailRowUnknownWell: { backgroundColor: c.surfaceTertiary },
   emailRowContactWell: {},
@@ -189,10 +200,10 @@ export default function CheckEmail() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox, isMock } = useApollo();
 
   // ── Input state ──
-  const [from, setFrom] = useState("");
+  const [fromState, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
   const [busy, setBusy] = useState(false);
@@ -261,6 +272,10 @@ export default function CheckEmail() {
     if (raw.trim() && deviceId) { /* content was shared into this screen */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
+  // alongside a connected one.
+  const showSimulatedInbox = (Platform.OS === "web" || isMock) && gmailConnected !== true;
 
   // ── Derived ──
   const allAccounts = useMemo((): EmailAccount[] => {
@@ -444,13 +459,21 @@ export default function CheckEmail() {
   };
 
   // ── Email check (core logic preserved) ──
-  const run = async () => {
+  // `source` lets a selected email (e.g. one from the preview's simulated inbox) be checked straight
+  // away without waiting for state to settle. The flow below is the ONE real email check: same
+  // on-device analysis, same /message/analyse call (real Triage, and real Magnum DI where Triage
+  // escalates), same event. There is no separate path for simulated input.
+  const run = async (source?: { from: string; subject: string; raw: string }) => {
     setBusy(true);
     try {
-      const safeRaw = redactUserSecrets(raw);
-      const safeSubject = redactUserSecrets(subject);
-      if (safeRaw !== raw) setRaw(safeRaw);
-      if (safeSubject !== subject) setSubject(safeSubject);
+      const rawInput = source?.raw ?? raw;
+      const subjectInput = source?.subject ?? subject;
+      const from = source?.from ?? fromState;
+      const safeRaw = redactUserSecrets(rawInput);
+      const safeSubject = redactUserSecrets(subjectInput);
+      if (safeRaw !== rawInput) setRaw(safeRaw); else if (source) setRaw(rawInput);
+      if (safeSubject !== subjectInput) setSubject(safeSubject); else if (source) setSubject(subjectInput);
+      if (source) setFrom(source.from);
       let a = analyseEmail(safeRaw, { from, subject: safeSubject });
       let urls: MessageUrlResult[] = [];
       let investigationCaseId: string | null = null;
@@ -500,7 +523,7 @@ export default function CheckEmail() {
           claimed_brand: a.claimedBrand,
           scenario: a.scenario,
           investigation_case_id: investigationCaseId,
-        }, { kind: "email", fields: [...(from.trim() ? [{ label: "From", value: from }] : []), ...(subject.trim() ? [{ label: "Subject", value: subject }] : [])], text: raw });
+        }, { kind: "email", fields: [...(from.trim() ? [{ label: "From", value: from }] : []), ...(subjectInput.trim() ? [{ label: "Subject", value: subjectInput }] : [])], text: rawInput });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
       const submissionId = event?.event_id ?? Crypto.randomUUID();
@@ -512,7 +535,7 @@ export default function CheckEmail() {
         summary: a.title,
         subject: safeSubject.trim() || a.parsed.subject || undefined,
         sender: from.trim() || a.parsed.fromAddress || undefined,
-        account: selectedAccount || undefined,
+        account: source ? "Simulated inbox (preview)" : selectedAccount || undefined,
         eventId: event?.event_id || undefined,
         scenario: a.scenario,
       });
@@ -536,7 +559,7 @@ export default function CheckEmail() {
     const model = buildEmailCheckResult({
       analysis: a,
       event: result.event,
-      from,
+      from: fromState,
       subject,
       submissionId: result.submissionId,
       urlResults: result.urls,
@@ -687,6 +710,43 @@ export default function CheckEmail() {
         <Text style={s.description}>
           Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
         </Text>
+
+        {/* ── Simulated inbox — PREVIEW ONLY ──
+            Sample emails that exist purely to feed Apollo's real email check when the preview has
+            no connected mailbox. Selecting one runs the same run() flow a real email runs: real
+            on-device analysis, real Triage, and real Magnum DI only where Triage escalates. */}
+        {showSimulatedInbox ? (
+          <View style={s.simInbox} testID="email-simulated-inbox">
+            <View style={s.simInboxHeader}>
+              <Inbox size={18} color={colors.onSurface} />
+              <Text style={s.simInboxTitle}>Simulated inbox</Text>
+              <View style={s.simInboxTag}><Text style={s.simInboxTagText}>PREVIEW ONLY</Text></View>
+            </View>
+            <Text style={s.simInboxSub}>
+              This is NOT a connected mailbox and no real email is read. These are sample emails built into the
+              preview so the real email check can be exercised. Apollo runs his own checks on whichever one you
+              pick and decides the outcome himself — nothing here is pre-judged.
+            </Text>
+            {SIMULATED_EMAILS.map((sim, i) => (
+              <Pressable
+                key={sim.id}
+                testID={`email-simulated-${i}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Check the simulated email from ${sim.from}`}
+                disabled={busy}
+                onPress={() => void run({ from: sim.from, subject: sim.subject, raw: sim.body })}
+                style={({ pressed }) => [s.simRow, { opacity: pressed || busy ? 0.7 : 1 }]}
+              >
+                <View style={s.emailRowInfo}>
+                  <Text style={s.emailRowSender} numberOfLines={1}>{sim.from}</Text>
+                  <Text style={s.emailRowSubject} numberOfLines={2}>{sim.subject}</Text>
+                  <Text style={s.simRowProbe} numberOfLines={2}>{sim.probes}</Text>
+                </View>
+                <ChevronRight size={16} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
         {/* ── Recent Emails Dropdown (above action cards) ── */}
         <View style={s.recentDropdown} testID="email-recent-section">
@@ -1016,7 +1076,7 @@ export default function CheckEmail() {
       <CheckingModal
         visible={busy}
         title="Checking email"
-        subject={subject.trim() ? subject.trim() : from.trim() ? `From: ${from.trim()}` : undefined}
+        subject={subject.trim() ? subject.trim() : fromState.trim() ? `From: ${fromState.trim()}` : undefined}
         description={"Magnum DI is reviewing headers, sender\nreputation and content for phishing patterns."}
       />
     </View>
