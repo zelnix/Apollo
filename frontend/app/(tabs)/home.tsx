@@ -159,7 +159,7 @@ const useStyles = makeStyles((c) => ({
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
   // Runs the full width of the card, stopping short of the artwork on the right.
-  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, paddingRight: spacing.xl },
+  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, paddingRight: spacing.sm },
 
   // ── Two side-by-side cards ──
   twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
@@ -317,7 +317,7 @@ export default function Home() {
                 <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={2}>{stateLabel}</Text>
               </View>
             </View>
-            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={3} testID="home-hero-voice">{voice.text}</Text>
+            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5} testID="home-hero-voice">{voice.text}</Text>
           </View>
         </Pressable>
 

@@ -1,3 +1,15 @@
+## Hero line: the stated finding, full width, taps through (2026-06)
+
+`findingSentence(event)` (exported from `src/domain/higginsHomeVoice.ts`, local evidence only) picks the ONE sentence that
+states what Apollo found — it drops instruction sentences (anything with "Settings", "Open", "Tap", "go to" or "→"), strips
+"In it," style connectors, clips at 170 chars on a word boundary, and returns null when the event has no such sentence (the
+hero then names the check instead of inventing detail). Used by both the single-finding and driving-event hero paths. The
+example now reads: `Apollo found one active management profile, "Acme IT Mobile Device Management" (com.acme.mdm.agent),
+installed 15 Oct 2026.` Tested: `tests/findingSentence.test.ts` 4/4.
+
+Hero layout uses the available width: text sits under Apollo's avatar, up to 5 lines, only `spacing.sm` right padding.
+Tapping the hero (including the line itself) opens the exact case — verified: tap → `/patrol/preview-mock-threat-001`.
+
 ## Home hero: short line, text under Apollo, full width (2026-06)
 
 **Wording.** `buildHomeVoice` no longer pastes the case narrative into the hero. One short line only:

@@ -14,7 +14,7 @@ import { hasLocalEvidence } from "./higginsNarration.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver.ts";
 import type { StateResolution } from "./stateMachine";
-import type { Capability } from "./types";
+import type { Capability, PatrolEvent } from "./types";
 
 export interface HomeVoice {
   /** The short Higgins paragraph the Home card shows (and reads aloud). */
@@ -29,6 +29,30 @@ export interface HomeVoice {
   protectionStatus?: "watching" | "reduced" | "action_needed";
   /** Higgins' explanation of protection issues — shown separately from the threat assessment. */
   protectionGuidance?: string;
+}
+
+/** The ONE sentence from a finding that says what Apollo actually found — no instructions, no
+ *  settings paths, no what-to-do. Returns null when the event carries no such sentence, so callers
+ *  fall back to naming the check instead of inventing detail. Local evidence only. */
+export function findingSentence(event: PatrolEvent): string | null {
+  if (!hasLocalEvidence(event)) return null;
+  const text = (event.what_happened || "").trim();
+  if (!text) return null;
+  const sentences = text
+    .split(/(\.|\?|!)\s+/)
+    .reduce<string[]>((acc, part, i, arr) => {
+      if (i % 2 === 0 && part.trim()) acc.push((part + (arr[i + 1] ?? "")).trim());
+      return acc;
+    }, []);
+  // Instructions belong in the case, never in the hero line.
+  const factual = sentences.filter((sentence) => !/→|\bsettings\b|^open\b|^tap\b|\bgo to\b/i.test(sentence));
+  const stated = factual.find((sentence) => /\b(found|detected|observed|spotted|flagged|blocked|stopped|is active)\b/i.test(sentence))
+    ?? factual[0];
+  if (!stated) return null;
+  const cleaned = stated.replace(/^(in it,|here,|in this case,)\s*/i, "").trim();
+  if (!cleaned) return null;
+  const capped = cleaned.length > 170 ? `${cleaned.slice(0, 169).replace(/\s+\S*$/, "")}…` : cleaned;
+  return capped.charAt(0).toUpperCase() + capped.slice(1);
 }
 
 /** Human label for every Capability id, used when assembling the dynamic affected-gate list. */
@@ -195,11 +219,14 @@ export function buildHomeVoice(input: {
     if (securityFindings.length === 1) {
       // ONE short line: the specific thing Apollo reacted to, or the check it came from. The case
       // title and the what-to-do steps live in the case itself — the hero must stay glanceable.
+      const stated = primary.event ? findingSentence(primary.event) : null;
       const subject = primary.event ? threatSubject(primary.event) : null;
       const what = subject ? subjectDescriptor(subject) : `something in the ${primary.gate} check`;
-      const text = state === "barking"
-        ? `Apollo found ${what}. It needs your decision.`
-        : `Apollo flagged ${what}.`;
+      const text = stated
+        ? stated
+        : state === "barking"
+          ? `Apollo found ${what}. It needs your decision.`
+          : `Apollo flagged ${what}.`;
       return {
         text,
         ctaLabel: "View what Apollo found",
@@ -264,12 +291,15 @@ export function buildHomeVoice(input: {
 
   // 3c) A driving event exists but didn't surface as a dedicated attention item.
   if (drivingEvent) {
+    const stated = findingSentence(drivingEvent);
     const subject = threatSubject(drivingEvent);
     const named = subject ? subjectDescriptor(subject) : "";
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
-    const text = named
-      ? `Apollo is reacting to ${named}.`
-      : `Apollo is reacting to something in the ${gateName} check.`;
+    const text = stated
+      ? stated
+      : named
+        ? `Apollo is reacting to ${named}.`
+        : `Apollo is reacting to something in the ${gateName} check.`;
     return {
       text,
       ctaLabel: "View what Apollo found",
