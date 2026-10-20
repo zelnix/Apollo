@@ -297,35 +297,38 @@ function gateToFact(gate: GateHealthRecord): GateFact {
 }
 
 function buildProtectionSummary(facts: ProtectionFacts, activeCount: number, totalCount: number): string {
+  // Higgins' rule: plain English first, one problem at a time, one action at a time, technical detail
+  // only when asked. So this answers the question ("is my device protected?") directly, names the ONE
+  // thing that matters most, gives ONE next step, and leaves the rest for "More details".
+  const attention = facts.gates.filter((g) => g.needsAttention);
+  const unavailable = facts.gates.filter((g) => !g.needsAttention && g.automaticState !== "running");
   const parts: string[] = [];
 
-  if (facts.serviceRunning) {
-    parts.push(`Apollo is running. ${activeCount} of ${totalCount} protections are active.`);
+  if (!facts.serviceRunning) {
+    parts.push("No — Apollo's protection isn't running, so nothing is being checked automatically right now.");
+    parts.push("The first thing to do is turn Apollo's protection back on.");
+  } else if (attention.length > 0) {
+    const first = attention[0];
+    parts.push(`Partly. Apollo is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
+    parts.push(`The first thing to sort out is ${first.title.toLowerCase()} — ${(first.limitation || first.statusLabel).toLowerCase()}.`);
+    parts.push("Open Apollo's protection settings and turn it on, then ask me to check again.");
+  } else if (activeCount < totalCount) {
+    parts.push(`Partly. Apollo is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
+    parts.push(`The ${totalCount - activeCount === 1 ? "other one isn't" : `other ${totalCount - activeCount} aren't`} available on this device, so ${totalCount - activeCount === 1 ? "it can't" : "they can't"} be switched on here.`);
   } else {
-    parts.push("Apollo's protection service is not running. This means your device is not actively protected.");
+    parts.push(`Yes — Apollo is running and all ${totalCount} protections on this device are on.`);
   }
 
-  if (facts.secureConnectionActive) {
-    parts.push("Apollo's secure connection is on.");
-  }
-
-  if (facts.rulesCurrent === true) parts.push("Its security rules are up to date.");
-  else if (facts.rulesCurrent === false) parts.push("Its security rules are out of date.");
-  else parts.push(facts.rulesDetail);
-
-  if (facts.currentIssues.length > 0) {
-    parts.push(`${facts.currentIssues.length} ${facts.currentIssues.length === 1 ? "issue needs" : "issues need"} attention: ${facts.currentIssues.join("; ")}.`);
-  } else if (!facts.serviceRunning) {
-    // Do NOT say "no issues" when the protection service itself is down — that IS the issue
-    parts.push("Restoring the protection service is the most important step.");
-  } else {
-    parts.push("No issues need attention.");
+  if (facts.rulesCurrent === false) {
+    parts.push("Its security rules are also out of date.");
+  } else if (facts.serviceRunning && attention.length === 0 && unavailable.length > 0 && activeCount === totalCount) {
+    parts.push("Some checks aren't available on this device.");
   }
 
   if (facts.checkedAt) {
     try {
       const time = new Date(facts.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      parts.push(`Last checked at ${time}.`);
+      parts.push(`I last checked at ${time}.`);
     } catch { /* ignore format errors */ }
   }
 

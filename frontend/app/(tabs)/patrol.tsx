@@ -15,6 +15,7 @@
 import Camera from "lucide-react-native/icons/camera";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Clock from "lucide-react-native/icons/clock";
 import Ellipsis from "lucide-react-native/icons/ellipsis";
 import FileText from "lucide-react-native/icons/file-text";
 import Globe from "lucide-react-native/icons/globe";
@@ -146,6 +147,8 @@ const useStyles = makeStyles((c) => ({
   // Threat card
   card: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, backgroundColor: c.surfaceSecondary, flexDirection: "row", overflow: "hidden", borderWidth: 1, borderColor: c.border },
   cardAccent: { width: 4 },
+  historyLink: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm },
+  historyLinkText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
   cardBody: { flex: 1, flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.md },
   cardIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   cardContent: { flex: 1, gap: 4 },
@@ -275,6 +278,19 @@ export default function ThreatsScreen() {
       <Text style={s.subtitleText} testID="threats-last-check">
         {lastActivityAt ? `Apollo last checked ${new Date(lastActivityAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : "Apollo hasn't run a check yet"}
       </Text>
+
+      {/* Threats lists one row per case; the full record as it happened lives in patrol history. */}
+      <Pressable
+        testID="threats-history-link"
+        accessibilityRole="button"
+        accessibilityLabel="Open patrol history — everything Apollo has filed, newest first"
+        onPress={() => router.push("/patrol/history")}
+        style={({ pressed }) => [s.historyLink, { opacity: pressed ? 0.7 : 1 }]}
+      >
+        <Clock size={16} color={colors.brandPrimary} />
+        <Text style={s.historyLinkText}>Patrol history</Text>
+        <ChevronRight size={16} color={colors.brandPrimary} />
+      </Pressable>
 
       {/* Filter + sort row */}
       <View style={s.controlsRow}>

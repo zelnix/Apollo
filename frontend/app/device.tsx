@@ -18,6 +18,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
 import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
+import { deviceCheckEvent } from "@/src/domain/deviceCheckCase";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
@@ -281,6 +282,33 @@ export default function CheckDevice() {
     setBriefing({ headline, findings, action: actionItem, overall: overallLabel });
     setRecheckPhase("briefing");
   }, [recheckPhase, checking, review, result]);
+
+  // ── A completed device check is a case ──
+  // One patrol record per user-initiated check, so it is listed in Threats, kept in patrol history
+  // and opened through the same threat-case screen as every other case. Background refreshes (simply
+  // opening this screen) are not cases and are never recorded.
+  const recordedBriefing = useRef<string | null>(null);
+  useEffect(() => {
+    if (recheckPhase !== "briefing" || !briefing || checking) return;
+    const signature = `${briefing.overall}|${briefing.headline}|${briefing.findings.join("|")}`;
+    if (recordedBriefing.current === signature) return;
+    recordedBriefing.current = signature;
+    const checkedAt = new Date().toISOString();
+    const event = deviceCheckEvent({
+      eventId: Crypto.randomUUID(), deviceId, briefing, adapterLabel, checkedAt,
+      platformLabel: hostKind ? `${hostKind} desktop` : platform === "web" ? "this browser" : platform,
+    });
+    void upsertEvent(event, {
+      kind: "device",
+      fields: [
+        { label: "Checked", value: new Date(checkedAt).toLocaleString() },
+        { label: "Device", value: hostKind ?? platform },
+        { label: "Result", value: briefing.headline },
+      ],
+      text: briefing.findings.join("\n"),
+      data: review ? { overall: review.overall, results: review.results } : { state: result.state, findings: result.findings },
+    }).catch(() => undefined);
+  }, [recheckPhase, briefing, checking, deviceId, adapterLabel, hostKind, platform, review, result, upsertEvent]);
 
   const openCheck = (r: CheckResult) => {
     if (!r.settings) return;
