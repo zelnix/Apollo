@@ -24,7 +24,7 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
+import { buildHeroLines, buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
 import { STATE_LABEL } from "@/src/domain/types";
 import {
@@ -150,6 +150,10 @@ const useStyles = makeStyles((c) => ({
     alignItems: "stretch",
   },
   heroTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  heroDotsRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.xs, minHeight: 24 },
+  heroDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(22,34,53,0.25)" },
+  heroDotActive: { backgroundColor: c.brand, width: 18 },
+  heroDotsLabel: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginLeft: spacing.xs },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroContentWrap: { flex: 1, flexShrink: 1 },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
@@ -252,6 +256,17 @@ export default function Home() {
     [resolution, attention, health.gates, capabilities],
   );
 
+  // Everything that needs the person right now, as hero lines Apollo cycles through.
+  const heroLines = React.useMemo(() => buildHeroLines(voice, attention), [voice, attention]);
+  const [heroIndex, setHeroIndex] = React.useState(0);
+  React.useEffect(() => { setHeroIndex(0); }, [heroLines.length]);
+  React.useEffect(() => {
+    if (heroLines.length < 2) return;
+    const timer = setInterval(() => setHeroIndex((i) => (i + 1) % heroLines.length), 7000);
+    return () => clearInterval(timer);
+  }, [heroLines.length]);
+  const heroLine = heroLines[Math.min(heroIndex, heroLines.length - 1)] ?? heroLines[0];
+
   // Most recent consumer event for the "Recent activity" section
   const recentEvent = React.useMemo(() => {
     const consumer = events.filter(isConsumerPatrolEvent);
@@ -283,7 +298,7 @@ export default function Home() {
           testID="home-hero-card"
           accessibilityRole="button"
           accessibilityLabel={stateLabel}
-          onPress={() => voice.ctaRoute ? router.push(voice.ctaRoute as any) : null}
+          onPress={() => { const route = heroLine?.route ?? voice.ctaRoute; return route ? router.push(route as any) : null; }}
           style={[s.heroCard, compact && { marginHorizontal: spacing.lg }]}
         >
           <Image
@@ -317,7 +332,22 @@ export default function Home() {
                 <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={2}>{stateLabel}</Text>
               </View>
             </View>
-            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5} testID="home-hero-voice">{voice.text}</Text>
+            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5} testID="home-hero-voice">{heroLine?.text ?? voice.text}</Text>
+            {heroLines.length > 1 ? (
+              <Pressable
+                onPress={() => setHeroIndex((i) => (i + 1) % heroLines.length)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Item ${heroIndex + 1} of ${heroLines.length}. Tap to see the next one.`}
+                style={s.heroDotsRow}
+                testID="home-hero-dots"
+              >
+                {heroLines.map((line, i) => (
+                  <View key={line.id} style={[s.heroDot, i === heroIndex && s.heroDotActive]} />
+                ))}
+                <Text style={s.heroDotsLabel}>{heroIndex + 1} of {heroLines.length}</Text>
+              </Pressable>
+            ) : null}
           </View>
         </Pressable>
 
@@ -396,21 +426,22 @@ export default function Home() {
                     onPress={() => router.push(`/patrol/${encodeURIComponent(event.event_id)}` as any)}
                     style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, flexDirection: "column", alignItems: "stretch" }]}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
-                      <View style={[s.activityIconWrap, compact && { width: 36, height: 36, borderRadius: 18 }, { backgroundColor: si.bg }]}>
-                        <IconEl size={compact ? 16 : 18} color={si.fg} />
+                    {/* Icon, time and status share one compact row so the words below get the full card width. */}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                      <View style={[s.activityIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: si.bg }]}>
+                        <IconEl size={compact ? 14 : 16} color={si.fg} />
                       </View>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={[s.activityText, compact && { fontSize: 14 }]} numberOfLines={2}>{threatTitle(event)}</Text>
-                        {threatIdentity(event) ? <Text style={s.activitySub} numberOfLines={1}>{threatIdentity(event)}</Text> : null}
-                        <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.muted }}>{formatDateTime(event.occurred_at)}</Text>
-                        <Text style={{ fontFamily: fonts.text, fontSize: 13, color: colors.onSurfaceSecondary, lineHeight: 18, marginTop: 2 }} numberOfLines={2}>{threatReason(event)}</Text>
+                      <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.muted, flex: 1 }} numberOfLines={1}>
+                        {formatDateTime(event.occurred_at)}
+                      </Text>
+                      <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
+                        <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
                       </View>
-                      <View style={{ alignItems: "flex-end", gap: 4 }}>
-                        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
-                          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
-                        </View>
-                      </View>
+                    </View>
+                    <View style={{ gap: 2, marginTop: 2 }}>
+                      <Text style={[s.activityText, compact && { fontSize: 14 }]} numberOfLines={3}>{threatTitle(event)}</Text>
+                      {threatIdentity(event) ? <Text style={s.activitySub} numberOfLines={1}>{threatIdentity(event)}</Text> : null}
+                      <Text style={{ fontFamily: fonts.text, fontSize: 13, color: colors.onSurfaceSecondary, lineHeight: 18, marginTop: 2 }} numberOfLines={4}>{threatReason(event)}</Text>
                     </View>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
                       <Text style={s.findingLink}>View threat</Text>

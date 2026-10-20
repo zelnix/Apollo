@@ -1,3 +1,15 @@
+## Home: hero rotation + "Important for you" card reorganised (2026-06)
+
+**Hero rotation.** `buildHeroLines(voice, attention)` (in `higginsHomeVoice.ts`) returns the primary voice line plus one line per
+remaining attention item (each naming the real finding via `findingSentence`, else the item's title; duplicates and the primary
+route are skipped). `app/(tabs)/home.tsx` cycles them every 7 s, resets on list change, and shows an indicator
+(`home-hero-dots`: a dot per item, active dot widened, plus "N of M") that advances on tap. Tapping the hero opens the case for
+the line currently shown.
+
+**"Important for you" card.** Icon + time + status pill share one compact row; the title (up to 3 lines) and the reason (up to
+4 lines) sit beneath at full card width with no gap under the date; "View threat" stays bottom-right. (The pill was briefly
+moved to the action row at the owner's request and then moved back.)
+
 ## Hero line: the stated finding, full width, taps through (2026-06)
 
 `findingSentence(event)` (exported from `src/domain/higginsHomeVoice.ts`, local evidence only) picks the ONE sentence that

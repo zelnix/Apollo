@@ -55,6 +55,21 @@ export function findingSentence(event: PatrolEvent): string | null {
   return capped.charAt(0).toUpperCase() + capped.slice(1);
 }
 
+/** Every thing Apollo currently wants the person to see, as hero lines: the primary voice line first,
+ *  then one line per remaining attention item. Each line names the actual finding where Apollo
+ *  recorded one, otherwise the item's own title. Used by the Home hero to cycle through them. */
+export function buildHeroLines(voice: HomeVoice, attention: AttentionItem[]): { id: string; text: string; route?: string }[] {
+  const lines = [{ id: "primary", text: voice.text, route: voice.ctaRoute }];
+  for (const item of attention) {
+    if (item.route && item.route === voice.ctaRoute) continue; // already the primary line
+    const stated = item.event ? findingSentence(item.event) : null;
+    const text = stated ?? item.title;
+    if (!text || lines.some((l) => l.text === text)) continue;
+    lines.push({ id: item.id, text, route: item.route });
+  }
+  return lines;
+}
+
 /** Human label for every Capability id, used when assembling the dynamic affected-gate list. */
 const CAPABILITY_LABEL: Record<Capability["id"], string> = {
   link_guard: "Link checking",
