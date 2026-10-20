@@ -213,6 +213,9 @@ class DiagnosticDetail(Wire):
     original_error_code: Optional[str] = None
     http_status: Optional[int] = None
     original_message: Optional[str] = None   # provider response, safely redacted
+    provider_response: Optional[str] = None  # the provider's actual reply, verbatim but redacted/truncated
+    provider_model: Optional[str] = None     # model that produced the reply
+    provider_finish_reason: Optional[str] = None
     exception_type: Optional[str] = None
     timestamp: Optional[str] = None          # ISO 8601
     duration_ms: Optional[int] = None

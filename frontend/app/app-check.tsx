@@ -28,6 +28,7 @@ import { saveAppReport } from "@/src/store/appReportStore";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
+import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";
@@ -110,14 +111,21 @@ export default function CheckApp() {
     if (Platform.OS === "web") setActionGuidance(`${label}: ${path}`);
     else void openDeviceSettings(label, path, (message) => showToast(message, "neutral"));
   };
-  useEffect(() => { void AppDeviceSdk.getAppDeviceCapabilities().then((c) => setSdkVisible(c.appPermissions === "supported")); }, []);
+  // A failed capability read means Apollo cannot show observed permissions — it never implies the app is fine.
+  useEffect(() => { void AppDeviceSdk.getAppDeviceCapabilities().then((c) => setSdkVisible(c.appPermissions === "supported")).catch(() => setSdkVisible(false)); }, []);
   const canPickApps = Platform.OS === "android";
   const openPicker = async () => {
     setPickerOpen(true);
     if (installedApps !== null || appsLoading) return;
     setAppsLoading(true);
     try { const list = await AppDeviceSdk.listInstalledApps(); setInstalledApps(list); }
-    catch { setInstalledApps([]); }
+    catch (error) {
+      // A failed read is not an empty device. Say so and leave the manual entry available.
+      setInstalledApps(null);
+      showToast(error instanceof NativeCallFailed
+        ? "Apollo couldn't read the list of installed apps from this device. Type the app name instead."
+        : "Apollo couldn't read the list of installed apps. Type the app name instead.", "growling");
+    }
     finally { setAppsLoading(false); }
   };
   const pickApp = (app: InstalledAppRef) => { setName(app.appName); setPickedPackage(app.packageId); setSource("not_sure"); setPerms([]); setPickerOpen(false); setAppQuery(""); };
@@ -131,7 +139,14 @@ export default function CheckApp() {
     try {
     void markCheckDone("app");
       let network: AppNetwork | null = null;
-      const sdk = await AppDeviceSdk.getInstalledAppAssessment((pickedPackage ?? name).trim());
+      let sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> = null;
+      try {
+        sdk = await AppDeviceSdk.getInstalledAppAssessment((pickedPackage ?? name).trim());
+      } catch {
+        // Apollo could not read the app's real details from this device. The check continues from what
+        // the person entered, and that limitation is stated rather than hidden.
+        showToast("Apollo couldn't read this app's details from the device. This check uses only the details you entered.", "growling");
+      }
       if (sdk?.network) network = sdk.network;
       // Phase A: observed facts from the native SDK override guesses — install source when the person wasn't sure,
       // and the app's actual permissions (plus remote-access capability) are added to what they ticked.
@@ -174,7 +189,7 @@ export default function CheckApp() {
         const resolved = confirmedResolved(buildPermissionFindings(result.a.permissionNotes, result.sdk), buildPermissionFindings(result.a.permissionNotes, sdk));
         setResult((cur) => (cur ? { ...cur, sdk } : cur));
         setVerifyNote(resolved.length ? `Apollo confirmed: ${resolved.map((f) => f.label).join(", ")} ${resolved.length > 1 ? "are" : "is"} now off for this app.` : "Apollo re-checked this app. No change to its access was confirmed.");
-      });
+      }).catch(() => setVerifyNote("Apollo tried to re-read this app's permissions and the device read failed, so it couldn't confirm the change."));
     });
     return () => sub.remove();
   }, [pickedPackage, result]);

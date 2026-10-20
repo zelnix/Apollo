@@ -146,8 +146,12 @@ def combine(sources: list[IntelSource]) -> tuple[Verdict, list[str], str]:
     return "unknown", [], "none"
 
 
-async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
-    """Follow HTTP redirects without downloading bodies. Returns the URL chain (first → final).
+async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[str], bool, Optional[str]]:
+    """Follow HTTP redirects without downloading bodies.
+
+    Returns (chain, complete, reason). `complete` is False when the chain was cut short by an error,
+    a timeout, an unsafe hop or the hop limit — in that case the last element is NOT known to be the
+    real destination, and callers must not treat it as one.
 
     Privacy: every URL (initial and each redirect destination) is sanitised before any
     outbound request is made, preventing PII or credentials embedded in URLs from leaking
@@ -156,8 +160,9 @@ async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
     try:
         sanitised_initial, _ = sanitize_url(url)
     except HTTPException:
-        return [url]  # non-http or unparseable — return as-is for the caller to handle
+        return [url], False, "the link could not be parsed, so no redirects were followed"
     chain = [sanitised_initial]
+    complete, reason = True, None
     try:
         async with asyncio.timeout(12):
             cur = sanitised_initial
@@ -175,13 +180,24 @@ async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
                 try:
                     nxt, _ = sanitize_url(raw_nxt)
                 except HTTPException:
-                    break  # non-http redirect target — stop the chain safely
+                    complete, reason = False, "the chain pointed at a destination Apollo could not safely follow"
+                    break
                 if nxt in chain:
                     break
                 chain.append(nxt)
                 cur = nxt
+            else:
+                # The loop ran out of hops rather than reaching a final destination.
+                complete, reason = False, f"the link redirected more than {min(max_hops, 5)} times"
     except Exception as exc:  # noqa: BLE001
         logger.info("redirect expansion stopped: %s", type(exc).__name__)
+        complete, reason = False, f"the redirect chain could not be followed to the end ({type(exc).__name__})"
+    return chain, complete, reason
+
+
+async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
+    """Chain only. Prefer expand_redirects_detailed when the caller reports coverage to a person."""
+    chain, _complete, _reason = await expand_redirects_detailed(url, max_hops)
     return chain
 
 
@@ -242,10 +258,12 @@ async def assess_indicator(indicator_type: str, value: str, expand: bool) -> Int
         result = await run_intel_check(indicator_type, value)
         return result.model_copy(update={"domain_info": await _await_domain()})
     # Bounded as a whole: a slow redirect chain must never hold the check hostage — judge the link as given instead.
+    expansion_complete, expansion_reason = True, None
     try:
-        chain = await asyncio.wait_for(expand_redirects(value), timeout=12)
+        chain, expansion_complete, expansion_reason = await asyncio.wait_for(expand_redirects_detailed(value), timeout=12)
     except asyncio.TimeoutError:
         chain = [value]
+        expansion_complete, expansion_reason = False, "the redirect check did not finish in time"
     final = chain[-1]
     # Judge the final destination; any confirmed-malicious hop along the way also counts.
     result = await run_intel_check("url", final)
@@ -263,6 +281,13 @@ async def assess_indicator(indicator_type: str, value: str, expand: bool) -> Int
             hosts.append(sanitize_url(u)[1])
         except HTTPException:
             hosts.append(urlparse(u).hostname or u)
+    coverage = result.coverage
+    if not expansion_complete:
+        # The destination Apollo judged is not known to be the real one. Say so, and never report
+        # this as full coverage.
+        sources = [*sources, IntelSource(name="redirect_expansion", status="unavailable",
+                                         detail=f"Apollo couldn't confirm where this link ends up: {expansion_reason}.")]
+        coverage = "partial" if coverage == "full" else coverage
     return IntelCheckResponse(verdict=verdict, threat_types=threat_types, sources=sources, indicator_digest=result.indicator_digest, checked_at=result.checked_at, cached=result.cached,
-                              coverage=result.coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None,
+                              coverage=coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None,
                               domain_info=await _await_domain())

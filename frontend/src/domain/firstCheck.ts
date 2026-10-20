@@ -291,9 +291,10 @@ export function runFirstCheck(inputs: FirstCheckInputs, now: string = new Date()
 }
 
 /** The whole run failed technically (collector threw). Honest ERROR overall — never a clean result. */
-export function erroredFirstCheck(platform: DevicePlatform, signals: DeviceSignals, now: string = new Date().toISOString()): FirstCheckReport {
+export function erroredFirstCheck(platform: DevicePlatform, signals: DeviceSignals, now: string = new Date().toISOString(),
+                                  reason?: string): FirstCheckReport {
   return { overall: "ERROR", platform, checkedAt: now, checks: [], concerns: [],
-    unavailable: ["Higgins couldn't complete the initial security check."], signals };
+    unavailable: [reason?.trim() || "Higgins couldn't complete the initial security check."], signals };
 }
 
 // --- Higgins plain-English copy per overall state ------------------------------------------------------

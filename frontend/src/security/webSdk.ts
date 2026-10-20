@@ -2,6 +2,7 @@
 // The app queries capabilities first and never assumes device-level blocking exists. Mock/Expo Go → "unsupported".
 
 import { getNativeModule } from "./nativeBridge";
+import { nativeJson } from "./nativeDiagnostics";
 
 export type WebCapabilityStatus = "supported" | "permission_required" | "unsupported";
 export interface WebProtectionCapabilities {
@@ -30,15 +31,16 @@ export interface SdkWebFinding {
 
 const UNSUPPORTED: WebProtectionCapabilities = { domainFiltering: "unsupported", urlInterception: "unsupported", redirectAssessment: "unsupported", domainReputation: "unsupported", threatEventReporting: "unsupported" };
 
-async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> {
-  if (!fn) return fallback;
-  try { return JSON.parse(await fn()) as T; } catch { return fallback; }
+// Absent module → the declared "no such capability on this host" value. Present but failing →
+// throws NativeCallFailed and is recorded in diagnostics, never read as "nothing found".
+async function call<T>(operation: string, fn: (() => Promise<string>) | undefined, whenAbsent: T): Promise<T> {
+  return nativeJson<T>(operation, fn, whenAbsent);
 }
 
 export const WebSdk = {
-  getWebProtectionCapabilities: () => { const m = getNativeModule(); return call<WebProtectionCapabilities>(m ? () => m.getWebProtectionCapabilities() : undefined, UNSUPPORTED); },
-  getDomainReputation: (domain: string) => { const m = getNativeModule(); return call<{ verdict: "clean" | "malicious" | "unknown"; source: string } | null>(m ? () => m.getDomainReputation(domain) : undefined, null); },
-  getRedirectAssessment: (url: string) => { const m = getNativeModule(); return call<{ chain: string[]; finalUrl: string } | null>(m ? () => m.getRedirectAssessment(url) : undefined, null); },
-  allowDestination: (domain: string) => { const m = getNativeModule(); return call<{ allowed: boolean }>(m ? () => m.allowDestination(domain) : undefined, { allowed: false }); },
-  getRecentWebThreatEvents: () => { const m = getNativeModule(); return call<SdkWebFinding[]>(m ? () => m.getRecentWebThreatEvents() : undefined, []); },
+  getWebProtectionCapabilities: () => { const m = getNativeModule(); return call<WebProtectionCapabilities>("getWebProtectionCapabilities", m ? () => m.getWebProtectionCapabilities() : undefined, UNSUPPORTED); },
+  getDomainReputation: (domain: string) => { const m = getNativeModule(); return call<{ verdict: "clean" | "malicious" | "unknown"; source: string } | null>("getDomainReputation", m ? () => m.getDomainReputation(domain) : undefined, null); },
+  getRedirectAssessment: (url: string) => { const m = getNativeModule(); return call<{ chain: string[]; finalUrl: string } | null>("getRedirectAssessment", m ? () => m.getRedirectAssessment(url) : undefined, null); },
+  allowDestination: (domain: string) => { const m = getNativeModule(); return call<{ allowed: boolean }>("allowDestination", m ? () => m.allowDestination(domain) : undefined, { allowed: false }); },
+  getRecentWebThreatEvents: () => { const m = getNativeModule(); return call<SdkWebFinding[]>("getRecentWebThreatEvents", m ? () => m.getRecentWebThreatEvents() : undefined, []); },
 };

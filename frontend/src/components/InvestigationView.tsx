@@ -187,6 +187,9 @@ function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefine
   addLine("Original error code", diag.originalErrorCode ?? diag.original_error_code);
   addLine("HTTP status", diag.httpStatus ?? diag.http_status);
   addLine("Original error message", diag.originalMessage ?? diag.original_message);
+  addLine("Provider reply (verbatim, redacted)", diag.providerResponse ?? diag.provider_response);
+  addLine("Provider model", diag.providerModel ?? diag.provider_model);
+  addLine("Provider finish reason", diag.providerFinishReason ?? diag.provider_finish_reason);
   addLine("Exception type", diag.exceptionType ?? diag.exception_type);
   addLine("Timestamp", diag.timestamp);
   const durMs = diag.durationMs ?? diag.duration_ms;
@@ -214,10 +217,14 @@ function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefine
   return lines.join("\n");
 }
 
-/** Map failure to Higgins-style user-facing explanation. */
+/** Map failure to Higgins-style user-facing explanation.
+ *  The server already classifies the real failure and writes the honest sentence, so that message is
+ *  preferred whenever it is present. The local map only covers failures with no server message. */
 function higginsExplanation(failure: Record<string, unknown> | null | undefined, isRetrying: boolean): string {
   if (!failure) return "";
   const code = String(failure.code ?? "");
+  const serverMessage = typeof failure.message === "string" ? failure.message.trim() : "";
+  if (serverMessage) return serverMessage;
   const history = (failure.retryHistory ?? failure.retry_history ?? []) as unknown[];
   if (isRetrying) {
     if (code === "rate_limited") return "Magnum DI has temporarily reached the analysis service's request limit. It's waiting briefly before trying again.";
@@ -225,6 +232,7 @@ function higginsExplanation(failure: Record<string, unknown> | null | undefined,
     if (code === "budget_exhausted") return "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.";
     return "Magnum DI encountered a temporary issue and is automatically retrying.";
   }
+  if (code === "response_invalid") return "Magnum DI couldn't complete the investigation. Gemini returned a response Apollo couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is in the technical details.";
   if (code === "provider_configuration") return "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.";
   if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
   if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
@@ -267,12 +275,20 @@ function buildRawProviderResponse(failure: Record<string, unknown> | null | unde
   const code = diag.originalErrorCode ?? diag.original_error_code;
   const message = diag.originalMessage ?? diag.original_message;
   const httpStatus = diag.httpStatus ?? diag.http_status;
-  if (!code && !message && !httpStatus) return null;
+  // The provider's actual reply, when Apollo kept it (e.g. a reply that failed validation).
+  const providerResponse = diag.providerResponse ?? diag.provider_response;
+  if (!code && !message && !httpStatus && !providerResponse) return null;
   const error: Record<string, unknown> = {};
   if (code !== null && code !== undefined) error.code = code;
   if (message) error.message = message;
   if (httpStatus) error.status = httpStatus;
-  return JSON.stringify({ error }, null, 2);
+  const payload: Record<string, unknown> = { error };
+  if (providerResponse) {
+    payload.providerReply = providerResponse;
+    payload.providerModel = diag.providerModel ?? diag.provider_model ?? null;
+    payload.providerFinishReason = diag.providerFinishReason ?? diag.provider_finish_reason ?? null;
+  }
+  return JSON.stringify(payload, null, 2);
 }
 
 /** Retry kind label. */

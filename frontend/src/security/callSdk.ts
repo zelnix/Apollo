@@ -9,6 +9,7 @@
 // Other SDK methods retain the existing fallback pattern (they are non-critical for reliability).
 
 import { getNativeModule } from "./nativeBridge";
+import { nativeJson } from "./nativeDiagnostics";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,11 +62,10 @@ const UNSUPPORTED: CallProtectionCapabilities = {
   numberReputation: "unsupported",
 };
 
-/** Original lenient helper — returns fallback on any failure. Retained for non-critical SDK methods
- *  where a silent fallback is acceptable (e.g., reporting, list management). */
-async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> {
-  if (!fn) return fallback;
-  try { return JSON.parse(await fn()) as T; } catch { return fallback; }
+// Absent module → the declared "no such capability on this host" value. Present but failing →
+// throws NativeCallFailed and is recorded in diagnostics, never read as "nothing found".
+async function call<T>(operation: string, fn: (() => Promise<string>) | undefined, whenAbsent: T): Promise<T> {
+  return nativeJson<T>(operation, fn, whenAbsent);
 }
 
 // ── Public SDK ───────────────────────────────────────────────────────────────
@@ -74,32 +74,32 @@ export const CallSdk = {
 
   getCallProtectionCapabilities: (): Promise<CallProtectionCapabilities> => {
     const m = getNativeModule();
-    return call<CallProtectionCapabilities>(m ? () => m.getCallProtectionCapabilities() : undefined, UNSUPPORTED);
+    return call<CallProtectionCapabilities>("getCallProtectionCapabilities", m ? () => m.getCallProtectionCapabilities() : undefined, UNSUPPORTED);
   },
 
   getCallerMetadata: () => {
     const m = getNativeModule();
-    return call<{ number: string | null; inContacts: boolean; country: string | null } | null>(m ? () => m.getCallerMetadata() : undefined, null);
+    return call<{ number: string | null; inContacts: boolean; country: string | null } | null>("getCallerMetadata", m ? () => m.getCallerMetadata() : undefined, null);
   },
 
   checkNumberReputation: (n: string) => {
     const m = getNativeModule();
-    return call<{ status: "unknown" | "trusted" | "reported"; reports: number } | null>(m ? () => m.checkNumberReputation(n) : undefined, null);
+    return call<{ status: "unknown" | "trusted" | "reported"; reports: number } | null>("checkNumberReputation", m ? () => m.checkNumberReputation(n) : undefined, null);
   },
 
   reportCallContext: (ctx: { asks: string[]; claim: string; state: string }) => {
     const m = getNativeModule();
-    return call<{ accepted: boolean }>(m ? () => m.reportCallContext(JSON.stringify(ctx)) : undefined, { accepted: false });
+    return call<{ accepted: boolean }>("reportCallContext", m ? () => m.reportCallContext(JSON.stringify(ctx)) : undefined, { accepted: false });
   },
 
   getRecentCallSecurityEvents: () => {
     const m = getNativeModule();
-    return call<SdkCallFinding[]>(m ? () => m.getRecentCallSecurityEvents() : undefined, []);
+    return call<SdkCallFinding[]>("getRecentCallSecurityEvents", m ? () => m.getRecentCallSecurityEvents() : undefined, []);
   },
 
   requestCallScreeningRole: () => {
     const m = getNativeModule();
-    return call<{ opened: boolean; held?: boolean }>(m ? () => m.requestCallScreeningRole() : undefined, { opened: false });
+    return call<{ opened: boolean; held?: boolean }>("requestCallScreeningRole", m ? () => m.requestCallScreeningRole() : undefined, { opened: false });
   },
 
   // ── RELIABILITY-CRITICAL: Explicit status reporting ─────────────────────
@@ -143,31 +143,31 @@ export const CallSdk = {
 
   acknowledgeCallLookups: (numbers: string[]) => {
     const m = getNativeModule();
-    return call<{ acknowledged: number }>(m ? () => m.acknowledgeCallLookups(JSON.stringify(numbers)) : undefined, { acknowledged: 0 });
+    return call<{ acknowledged: number }>("acknowledgeCallLookups", m ? () => m.acknowledgeCallLookups(JSON.stringify(numbers)) : undefined, { acknowledged: 0 });
   },
 
   retryCallLookups: (numbers: string[]) => {
     const m = getNativeModule();
-    return call<{ retried: number }>(m ? () => m.retryCallLookups(JSON.stringify(numbers)) : undefined, { retried: 0 });
+    return call<{ retried: number }>("retryCallLookups", m ? () => m.retryCallLookups(JSON.stringify(numbers)) : undefined, { retried: 0 });
   },
 
   getCallBlockAllowList: () => {
     const m = getNativeModule();
-    return call<{ block: string[]; allow: string[]; autoRisky: string[] }>(m ? () => m.getCallBlockAllowList() : undefined, { block: [], allow: [], autoRisky: [] });
+    return call<{ block: string[]; allow: string[]; autoRisky: string[] }>("getCallBlockAllowList", m ? () => m.getCallBlockAllowList() : undefined, { block: [], allow: [], autoRisky: [] });
   },
 
   addCallListEntry: (number: string, kind: "block" | "allow") => {
     const m = getNativeModule();
-    return call<{ ok: boolean }>(m ? () => m.addCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false });
+    return call<{ ok: boolean }>("addCallListEntry", m ? () => m.addCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false });
   },
 
   removeCallListEntry: (number: string, kind: "block" | "allow") => {
     const m = getNativeModule();
-    return call<{ ok: boolean }>(m ? () => m.removeCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false });
+    return call<{ ok: boolean }>("removeCallListEntry", m ? () => m.removeCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false });
   },
 
   markNumberRisky: (number: string) => {
     const m = getNativeModule();
-    return call<{ ok: boolean }>(m ? () => m.markNumberRisky(JSON.stringify({ number })) : undefined, { ok: false });
+    return call<{ ok: boolean }>("markNumberRisky", m ? () => m.markNumberRisky(JSON.stringify({ number })) : undefined, { ok: false });
   },
 };

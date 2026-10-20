@@ -37,6 +37,8 @@ class PhoneInvestigateResponse(BaseModel):
     investigation_case_id: Optional[str] = None
     job: Optional[dict[str, Any]] = None
     reputation: Optional[dict[str, Any]] = None
+    # Set when the deeper investigation could not be started. The reputation data still stands.
+    investigation_error: Optional[str] = None
 
 
 def _reputation_observation(result: Any) -> dict[str, Any]:
@@ -138,7 +140,7 @@ async def call_investigate(body: PhoneInvestigateRequest, request: Request):
 
     try:
         from routers.investigations import _launch_investigation
-        case_id, job = await _launch_investigation(
+        case_id, job, investigation_error = await _launch_investigation(
             owner, "call", question, submissions,
             initial_findings=initial_findings,
             intel_evidence=intel_evidence,
@@ -148,10 +150,15 @@ async def call_investigate(body: PhoneInvestigateRequest, request: Request):
             investigation_case_id=case_id,
             job=job,
             reputation=observation,
+            investigation_error=investigation_error,
         )
     except Exception as exc:
         logger.warning("call_investigate case creation failed: %s", type(exc).__name__)
-        return PhoneInvestigateResponse(reputation=observation)
+        # The reputation observation stands on its own; the failed escalation is stated, not hidden.
+        return PhoneInvestigateResponse(
+            reputation=observation,
+            investigation_error=f"Apollo couldn't start the Magnum DI investigation for this number ({type(exc).__name__}).",
+        )
 
 
 @router.get("/call/caller-id-db/count")

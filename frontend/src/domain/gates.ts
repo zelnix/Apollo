@@ -27,7 +27,9 @@ export interface GatePresentation {
 export type GateItem = GatePresentation;
 export interface GatesOverview { summary: string; higgins: string; primary: GatePresentation | null; gates: GatePresentation[] }
 export interface EmailMonitorCapability { checking: boolean; configured: boolean; connected: boolean | null; monitoringRequested: boolean; lastCheckedAt: string | null; lastSuccessAt?: string | null; lastAssessmentAt?: string | null; lastErrorAt: string | null }
-export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; callAutoCheckEnabled?: boolean; desiredSiteOn?: boolean; privateDns?: import("./types").PrivateDnsStatus | null; now?: number }
+export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; callAutoCheckEnabled?: boolean; desiredSiteOn?: boolean; privateDns?: import("./types").PrivateDnsStatus | null;
+  /** True when the device read for that capability FAILED (unknown), as opposed to still running. */
+  messagingReadFailed?: boolean; callsReadFailed?: boolean; now?: number }
 
 const cap = (items: Capability[], id: string) => items.find((item) => item.id === id);
 const action = (id: UserAction["id"], label: string): UserAction => ({ id, label });
@@ -77,7 +79,9 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   // B4: Text Gate status — distinguish background processing from merely having notification access.
   // On Android, "smsFiltering: supported" means notification access is granted but NOT that background
   // assessment is completing. On iOS, "supported" now requires 72h recency, not 30 days.
-  const textStateBase: AutomaticCapabilityState = input.checking || !input.messaging ? "checking" : input.messaging.smsFiltering === "supported" ? "running" : input.messaging.smsFiltering === "permission_required" ? "permission_needed" : "unsupported";
+  // A failed capability read is "unverified" — never a pending check and never "unsupported".
+  const textStateBase: AutomaticCapabilityState = input.messagingReadFailed && !input.messaging ? "unverified"
+    : input.checking || !input.messaging ? "checking" : input.messaging.smsFiltering === "supported" ? "running" : input.messaging.smsFiltering === "permission_required" ? "permission_needed" : "unsupported";
   const textHistorical = (input.messaging as unknown as Record<string, unknown> | undefined)?.messageFilterHistoricalOnly === true;
   // Historical-only means the filter ran before but has no recent observation — we cannot verify it is
   // actively filtering now, so this is "Unable to verify", never "Watching".
@@ -96,7 +100,8 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
 
   // Call Gate — "running" means call screening role is held, and pending numbers are now assessed
   // automatically (with consent). Without consent, the gate is "ready" but not automatically checking.
-  const callState: AutomaticCapabilityState = input.checking || !input.calls ? "checking" : input.calls.callScreening === "supported" ? "running" : input.calls.callScreening === "permission_required" ? "permission_needed" : "unsupported";
+  const callState: AutomaticCapabilityState = input.callsReadFailed && !input.calls ? "unverified"
+    : input.checking || !input.calls ? "checking" : input.calls.callScreening === "supported" ? "running" : input.calls.callScreening === "permission_required" ? "permission_needed" : "unsupported";
   const callLimitation = callState === "permission_needed"
     ? "Choose Apollo for supported call screening."
     : callState === "running"

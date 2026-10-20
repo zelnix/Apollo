@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 import type { PatrolEvent } from "@/src/domain/types";
+import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 
 interface TextGuardLocalFindingsDeps {
   deviceId: string | null;
@@ -31,10 +32,12 @@ interface TextGuardLocalFindingsDeps {
     findings: Array<{ ruleId: string; title: string }>;
   }>>;
   acknowledgeTextGuardLocalFindings: (ids: string[]) => Promise<void>;
+  /** Called when the device read itself failed, so the gap can be reported rather than hidden. */
+  onReadFailure?: (message: string) => void;
 }
 
 export function useTextGuardLocalFindings(deps: TextGuardLocalFindingsDeps) {
-  const { deviceId, eventsRef, persistEvents, getTextGuardLocalFindings, acknowledgeTextGuardLocalFindings } = deps;
+  const { deviceId, eventsRef, persistEvents, getTextGuardLocalFindings, acknowledgeTextGuardLocalFindings, onReadFailure } = deps;
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -74,10 +77,15 @@ export function useTextGuardLocalFindings(deps: TextGuardLocalFindingsDeps) {
         if (acknowledged.length > 0) {
           await acknowledgeTextGuardLocalFindings(acknowledged);
         }
-      } catch { /* native module unavailable */ }
+      } catch (error) {
+        // A failed read of the local findings queue is not "no findings" — say so instead of going quiet.
+        if (error instanceof NativeCallFailed) {
+          onReadFailure?.("Apollo couldn't read its on-device message findings, so recent texts may not have been assessed. Open Support before relying on automatic text checks.");
+        }
+      }
     };
     void consumeLocalFindings();
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
     return () => { cancelled = true; sub.remove(); };
-  }, [deviceId, persistEvents, getTextGuardLocalFindings, acknowledgeTextGuardLocalFindings]);
+  }, [deviceId, persistEvents, getTextGuardLocalFindings, acknowledgeTextGuardLocalFindings, onReadFailure]);
 }

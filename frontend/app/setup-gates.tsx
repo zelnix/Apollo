@@ -17,6 +17,7 @@ import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { GATE_ORDER, GATE_PERMISSIONS, GATE_SNOOZE_MS, gateAppliesToPlatform, gateSnoozeKey, type GatePermId } from "@/src/domain/gatePermissions";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { CallSdk } from "@/src/security/callSdk";
+import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -66,6 +67,8 @@ export default function SetupGates() {
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [recap, setRecap] = useState<{ id: GatePermId; on: boolean }[] | null>(null);
+  // Gates whose real state Apollo could not read — listed as unknown instead of being left out.
+  const [recapUnknown, setRecapUnknown] = useState<GatePermId[]>([]);
   const leaving = useRef(false);
 
   // After permissions/platform setup, onboarding proceeds to Higgins First Check (spec §4) BEFORE the
@@ -103,11 +106,14 @@ export default function SetupGates() {
   // End of setup — compute the "what's on / what's pending" recap from real state (not assumptions).
   const finish = useCallback(async () => {
     const rows: { id: GatePermId; on: boolean }[] = [];
+    const unknown: GatePermId[] = [];
     for (const id of GATE_ORDER) {
       if (!gateAppliesToPlatform(id)) continue;
-      try { const on = await readGateOn(id); if (on !== null) rows.push({ id, on }); } catch { /* skip */ }
+      try { const on = await readGateOn(id); if (on !== null) rows.push({ id, on }); }
+      catch { unknown.push(id); }
     }
-    if (rows.length === 0) { goHome(); return; }
+    if (rows.length === 0 && unknown.length === 0) { goHome(); return; }
+    setRecapUnknown(unknown);
     setRecap(rows);
   }, [readGateOn, goHome]);
 
@@ -140,8 +146,10 @@ export default function SetupGates() {
       const copy = GATE_PERMISSIONS[current];
       if (granted) { await storage.setItem(gateSnoozeKey(current), ""); showToast(`${copy.title} is on.`, "resting"); }
       else { await snooze(current); showToast(`${copy.title} isn't on yet — you can enable it anytime. We'll remind you in a few days.`, "neutral"); }
-    } catch {
-      showToast("That didn't open. You can enable this later from Protection or Settings.", "growling");
+    } catch (error) {
+      showToast(error instanceof NativeCallFailed
+        ? "Apollo couldn't confirm whether this turned on — the device read failed. Check Protection."
+        : "That didn't open. You can enable this later from Protection or Settings.", "growling");
       await snooze(current);
     } finally {
       setBusy(false);
@@ -171,6 +179,11 @@ export default function SetupGates() {
               </View>
             ))}
           </Card>
+          {recapUnknown.length ? (
+            <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-unknown">
+              <Text style={[s.why, { flex: 1 }]}>Apollo couldn&apos;t read the current state of {recapUnknown.map((id) => GATE_PERMISSIONS[id].title).join(", ")} on this device, so it isn&apos;t shown as on or off. Open Protection to check.</Text>
+            </Card>
+          ) : null}
           {onCount < recap.length ? <Body style={{ color: colors.muted }}>You can enable anything marked pending anytime from Protection or Settings.</Body> : null}
         </View>
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>

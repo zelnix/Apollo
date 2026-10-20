@@ -20,6 +20,7 @@ import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceRe
 import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
+import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { desktopHostKind } from "@/src/security/desktopHost";
 import { openDesktopSettings } from "@/src/security/DesktopSecurityAdapter";
@@ -194,10 +195,19 @@ export default function CheckDevice() {
         setChangeLog(merged);
       }
       void markCheckDone("device");
-    } catch {
+    } catch (error) {
+      // A failed read is reported as a failed read. Apollo does not grade the device from signals it
+      // never managed to collect, and it names what went wrong.
+      const detail = error instanceof NativeCallFailed
+        ? "Apollo asked this device for its security signals and the read failed, so this check did not run."
+        : error instanceof Error && error.message
+          ? `Apollo couldn't complete the device check (${error.message}).`
+          : "Apollo couldn't complete the device check and the reason could not be determined.";
       if (notify) {
-        setBriefing({ headline: "Device check incomplete", findings: ["Apollo couldn't read every signal this time. The visible limits are listed below."], action: null, overall: "limited" });
+        setBriefing({ headline: "Device check didn't run", findings: [detail, "Nothing here says the device is clear — the check was not completed."], action: null, overall: "error" });
         setRecheckPhase("briefing");
+      } else {
+        showToast(detail, "growling");
       }
     } finally { setChecking(false); setCheckSequence((value) => value + 1); }
   }, [platform, hostKind, showToast, verifyNow, protection?.running, storage]);

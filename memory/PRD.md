@@ -1,3 +1,37 @@
+## Hidden fallback audit — truthful failure reporting across Apollo (2026-06)
+
+Full audit of error paths (not keyword searches). Every try/except, catch, default value, timeout path,
+provider switch, cache recovery, parse/validation recovery and native-capability read was classified
+KEEP / CHANGE / REMOVE. Full record with per-item rationale: `/app/memory/hidden_fallback_audit.md`.
+
+**Removed manufactured results (5).** The worst: `services/higgins/coordinator.py` built a complete-looking
+HigginsResponse out of raw text when Gemini's reply failed validation, including the fabricated finding
+"Investigation completed. Review the analysis above." and `completion: "complete"`. Now the turn fails and
+**Gemini's actual reply is passed on verbatim** (redacted, ≤4000 chars) in `DiagnosticDetail.provider_response`
+with model + finish reason, surfaced in the Investigation technical details and copyable diagnostics. Also
+removed: First Check grading a device from signals it never read; `coverage: parsed.source` (a non-existent
+field) recording every link as checked; call-guard reporting a never-created investigation as `completed`;
+and the shared native-SDK helper that made a failing native module indistinguishable from "nothing found"
+(replaced by `nativeJson` → absent = declared no-capability value, failing = `NativeCallFailed` + recorded).
+
+**Real bugs the swallows were hiding.** Tier-2 escalation was DEAD on the message, call and number-risk gates:
+the three endpoints were missing from `EgressEndpoint` (TypeError inside `enforceEgress`), `client_item_id`
+wasn't a UUID (422), the case id was read from the wrong field, and Apollo's deterministic findings were sent
+under a key the route doesn't accept. All fixed; failures are now stated on the event.
+
+**Truth-preserving changes.** `_launch_investigation` returns `(case_id, job, error)` and the gates expose
+`investigation_error`; redirect expansion reports `(chain, complete, reason)` so a truncated chain is never
+called the final destination (degrades coverage, raises a `NETWORK_CHECK_FAILED` Triage gap); a failed
+capability read renders as `unverified`/"Couldn't check" rather than Off/Not available/pending; "Apollo will
+reject future calls automatically" now requires device confirmation; native read failures are recorded and
+listed in Support → App Logs & Diagnostics.
+
+**Verification.** Backend `pytest tests/` — 857 passed (the 3 failures in that run were a stale dev server;
+`pytest tests/test_triage_live_api.py tests/test_p0_policy_regression.py tests/test_iter33_api_regression.py`
+= 37 passed after `supervisorctl restart backend`). Frontend `node --test tests/*.test.ts` — 556 passed /
+25 pre-existing loader failures (unchanged baseline). ESLint clean on `src` and `app`. Per the owner's
+instruction, no new scenario/mock tests were written for the Gemini passthrough path.
+
 ## Alert Freshness Badge — "Updated 2 hours ago" on scam alerts (2026-06)
 
 **Why:** people couldn't tell whether a scam alert list was minutes or weeks old, so there was no basis to trust it.

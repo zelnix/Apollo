@@ -308,7 +308,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
             legacy = json.loads(final.text)
             answer_text = str(legacy.get("answer") or legacy.get("text") or final.text or "")
             parsed = ModelChatReply(
-                answer=answer_text[:2000] if answer_text else "I wasn't able to format my response properly. Could you try rephrasing your question?",
+                answer=answer_text[:2000] if answer_text else "My answer came back in a form Apollo couldn't read, so I have nothing to show you for that question. Nothing has been made up in its place — please ask again.",
                 clarification=legacy.get("clarification"),
                 recommend_investigation=bool(legacy.get("recommendInvestigation") or legacy.get("recommend_investigation")),
                 destination=legacy.get("destination"),
@@ -328,7 +328,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                     pass
                 parsed = ModelChatReply(answer=raw_text[:2000])
             else:
-                parsed = ModelChatReply(answer="I wasn't able to answer that right now. Could you try rephrasing your question?")
+                parsed = ModelChatReply(answer="My answer came back empty or unreadable, so there is nothing to show you for that question. Nothing has been made up in its place — please ask again.")
 
     investigation_available = parsed.recommend_investigation or parsed.destination is not None
     actions = []

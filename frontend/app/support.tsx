@@ -32,6 +32,7 @@ import { buildHigginsInfo, buildProtectionRows, buildSupportSummary, renderEmail
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
+import { recentNativeFailures } from "@/src/security/nativeDiagnostics";
 
 const USER_EMAIL_KEY = "apollo.support.user_email.v1";
 
@@ -107,6 +108,11 @@ function recentLogLines(health: FullHealthCheck, firstCheckConcerns: string[], e
     const row = health[id as "device"]; lines.push(`${new Date(row.checkedAt ?? health.checkedAt!).toLocaleString()} · ${STATUS[row.status].toUpperCase()} · ${label}`);
   }
   for (const concern of firstCheckConcerns) lines.push(`Higgins First Check · ${concern}`);
+  // Device capability reads Apollo attempted and could not complete — shown so a failed check is never
+  // mistaken for a clean one.
+  for (const failure of recentNativeFailures()) {
+    lines.push(`${new Date(failure.at).toLocaleString()} · DEVICE READ FAILED · ${failure.operation} · ${failure.detail}`);
+  }
   if (evidenceSummary) lines.push(evidenceSummary);
   if (!lines.length) lines.push("No diagnostic events recorded yet. Run a check from the Check tab.");
   return lines;

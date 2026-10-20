@@ -227,16 +227,20 @@ async def _launch_investigation(
     triage_provider_evidence: dict | None = None,
     source_metadata: dict | None = None,
     initiator: str = "user_check",
-) -> tuple[str | None, dict | None]:
+) -> tuple[str | None, dict | None, str | None]:
     """Shared investigation lifecycle for compatibility gates.
 
     Creates case → ingests evidence → stores metadata → submits first turn.
-    Returns (case_id, job_wire_dict) or (None, None) on failure.
+    Returns (case_id, job_wire_dict, error). The error is a short, honest sentence when any stage
+    failed — the gate passes it to the person instead of returning a silent "no investigation".
+    A case_id is still returned when the case exists but a later stage failed, so what DID complete
+    is not thrown away.
 
     Used by analysis.py compatibility endpoints (/message/analyse,
     /link/investigate) so the duplicate _create_investigation_case is removed
     and every investigation follows the canonical path.
     """
+    case_id: str | None = None
     try:
         case = await repo.create_case(owner, gate, None, initiator=initiator)
         case_id = case["case_id"]
@@ -295,12 +299,15 @@ async def _launch_investigation(
                            turn_id=str(uuid.uuid4()),
                            message=question),
                 idem_key)
-            return case_id, repo.job_view(job).wire() if job else None
-        return case_id, None
+            if not job:
+                return case_id, None, "Apollo opened the investigation but Magnum DI did not start a turn on it."
+            return case_id, repo.job_view(job).wire(), None
+        return case_id, None, None
     except Exception as exc:
         __import__("logging").getLogger("apollo.investigations").warning(
             "_launch_investigation failed (gate=%s): %s", gate, type(exc).__name__)
-        return None, None
+        stage = "while preparing the evidence" if case_id else "while opening the case"
+        return case_id, None, f"Apollo couldn't start the Magnum DI investigation {stage} ({type(exc).__name__})."
 
 
 

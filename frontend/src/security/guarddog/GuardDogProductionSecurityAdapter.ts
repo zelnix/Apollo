@@ -41,7 +41,12 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     }
   }
   async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
-    catch { return [{ id: "site_guard", title: "Website protection", status: "permission_required", detail: "Production protection is inactive because its rules are missing, invalid or expired." }]; } }
+    catch (error) {
+      // Report the real reason rather than asserting a rule problem Apollo hasn't established.
+      const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
+      return [{ id: "site_guard", title: "Website protection", status: "permission_required",
+        detail: `Production protection is not active and Apollo couldn't read its status (${reason}).` }];
+    } }
   async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
     catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. Apollo did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
   async analyseURL(url: string) { await this.ensureConfigured(); return this.json<NativeUrlAnalysis>(this.mod().analyzeGuardDogProductionUrl(url)); }
@@ -78,23 +83,28 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
 
   // ── DNS Threat Observations (separate from enforcement evidence) ──────────
   async getDnsThreatObservations(): Promise<DnsThreatObservation[]> {
-    try { await this.ensureConfigured(); return JSON.parse(this.mod().getGuardDogDnsThreatObservations()); }
-    catch { return []; }
+    // A failed read is NOT "no threats observed" — it propagates so the caller can report the gap.
+    await this.ensureConfigured();
+    return JSON.parse(this.mod().getGuardDogDnsThreatObservations());
   }
   async acknowledgeDnsThreatObservations(ids: string[]): Promise<void> {
-    try { this.mod().acknowledgeGuardDogDnsThreatObservations(JSON.stringify(ids)); }
-    catch { /* non-critical */ }
+    this.mod().acknowledgeGuardDogDnsThreatObservations(JSON.stringify(ids));
   }
 
   // ── Private DNS / DoH gap detection ──────────────────────────────────────
   async getPrivateDnsStatus(): Promise<PrivateDnsStatus> {
     try { await this.ensureConfigured(); return JSON.parse(this.mod().getGuardDogPrivateDnsStatus()); }
-    catch { return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable", explanation: "Unable to determine Private DNS status." }; }
+    catch (error) {
+      // Unobservable, not "off": Apollo states that it could not read the setting and why.
+      const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
+      return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable",
+        explanation: `Apollo couldn't read this device's Private DNS setting (${reason}). This is not a confirmation that Private DNS is off.` };
+    }
   }
 
   // ── Urgent rule refresh trigger (from Link Gate intelligence) ─────────────
   async triggerUrgentRuleRefresh(): Promise<void> {
-    try { this.mod().triggerGuardDogUrgentRefresh(); }
-    catch { /* non-critical — periodic refresh continues */ }
+    // The caller decides what to do when an urgent refresh cannot be triggered; it isn't hidden here.
+    this.mod().triggerGuardDogUrgentRefresh();
   }
 }

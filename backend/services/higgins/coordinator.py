@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 from typing import Any, Optional
 
 from google.genai import types
@@ -173,8 +172,12 @@ async def _brief(owner: str, case: dict, payload: dict, device: Optional[dict]) 
 
 
 class Outcome:
-    def __init__(self, kind: str, *, commit: Optional[TurnCommit] = None, request: Optional[dict] = None, case: Optional[dict] = None, errors: Optional[list[str]] = None):
+    def __init__(self, kind: str, *, commit: Optional[TurnCommit] = None, request: Optional[dict] = None, case: Optional[dict] = None,
+                 errors: Optional[list[str]] = None, provider_text: Optional[str] = None, finish_reason: Optional[str] = None,
+                 model: Optional[str] = None):
         self.kind, self.commit, self.request, self.case, self.errors = kind, commit, request, case, errors or []
+        # Real provider output kept verbatim for the technical details — never reshaped into a result.
+        self.provider_text, self.finish_reason, self.model = provider_text, finish_reason, model
 
 
 async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
@@ -221,33 +224,13 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         response, errors = validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids, capability_ids=capability_ids,
                                     pending_question=None, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
 
-    # If JSON parsing/validation failed, create a basic response from the raw text
-    if response is None and result.text and len(result.text.strip()) > 20:
-        from services.higgins.contracts import HigginsResponse, Finding
-        text = result.text.strip()
-        # Remove markdown fences if present
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
-        response = HigginsResponse(
-            revision=revision,
-            overview=text[:500] if len(text) > 500 else text,
-            explanation_markdown=text,
-            assessment="uncertain",
-            attention="review",
-            attention_reason="Magnum DI completed its analysis but the response required reformatting.",
-            findings=[Finding(id=str(uuid.uuid4()), text="Investigation completed. Review the analysis above.", basis="inference", confidence="medium",
-                              evidence_ids=sorted(evidence_ids)[:5], source_ids=[], supersedes_finding_ids=[])],
-            uncertainties=["Response format was non-standard; content may be less structured than usual."],
-            scope="Investigation of submitted evidence.",
-            source_ids=sorted(source_ids),
-            remaining_evidence_ids=sorted(gaps),
-            actions=[],
-            recommended_action_id=None,
-            question=None,
-            completion="complete" if not gaps else "partial",
-        )
-
+    # An unvalidated answer is NOT an investigation result. Apollo never reshapes raw provider text
+    # into findings, an assessment or a completion state — that would manufacture a conclusion Magnum DI
+    # never reached. The real reply is passed on verbatim as provider output for the technical details,
+    # and the turn fails honestly.
     if response is None:
-        return Outcome("invalid", errors=errors)
+        return Outcome("invalid", errors=errors, provider_text=result.text, finish_reason=result.finish_reason,
+                       model=result.model)
 
     # ── Step 4: Commit the turn ──
     usage = result.usage or {}

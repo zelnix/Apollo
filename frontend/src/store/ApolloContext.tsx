@@ -54,6 +54,7 @@ import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 import { getNativeModule } from "@/src/security/nativeBridge";
+import { NativeCallFailed, recordNativeFailure } from "@/src/security/nativeDiagnostics";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import type { HealthTrigger } from "@/src/protection/healthTypes";
 import { APP_VERSION } from "@/src/config/buildInfo";
@@ -315,7 +316,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
       // ── Private DNS gap detection ──────────────────────────────────────────
       if (securityAdapter.getPrivateDnsStatus) {
-        securityAdapter.getPrivateDnsStatus().then(setPrivateDnsStatus).catch(() => setPrivateDnsStatus(null));
+        securityAdapter.getPrivateDnsStatus().then(setPrivateDnsStatus).catch((error) => {
+          // Unknown, not "no Private DNS" — null renders as unavailable and the failure is recorded.
+          recordNativeFailure("getPrivateDnsStatus", error instanceof Error ? error.message : String(error));
+          setPrivateDnsStatus(null);
+        });
       }
       const verified = freshObservation(status) ? status.lastVerified : null;
       setLastVerifiedAt(verified);
@@ -482,7 +487,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         await storage.setItem("apollo:seen_dns_observations", JSON.stringify(retainedSeen));
         await securityAdapter.acknowledgeDnsThreatObservations?.(ackIds);
       }
-    } catch { /* non-critical — periodic poll will retry */ }
+    } catch (error) {
+      // A failed read of the DNS observation inbox is a protection-visibility gap, not an all-clear.
+      // It is recorded for Support instead of being silently treated as "nothing detected".
+      recordNativeFailure("getDnsThreatObservations", error instanceof Error ? error.message : String(error));
+    }
   }, [showToast, persistEvents]);
 
   const lastConnectionKey = useRef<string | null>(null);
@@ -845,9 +854,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const parsed = parseIntelResult(raw);
           if (parsed) {
             urls.push({
-              url: rawUrl, host: parsed.host ?? rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(),
+              url: rawUrl, host: rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(),
               verdict: parsed.verdict === "malicious" ? "malicious" : parsed.verdict === "clean" ? "clean" : "unknown",
-              threat_types: parsed.threat_types ?? [], coverage: parsed.source ?? "intel",
+              threat_types: parsed.threat_types ?? [],
+              // Real coverage from the reputation service. "none" means nothing could be checked —
+              // it must never be recorded as a completed check.
+              coverage: parsed.coverage === "none" ? "unavailable" : parsed.coverage,
               redirect_chain: parsed.redirect_chain ?? undefined, final_url: parsed.final_url ?? null,
               domain_info: parsed.domain_info ?? null,
             });
@@ -879,12 +891,22 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         investigationCaseId = existingCaseId;
       } else {
         try {
-          const remote = await apiPost<{ investigation_case_id?: string | null }>("/message/analyse", "message_investigation", {
+          // Fields POST /message/analyse actually reads — Apollo's deterministic findings travel as
+          // `signals` so they reach Magnum DI's brief instead of being silently dropped.
+          const remote = await apiPost<{ investigation_case_id?: string | null; investigation_error?: string | null }>("/message/analyse", "message_investigation", {
             device_id: deviceId ?? undefined, text, sender,
-            local_state: state, local_findings: why.slice(0, 12),
+            urls: analysis.signals.urls.slice(0, 20),
+            local_state: state, scenario: analysis.scenario,
+            signals: why.slice(0, 20), claimed_brand: analysis.signals.claimedBrand ?? null,
           });
           investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
-        } catch { /* investigation is async — local analysis still stands */ }
+          if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
+          else if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
+        } catch (error) {
+          // Triage escalated, but the deeper investigation never started. The person is told, rather
+          // than being left with a deterministic-only result that looks like the full picture.
+          why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
+        }
       }
     }
     if (state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
@@ -968,7 +990,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
           showToast("Magnum DI is investigating a captured text. The result will appear in Patrol.", "neutral");
         }
-      } catch { /* native module unavailable or listener not granted — nothing to drain */ }
+      } catch (error) {
+        // Module absent / listener not granted is reported by the capability check above, so a throw here
+        // means a real read failure: Apollo cannot claim there was nothing to assess.
+        if (error instanceof NativeCallFailed) {
+          showToast("Apollo couldn't read its protected message queue, so recent texts may not have been assessed. Open Support before relying on automatic text checks.", "growling");
+        }
+      }
     };
     void poll();
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
@@ -1001,6 +1029,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
       // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat — once per correlated case.
       let investigationCaseId: string | null = existingCaseId;
+      let escalationNote: string | null = null;
       if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) {
         const callSummary = [
           input.claim ? `Caller said: ${input.claim}` : null,
@@ -1010,18 +1039,21 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           input.transcript ? `Transcript: ${input.transcript}` : null,
         ].filter(Boolean).join("\n");
         try {
-          const remote = await apiPost<{ case_id?: string | null }>("/investigations", "call_investigation", {
+          const remote = await apiPost<{ case?: { id?: string | null } }>("/investigations", "call_investigation", {
             gate: "call",
             question: `Investigate this phone call.\n\n${callSummary}`,
-            submissions: [{ client_item_id: "call-content", kind: "text", value: callSummary, label: "Call details" }],
+            submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: callSummary, label: "Call details" }],
             initial_findings: analysis.why.slice(0, 12),
           });
-          investigationCaseId = typeof remote.case_id === "string" ? remote.case_id : null;
-        } catch { /* investigation is async — local analysis still stands */ }
+          investigationCaseId = typeof remote.case?.id === "string" ? remote.case.id : null;
+          if (!investigationCaseId) escalationNote = "Apollo asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.";
+        } catch (error) {
+          escalationNote = `Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`;
+        }
       }
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
-        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: analysis.why, what_to_do: analysis.recommendation,
+        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: escalationNote ? [...analysis.why, escalationNote] : analysis.why, what_to_do: analysis.recommendation,
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
@@ -1052,8 +1084,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the
       // autoRisky list. "review" (moderate signals, uncertain) should only warn — the person decides.
       // "unknown" never triggers auto-block or threat warning — it means data was unavailable.
+      // "Apollo will block this from now on" may only be said when the device confirms it stored the number.
+      let autoBlockConfirmed = false;
+      let autoBlockDetail: string | null = null;
       if (result.decision === "avoid") {
-        try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
+        try {
+          const marked = await CallSdk.markNumberRisky(result.number);
+          autoBlockConfirmed = marked.ok === true;
+          if (!autoBlockConfirmed) autoBlockDetail = "This device didn't confirm it saved the number to Apollo's screening list.";
+        } catch (error) {
+          autoBlockDetail = error instanceof NativeCallFailed
+            ? "Apollo tried to add this number to its screening list and the device read failed."
+            : "Apollo couldn't confirm the number was added to its screening list.";
+        }
       }
       const isAvoid = result.decision === "avoid";
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
@@ -1068,14 +1111,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       }));
       let investigationCaseId: string | null = existingCaseId;
       if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) try {
-        const investigationResult = await apiPost<{ case_id?: string | null }>("/investigations", "number_risk_investigation", {
+        const investigationResult = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
           gate: "call",
           question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
-          submissions: [{ client_item_id: "number-risk", kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
+          submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
           initial_findings: why,
         });
-        investigationCaseId = typeof investigationResult.case_id === "string" ? investigationResult.case_id : null;
-      } catch { /* investigation is async — reputation data still stands */ }
+        investigationCaseId = typeof investigationResult.case?.id === "string" ? investigationResult.case.id : null;
+        if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.");
+      } catch (error) {
+        why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from the reputation check and Apollo's deterministic rules only.`);
+      }
 
       const ev: PatrolEvent = {
         ...(existing ?? {
@@ -1088,7 +1134,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         what_happened: isAvoid
           ? `Apollo checked ${result.number} and found strong signs of fraud/spam abuse (fraud score ${result.fraud_score ?? "unknown"}/100).`
           : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
-        why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
+        why,
+        what_to_do: isAvoid
+          ? (autoBlockConfirmed
+              ? "Apollo will reject future calls from this number automatically. You can also add it to your block list."
+              : `Add this number to your block list — Apollo has NOT started blocking it automatically. ${autoBlockDetail ?? "Automatic screening isn't active on this device."}`)
+          : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
       };
@@ -1124,6 +1175,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     deviceId, eventsRef, persistEvents,
     getTextGuardLocalFindings: MessagingSdk.getTextGuardLocalFindings,
     acknowledgeTextGuardLocalFindings: MessagingSdk.acknowledgeTextGuardLocalFindings,
+    onReadFailure: (message) => showToast(message, "growling"),
   });
 
 
@@ -1200,11 +1252,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
       if (existingCaseId) investigationCaseId = existingCaseId;
       else try {
-        const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string }>("/link/investigate", "link_investigation", {
+        const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string; investigation_error?: string | null }>("/link/investigate", "link_investigation", {
           device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
           local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
         });
         investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+        if (remote.investigation_error) investigationError = remote.investigation_error;
+        else if (!investigationCaseId) investigationError = "Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.";
       } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not start the investigation."; }
     }
     // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
@@ -1230,7 +1284,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // When Link Gate confirms a malicious domain, trigger an urgent rule refresh so Site Gate
     // can pick up any new rules derived from this intelligence as soon as possible.
     if (intel?.verdict === "malicious" && securityAdapter.triggerUrgentRuleRefresh) {
-      securityAdapter.triggerUrgentRuleRefresh().catch(() => { /* non-critical — periodic refresh continues */ });
+      securityAdapter.triggerUrgentRuleRefresh().catch((error) => {
+        // Website protection did not take the new intelligence early; the periodic refresh still applies.
+        recordNativeFailure("triggerUrgentRuleRefresh", error instanceof Error ? error.message : String(error));
+      });
     }
     return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
   }, [correlationFor, deviceId, trust, upsertEvent]);

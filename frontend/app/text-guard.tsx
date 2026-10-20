@@ -59,7 +59,14 @@ export default function TextGuard() {
   // Automatic scanning status (Android: NotificationListenerService grant; iOS: honestly unsupported).
   const [caps, setCaps] = useState<MessagingCapabilities | null>(null);
   const [openingSettings, setOpeningSettings] = useState(false);
-  const refreshCaps = useCallback(() => { void MessagingSdk.getMessagingCapabilities().then(setCaps); }, []);
+  const [capsReadFailed, setCapsReadFailed] = useState(false);
+  // A failed capability read leaves caps null AND records that the read failed, so the screen can say
+  // "couldn't check" rather than implying automatic scanning is simply unavailable.
+  const refreshCaps = useCallback(() => {
+    void MessagingSdk.getMessagingCapabilities()
+      .then((value) => { setCaps(value); setCapsReadFailed(false); })
+      .catch(() => { setCaps(null); setCapsReadFailed(true); });
+  }, []);
   useEffect(() => { refreshCaps(); }, [refreshCaps]);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") refreshCaps(); });
@@ -165,9 +172,12 @@ export default function TextGuard() {
           <View style={s.rowTop}>
             <View style={s.iconWell}><MessageSquareWarning size={18} color={colors.brand} /></View>
             <Text style={[s.cardTitle, { flex: 1 }]}>Automatic scanning</Text>
-            <Pill tone={smsOn ? "resting" : smsSupported ? "growling" : "unknown"} label={smsOn ? "On" : smsSupported ? "Off" : "Not available"} testID="textguard-auto-status" />
+            <Pill tone={capsReadFailed ? "unknown" : smsOn ? "resting" : smsSupported ? "growling" : "unknown"}
+              label={capsReadFailed ? "Couldn't check" : smsOn ? "On" : smsSupported ? "Off" : "Not available"} testID="textguard-auto-status" />
           </View>
-          {Platform.OS === "android" ? (
+          {capsReadFailed ? (
+            <Body testID="textguard-auto-detail">Apollo asked this device whether automatic scanning is on and the read failed, so it can&apos;t say either way. Nothing here confirms texts are being scanned. Pull down to try again, or paste a text below.</Body>
+          ) : Platform.OS === "android" ? (
             smsOn ? (
               <Body testID="textguard-auto-detail">Apollo checks new text-message notifications from your chosen messaging app as they arrive. Notification text is sent for the same purpose-limited assessment as a manual check, then discarded. Apollo never reads your SMS inbox or message history.</Body>
             ) : (

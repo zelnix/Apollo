@@ -241,16 +241,20 @@ export default function CheckNumber() {
       // Only create a NEW investigation if checkNumberRisk did not already create one.
       if (!caseId) {
         const body = buildInvestigationBody();
-        const created = await apiPost<{ investigation_case_id?: string; job?: Record<string, unknown>; reputation?: Record<string, unknown> }>("/call/investigate", "call_investigate", body);
+        const created = await apiPost<{ investigation_case_id?: string; job?: Record<string, unknown>; reputation?: Record<string, unknown>; investigation_error?: string | null }>("/call/investigate", "call_investigate", body);
 
         if (abort.signal.aborted) return;
 
         caseId = created.investigation_case_id ?? null;
         if (!caseId) {
-          // Case creation failed but reputation may be available
+          // The investigation never started. Reputation data (if any) still stands, but this is a
+          // FAILED investigation — it is never presented as a completed one.
           setInvestigationResult(created.reputation ? { type: "reputation_only", ...created.reputation } : null);
-          setInvestigationPhase(created.reputation ? "completed" : "failed");
-          setInvestigationError(created.reputation ? null : "Investigation could not be started. Reputation information is shown above.");
+          setInvestigationPhase("failed");
+          setInvestigationError(created.investigation_error
+            ?? (created.reputation
+              ? "Magnum DI didn't start an investigation, so only the caller reputation below is available. No investigation conclusion has been substituted."
+              : "Magnum DI didn't start an investigation and no caller reputation was returned, so Apollo has nothing to report about this number."));
           return;
         }
       }
@@ -270,8 +274,14 @@ export default function CheckNumber() {
             return;
           }
           if (status === "failed" || status === "cancelled") {
+            // Use the server's own classification of what failed rather than a generic sentence.
+            const failure = caseStatus.failure as { message?: string } | undefined;
             setInvestigationPhase("failed");
-            setInvestigationError("The investigation could not complete. Reputation information is still available.");
+            setInvestigationError(failure?.message
+              ? `${failure.message} The caller reputation information is still available.`
+              : status === "cancelled"
+                ? "The investigation was cancelled before it finished. The caller reputation information is still available."
+                : "The investigation could not complete and Apollo couldn't determine why. The caller reputation information is still available.");
             return;
           }
           // Still running — continue polling

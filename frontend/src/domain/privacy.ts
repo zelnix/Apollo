@@ -6,7 +6,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
@@ -57,6 +57,11 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Vision Gate: privacy-screened image + OCR text → visual investigation routing.
   // Only device_id, extracted_text from on-device OCR, and sanitisation receipt metadata leave the device.
   vision_investigate: new Set(["device_id", "extracted_text"]),
+  // Tier 2 escalation after a deterministic Possible Threat. Same content the person already submitted
+  // to the gate — the message/call details and Apollo's own deterministic findings. Nothing else.
+  message_investigation: new Set(["device_id", "text", "sender", "urls", "local_state", "scenario", "signals", "claimed_brand"]),
+  call_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
+  number_risk_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
 };
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */
@@ -131,6 +136,10 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     }
     out.text = redactInvestigationSecrets(out.text);
     out.urls = Array.isArray(out.urls) ? out.urls.map(u => purposeLimitedUrl(String(u))) : [];
+  }
+  if (endpoint === 'message_investigation') {
+    if (typeof out.text !== 'string') throw new EgressViolation(endpoint, 'text');
+    out.text = redactInvestigationSecrets(out.text);
   }
   if (endpoint === 'link_investigation') {
     out.url = purposeLimitedUrl(String(out.url ?? ''));

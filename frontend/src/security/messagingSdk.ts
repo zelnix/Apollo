@@ -3,6 +3,7 @@
 // to Share → Check with Apollo or Paste into Apollo. Mock returns truthful "unsupported" values.
 
 import { getNativeModule } from "./nativeBridge";
+import { nativeJson } from "./nativeDiagnostics";
 
 export type MessagingCapabilityStatus = "supported" | "permission_required" | "unsupported";
 export interface MessagingCapabilities {
@@ -27,24 +28,25 @@ export interface SdkMessageVerdict {
 
 const UNSUPPORTED: MessagingCapabilities = { smsFiltering: "unsupported", linkInterception: "unsupported", senderReputation: "unsupported", shareExtension: "unsupported", notificationIntegration: "unsupported" };
 
-async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> {
-  if (!fn) return fallback;
-  try { return JSON.parse(await fn()) as T; } catch { return fallback; }
+// Absent module → the declared "no such capability on this host" value. Present but failing →
+// throws NativeCallFailed and is recorded in diagnostics, never read as "nothing found".
+async function call<T>(operation: string, fn: (() => Promise<string>) | undefined, whenAbsent: T): Promise<T> {
+  return nativeJson<T>(operation, fn, whenAbsent);
 }
 
 export const MessagingSdk = {
-  getMessagingCapabilities: () => { const m = getNativeModule(); return call<MessagingCapabilities>(m ? () => m.getMessagingCapabilities() : undefined, UNSUPPORTED); },
+  getMessagingCapabilities: () => { const m = getNativeModule(); return call<MessagingCapabilities>("getMessagingCapabilities", m ? () => m.getMessagingCapabilities() : undefined, UNSUPPORTED); },
   analyseMessageMetadata: (meta: { sender: string; sourceType: string; urlHosts: string[]; claimedBrand: string | null }) => {
-    const m = getNativeModule(); return call<SdkMessageVerdict | null>(m ? () => m.analyseMessageMetadata(JSON.stringify(meta)) : undefined, null);
+    const m = getNativeModule(); return call<SdkMessageVerdict | null>("analyseMessageMetadata", m ? () => m.analyseMessageMetadata(JSON.stringify(meta)) : undefined, null);
   },
-  checkSenderReputation: (sender: string) => { const m = getNativeModule(); return call<{ status: "unknown" | "trusted" | "reported" } | null>(m ? () => m.checkSenderReputation(sender) : undefined, null); },
-  registerShareHandler: () => { const m = getNativeModule(); return call<{ registered: boolean }>(m ? () => m.registerShareHandler() : undefined, { registered: false }); },
-  getRecentMessageSecurityEvents: () => { const m = getNativeModule(); return call<unknown[]>(m ? () => m.getRecentMessageSecurityEvents() : undefined, []); },
-  acknowledgeMessageSecurityEvents: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeMessageSecurityEvents(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
+  checkSenderReputation: (sender: string) => { const m = getNativeModule(); return call<{ status: "unknown" | "trusted" | "reported" } | null>("checkSenderReputation", m ? () => m.checkSenderReputation(sender) : undefined, null); },
+  registerShareHandler: () => { const m = getNativeModule(); return call<{ registered: boolean }>("registerShareHandler", m ? () => m.registerShareHandler() : undefined, { registered: false }); },
+  getRecentMessageSecurityEvents: () => { const m = getNativeModule(); return call<unknown[]>("getRecentMessageSecurityEvents", m ? () => m.getRecentMessageSecurityEvents() : undefined, []); },
+  acknowledgeMessageSecurityEvents: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>("acknowledgeMessageSecurityEvents", m ? () => m.acknowledgeMessageSecurityEvents(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
   /** Text Guard: opens the Android "Notification access" settings screen. No-op ({opened:false}) on iOS/web. */
-  openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
+  openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>("openSmsListenerSettings", m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
   /** Text Guard: get local findings from ApolloLocalMessageAnalyzer (Android). Encrypted, survive content expiry. Returns [] on iOS/web. */
-  getTextGuardLocalFindings: () => { const m = getNativeModule(); return call<{ findingId: string; submissionId: string; state: string; analyzer: string; source: string; findings: { ruleId: string; title: string; detail: string }[]; detectedAt: string }[]>(m ? () => m.getTextGuardLocalFindings() : undefined, []); },
+  getTextGuardLocalFindings: () => { const m = getNativeModule(); return call<{ findingId: string; submissionId: string; state: string; analyzer: string; source: string; findings: { ruleId: string; title: string; detail: string }[]; detectedAt: string }[]>("getTextGuardLocalFindings", m ? () => m.getTextGuardLocalFindings() : undefined, []); },
   /** Text Guard: acknowledge (remove) local findings by their IDs. */
-  acknowledgeTextGuardLocalFindings: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeTextGuardLocalFindings(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
+  acknowledgeTextGuardLocalFindings: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>("acknowledgeTextGuardLocalFindings", m ? () => m.acknowledgeTextGuardLocalFindings(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
 };

@@ -17,15 +17,23 @@ export function currentPlatform(): DevicePlatform {
   return os === "ios" ? "ios" : os === "android" ? "android" : os === "windows" ? "windows" : os === "macos" ? "macos" : "web";
 }
 
-/** Runs the baseline. Each adapter call is contained so one failure can't abort the whole check. */
+/** Runs the baseline. A failure to READ the device signals is reported as an ERROR report naming the
+ *  failed read — Apollo never substitutes empty signals and then grades the device as if it had read them. */
 export async function collectFirstCheck(): Promise<FirstCheckReport> {
   const platform = currentPlatform();
   try {
     // Desktop hosts (Windows/macOS) read their signals through the Tauri adapter; phones through the native module.
     const desktop = platform === "windows" || platform === "macos";
-    const raw = desktop && securityAdapter.getDeviceSecuritySignals
-      ? await securityAdapter.getDeviceSecuritySignals().catch(() => EMPTY_SIGNALS(platform))
-      : await AppDeviceSdk.getDeviceSecuritySignals(platform).catch(() => EMPTY_SIGNALS(platform));
+    let raw;
+    try {
+      raw = desktop && securityAdapter.getDeviceSecuritySignals
+        ? await securityAdapter.getDeviceSecuritySignals()
+        : await AppDeviceSdk.getDeviceSecuritySignals(platform);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return erroredFirstCheck(platform, EMPTY_SIGNALS(platform), undefined,
+        `Higgins couldn't read this device's security signals, so no part of the check could run (${detail}).`);
+    }
     const signals = { ...EMPTY_SIGNALS(platform), ...raw };
     const [facts, protection] = await Promise.all([
       securityAdapter.getDeviceProfileFacts?.().catch(() => null) ?? Promise.resolve(null),
@@ -41,7 +49,9 @@ export async function collectFirstCheck(): Promise<FirstCheckReport> {
       osReportedThreat: signals.osThreatReport ?? osThreatNotAvailable(platform, IS_NATIVE_HOST),
     };
     return runFirstCheck(inputs);
-  } catch {
-    return erroredFirstCheck(platform, EMPTY_SIGNALS(platform));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return erroredFirstCheck(platform, EMPTY_SIGNALS(platform), undefined,
+      `Higgins couldn't complete the initial security check (${detail}).`);
   }
 }

@@ -4,6 +4,7 @@
 import type { AppNetwork, AppPermission } from "@/src/domain/appAnalysis";
 import { EMPTY_SIGNALS, type DevicePlatform, type DeviceSignals } from "@/src/domain/deviceAnalysis";
 import { getNativeModule } from "./nativeBridge";
+import { nativeJson } from "./nativeDiagnostics";
 
 export type AppDeviceCapabilityStatus = "supported" | "permission_required" | "unsupported";
 export interface AppDeviceCapabilities { installEvents: AppDeviceCapabilityStatus; appPermissions: AppDeviceCapabilityStatus; accessibilityServices: AppDeviceCapabilityStatus; overlayApps: AppDeviceCapabilityStatus; notificationAccess: AppDeviceCapabilityStatus; vpnState: AppDeviceCapabilityStatus; profileState: AppDeviceCapabilityStatus; appNetworkCorrelation: AppDeviceCapabilityStatus }
@@ -12,7 +13,11 @@ export interface SdkAppSecurityEvent { eventType: "app_install" | "permission_ch
 export interface InstalledAppRef { packageId: string; appName: string }
 
 const UNSUPPORTED: AppDeviceCapabilities = { installEvents: "unsupported", appPermissions: "unsupported", accessibilityServices: "unsupported", overlayApps: "unsupported", notificationAccess: "unsupported", vpnState: "unsupported", profileState: "unsupported", appNetworkCorrelation: "unsupported" };
-async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> { if (!fn) return fallback; try { return JSON.parse(await fn()) as T; } catch { return fallback; } }
+// Absent module → the declared "no such capability on this host" value. Present but failing →
+// throws NativeCallFailed and is recorded in diagnostics, never read as "nothing found".
+async function call<T>(operation: string, fn: (() => Promise<string>) | undefined, whenAbsent: T): Promise<T> {
+  return nativeJson<T>(operation, fn, whenAbsent);
+}
 
 /** Plain permission names reported by the native SDK (AppDeviceCatalog.PERMISSION_LABELS) → App engine permission ids. */
 const SDK_PERMISSION_MAP: Record<string, AppPermission> = {
@@ -24,12 +29,12 @@ const SDK_PERMISSION_MAP: Record<string, AppPermission> = {
 export function sdkPermissionsToApp(labels: string[]): AppPermission[] { return Array.from(new Set(labels.map((l) => SDK_PERMISSION_MAP[l]).filter((p): p is AppPermission => !!p))); }
 
 export const AppDeviceSdk = {
-  getAppDeviceCapabilities: () => { const m = getNativeModule(); return call<AppDeviceCapabilities>(m ? () => m.getAppDeviceCapabilities() : undefined, UNSUPPORTED); },
-  getInstalledAppAssessment: (packageId: string) => { const m = getNativeModule(); return call<SdkAppAssessment | null>(m ? () => m.getInstalledAppAssessment(packageId) : undefined, null); },
+  getAppDeviceCapabilities: () => { const m = getNativeModule(); return call<AppDeviceCapabilities>("getAppDeviceCapabilities", m ? () => m.getAppDeviceCapabilities() : undefined, UNSUPPORTED); },
+  getInstalledAppAssessment: (packageId: string) => { const m = getNativeModule(); return call<SdkAppAssessment | null>("getInstalledAppAssessment", m ? () => m.getInstalledAppAssessment(packageId) : undefined, null); },
   /** Launchable user apps so the App Gate can offer a pick-from-list (Android only; [] elsewhere). */
-  listInstalledApps: () => { const m = getNativeModule(); return call<InstalledAppRef[]>(m && m.listInstalledApps ? () => m.listInstalledApps() : undefined, []); },
-  getRecentInstallEvents: () => { const m = getNativeModule(); return call<SdkAppAssessment[]>(m ? () => m.getRecentInstallEvents() : undefined, []); },
+  listInstalledApps: () => { const m = getNativeModule(); return call<InstalledAppRef[]>("listInstalledApps", m && m.listInstalledApps ? () => m.listInstalledApps() : undefined, []); },
+  getRecentInstallEvents: () => { const m = getNativeModule(); return call<SdkAppAssessment[]>("getRecentInstallEvents", m ? () => m.getRecentInstallEvents() : undefined, []); },
   /** Everything the platform can truthfully report about device configuration. Fields the SDK can't see stay null. */
-  getDeviceSecuritySignals: (platform: DevicePlatform) => { const m = getNativeModule(); return call<DeviceSignals>(m ? () => m.getDeviceSecuritySignals() : undefined, EMPTY_SIGNALS(platform)); },
-  getRecentAppSecurityEvents: () => { const m = getNativeModule(); return call<SdkAppSecurityEvent[]>(m ? () => m.getRecentAppSecurityEvents() : undefined, []); },
+  getDeviceSecuritySignals: (platform: DevicePlatform) => { const m = getNativeModule(); return call<DeviceSignals>("getDeviceSecuritySignals", m ? () => m.getDeviceSecuritySignals() : undefined, EMPTY_SIGNALS(platform)); },
+  getRecentAppSecurityEvents: () => { const m = getNativeModule(); return call<SdkAppSecurityEvent[]>("getRecentAppSecurityEvents", m ? () => m.getRecentAppSecurityEvents() : undefined, []); },
 };

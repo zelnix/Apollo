@@ -12,6 +12,7 @@ from typing import Optional
 
 from core.config import logger
 from core.db import db, now_utc
+from core.redaction import redact_investigation_secrets
 from services.higgins import coordinator, provider
 from services.higgins import repository as repo
 from services.higgins.capacity import WORK_SECONDS
@@ -28,7 +29,7 @@ HIGGINS_EXPLANATIONS: dict[str, str] = {
     "provider_unavailable": "Magnum DI's analysis service took longer than expected to respond. It's automatically trying again, so you don't need to do anything just yet.",
     "provider_configuration": "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.",
     "incomplete_output": "Magnum DI stopped before completing the answer. It's attempting to continue using the information already collected.",
-    "response_invalid": "Magnum DI's answer didn't pass Apollo's quality checks. It's trying to generate a corrected response.",
+    "response_invalid": "Magnum DI's answer didn't pass Apollo's validation. No investigation conclusion has been substituted.",
     "budget_exhausted": "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.",
     "transport_interrupted": "The investigation connection was interrupted before results could be committed.",
     "evidence_expired": "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.",
@@ -40,7 +41,7 @@ HIGGINS_EXHAUSTED: dict[str, str] = {
     "provider_unavailable": "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.",
     "provider_configuration": "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.",
     "incomplete_output": "Magnum DI couldn't produce a complete answer after several attempts. I'll show you the available findings.",
-    "response_invalid": "Magnum DI's answer didn't pass Apollo's quality checks after several repair attempts.",
+    "response_invalid": "Magnum DI couldn't complete the investigation. Gemini returned a response Apollo couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is kept in the technical details.",
     "budget_exhausted": "Magnum DI ran out of processing time. I'll show you any findings already collected and the technical details so we can identify what needs fixing.",
     "evidence_expired": "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence is needed.",
 }
@@ -241,9 +242,17 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             await _emit(owner, case, job, "device_request", outcome.request)
             return
         if outcome.kind == "invalid":
-            diag = DiagnosticDetail(component="magnum_di", service="Investigation Engine", operation="validation",
+            # The provider replied, but the reply failed Apollo's validation. Nothing is substituted:
+            # the real reply is carried verbatim (redacted, truncated) into the technical details so
+            # Support/DI can see exactly what Gemini returned.
+            raw = (outcome.provider_text or "").strip()
+            provider_response = provider._sanitise_diagnostic(redact_investigation_secrets(raw))[:4000] if raw else None
+            diag = DiagnosticDetail(component="magnum_di", service="Gemini", operation="validation",
                 original_error_code="response_invalid",
-                original_message="Answer failed quality checks: " + "; ".join(outcome.errors)[:400],
+                original_message="Answer failed Apollo's validation: " + "; ".join(outcome.errors)[:400],
+                provider_response=provider_response,
+                provider_model=outcome.model,
+                provider_finish_reason=outcome.finish_reason,
                 timestamp=now_utc().isoformat(), final_status="failed")
             await _fail(owner, case, job, Failure(code="response_invalid",
                 message=HIGGINS_EXHAUSTED["response_invalid"],

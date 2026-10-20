@@ -81,8 +81,8 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
         red = _provider(ev, "redirect")
         if not red or not red.get("hops"):
             return NA
-        if red.get("status") in ("unavailable", "error"):
-            return gap("NETWORK_CHECK_FAILED", "redirect chain could not be expanded")
+        if red.get("status") in ("unavailable", "error", "incomplete"):
+            return gap("NETWORK_CHECK_FAILED", red.get("detail") or "redirect chain could not be followed to its destination")
         if red.get("final_verdict") == "malicious":
             return met(f"redirect destination confirmed malicious: {red.get('final_url', 'unknown')}")
         return unmet(f"redirect chain of {red.get('hops')} hop(s) contains no confirmed malicious destination")

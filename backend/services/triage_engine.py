@@ -103,8 +103,9 @@ class TriageResult:
         for url, info in pe.get("redirects", {}).get("urls", {}).items():
             chain = info.get("chain", [])
             if len(chain) > 1:
-                final = info.get("final_url", chain[-1])
-                lines.append(f"  • URL {url}: redirects through {len(chain)} hops → final: {final} ({info.get('queried_at', '?')})")
+                final = info.get("final_url")
+                destination = final if final else f"NOT CONFIRMED — {info.get('detail') or 'the chain could not be followed to the end'}; last seen: {info.get('last_seen_url', chain[-1])}"
+                lines.append(f"  • URL {url}: redirects through {len(chain)} hops → final: {destination} ({info.get('queried_at', '?')})")
 
         # IPQS phone risk
         for phone, info in pe.get("ipqs", {}).get("phones", {}).items():
@@ -154,8 +155,9 @@ def compact_evidence_for_magnum_di(provider_evidence: dict) -> str:
     for url, info in pe.get("redirects", {}).get("urls", {}).items():
         chain = info.get("chain", [])
         if len(chain) > 1:
-            final = info.get("final_url", chain[-1])
-            lines.append(f"  • URL {url}: redirects through {len(chain)} hops → final: {final} ({info.get('queried_at', '?')})")
+            final = info.get("final_url")
+            destination = final if final else f"NOT CONFIRMED — {info.get('detail') or 'the chain could not be followed to the end'}; last seen: {info.get('last_seen_url', chain[-1])}"
+            lines.append(f"  • URL {url}: redirects through {len(chain)} hops → final: {destination} ({info.get('queried_at', '?')})")
     for phone, info in pe.get("ipqs", {}).get("phones", {}).items():
         if info.get("status") == "ok":
             score = info.get("fraud_score", "?")
@@ -541,14 +543,17 @@ async def gather_provider_evidence(evidence: dict) -> dict:
         unique_urls = list(dict.fromkeys(link_urls))[:10]  # preserve order, dedup
         for url in unique_urls:
             try:
-                from services.intel import expand_redirects, run_intel_check
-                chain = await asyncio.wait_for(expand_redirects(url), timeout=12)
+                from services.intel import expand_redirects_detailed, run_intel_check
+                chain, expansion_complete, expansion_reason = await asyncio.wait_for(expand_redirects_detailed(url), timeout=12)
                 if len(chain) > 1:
                     redirect_results[url] = {
                         "chain": chain,
-                        "final_url": chain[-1],
+                        # Only call it the final URL when the chain was actually followed to the end.
+                        "final_url": chain[-1] if expansion_complete else None,
+                        "last_seen_url": chain[-1],
                         "hops": len(chain) - 1,
-                        "status": "ok",
+                        "status": "ok" if expansion_complete else "incomplete",
+                        **({} if expansion_complete else {"detail": expansion_reason}),
                         "queried_at": ts,
                     }
                     providers_used.append("redirect_expansion")
@@ -566,10 +571,20 @@ async def gather_provider_evidence(evidence: dict) -> dict:
                             "via_redirect_from": url,
                         }
                         providers_used.append("safe_browsing")
-                    except Exception:
-                        pass
+                    except Exception as sb_exc:  # noqa: BLE001
+                        # An unchecked destination is recorded as unchecked, never left blank.
+                        sb_results[chain[-1]] = {"status": "unavailable", "detail": type(sb_exc).__name__,
+                                                 "queried_at": ts, "via_redirect_from": url}
                 else:
-                    redirect_results[url] = {"chain": chain, "final_url": url, "hops": 0, "status": "ok", "queried_at": ts}
+                    redirect_results[url] = {
+                        "chain": chain,
+                        "final_url": url if expansion_complete else None,
+                        "last_seen_url": url,
+                        "hops": 0,
+                        "status": "ok" if expansion_complete else "incomplete",
+                        **({} if expansion_complete else {"detail": expansion_reason}),
+                        "queried_at": ts,
+                    }
             except Exception as exc:
                 redirect_results[url] = {"status": "unavailable", "detail": type(exc).__name__, "queried_at": ts}
                 _log.debug("redirect_expansion_failed url=%s error=%s", url[:60], type(exc).__name__)
@@ -732,9 +747,10 @@ def _link_evidence_from_providers(evidence: dict, provider_evidence: dict) -> di
     for url, info in redirects.items():
         hops = info.get("hops", 0) or 0
         if hops:
-            final = info.get("final_url", "")
+            final = info.get("final_url") or ""
             redirect = {"status": info.get("status", "ok"), "hops": hops, "final_url": final,
-                        "final_verdict": sb.get(final, {}).get("verdict", "unknown")}
+                        "detail": info.get("detail"),
+                        "final_verdict": sb.get(final, {}).get("verdict", "unknown") if final else "unknown"}
             break
 
     domain_age: dict = {}

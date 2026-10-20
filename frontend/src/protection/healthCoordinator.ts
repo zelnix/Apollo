@@ -6,6 +6,7 @@ import { buildGatesOverview, type EmailMonitorCapability } from "@/src/domain/ga
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
+import { recordNativeFailure } from "@/src/security/nativeDiagnostics";
 import { pendingAttempt, recordAttempt, clearAttempt, type ActionAttempt } from "@/src/settings/recheck";
 import { storage } from "@/src/utils/storage";
 import { protectionHealthSnapshot, publishProtectionHealth } from "./healthStore";
@@ -39,9 +40,23 @@ async function readEmailCapability(): Promise<EmailMonitorCapability> {
 async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot> {
   const current = protectionHealthSnapshot();
   publishProtectionHealth({ ...current, checking: true, trigger, revision: current.revision + 1 });
+  // A failed capability read is recorded and reported as unverified — it is never read as
+  // "unsupported" (which would claim the device can't do it) or left looking like a pending check.
+  let messagingReadFailed = false;
+  let callsReadFailed = false;
+  const readMessaging = MessagingSdk.getMessagingCapabilities().catch((error) => {
+    messagingReadFailed = true;
+    recordNativeFailure("getMessagingCapabilities", error instanceof Error ? error.message : String(error));
+    return null;
+  });
+  const readCalls = CallSdk.getCallProtectionCapabilities().catch((error) => {
+    callsReadFailed = true;
+    recordNativeFailure("getCallProtectionCapabilities", error instanceof Error ? error.message : String(error));
+    return null;
+  });
   let [capabilities, protection, permissions, network, messaging, calls, email, desiredSetting] = await Promise.all([
     securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
-    MessagingSdk.getMessagingCapabilities(), CallSdk.getCallProtectionCapabilities(), readEmailCapability(), storage.getItem<boolean>(DESIRED_KEY, false),
+    readMessaging, readCalls, readEmailCapability(), storage.getItem<boolean>(DESIRED_KEY, false),
   ]);
   const callAutoCheckEnabled = (await storage.getItem("apollo.call.auto_check", null)) === "true";
   // Gate 8 (Account Breach): fetch backend configuration status. Failure → unavailable, never running.
@@ -60,7 +75,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
-  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn });
+  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn, messagingReadFailed, callsReadFailed });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
   publishProtectionHealth(next);
   void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);

@@ -77,6 +77,8 @@ class MessageAnalyseOut(BaseModel):
     urls: list[MessageUrlResult]
     investigation_case_id: Optional[str] = None
     job: Optional[dict[str, Any]] = None
+    # Set when the deeper investigation could not be started. The URL intel above still stands.
+    investigation_error: Optional[str] = None
 
 
 class LinkInvestigateIn(BaseModel):
@@ -107,6 +109,8 @@ class LinkInvestigateOut(BaseModel):
     domain_info: Optional[DomainInfo] = None
     investigation_case_id: Optional[str] = None
     job: Optional[dict[str, Any]] = None
+    # Set when the deeper investigation could not be started. The link intel above still stands.
+    investigation_error: Optional[str] = None
 
 
     # _create_investigation_case removed — callers now use _launch_investigation
@@ -175,12 +179,13 @@ async def message_analyse(body: MessageAnalyseIn, request: Request):
     if body.local_state != "resting":
         initial_findings.append(f"Apollo local state: {body.local_state}")
 
-    case_id, job = await _launch_investigation(
+    case_id, job, investigation_error = await _launch_investigation(
         owner, "message", question, submissions,
         initial_findings=initial_findings, intel_evidence=intel_evidence,
         source_metadata={"type": "text", "preview": protected_text[:160], "submitted_at": now_utc()})
     return MessageAnalyseOut(urls=results, investigation_case_id=case_id,
-                             job=job if isinstance(job, dict) else None)
+                             job=job if isinstance(job, dict) else None,
+                             investigation_error=investigation_error)
 
 
 @router.post("/link/investigate", response_model=LinkInvestigateOut)
@@ -218,7 +223,7 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
     if body.local_findings:
         initial_findings.extend(body.local_findings[:12])
 
-    case_id, job = await _launch_investigation(
+    case_id, job, investigation_error = await _launch_investigation(
         owner, "link", question, submissions,
         initial_findings=initial_findings, intel_evidence=intel_evidence,
         source_metadata={"type": "link", "url": normalized[:500], "submitted_at": now_utc()})
@@ -226,7 +231,8 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
                              threat_types=intel.threat_types, coverage=intel.coverage,
                              redirect_chain=intel.redirect_chain, final_url=intel.final_url,
                              domain_info=intel.domain_info, investigation_case_id=case_id,
-                             job=job if isinstance(job, dict) else None)
+                             job=job if isinstance(job, dict) else None,
+                             investigation_error=investigation_error)
 
 
 
