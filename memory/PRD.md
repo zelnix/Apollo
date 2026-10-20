@@ -1,3 +1,12 @@
+## Home polish round (2026-06)
+
+- "Important for you" card: the summary sentence was removed (the title is descriptive enough) and `threatReason()` deleted
+  with it; spacing tightened so the title sits straight under the date and "View threat" sits straight under the title.
+- Hero swipe: `Gesture.Pan` (activeOffsetX ±20, failOffsetY ±14) moves between the things needing attention, wrapping both
+  ways via `runOnJS(stepHero)`; the dot indicator still advances on tap and shows "N of M".
+- Brand title: "Apollo" stays bold/dark, " Scam Guard" is nested in a lighter, muted, slightly smaller style (`brandTitleSoft`).
+- Tagline is now "Better Protected. Safer You. Safer Tomorrows."
+
 ## Home: hero rotation + "Important for you" card reorganised (2026-06)
 
 **Hero rotation.** `buildHeroLines(voice, attention)` (in `higginsHomeVoice.ts`) returns the primary voice line plus one line per

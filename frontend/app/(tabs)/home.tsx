@@ -12,6 +12,8 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,18 +87,6 @@ function threatIdentity(e: PatrolEvent): string {
   return "";
 }
 
-function threatReason(e: PatrolEvent): string {
-  // Consume authoritative finding only — never generate synthetic threat wording.
-  const briefing = e.patrol_record?.higginsBriefing;
-  if (briefing?.established && briefing.established.length > 10) {
-    return briefing.established.length > 80 ? briefing.established.slice(0, 80) + "…" : briefing.established;
-  }
-  if (e.what_happened && !looksLikeInternalCode(e.what_happened) && e.what_happened.length > 10) {
-    return e.what_happened.length > 80 ? e.what_happened.slice(0, 80) + "…" : e.what_happened;
-  }
-  return "Tap to view details";
-}
-
 /** Build deduplicated priority threats from real PatrolEvent data. */
 function buildPriorityThreats(events: PatrolEvent[]): PatrolEvent[] {
   const active = events
@@ -136,6 +126,8 @@ const useStyles = makeStyles((c) => ({
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   brandTitle: { fontFamily: fonts.displayBold, fontSize: 28, lineHeight: 34, color: c.onSurface },
+  // "Scam Guard" sits back from "Apollo": lighter weight, muted colour, slightly smaller.
+  brandTitleSoft: { fontFamily: fonts.text, fontSize: 24, lineHeight: 34, color: c.onSurfaceSecondary },
   brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
 
   // ── Hero status card ──
@@ -267,6 +259,25 @@ export default function Home() {
   }, [heroLines.length]);
   const heroLine = heroLines[Math.min(heroIndex, heroLines.length - 1)] ?? heroLines[0];
 
+  // Swipe left/right to move between the things needing attention.
+  const stepHero = React.useCallback((delta: number) => {
+    setHeroIndex((i) => {
+      const count = heroLines.length;
+      if (count < 2) return 0;
+      return (i + delta + count) % count;
+    });
+  }, [heroLines.length]);
+  const heroSwipe = React.useMemo(
+    () => Gesture.Pan()
+      .activeOffsetX([-20, 20])
+      .failOffsetY([-14, 14])
+      .onEnd((e) => {
+        if (e.translationX <= -40) runOnJS(stepHero)(1);
+        else if (e.translationX >= 40) runOnJS(stepHero)(-1);
+      }),
+    [stepHero],
+  );
+
   // Most recent consumer event for the "Recent activity" section
   const recentEvent = React.useMemo(() => {
     const consumer = events.filter(isConsumerPatrolEvent);
@@ -285,8 +296,10 @@ export default function Home() {
       <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
         <View style={s.headerRow}>
           <View>
-            <Text style={s.brandTitle} testID="home-brand-title">Apollo Scam Guard</Text>
-            <Text style={s.brandSubtitle}>Safer People. Safer Tomorrows.</Text>
+            <Text style={s.brandTitle} testID="home-brand-title">
+              Apollo<Text style={s.brandTitleSoft}> Scam Guard</Text>
+            </Text>
+            <Text style={s.brandSubtitle}>Better Protected. Safer You. Safer Tomorrows.</Text>
           </View>
           {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
         </View>
@@ -294,6 +307,7 @@ export default function Home() {
 
       <ScrollView contentContainerStyle={s.scroll} testID="home-scroll" showsVerticalScrollIndicator={false}>
         {/* ── Hero Status Card ── */}
+        <GestureDetector gesture={heroSwipe}>
         <Pressable
           testID="home-hero-card"
           accessibilityRole="button"
@@ -350,6 +364,7 @@ export default function Home() {
             ) : null}
           </View>
         </Pressable>
+        </GestureDetector>
 
         {/* Recovery banner */}
         <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
@@ -441,9 +456,8 @@ export default function Home() {
                     <View style={{ gap: 2, marginTop: 2 }}>
                       <Text style={[s.activityText, compact && { fontSize: 14 }]} numberOfLines={3}>{threatTitle(event)}</Text>
                       {threatIdentity(event) ? <Text style={s.activitySub} numberOfLines={1}>{threatIdentity(event)}</Text> : null}
-                      <Text style={{ fontFamily: fonts.text, fontSize: 13, color: colors.onSurfaceSecondary, lineHeight: 18, marginTop: 2 }} numberOfLines={4}>{threatReason(event)}</Text>
                     </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 2 }}>
                       <Text style={s.findingLink}>View threat</Text>
                       <ChevronRight size={14} color={colors.brand} />
                     </View>
