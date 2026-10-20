@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
+import { alertFreshness } from "@/src/domain/alertFreshness";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
 import { alertIcon, alertTime, familyScamAlerts, loadRegionFilter, openScamAlert, rememberAlerts, saveRegionFilter, SEVERITY_RANK, SEVERITY_TONE, severityLabel, type SharedScamAlert } from "@/src/higgins/scamAlertUi";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -104,11 +105,10 @@ export default function GovernmentScamsScreen() {
   };
   useEffect(() => load(), [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sourcedLabel = useMemo(() => {
-    if (!lastSourced) return "Checking official sources…";
-    const d = new Date(lastSourced);
-    return `Latest from official sources · ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}, ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  }, [lastSourced]);
+  const sourced = useMemo(() => alertFreshness(lastSourced), [lastSourced]);
+  const sourcedLabel = sourced.exact
+    ? `${sourced.label} · Official sources read ${sourced.exact}`
+    : sourced.label;
   const arrange = (list: GovernmentAlert[]) => list.filter((a) => regionMatch(a, region)).sort((a, b) =>
     sort === "severity" ? SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || alertTime(b) - alertTime(a) : alertTime(b) - alertTime(a));
   const shown = useMemo(() => arrange(alerts), [alerts, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,7 +126,7 @@ export default function GovernmentScamsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.brand} />}
         ListHeaderComponent={
           <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
-            <Text style={s.subtitle} testID="higgins-scams-sourced">{sourcedLabel}{pendingCount > 0 ? `  ·  Reading ${pendingCount} new…` : ""}</Text>
+            <Text style={s.subtitle} testID="higgins-scams-sourced">{sourcedLabel}{sourced.stale && sourced.exact ? "  ·  Apollo is still trying to refresh" : ""}{pendingCount > 0 ? `  ·  Reading ${pendingCount} new…` : ""}</Text>
             {compact ? (
               <View style={{ gap: spacing.xs }}>
                 <Pressable testID="scam-filter-dropdown-btn" accessibilityRole="button" accessibilityLabel={`Region: ${REGIONS.find((r) => r.id === region)!.label}`} accessibilityState={{ expanded: regionOpen }} onPress={() => setRegionOpen(!regionOpen)} style={s.dropBtn}>

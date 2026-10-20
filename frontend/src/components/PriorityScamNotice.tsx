@@ -11,6 +11,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
+import { alertFreshness } from "@/src/domain/alertFreshness";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const SEVERITY_TONE: Record<GovernmentAlert["severity"], Tone> = { EXTREME: "barking", HIGH: "growling", MODERATE: "ears_up", LOW: "neutral" };
@@ -87,12 +88,13 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
   const s = useStyles();
   const { colors } = useTheme();
   const [items, setItems] = useState<GovernmentAlert[]>([]);
+  const [lastSourced, setLastSourced] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
     void governmentScams(20)
-      .then((r) => { if (active) { setItems(r.alerts); setLoaded(true); } })
+      .then((r) => { if (active) { setItems(r.alerts); setLastSourced(r.lastSourcedAt); setLoaded(true); } })
       .catch(() => { if (active) setLoaded(true); });
     return () => { active = false; };
   }, []);
@@ -131,6 +133,8 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
 
   if (!priorityAlert) return null;
 
+  const freshness = alertFreshness(lastSourced);
+
   /* ── Compact mode: evidence-specific card for Home "Important for you" ── */
   if (compact) {
     const severityLabel = priorityAlert.severity === "EXTREME" ? "Extreme" : "High";
@@ -164,9 +168,12 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
             {reason ? <Text style={[s.compactSub, { marginTop: 2, lineHeight: 17 }]} numberOfLines={2}>{reason}</Text> : null}
           </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
-          <Text style={s.compactLink}>View scam alert</Text>
-          <ChevronRight size={14} color={colors.brand} />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.sm }}>
+          <Text style={s.compactSub} numberOfLines={1} testID="home-priority-scam-freshness">{freshness.label}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={s.compactLink}>View scam alert</Text>
+            <ChevronRight size={14} color={colors.brand} />
+          </View>
         </View>
       </Pressable>
     );
@@ -196,7 +203,7 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
       </Text>
 
       <Text style={s.meta} testID="priority-scam-source">
-        {priorityAlert.source} · {priorityAlert.dateLabel}
+        {priorityAlert.source} · {priorityAlert.dateLabel} · {freshness.label}
       </Text>
 
       <Button label="Read Alert" variant="secondary" onPress={() => void Linking.openURL(priorityAlert.url)} testID="priority-scam-read-button" />

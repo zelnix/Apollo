@@ -1,3 +1,15 @@
+## Alert Freshness Badge — "Updated 2 hours ago" on scam alerts (2026-06)
+
+**Why:** people couldn't tell whether a scam alert list was minutes or weeks old, so there was no basis to trust it.
+
+**New pure helper `src/domain/alertFreshness.ts`:** `alertFreshness(lastSourcedAt, now?)` → `{ label, stale, exact }` using the backend's REAL `lastSourcedAt` (last successful official-source pull). Labels: "Updated just now / N minutes ago / N hours ago / yesterday / N days ago / 3 Jun 2026". Honest failure modes — a missing/unparsable timestamp returns "Checking official sources…" and NEVER the word "Updated"; a future timestamp clamps to "just now"; anything older than 24h sets `stale`. Unit-tested: `tests/alertFreshness.test.ts` 5/5.
+
+**Surfaces:**
+- `app/higgins/scams.tsx` — header line is now `Updated 2 hours ago · Official sources read 10 Jun 2026, 9:14 am`, plus `· Apollo is still trying to refresh` when stale, keeping the existing `· Reading N new…` pending suffix. testID `higgins-scams-sourced` unchanged.
+- `src/components/PriorityScamNotice.tsx` — reads `lastSourcedAt` from the same `/higgins/scams` response. Compact (Home) card shows the freshness line on the left of "View scam alert" (`home-priority-scam-freshness`); full card appends it to the source/date meta line (`priority-scam-source`).
+
+**Verification:** `tests/alertFreshness.test.ts` 5/5; ESLint clean; live `/api/higgins/scams` confirmed to return `lastSourcedAt`. The badge itself only renders with a real device credential — the web preview is fail-closed, so it shows the honest "Checking official sources…" fallback there and needs an Android/iOS build for visual sign-off.
+
 ## Triage hardening close-out + parcel-scam severity correction (2026-06)
 
 **Client spoofing of Triage records — CLOSED.** `triage_investigation` is strictly server-owned: `routers/patrol.py::upsert_event` nulls any client-supplied value, and only `services/triage/store.py` ever writes it. New live regression test `tests/test_triage_live_api.py::test_client_cannot_spoof_triage_investigation` posts a forged record (`geminiCalls: 99`) and asserts both the response and the stored Patrol event carry no triage payload. Backend triage suites green: 27 passed (contract + live API, 0 Gemini calls).
