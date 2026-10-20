@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 
 import type { PatrolCategory, PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { matchesPatrolFilter } from "@/src/domain/patrolOutcomes";
+import { subjectLabel } from "@/src/domain/threatSubject";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { ClassBadge, classBorderColor } from "./ClassBadge";
@@ -27,6 +28,7 @@ const useStyles = makeStyles((c) => ({
   chips: { flexDirection: "row", gap: spacing.xs, alignItems: "center", flexShrink: 1, flexWrap: "wrap" },
   time: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, flexShrink: 0 },
   headline: { fontFamily: fonts.displayBold, fontSize: 16, lineHeight: 21, color: c.onSurface },
+  subject: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 19, color: c.onSurfaceSecondary },
   summary: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
   adviceLabel: { fontFamily: fonts.textSemibold, color: c.onSurface },
   bottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, marginTop: spacing.xs },
@@ -45,6 +47,9 @@ export function PatrolItem({ outcome, isLast }: { outcome: PatrolOutcome; isLast
   const needsYou = matchesPatrolFilter(outcome, "needs_you");
   const gate = GATE_LABEL[outcome.category];
   const advice = (outcome.event.what_to_do ?? "").trim();
+  // Name the specific thing Apollo reacted to when the headline doesn't already say it.
+  const subject = subjectLabel(outcome.event);
+  const showSubject = !!subject && !outcome.title.toLowerCase().includes(subject.toLowerCase());
   const open = () => router.push({ pathname: "/patrol/[id]", params: { id: outcome.event.event_id } });
 
   const rc = outcome.event.patrol_record?.recordClass;
@@ -76,6 +81,9 @@ export function PatrolItem({ outcome, isLast }: { outcome: PatrolOutcome; isLast
         {rc ? <ClassBadge recordClass={rc} testID={`patrol-outcome-${outcome.event.event_id}-class`} /> : null}
 
         <Text style={s.headline} testID={`patrol-outcome-${outcome.event.event_id}-headline`} numberOfLines={2}>{outcome.title}</Text>
+        {showSubject ? (
+          <Text style={s.subject} numberOfLines={1} testID={`patrol-outcome-${outcome.event.event_id}-subject`}>{subject}</Text>
+        ) : null}
         <Text style={s.summary} numberOfLines={3}>{outcome.summary}</Text>
         {advice ? (
           <Text style={s.summary} numberOfLines={3} testID={`patrol-outcome-${outcome.event.event_id}-advice`}>

@@ -31,6 +31,7 @@ import {
   type ProtectionAreaId,
 } from "@/src/domain/protectionAreas";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { agoLabel } from "@/src/domain/alertFreshness";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
@@ -353,6 +354,32 @@ export default function ProtectionScreen() {
           See your protection categories and the Gates inside each one.
         </Text>
 
+        {/* ── Failed check banner ──
+            The readings below are the last ones Apollo actually observed. When the most recent check
+            failed, that is said here with its reason and the age of what is on screen — an old
+            reading is never presented as the current state. */}
+        {health.lastCheckFailure ? (
+          <View
+            testID="protection-check-failed-banner"
+            style={[styles.failedBanner, { backgroundColor: colors.growlingWash, borderColor: colors.growling }]}
+          >
+            <CircleAlert size={18} color={colors.growling} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.failedBannerTitle, { color: colors.onSurface }]} testID="protection-check-failed-title">
+                This check didn&apos;t run
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.onSurfaceSecondary }]} testID="protection-check-failed-reason">
+                {health.lastCheckFailure.reason}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.onSurfaceSecondary }]} testID="protection-check-failed-age">
+                {health.checkedAt
+                  ? `What you see below is Apollo's last successful reading, taken ${agoLabel(Date.parse(health.checkedAt), Date.now())}. It is not confirmation of the current state.`
+                  : "Apollo has no successful reading to show, so nothing below confirms the current state."}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* ── Hero card ── */}
         <View
           style={[
@@ -533,6 +560,19 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: fonts.text,
     fontSize: 14,
+    lineHeight: 20,
+  },
+  failedBanner: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  failedBannerTitle: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 15,
     lineHeight: 20,
   },
 

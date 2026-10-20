@@ -84,7 +84,8 @@ test("Email Gate requires a fresh successful service heartbeat", () => {
 
 test("File Gate purpose keeps cloud-hosting limitation", () => {
   const file = buildGatesOverview(base).gates.find((gate) => gate.id === "file")!;
-  assert.match(file.purpose, /cloud download is not automatically trusted/i);
+  // Copy changed; the guard is that File Gate describes checking the file itself, on demand.
+  assert.match(file.purpose, /files and attachments/i);
   assert.equal(file.capability.onDemand?.state, "ready");
 });
 
@@ -132,7 +133,7 @@ test("optional setup (Text permission) is never an alarm; it does not trigger re
   assert.equal(text.capability.automatic?.state, "permission_needed");
   assert.equal(text.statusLabel, "Setup required");
   assert.equal(text.tone, "neutral");
-  assert.equal(overview.summary, "1 Gate is helping automatically");
+  assert.equal(overview.summary, "1 protection is helping automatically");
 });
 
 const netStatus = (patch = {}) => ({ connected: true, type: "wifi" as const, isInternetReachable: true, inspectable: true, wifiSecurity: "wpa" as const, captivePortal: false, vpnActive: false, ssid: null, checkedAt: new Date().toISOString(), ...patch });
@@ -141,7 +142,7 @@ test("Internet Gate is Limited (active but restricted) on an inspectable connect
   const network = buildGatesOverview({ ...base, network: netStatus() }).gates.find((gate) => gate.id === "network")!;
   assert.equal(network.capability.automatic?.state, "running");
   assert.equal(network.statusLabel, "Limited");
-  assert.equal(network.title, "Internet Gate");
+  assert.equal(network.title, "Internet monitoring");
   assert.match(network.capability.automatic?.limitation ?? "", /continuous background watching/i);
 });
 

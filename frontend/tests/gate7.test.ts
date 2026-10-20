@@ -115,7 +115,12 @@ test("D01 gave remote access → Recovery status with ordered steps; banking dur
 });
 test("A11 / D02 unexpected management profile → Action required; expected → info only", () => {
   const sig = { ...EMPTY_SIGNALS("ios"), managementProfile: "present" as const };
-  assert.equal(assessDevice(sig).status, "action"); assert.match(assessDevice(sig).findings[0].plain, /how your device is managed/i);
+  assert.equal(assessDevice(sig).status, "action");
+  // The finding states what the profile can do, and — when iOS won't name it — says so plainly
+  // instead of describing an unnamed profile the person then has to hunt for.
+  assert.match(assessDevice(sig).findings[0].plain, /install apps, change network settings/i);
+  assert.match(assessDevice(sig).findings[0].plain, /never its name/i);
+  assert.match(assessDevice(sig).findings[0].action, /VPN & Device Management/i);
   const ok = assessDevice(sig, { managementExpected: true }); assert.equal(ok.status, "protected"); assert.equal(ok.state, "ears_up");
 });
 test("D02b ordinary device-admin app (Find My Device) is benign info, never barks", () => {

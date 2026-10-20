@@ -7,7 +7,7 @@
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
-import type { StateResolution } from "./stateMachine";
+import type { StateResolution } from "./stateMachine.ts";
 import type { ApolloState, Capability, PatrolEvent } from "./types";
 
 // ─── Pillar 1: Threat Status ─────────────────────────────────────────────────
@@ -121,7 +121,8 @@ const CAPABILITY_LABEL: Record<string, string> = {
   app_guard: "App checking",
 };
 
-import { gateName } from "./gateRegistry";
+import { gateName } from "./gateRegistry.ts";
+import { stateHeadline } from "./threatSubject.ts";
 
 /** Automatic capability IDs (continuous background monitoring or enforcement). */
 const AUTOMATIC_IDS = new Set(["site_guard", "connection_guard", "message_guard"]);
@@ -477,13 +478,13 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
   if (threat.level === "blocked" && resolution.state === "biting") {
     // Scenario E: Threat successfully blocked.
     const what = threat.summary || "a threat";
-    headline = "Apollo is biting";
+    headline = stateHeadline("biting", threat.drivingEvent);
     explanation = `Apollo blocked ${what}. This connection was stopped.`;
     primaryAction = { label: "See what Apollo stopped", route: actions.primaryAction?.route ?? "/protection-details" };
 
   } else if (threat.level === "confirmed") {
     // Active threat requiring immediate action.
-    headline = "Apollo is barking";
+    headline = stateHeadline("barking", threat.drivingEvent);
     explanation = threat.summary
       ? `Apollo found ${threat.summary}. This needs your attention now.`
       : "Apollo found something that needs your attention now.";
@@ -491,7 +492,7 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
 
   } else if (threat.level === "suspicious") {
     // Suspicious unresolved activity.
-    headline = resolution.state === "ears_up" ? "Apollo is sniffing something" : "Apollo is growling";
+    headline = stateHeadline(resolution.state, threat.drivingEvent);
     explanation = threat.summary
       ? `Apollo spotted ${threat.summary}. I'm checking what it means and whether you need to do anything.`
       : "Apollo spotted something suspicious. I'm checking what it means and whether you need to do anything.";

@@ -6,7 +6,7 @@ const IDS = ["site", "text", "call", "email", "link", "file", "app", "device", "
 const TITLES: Record<(typeof IDS)[number], string> = { site: "Site protection", text: "Text protection", call: "Call protection", email: "Email checks", link: "Link checks", file: "File checks", app: "App checks", device: "Device checks", account: "Account checks", network: "Internet checks" };
 
 let snapshot: ProtectionHealthSnapshot = {
-  revision: 0, checkedAt: null, trigger: null, checking: false, capabilities: [], protection: null, permissions: [], network: null,
+  revision: 0, checkedAt: null, trigger: null, checking: false, capabilities: [], protection: null, permissions: [], network: null, lastCheckFailure: null,
   gates: IDS.map((id) => ({ id, title: TITLES[id], purpose: "Apollo is preparing this protection.", currentHelp: "Checking current status.", statusLabel: "Check in progress" as const, tone: "neutral" as const, capability: { automatic: { kind: (id === "site" ? "enforcement" : "event_driven") as "enforcement" | "event_driven", state: "checking" as const }, onDemand: id === "site" ? undefined : { state: "ready" as const, action: { id: "open_check_it", label: "Open Check It" } } }, resolved: { coverageState: "unknown" as const, isAutomatic: id === "site" || id === "network" } })),
 };
 const listeners = new Set<() => void>();

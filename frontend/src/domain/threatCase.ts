@@ -9,6 +9,8 @@
  * - No fabricated investigation stages, block claims, evidence, or timeline events.
  */
 
+import type { CaseSource } from "./caseSources.ts";
+import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import type {
   ApolloState,
   HigginsBriefing,
@@ -164,31 +166,36 @@ export interface TimelineEntry {
  * Build a truthful chronological timeline from PatrolEvent data.
  * Only includes events that actually occurred — no fabricated stages.
  */
-export function buildTimeline(event: PatrolEvent): TimelineEntry[] {
+export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const record = event.patrol_record;
+  const subject = threatSubject(event);
+  const headline = (event.headline || "").trim();
   let idx = 0;
 
-  // 1. Detection
+  // 1. Detection — name the actual thing Apollo detected, never just the category.
   entries.push({
     id: `tl-${idx++}`,
     timestamp: event.occurred_at,
     title: "Detected by Apollo",
-    description: `${categoryLabel(event.category, record?.recordClass)} detected and flagged.`,
+    description: subject
+      ? `${categoryLabel(event.category, record?.recordClass)} detected: ${subjectDescriptor(subject)}.`
+      : headline
+        ? headline.replace(/\.$/, "") + "."
+        : `${categoryLabel(event.category, record?.recordClass)} detected and flagged.`,
     dotColor: "#DC2626",
     iconId: "detection",
   });
 
-  // 2. Automatic analysis (if briefing exists, analysis happened)
+  // 2. Automatic analysis — recorded as an event with its time only. The analysis itself belongs on
+  //    Overview; History is a record of what happened and when.
   if (record?.higginsBriefing) {
     const analysisTime = record.freshness?.observedAt ?? record.higginsBriefing.generated_at;
     entries.push({
       id: `tl-${idx++}`,
       timestamp: analysisTime ?? event.occurred_at,
-      title: "Automatic analysis",
-      description: record.higginsBriefing.established
-        ? `${record.higginsBriefing.established.slice(0, 100)}${record.higginsBriefing.established.length > 100 ? "…" : ""}`
-        : "Sender, links and content analysed.",
+      title: "Automatic checks completed",
+      description: "Apollo finished his automatic checks on this item.",
       dotColor: "#2563EB",
       iconId: "analysis",
     });
@@ -196,14 +203,28 @@ export function buildTimeline(event: PatrolEvent): TimelineEntry[] {
 
   // 3. Protection applied (only if genuine enforcement evidence)
   if (event.verified_block && event.enforcement_evidence) {
+    const destination = event.enforcement_evidence.destination_domain;
     entries.push({
       id: `tl-${idx++}`,
       timestamp: event.enforcement_evidence.observed_at,
       title: "Protection applied",
       description: humanMechanism(event.enforcement_evidence.mechanism) +
+        (destination ? ` for ${destination}` : "") +
         (event.enforcement_evidence.enforced_action ? `. ${humanAction(event.enforcement_evidence.enforced_action)}` : ""),
       dotColor: "#059669",
       iconId: "protection",
+    });
+  }
+
+  // 3b. Sources — one step per source Apollo consulted, with what it returned (one line).
+  for (const source of sources) {
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: source.at ?? event.occurred_at,
+      title: source.answered ? `Checked ${source.name}` : `Couldn't check ${source.name}`,
+      description: source.returned,
+      dotColor: source.answered ? "#2563EB" : "#D97706",
+      iconId: "gathering",
     });
   }
 
@@ -215,7 +236,9 @@ export function buildTimeline(event: PatrolEvent): TimelineEntry[] {
       id: `tl-${idx++}`,
       timestamp: null,
       title: "Investigation requested",
-      description: "You requested a Magnum DI investigation for this item.",
+      description: subject
+        ? `You requested a Magnum DI investigation for ${subjectDescriptor(subject)}.`
+        : "You requested a Magnum DI investigation for this item.",
       dotColor: "#2563EB",
       iconId: "investigation",
     });

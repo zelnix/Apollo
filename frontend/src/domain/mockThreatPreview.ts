@@ -1,6 +1,9 @@
-// Mock patrol event for web preview — lets the 4-tab investigation UI be exercised
-// without a real on-device check. Only injected when running on web and
-// the persisted events list is empty.
+// Sample patrol event for the web preview — lets the 4-tab investigation UI be exercised without a
+// real on-device check. Only injected when running on web with an empty persisted events list.
+//
+// It is labelled "Example" in every field a person can see, so preview data is never mistaken for a
+// real finding. Each block says something DIFFERENT: what was found (naming the profile and where it
+// lives), what it means, and what to do. No paragraph is repeated across blocks.
 
 import type { PatrolEvent } from "@/src/domain/types";
 
@@ -16,16 +19,16 @@ export const MOCK_THREAT_EVENT: PatrolEvent = {
   category: "device",
   state: "barking",
   status: "resolved",
-  headline: "Device management profile is active",
+  headline: "Example: device management profile \"Acme IT Mobile Device Management\" is active",
   what_happened:
-    "Apollo found that a device management profile is active on this device. This can allow an organisation or application to control certain settings on your device.\n\nThis does not automatically mean your device is compromised, but it can reduce your control and may prevent Apollo from providing some of his automatic protection.",
+    "This is example data shown in the web preview so you can see how an investigation looks. In it, Apollo found one active management profile, \"Acme IT Mobile Device Management\" (com.acme.mdm.agent), installed 15 Oct 2026. On Android it is listed under Settings → Security → Device admin apps; on iPhone under Settings → General → VPN & Device Management.",
   why: [
-    "Active device management profile detected",
-    "May reduce your control over the device and prevent some of Apollo's automatic protection",
-    "Management profiles are sometimes used legitimately by organisations",
+    "Profile name: \"Acme IT Mobile Device Management\" (com.acme.mdm.agent)",
+    "Granted rights: install apps, change network settings, read some device activity",
+    "Apollo's own filter cannot inspect traffic the profile's VPN handles",
   ],
   what_to_do:
-    "No immediate action is required. If you are unsure about the device management profile, you can review it on this device.",
+    "Open Settings → Security → Device admin apps (Android) or Settings → General → VPN & Device Management (iPhone), find \"Acme IT Mobile Device Management\", and confirm with your work or school that they installed it. Remove it if nobody can account for it.",
   indicator_host: undefined,
   indicator_digest: undefined,
   local_indicator: undefined,
@@ -43,18 +46,18 @@ export const MOCK_THREAT_EVENT: PatrolEvent = {
     sourceEventId: "preview-mock-threat-001",
     sourceType: "on_device",
     category: "device",
-    headline: "Device management profile is active",
+    headline: "Example: device management profile \"Acme IT Mobile Device Management\" is active",
     summary:
-      "The presence of a device management profile is a security risk that warrants your attention, but it does not by itself confirm that your device has been compromised. The profile may be legitimate.",
+      "A named profile with administrative rights is installed. That warrants a check with whoever owns the device, but on its own it does not mean the device is compromised.",
     rawState: "barking",
     effectiveState: "danger",
     effectiveReason:
-      "A management profile is active on this device. This can allow an organisation or application to control certain device settings.",
+      "\"Acme IT Mobile Device Management\" holds device-admin rights that have not been confirmed by the device owner.",
     observedBlockReference: null,
     assessmentReference: null,
     investigationCaseId: null,
     scenarioContext: {
-      scenario: "Device management profile",
+      scenario: "Example — device management profile",
       claimedBrand: undefined,
       indicatorHost: undefined,
     },
@@ -63,7 +66,7 @@ export const MOCK_THREAT_EVENT: PatrolEvent = {
       projectedAt: now,
       status: "fresh",
     },
-    outageContext: { message: "The original record also reported that Apollo was not performing his automatic protective duties." } as Record<string, unknown>,
+    outageContext: { message: "At the time of this example record, Apollo's automatic website protection was not running." } as Record<string, unknown>,
     resolution: null,
     duplicateOf: null,
     duplicateReason: null,
@@ -72,19 +75,18 @@ export const MOCK_THREAT_EVENT: PatrolEvent = {
     recordClass: "security_threat",
     higginsBriefing: {
       investigated:
-        "A device management profile is active",
+        "Whether \"Acme IT Mobile Device Management\" (com.acme.mdm.agent) is a profile this device's owner put there",
       established:
-        "Apollo found that a device management profile is active on this device. This can allow an organisation or application to control certain settings on your device.\n\nThis does not automatically mean your device is compromised, but it can reduce your control and may prevent Apollo from providing some of his automatic protection.",
+        "The profile was installed on 15 Oct 2026 and holds device-admin rights. Apollo could not establish who installed it, because neither Android nor iOS records that for an app to read.",
       evidence_points: [
-        "Active device management profile detected",
-        "May reduce device owner control",
-        "Could prevent some of Apollo's automatic protection",
-        "Management profiles are sometimes used legitimately by organisations",
+        "Profile name and package: \"Acme IT Mobile Device Management\" (com.acme.mdm.agent)",
+        "Installed 15 Oct 2026, device-admin rights active",
+        "Installer identity: not recorded by the platform — Apollo cannot tell who added it",
       ],
       meaning:
-        "The presence of a device management profile is a security risk that warrants your attention, but it does not by itself confirm that your device has been compromised.",
+        "Management profiles are often legitimate, so this is a question to answer rather than a confirmed threat.",
       action:
-        "Review device management settings to verify the profile is expected.",
+        "Confirm with your work or school that they installed \"Acme IT Mobile Device Management\". Remove it if nobody can account for it.",
       record_class: "security_threat",
       generated_at: completedAt,
       version: "1.0",

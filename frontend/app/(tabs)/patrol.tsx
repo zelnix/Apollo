@@ -41,6 +41,7 @@ import {
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import type { PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
+import { subjectRowLabel } from "@/src/domain/threatSubject";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -79,13 +80,11 @@ function cardTitle(event: PatrolEvent): string {
 }
 
 function cardSubtitle(event: PatrolEvent): string {
-  const meta = event.source_metadata;
-  if (meta?.sender) return `From: ${meta.sender}`;
-  if (meta?.url) return meta.url;
-  if (event.indicator_host) return event.indicator_host;
-  if (event.claimed_brand) return event.claimed_brand;
-  if (meta?.preview) return meta.preview.slice(0, 40);
-  return "";
+  // Name the actual website, caller, sender, app or file on every row. Recorded identifiers only.
+  const named = subjectRowLabel(event);
+  if (named) return named;
+  const preview = event.source_metadata?.preview;
+  return preview ? preview.slice(0, 40) : "";
 }
 
 // ── Status accent color (left bar on card) ───────────────────────────────────

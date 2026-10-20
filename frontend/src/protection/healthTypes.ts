@@ -15,4 +15,6 @@ export interface ProtectionHealthSnapshot {
   protection: ProtectionStatus | null;
   permissions: ProtectionPermission[];
   network: NetworkStatus | null;
+  /** Set when the most recent health check FAILED. The readings above are then the previous ones. */
+  lastCheckFailure: { at: string; trigger: HealthTrigger | null; reason: string } | null;
 }

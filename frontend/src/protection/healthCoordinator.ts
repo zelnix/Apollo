@@ -6,7 +6,7 @@ import { buildGatesOverview, type EmailMonitorCapability } from "@/src/domain/ga
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
-import { recordNativeFailure } from "@/src/security/nativeDiagnostics";
+import { NativeCallFailed, recordNativeFailure } from "@/src/security/nativeDiagnostics";
 import { pendingAttempt, recordAttempt, clearAttempt, type ActionAttempt } from "@/src/settings/recheck";
 import { storage } from "@/src/utils/storage";
 import { protectionHealthSnapshot, publishProtectionHealth } from "./healthStore";
@@ -76,7 +76,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
   const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn, messagingReadFailed, callsReadFailed });
-  const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
+  const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates, lastCheckFailure: null };
   publishProtectionHealth(next);
   void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);
   return next;
@@ -85,15 +85,22 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
 export function runProtectionHealthCheck(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot> {
   if (inFlight) return inFlight;
   inFlight = collect(trigger).catch((err) => {
-    // If the health check fails, reset checking=false so the protection categories
-    // remain visible with their last known state. Without this, checking stays true
-    // and the categories disappear permanently until app restart.
+    // The check failed. The previous readings stay on screen because they are the last real
+    // observations Apollo has — but the failure is recorded on the snapshot so the Protection screen
+    // says the check didn't run, rather than presenting an old reading as the current one.
     const current = protectionHealthSnapshot();
-    if (current.checking) {
-      publishProtectionHealth({ ...current, checking: false });
-    }
-    console.warn("[ProtectionHealth] check failed, restoring last state:", err);
-    return current;
+    const reason = err instanceof NativeCallFailed
+      ? "Apollo asked this device for its protection state and the read failed."
+      : err instanceof Error && err.message
+        ? `Apollo couldn't complete the protection check (${err.message}).`
+        : "Apollo couldn't complete the protection check and the reason could not be determined.";
+    const failed: ProtectionHealthSnapshot = {
+      ...current, checking: false, revision: current.revision + 1,
+      lastCheckFailure: { at: new Date().toISOString(), trigger, reason },
+    };
+    publishProtectionHealth(failed);
+    console.warn("[ProtectionHealth] check failed, keeping last observation:", err);
+    return failed;
   }).finally(() => { inFlight = null; });
   return inFlight;
 }

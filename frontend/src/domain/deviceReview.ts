@@ -190,8 +190,17 @@ const CHECKS: CheckDef[] = [
     evaluate: (i) => {
       const mp = i.signals.managementProfile;
       const managed = mp === "managed" || mp === "present" || i.self.unexpectedProfile;
-      if (managed && !i.self.managementExpected) return action("A management profile can install apps, change network settings and read some activity.", "If your work or school didn't set this up, remove it.", i.self.unexpectedProfile ? "You reported an unexpected profile." : "The device reported an active management profile.", i.self.unexpectedProfile && mp !== "managed" && mp !== "present" ? "user_confirmed" : "observation");
-      if (managed) return checked("Managed by your work or school (expected).");
+      const named = (i.signals.managementAdmins ?? []).join(", ");
+      if (managed && !i.self.managementExpected) return action(
+        named
+          ? `${named} can install apps, change network settings and read some activity.`
+          : "A management profile can install apps, change network settings and read some activity. The platform did not give Apollo its name.",
+        named
+          ? `Find ${named} in the settings path above. If your work or school didn't set it up, remove it.`
+          : "Open the settings path above, where the profile is listed by name. If your work or school didn't set it up, remove it.",
+        i.self.unexpectedProfile ? "You reported an unexpected profile." : "The device reported an active management profile.",
+        i.self.unexpectedProfile && mp !== "managed" && mp !== "present" ? "user_confirmed" : "observation");
+      if (managed) return checked(named ? `Managed by your work or school via ${named} (expected).` : "Managed by your work or school (expected).");
       if (mp === "device_admin") return checked("A device-admin app is active — normal for Find My Device / anti-theft apps.");
       if (mp === "unknown") return i.platform === "ios" ? review("iOS only tells an app when it is managed itself, so Apollo can confirm management but can't rule it out.", "Open VPN & Device Management and confirm no profile you didn't add is present.", "iOS does not expose profile state to apps.") : unavailable("This build couldn't read management-profile state.");
       return checked("No device-management profile is active.");

@@ -4,10 +4,10 @@ import type { CallProtectionCapabilities } from "@/src/security/callSdk";
 import type { MessagingCapabilities } from "@/src/security/messagingSdk";
 import type { NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { VERIFICATION_FRESHNESS_MS } from "./stateMachine.ts";
-import { GATE_REGISTRY, gateName, gatePurpose } from "./gateRegistry";
-import type { GateId } from "./gateRegistry";
-import { resolveProtectionState } from "./protectionStateResolver";
-import type { AutomaticCapabilityState, OnDemandCapabilityState, GateStatusLabel, GateTone } from "./protectionStateResolver";
+import { GATE_REGISTRY, gateName, gatePurpose } from "./gateRegistry.ts";
+import type { GateId } from "./gateRegistry.ts";
+import { resolveProtectionState } from "./protectionStateResolver.ts";
+import type { AutomaticCapabilityState, OnDemandCapabilityState, GateStatusLabel, GateTone } from "./protectionStateResolver.ts";
 
 export type { GateId, AutomaticCapabilityState, OnDemandCapabilityState, GateStatusLabel, GateTone };
 export type GateAutomationKind = "enforcement" | "monitoring" | "event_driven";

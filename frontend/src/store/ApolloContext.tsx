@@ -89,7 +89,7 @@ const deviceMeta = () => ({
   locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
 });
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 
 /** Safe JSON parse that returns `fallback` instead of throwing on corrupt data.
  *  Optionally validates parsed shape (e.g. Array.isArray for list keys).
@@ -534,9 +534,26 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
           const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
           setSetupDone(!!done);
-          if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
-          // Web preview: seed a mock threat so the 4-tab investigation UI can be exercised.
-          if (Platform.OS === "web" && eventsRef.current.length === 0) { const seed = [MOCK_THREAT_EVENT]; eventsRef.current = seed; alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state])); setEvents(seed); }
+          if (ev) {
+            const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent)
+              // The example case is sample data: always restore it from the current definition so an
+              // older stored copy never shows outdated example text.
+              .map((event) => (event.event_id === MOCK_THREAT_EVENT.event_id ? MOCK_THREAT_EVENT : event));
+            eventsRef.current = restored;
+            alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state]));
+            setEvents(restored);
+          }
+          // Seed the clearly-labelled EXAMPLE threat case once, on every platform, so the full
+          // investigation UI can be seen on a real device as well as in the web preview. It is only
+          // seeded when there is nothing else in Patrol, and only once — dismissing it is permanent.
+          if (eventsRef.current.length === 0 && !(await storage.getItem<boolean>(K.exampleSeeded, false))) {
+            const seed = [MOCK_THREAT_EVENT];
+            eventsRef.current = seed;
+            alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state]));
+            setEvents(seed);
+            void storage.setItem(K.exampleSeeded, true);
+            void storage.setItem(K.events, JSON.stringify(seed));
+          }
           if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
           if (done) {
             // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.

@@ -11,7 +11,8 @@
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
 import { hasLocalEvidence } from "./higginsNarration.ts";
-import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver";
+import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
+import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver.ts";
 import type { StateResolution } from "./stateMachine";
 import type { Capability } from "./types";
 
@@ -172,7 +173,10 @@ export function buildHomeVoice(input: {
   // 1) Biting — Apollo blocked something. Only when the driving event carries a verified_block flag.
   if (state === "biting" && drivingEvent?.verified_block) {
     const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
-    const what = hasLocalEvidence(drivingEvent) ? rawWhat : "a threat";
+    const subject = threatSubject(drivingEvent);
+    const what = hasLocalEvidence(drivingEvent) && rawWhat
+      ? rawWhat
+      : subject ? subjectDescriptor(subject) : "a threat";
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a protection check";
     const text = `Apollo blocked ${what} through ${gateName}. The threat is contained. Open the investigation to see exactly what Apollo stopped and why.`;
     return {
@@ -260,10 +264,14 @@ export function buildHomeVoice(input: {
   if (drivingEvent) {
     const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
     const problem = hasLocalEvidence(drivingEvent) ? rawProblem : "";
+    const subject = threatSubject(drivingEvent);
+    const named = subject ? subjectDescriptor(subject) : "";
     const verb = state === "barking" ? "barking" : "growling";
     const text = problem
-      ? `Apollo is ${verb} — he flagged ${problem}. Open it and I'll tell you exactly what to do.`
-      : `Apollo is ${verb} about a security concern. Open it and I'll walk you through what's happening.`;
+      ? `Apollo is ${verb}${named ? ` at ${named}` : ""} — he flagged ${problem}. Open it and I'll tell you exactly what to do.`
+      : named
+        ? `Apollo is ${verb} at ${named}. Open it and I'll walk you through what's happening.`
+        : `Apollo is ${verb} about a security concern. Open it and I'll walk you through what's happening.`;
     return {
       text,
       ctaLabel: "View what Apollo found",

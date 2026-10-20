@@ -1,5 +1,6 @@
 // Derive local notifications only from accepted device observations; never create an enforcement claim.
 import { eventHasPacketProof } from "../domain/packetEvidence.ts";
+import { stateHeadline } from "../domain/threatSubject.ts";
 import type { PatrolEvent } from "../domain/types";
 import type { ProtectionStatus } from "../security/SecurityPlatformAdapter";
 import type { LocalAlert } from "./notifications";
@@ -21,10 +22,10 @@ export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
   const actionUrl = `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`;
   if (event.state === "biting") {
     if (!event.verified_block || event.status !== "blocked" || !eventHasPacketProof(event)) return null;
-    return { title: "Apollo is biting", body: event.headline, channel: "apollo_alerts", actionUrl };
+    return { title: stateHeadline("biting", event), body: event.headline, channel: "apollo_alerts", actionUrl };
   }
-  if (event.state === "barking") return { title: "Apollo is barking", body: event.headline, channel: "apollo_alerts", actionUrl };
-  if (event.state === "growling" || event.state === "ears_up") return { title: "Apollo is sniffing something", body: event.headline, channel: "apollo_alerts", actionUrl };
+  if (event.state === "barking") return { title: stateHeadline("barking", event), body: event.headline, channel: "apollo_alerts", actionUrl };
+  if (event.state === "growling" || event.state === "ears_up") return { title: stateHeadline(event.state, event), body: event.headline, channel: "apollo_alerts", actionUrl };
   return null;
 }
 

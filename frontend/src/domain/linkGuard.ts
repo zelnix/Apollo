@@ -4,7 +4,7 @@
 // may only ever suggest raising state to "growling" or "barking" — it must NEVER produce "biting".
 // Biting stays reserved for verified native block evidence elsewhere in the app. Enforced here by
 // construction: escalate() below only ever receives the literals "growling" or "barking".
-import { STATE_RANK } from "@/src/domain/stateMachine";
+import { STATE_RANK } from "@/src/domain/stateMachine.ts";
 import type { ApolloState } from "@/src/domain/types";
 
 export interface LinkAnchor { text: string; href: string }

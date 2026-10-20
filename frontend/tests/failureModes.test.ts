@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 import { decide } from "../src/domain/decision.ts";
 import { parseIntelResult } from "../src/domain/intelContract.ts";
-import { masterCopy } from "../src/domain/protectionTruth.ts";
+import { buildGatesOverview } from "../src/domain/gates.ts";
 import { analyseUrlLocally } from "../src/domain/risk.ts";
 import { classifyHttpFailure, INITIAL_HEALTH, observeFailure, observeOk, serviceBannerCopy, staleNote } from "../src/domain/serviceHealth.ts";
 import type { ProtectionStatus } from "../src/security/SecurityPlatformAdapter.ts";
@@ -82,13 +82,42 @@ test("stale/unknown intel never upgrades to medium confidence", () => {
 });
 
 // --- Mixed states -----------------------------------------------------------------------------------------------
-test("DNS filter operational + service down separates protection from online checks", () => {
-  const c = masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" }), false);
-  assert.equal(c.title, "Some checks are unavailable"); assert.match(c.line, /Site Gate remains confirmed active/); assert.match(c.line, /online investigations are unavailable/);
-  assert.equal(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" }), true).title, "All available protection is active");
+// These assertions used to run against src/domain/protectionTruth.ts (masterCopy), a module that was
+// deleted — so they had been silently dead. They now run against buildGatesOverview, which is what the
+// Protection, Home and Support surfaces actually render.
+const unsupportedMessaging = { smsFiltering: "unsupported", linkInterception: "unsupported", senderReputation: "unsupported", shareExtension: "unsupported", notificationIntegration: "unsupported" } as const;
+const unsupportedCalls = { callerIdentification: "unsupported", callScreening: "unsupported", numberReputation: "unsupported" } as const;
+const gatesFor = (protection: ProtectionStatus | null, patch: Record<string, unknown> = {}) =>
+  buildGatesOverview({ platform: "android", checking: false, protection, permissions: [], capabilities: [],
+    messaging: unsupportedMessaging, calls: unsupportedCalls, ...patch } as Parameters<typeof buildGatesOverview>[0]).gates;
+
+test("offline separates enforced protection from the online checks that need the service", () => {
+  const enforced = st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter", lastVerified: new Date().toISOString() });
+  const capability = [{ id: "site_guard", title: "Website protection", status: "active", detail: "On" }];
+  const offline = gatesFor(enforced, { desiredSiteOn: true, capabilities: capability, online: false });
+  const online = gatesFor(enforced, { desiredSiteOn: true, capabilities: capability, online: true });
+  // Local enforcement stays confirmed when the service is unreachable...
+  assert.equal(offline.find((g) => g.id === "site")!.resolved.coverageState, "active_verified");
+  // ...while the part that needs the service says so, instead of looking like normal operation.
+  const offlineLink = offline.find((g) => g.id === "link")!;
+  assert.equal(offlineLink.capability.automatic?.state, "temporarily_unavailable");
+  assert.match(offlineLink.capability.automatic?.limitation ?? "", /unavailable/i);
+  assert.match(offlineLink.currentHelp, /online checks are unavailable/i);
+  assert.equal(online.find((g) => g.id === "link")!.capability.automatic?.state, "running");
 });
-test("mock adapter + service down: nothing enforced, nothing online, on-device checks remain", () => {
-  const c = masterCopy(st({ requested: true, operational: false, enforcementMethod: "simulated" }), false);
-  assert.equal(c.title, "Some protection needs attention"); assert.match(c.line, /unavailable on this device/); assert.match(c.line, /On-device link checks remain/);
+
+test("a preview/simulated adapter can never read as enforced protection", () => {
+  const gate = gatesFor(st({ requested: true, operational: false, enforcementMethod: "simulated" }), { desiredSiteOn: true })
+    .find((g) => g.id === "site")!;
+  assert.notEqual(gate.statusLabel, "Watching");
+  assert.notEqual(gate.resolved.coverageState, "active_verified");
 });
-test("off setting remains a protection gap regardless of connectivity", () => { assert.equal(masterCopy(st({}), false).title, "Some protection needs attention"); });
+
+test("off by choice remains a protection gap regardless of connectivity", () => {
+  for (const online of [true, false]) {
+    const gate = gatesFor(st({ operational: true, running: true, enforcementMethod: "dns_filter" }), { desiredSiteOn: false, online })
+      .find((g) => g.id === "site")!;
+    assert.equal(gate.capability.automatic?.state, "off_by_choice");
+    assert.notEqual(gate.resolved.coverageState, "active_verified");
+  }
+});

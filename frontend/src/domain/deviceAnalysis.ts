@@ -161,8 +161,30 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
   // always escalate by reporting the profile as unexpected.
   const managed = sig.managementProfile === "managed" || sig.managementProfile === "present" || !!self.unexpectedProfile;
   const adminLabels = sig.managementAdmins ?? [];
-  if (managed && !self.managementExpected) f.push({ id: "D02", title: "Device management profile", severity: "high", plain: "This can change how your device is managed — install apps, alter network settings or read some activity.", action: "If your work or school didn't set this up, remove it.", settings: path("profile", p), handoff: "network" });
-  else if (managed) f.push({ id: "D02", title: "Managed by work or school", severity: "info", plain: "Expected management lowers the risk. Your organisation can still see and control parts of this device.", action: "Verify with your IT team if anything looks unfamiliar.", settings: path("profile", p) });
+  // Name the profile when the platform tells Apollo its name; when it doesn't, say that plainly rather
+  // than describing an unnamed "a profile" the person then has to go hunting for.
+  const profileNames = adminLabels.join(", ");
+  const nameUnknownWhy = p === "ios"
+    ? "iPhone tells Apollo that a configuration profile is installed but never its name."
+    : "Android reported an active management profile without naming it to Apollo.";
+  if (managed && !self.managementExpected) f.push({ id: "D02",
+    title: profileNames ? `Device management profile: ${profileNames}` : "Device management profile (name not available to Apollo)",
+    severity: "high",
+    plain: profileNames
+      ? `${profileNames} can install apps, change network settings and read some activity on this device.`
+      : `A management profile can install apps, change network settings and read some activity on this device. ${nameUnknownWhy}`,
+    action: profileNames
+      ? `Open ${path("profile", p)} and find ${profileNames}. If your work or school didn't set it up, remove it.`
+      : `Open ${path("profile", p)} — the profile is listed there by name. If your work or school didn't set it up, remove it.`,
+    settings: path("profile", p), handoff: "network" });
+  else if (managed) f.push({ id: "D02",
+    title: profileNames ? `Managed by work or school: ${profileNames}` : "Managed by work or school",
+    severity: "info",
+    plain: profileNames
+      ? `${profileNames} manages this device. Expected management lowers the risk, and your organisation can still see and control parts of this device.`
+      : `Expected management lowers the risk. Your organisation can still see and control parts of this device. ${nameUnknownWhy}`,
+    action: `Open ${path("profile", p)} to see what is installed, and verify with your IT team if anything looks unfamiliar.`,
+    settings: path("profile", p) });
   else if (sig.managementProfile === "device_admin") f.push({ id: "D02b", title: adminLabels.length ? `Device admin app active: ${adminLabels.join(", ")}` : "Device admin app active", severity: "info", plain: "A device-admin app is active. Device-admin apps can lock your screen, reset your passcode or erase the phone — powerful, but normal: Find My Device, anti-theft and some security apps use it to protect you. It does not mean someone else is managing your phone.", action: adminLabels.length ? `If you recognise ${adminLabels.length > 1 ? "these" : "this"}, no action is needed. If one looks unfamiliar, open Device admin apps, tap it to see what it controls, then turn it off — the phone will ask you to confirm.` : "If you recognise it, no action is needed. If it looks unfamiliar, open Device admin apps, tap it to see what it controls, then turn it off — the phone will ask you to confirm.", settings: path("profile", p) });
   // D03: Extra trusted certificates. When the user reports that the device is managed by work/school
   // (managementExpected), certificates are part of the expected corporate infrastructure and deserve

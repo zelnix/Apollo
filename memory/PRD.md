@@ -1,3 +1,55 @@
+## Threats row specificity + Evidence Pack + uncoloured Higgins report (2026-06)
+
+**Threats rows name the thing.** `subjectRowLabel(event)` (in `src/domain/threatSubject.ts`) returns "paypal-secure.top",
+"From: billing@acme.co", "Caller: +61 412 345 678", "App: …", "File: …" from recorded identifiers only; `app/(tabs)/patrol.tsx`
+`cardSubtitle` now uses it (message preview remains the only fallback). Tested in `tests/threatSubject.test.ts` (7/7).
+
+**Evidence Pack.** New pure `src/domain/evidencePack.ts` → `buildEvidencePack({ event, facts, sources })` renders a plain-text
+pack: case id, status, type, detected/closed times, WHAT APOLLO FOUND (the recorded facts), SOURCES APOLLO USED (each source,
+whether it answered, what it returned, its link and time), and a closing line stating no interpretation was added. Honest
+"nothing was recorded" lines when there are no facts/sources. A "Copy facts & sources" button (`tc-evidence-pack`,
+expo-clipboard) sits under the Sources card on both Evidence branches and confirms with a toast. Tested: `tests/evidencePack.test.ts` 2/2.
+
+**Higgins report (Overview) rewritten.** Severity tints removed — the card is a neutral panel (the status pill carries severity).
+It now opens with the ACTUAL name (recorded subject, else the finding statement), follows with Higgins' evidence summary
+(established + meaning, never duplicated), and always ends with a WHAT TO DO line that says "Nothing to do." / "Nothing to do —
+this case is closed." / "Nothing to do right now. I'll tell you as soon as the investigation finishes." when no action is needed.
+The separate blue "info" banner was removed as a duplicate of that line.
+
+## Threat Case: sources used + what each returned; example case on every device (2026-06)
+
+**New pure helper `src/domain/caseSources.ts`** — `buildCaseSources({ event, investigation })` lists every source Apollo
+actually consulted for a case and exactly what it returned, from recorded data only: the finding's provenance
+(this device / Apollo's known-threat list at DNS / Apollo's servers / original source unavailable), the intake
+mailbox, the stored Triage record ("N of M applicable checks completed, K matched. No AI calls."), every Coverage
+Gap mapped to the real source that didn't answer, Apollo's own enforcement mechanism + result, the Magnum DI
+investigation (honest "Result not stored on this device" when it isn't), each cited `SourceReference` with the
+findings that cite it (or "Appeared in search results only" / "Could not be retrieved"), and event-level
+supporting references. Unit-tested: `tests/caseSources.test.ts` 4/4.
+
+**Evidence tab** now carries a "Sources Apollo used" card (name → what it returned → link → time, with
+"— didn't answer" on failed sources) in both the investigation and deterministic branches, alongside the
+facts-only "What Apollo found" list. **History tab** gains one step per source ("Checked <source>" /
+"Couldn't check <source>" + a one-line result), merged chronologically with detection, enforcement,
+investigation and resolution steps; `buildTimeline(event, sources)` takes the list, and `HistoryContent`
+loads the saved investigation through the new `useCaseInvestigation` hook.
+
+**Example threat case on real devices.** `MOCK_THREAT_EVENT` is no longer web-only: it is seeded once on any
+platform when Patrol is empty (`apollo.example.threat.seeded`), and a stored copy is always refreshed from the
+current definition so an older example never shows stale text. Every visible field still says "Example".
+
+## Threat Case: specific subjects + facts-only Evidence/History (2026-06)
+
+**Specific threat wording.** New pure helper `src/domain/threatSubject.ts` (`threatSubject`, `subjectDescriptor`, `shortDomain`, `stateHeadline`, `subjectLabel`) reads ONLY identifiers Apollo actually recorded (intake `source_metadata`, `local_indicator`, `indicator_host`, `claimed_brand`); when nothing was recorded it returns null and callers keep their plain wording. URLs reduce to the recognisable domain ("https://www.paypal-secure.top/login" → "paypal-secure.top"), long values clip at 42 chars. Applied to: `homeStatusResolver` headlines ("Apollo is growling at paypal-secure.top"), `push/localAlerts` notification titles, `higginsHomeVoice` biting/driving-event paragraphs, `PatrolItem` cards (subject line, hidden when the headline already names it), Threat Case evidence header. Tests: `tests/threatSubject.test.ts` 6/6; `tests/localAlerts.test.ts` title expectation updated.
+
+**Evidence tab = what was found, nothing else.** Removed the "Where to report this" card (`ReportScamHelper`) from both Threat Case evidence branches (owner decision). The deterministic branch no longer repeats Overview's analysis: it now lists "What Apollo found" — the finding statement, Apollo's recorded signals (`why[]`) and the evidence captured by the deterministic Triage rules that were MET (deduplicated, internal codes filtered) — plus an "Observed:" timestamp and the honest "only available on the device where it happened" line when provenance isn't local. Device/app/network cases, which carry no sender or URL, now show their real detail instead of only "Source: captured on this device".
+
+**History tab = record of what happened and when.** `buildTimeline` detection row names the actual subject ("Website detected: paypal-secure.top", else the finding statement); the analysis row is a factual "Automatic checks completed" entry (the briefing prose stays on Overview); a new Triage row records outcome + "N of M applicable checks completed on this device. No AI calls were made."; enforcement names the destination domain; "Investigation requested" names the subject; related rows show the related item's subject, not its narrative.
+
+**Gemini usage unchanged:** Triage and device observations are deterministic (0 calls); only Magnum DI makes a call, and only for POSSIBLE THREAT cases.
+
+**Fix:** removed a stray whitespace text node introduced in the Threat Case source card (RN web "Unexpected text node" toast on all three tabs).
+
 ## Hidden fallback audit — truthful failure reporting across Apollo (2026-06)
 
 Full audit of error paths (not keyword searches). Every try/except, catch, default value, timeout path,

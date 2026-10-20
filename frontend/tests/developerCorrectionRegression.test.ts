@@ -4,9 +4,9 @@
 //
 // Run: cd /app/frontend && npx tsx tests/developerCorrectionRegression.test.ts
 
-import { resolveApolloState, VERIFICATION_FRESHNESS_MS, RECOVERY_COOLDOWN_MS } from "../src/domain/stateMachine";
-import { buildHomeAttention, buildSecurityFindings, buildProtectionIssues } from "../src/domain/homeAttention";
-import { buildHomeVoice } from "../src/domain/higginsHomeVoice";
+import { resolveApolloState, VERIFICATION_FRESHNESS_MS, RECOVERY_COOLDOWN_MS } from "../src/domain/stateMachine.ts";
+import { buildHomeAttention, buildSecurityFindings, buildProtectionIssues } from "../src/domain/homeAttention.ts";
+import { buildHomeVoice } from "../src/domain/higginsHomeVoice.ts";
 import type { PatrolEvent, ApolloState, GatePresentation, Capability, AttentionItem } from "../src/domain/types";
 
 let failures = 0;

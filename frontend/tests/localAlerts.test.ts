@@ -20,7 +20,8 @@ const event: PatrolEvent = {
 };
 
 test("Apollo is biting local alert requires correlated, verified packet-drop evidence", () => {
-  assert.equal(eventLocalAlert(event)?.title, "Apollo is biting");
+  // The alert names the specific thing Apollo stopped, from recorded evidence only.
+  assert.equal(eventLocalAlert(event)?.title, "Apollo is biting example.org");
   assert.equal(eventLocalAlert({ ...event, verified_block: false }), null);
   assert.equal(eventLocalAlert({ ...event, enforcement_evidence: null }), null);
   assert.equal(eventLocalAlert({ ...event, enforcement_evidence: { ...packet, result: "unverified" } }), null);
