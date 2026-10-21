@@ -128,7 +128,7 @@ const useStyles = makeStyles((c) => ({
   // ── Branded header ──
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandLogo: { height: 55, aspectRatio: 2000 / 698 },
+  brandLogo: { height: 50, aspectRatio: 1789 / 537, alignSelf: "flex-start" as const },
   brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
 
   // ── Hero status card ──

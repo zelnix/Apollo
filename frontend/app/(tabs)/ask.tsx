@@ -197,7 +197,12 @@ export default function Ask() {
     if (!id) return;
     const y = rowY.current[id];
     if (y === undefined) return;
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(y - spacing.sm, 0), animated: true }));
+    const target = Math.max(y - spacing.sm, 0);
+    // Fire twice: immediately via rAF, and again after a brief delay so that any
+    // competing scrollToEnd animation (which may still be in flight from the
+    // earlier onContentSizeChange) is overridden on native.
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: target, animated: true }));
+    setTimeout(() => { if (topTarget.current === id) scrollRef.current?.scrollTo({ y: target, animated: false }); }, 120);
   }, []);
 
   // Room below the newest answer, so it can actually reach the top of the view.
@@ -214,18 +219,25 @@ export default function Ask() {
     if (topTarget.current === id) applyTop();
   }, [applyTop, refreshSpacer]);
 
-  useEffect(() => {
+  // Derive the scroll-to-top target synchronously so onContentSizeChange sees it
+  // on the SAME render pass that adds the new Higgins message — not one tick later
+  // via useEffect (which would let onContentSizeChange fall through to scrollToEnd).
+  const derivedTarget = React.useMemo(() => {
     const last = chatMessages[chatMessages.length - 1];
-    const answerId = !investigationMode && last?.role === "higgins" ? last.id : null;
-    lastAnswerId.current = answerId;
+    return !investigationMode && last?.role === "higgins" ? last.id : null;
+  }, [chatMessages, investigationMode]);
+
+  // Keep refs in step — still needed by applyTop / refreshSpacer / noteRow.
+  if (derivedTarget !== lastAnswerId.current) {
+    lastAnswerId.current = derivedTarget;
+    if (!derivedTarget) { topTarget.current = null; }
+    else if (stick.current) { topTarget.current = derivedTarget; }
+  }
+
+  useEffect(() => {
     refreshSpacer();
-    // The person's own message, or an investigation: follow the conversation to the
-    // bottom, and stop holding the previous answer at the top.
-    if (!answerId) { topTarget.current = null; return; }
-    if (!stick.current) return;
-    topTarget.current = answerId;
-    applyTop();
-  }, [chatMessages, investigationMode, applyTop, refreshSpacer]);
+    if (topTarget.current) applyTop();
+  }, [derivedTarget, applyTop, refreshSpacer]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };
 
