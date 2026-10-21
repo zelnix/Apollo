@@ -14,7 +14,7 @@ import { Asset } from "expo-asset";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, Platform, ScrollView, Text, TextInput, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 
 import { apiGet } from "@/src/api/client";
@@ -120,9 +120,21 @@ const CATEGORY_CONFIG: Record<HigginsCheckCategory, {
   },
 };
 
+/** The apps a message commonly arrives in. The person names it; Apollo never guesses. */
+const SOURCE_APPS = ["SMS", "WhatsApp", "Messenger", "iMessage", "Telegram", "Instagram"];
+
 const useStyles = makeStyles((c) => ({
   field: { gap: spacing.xs },
   label: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  hint: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.muted },
+  appRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  appChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, minHeight: 36, justifyContent: "center",
+  },
+  appChipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
+  appChipText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
+  appChipTextOn: { color: c.onBrandPrimary, fontFamily: fonts.textSemibold },
   input: {
     borderWidth: 1,
     borderColor: c.borderStrong,
@@ -278,6 +290,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
   const [picker, setPicker] = useState<SourceKey | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
+  /** The app a pasted message arrived in, when the person names it. */
+  const [sourceApp, setSourceApp] = useState<string | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [apps, setApps] = useState<InstalledAppRef[]>([]);
@@ -298,6 +312,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setSelectedSample(null);
       setPicker(null);
       setSourceError(null);
+      setSourceApp(null);
     }
   }, [visible, category]);
 
@@ -354,6 +369,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const fillSample = useCallback((id: string, text: string, suggestedQuestion?: string) => {
     setContent(text);
     setSelectedSample(id);
+    // Keep the app chip in step with a sample that states which app it came from.
+    setSourceApp(text.match(/^source app:\s*(.+)$/im)?.[1]?.trim() ?? null);
     if (suggestedQuestion) setQuestion((q) => q.trim() || suggestedQuestion);
     // Back to the entry popup, which looks exactly as it does in production.
     setPicker(null);
@@ -538,11 +555,14 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
   const submit = (prepared: PreparedImage | null) => {
     if (!category || !config) return;
+    const text = content.trim();
     onSubmit({
       category,
       gate: categoryToGate(category),
       question: question.trim() || config.defaultQuestion,
-      textContent: content.trim() || null,
+      // The app the person named is recorded with the message, in the same header form the capture
+      // flows use, so the case shows it the way it arrived.
+      textContent: text ? (sourceApp && !/^source app:/im.test(text) ? `Source app: ${sourceApp}\n${text}` : text) : null,
       imageUri: prepared?.imageUri ?? null,
       preparedImage: prepared,
     });
@@ -696,6 +716,26 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               autoCorrect={category !== "websites_links"}
             />
           </View>
+          {/* Where it arrived matters to the investigation and to how the evidence reads later, and
+              only the person can tell Apollo that when they paste a message in by hand. */}
+          {category === "messages_calls" ? (
+            <View style={s.field} testID="higgins-artifact-app">
+              <Text style={s.label}>Which app did it arrive in? (optional)</Text>
+              <View style={s.appRow}>
+                {SOURCE_APPS.map((app) => {
+                  const on = sourceApp === app;
+                  return (
+                    <Pressable key={app} style={[s.appChip, on && s.appChipOn]} testID={`higgins-artifact-app-${app.toLowerCase()}`}
+                      accessibilityRole="radio" accessibilityState={{ selected: on }}
+                      onPress={() => setSourceApp(on ? null : app)}>
+                      <Text style={[s.appChipText, on && s.appChipTextOn]}>{app}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={s.hint}>Apollo notes this with the message so your case shows it the way it arrived.</Text>
+            </View>
+          ) : null}
           <View style={[s.field, s.questionField]}>
             <Text style={s.label}>Your question (optional)</Text>
             <TextInput

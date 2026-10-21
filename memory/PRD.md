@@ -1,3 +1,43 @@
+## Evidence follow-ups: threat cases, chat capture, pack layout, side-by-side (2026-06)
+
+All four of the owner's picks, built on the `EvidenceArtefactCard` from the restyle.
+
+**1. Threat cases look the same.** `app/patrol/[id].tsx` now leads both its Evidence branches with the
+same artefact card and no longer uses `ImageEvidenceCompare`/`OriginalSourceView` (both files
+deleted — nothing else imported them). The card reports back through `onAvailable`, so the older
+field-by-field views only render when the exact original is NOT on the phone: no case shows the same
+material twice, and nothing is lost when it isn't there ("What Apollo found", "Observed",
+provenance and the Magnum DI fallback all stay). The card now takes `caseKeys: (string|null)[]` —
+a threat case is filed under its event id *and* its investigation id, and the original may be under
+either.
+
+**2. Chat capture.** The Higgins artefact sheet asks "Which app did it arrive in? (optional)" for
+messages and calls, with chips for SMS, WhatsApp, Messenger, iMessage, Telegram and Instagram.
+The choice is recorded as a `Source app:` header line on the captured text — the same form
+`describeArtefact` already reads — so a pasted WhatsApp message lands in the chat layout. Chips stay
+in step with a sample that declares its own app (`SimulatedText.app`, plus a WhatsApp family
+impersonation sample). Verified end to end: paste → tap WhatsApp → Evidence shows "WhatsApp chat".
+
+**3. Evidence pack reads like the screen.** The artefact HTML moved to a pure, testable
+`src/domain/evidencePackHtml.ts` (`evidencePack.ts` keeps only printing/sharing) and now renders the
+same layouts: email card with sender, subject, body and attachments; message/chat as a bubble under
+its sender; post with page and platform; screenshot deferring to the reproduced images. Plus
+"Headers as captured", "Links in this material", and "Copy sent for investigation" — included **only**
+when the redaction actually changed something. Captured text is escaped, so no pasted markup can
+reach the PDF. 6 tests; rendered and eyeballed at A4 width.
+
+**4. Side by side.** Screenshot cases get a third segment next to Original and Redacted that shows
+both pictures with captions ("Original on this phone" / "Copy sent for investigation"), each tappable
+for full screen. On the sign-in-code sample the blacked-out box is obvious at a glance. The segment
+only appears where there are two versions of a picture to compare. Screenshots also now render at
+their own proportions (`Image.getSize`) instead of a fixed 3:4 box.
+
+**Verified in the preview**: threat-case Evidence (email check → Threats → case → Evidence) shows the
+email layout; the seeded device case degrades to the observation view; chat chips produce a chat
+layout; side-by-side renders both images. 49/49 across the evidence, preview and image-privacy
+suites; tsc + ESLint clean.
+
+
 ## Evidence tab restyled: the artefact, as it arrived (2026-06)
 
 **What the owner asked for.** Restyle the case Evidence tab to the attached design — separate screens

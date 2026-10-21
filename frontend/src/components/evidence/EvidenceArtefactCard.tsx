@@ -95,15 +95,18 @@ const SOURCE_INFO = {
 };
 
 const MODE_INFO = {
-  title: "Original and Redacted",
+  title: "Original, Redacted and Side by side",
   body: [
     "Original is the material as captured on this phone. Nothing in it has been altered.",
     "Redacted is the exact copy that left this phone for the investigation. Passwords, PINs and verification codes are blacked out or replaced; the sender, the links and everything else are kept so the investigation has the real evidence.",
+    "For screenshots, Side by side shows both pictures together so you can see exactly what was covered up before anything was sent.",
   ],
 };
 
-type Mode = "original" | "redacted";
+type Mode = "original" | "redacted" | "side";
 type EmailTab = "email" | "headers" | "details";
+
+const MODE_LABEL: Record<Mode, string> = { original: "Original", redacted: "Redacted", side: "Side by side" };
 
 /** Notes about what was changed on the copy that was sent — facts from the evidence record. */
 function imageNotes(r: ImageEvidenceRecord): string[] {
@@ -117,8 +120,10 @@ function imageNotes(r: ImageEvidenceRecord): string[] {
   return out;
 }
 
-export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary, onAvailable, testID = "evidence-artefact" }: {
-  caseKey: string;
+export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummary, onAvailable, testID = "evidence-artefact" }: {
+  /** Every key this case is known by — a threat case carries both its event id and its
+   *  investigation id, and the original may have been filed under either. */
+  caseKeys: (string | null | undefined)[];
   /** Title and date used if the person shares an evidence pack. */
   packTitle: string;
   packDate: string;
@@ -138,18 +143,33 @@ export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const keyList = caseKeys.filter((k): k is string => !!k).join("|");
 
   useEffect(() => {
-    const load = () => { void getOriginalSource(caseKey).then(setSrc).catch(() => setSrc(null)); };
-    load();
-    return subscribeOriginalSource(load);
-  }, [caseKey]);
+    const keys = keyList ? keyList.split("|") : [];
+    const load = async () => {
+      for (const key of keys) {
+        const found = await getOriginalSource(key).catch(() => null);
+        if (found) { setSrc(found); return; }
+      }
+      setSrc(null);
+    };
+    void load();
+    return subscribeOriginalSource(() => void load());
+  }, [keyList]);
 
   useEffect(() => {
-    const load = () => { void listImageEvidence(caseKey).then(setRecords).catch(() => setRecords([])); };
-    load();
-    return subscribeImageEvidence(load);
-  }, [caseKey]);
+    const keys = keyList ? keyList.split("|") : [];
+    const load = async () => {
+      const found = new Map<string, ImageEvidenceRecord>();
+      for (const key of keys) {
+        for (const r of await listImageEvidence(key).catch(() => [])) found.set(r.id, r);
+      }
+      setRecords([...found.values()]);
+    };
+    void load();
+    return subscribeImageEvidence(() => void load());
+  }, [keyList]);
 
   // An image-only case has no text original, but the picture kept on this phone IS the original.
   const source = useMemo<OriginalSource | null>(
@@ -161,6 +181,12 @@ export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary
 
   const images: ArtefactImage[] = useMemo(() => records.flatMap((r) => {
     if (mode === "redacted") return [{ uri: r.sentUri, label: "Copy sent for investigation" }];
+    if (mode === "side") {
+      return [
+        ...(r.originalUri ? [{ uri: r.originalUri, label: "Original on this phone" }] : []),
+        { uri: r.sentUri, label: "Copy sent for investigation" },
+      ];
+    }
     return r.originalUri ? [{ uri: r.originalUri, label: "Original on this device" }] : [];
   }), [records, mode]);
 
@@ -186,9 +212,11 @@ export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary
   const Icon = view.layout === "message" ? (KIND_ICON[source.kind] ?? MessageSquare) : LAYOUT_ICON[view.layout];
 
   const layoutProps: LayoutProps & { s: typeof a } = {
-    view: shown, body: shown.body, url, record: source.data, images,
+    view: shown, body: shown.body, url, record: source.data, images, side: mode === "side",
     onOpenLink: openLink, onViewImage: setFull, s: a,
   };
+  // Side by side only makes sense where there are two versions of a picture to compare.
+  const modes: Mode[] = view.layout === "screenshot" && records.length ? ["original", "redacted", "side"] : ["original", "redacted"];
 
   return (
     <View style={s.card} testID={testID}>
@@ -205,10 +233,10 @@ export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary
       {/* ── Original / Redacted ── */}
       <View style={s.segmentRow}>
         <View style={s.segments}>
-          {(["original", "redacted"] as Mode[]).map((m) => (
+          {modes.map((m) => (
             <Pressable key={m} style={[s.segment, mode === m && s.segmentOn]} onPress={() => setMode(m)}
               accessibilityRole="tab" accessibilityState={{ selected: mode === m }} testID={`${testID}-mode-${m}`}>
-              <Text style={[s.segmentText, mode === m && s.segmentTextOn]}>{m === "original" ? "Original" : "Redacted"}</Text>
+              <Text style={[s.segmentText, mode === m && s.segmentTextOn]}>{MODE_LABEL[m]}</Text>
             </Pressable>
           ))}
         </View>
@@ -286,11 +314,12 @@ export function EvidenceArtefactCard({ caseKey, packTitle, packDate, packSummary
       <View style={s.banner} testID={`${testID}-banner`}>
         <Info size={16} color={colors.onSurfaceSecondary} />
         <View style={s.bannerInfo}>
-          <Text style={s.bannerTitle}>{mode === "original" ? view.bannerTitle : "This is the copy Apollo sent"}</Text>
+          <Text style={s.bannerTitle}>{mode === "original" ? view.bannerTitle : mode === "side" ? "Original and sent copy, side by side" : "This is the copy Apollo sent"}</Text>
           <Text style={s.bannerBody}>
             {mode === "original" ? view.bannerBody
-              : sentCopyIdentical ? "Nothing in this one needed hiding, so the copy sent for investigation is identical to the original."
-                : "Passwords, PINs and verification codes are blacked out or replaced. The sender, the links and everything else are exactly as captured."}
+              : mode === "side" ? "On the left is the picture kept on this phone. On the right is the copy that was sent, with any password, PIN or code blacked out. Tap either to see it full screen."
+                : sentCopyIdentical ? "Nothing in this one needed hiding, so the copy sent for investigation is identical to the original."
+                  : "Passwords, PINs and verification codes are blacked out or replaced. The sender, the links and everything else are exactly as captured."}
           </Text>
         </View>
       </View>

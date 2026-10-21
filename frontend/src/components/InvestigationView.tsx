@@ -842,7 +842,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {/* ━━━━ TAB 2: EVIDENCE — Original Source Material ━━━━ */}
       {activeTab === "evidence" ? (
         <View style={{ gap: spacing.md }} testID="inv-tab-evidence-content">
-          {caseData ? <EvidenceArtefactCard caseKey={caseData.id} onAvailable={setHasLocalOriginal} packTitle={`Apollo investigation ${caseData.id.slice(0, 8)}`} packDate={caseData.createdAt} packSummary={caseData.response ? {
+          {caseData ? <EvidenceArtefactCard caseKeys={[caseData.id]} onAvailable={setHasLocalOriginal} packTitle={`Apollo investigation ${caseData.id.slice(0, 8)}`} packDate={caseData.createdAt} packSummary={caseData.response ? {
             overview: caseData.response.overview || null,
             findings: caseData.response.findings.map((f) => f.text),
             steps: caseData.response.actions.map((a) => a.instruction ? `${a.label}: ${a.instruction}` : a.label),

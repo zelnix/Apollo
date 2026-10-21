@@ -61,8 +61,7 @@ import { subjectDescriptor, threatSubject } from "@/src/domain/threatSubject";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
 import { DiReport } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
-import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
-import { OriginalSourceView } from "@/src/components/OriginalSourceView";
+import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
@@ -723,6 +722,15 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   const [origSrc, setOrigSrc] = useState<OriginalSource | null>(null);
   const [imgEvidence, setImgEvidence] = useState<ImageEvidenceRecord | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // The artefact card reports whether the exact original is on this phone; when it is, the older
+  // field-by-field views below are redundant and would show the same material twice.
+  const [hasLocalOriginal, setHasLocalOriginal] = useState(false);
+  const packSummary = {
+    overview: briefing?.meaning || event.what_happened || null,
+    findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
+    steps: [...new Set([event.what_to_do, briefing?.action].filter((v): v is string => !!v && v !== "No action required."))],
+    uncertainties: [],
+  };
 
   useEffect(() => {
     if (!isInvestigation) { setLoaded(true); return; }
@@ -746,7 +754,12 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   if (isInvestigation) {
     return (
       <View style={s.content}>
+        {/* The artefact itself, as it arrived, with the copy that was sent alongside it. */}
+        <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
+          packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} testID="tc-evidence-artefact" />
+
         {/* Primary: Evidence investigated by Magnum DI */}
+        {!hasLocalOriginal ? (
         <View style={s.evidenceSection} testID="tc-evidence-investigated">
           <View style={s.evidenceHeader}>
             <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
@@ -779,17 +792,10 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
             )}
           </View>
         </View>
+        ) : null}
 
         <SourcesSection sources={buildCaseSources({ event, investigation: inv })} />
         <EvidencePackButton event={event} facts={observedFacts} sources={buildCaseSources({ event, investigation: inv })} />
-
-        {/* Image evidence — show the copy Apollo sent (not the original) */}
-        <ImageEvidenceCompare caseKey={event.event_id} title={event.headline} date={event.occurred_at} summary={{
-          overview: briefing?.meaning || event.what_happened || null,
-          findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
-          steps: [...new Set([event.what_to_do, briefing?.action].filter((v): v is string => !!v && v !== "No action required."))],
-          uncertainties: [],
-        }} />
 
         {/* Analysis signals (from Magnum DI findings — NOT presented as evidence) */}
         {briefing?.evidence_points && briefing.evidence_points.length > 0 ? (
@@ -855,6 +861,10 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   // ── Non-investigation (deterministic): show local observation as before ──
   return (
     <View style={s.content}>
+      {/* The artefact itself, when the exact original is on this phone. */}
+      <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
+        packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} testID="tc-evidence-artefact" />
+
       <View style={s.evidenceSection} testID="tc-evidence-original">
         <View style={s.evidenceHeader}>
           <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
@@ -869,7 +879,8 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
         </View>
 
         <View style={s.evidenceBody}>
-          <OriginalSourceView caseKeys={[event.event_id]} fallback={<>
+          {/* What Apollo recorded about the source. Skipped when the exact original is shown above. */}
+          {!hasLocalOriginal ? <>
           {meta?.sender ? <EvidenceField label="From:" value={meta.sender} /> : null}
           {meta?.subject ? <EvidenceField label="Subject:" value={meta.subject} /> : null}
           {meta?.received_at ? <EvidenceField label="Date:" value={formatDateTime(meta.received_at)} /> : null}
@@ -889,7 +900,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
           {event.indicator_host && !meta?.url && !event.local_indicator ? (
             <EvidenceField label="Domain:" value={event.indicator_host} />
           ) : null}
-          </>} />
+          </> : null}
 
           {/* What Apollo found — the recorded facts of the finding only. No analysis and no
               explanation: those belong on Overview. For cases with no sender/URL (device, app,
@@ -925,13 +936,6 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
 
       <SourcesSection sources={buildCaseSources({ event, investigation: inv })} />
       <EvidencePackButton event={event} facts={observedFacts} sources={buildCaseSources({ event, investigation: inv })} />
-
-      <ImageEvidenceCompare caseKey={event.event_id} title={event.headline} date={event.occurred_at} summary={{
-        overview: briefing?.meaning || event.what_happened || null,
-        findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
-        steps: [...new Set([event.what_to_do, briefing?.action].filter((v): v is string => !!v && v !== "No action required."))],
-        uncertainties: [],
-      }} />
 
       {/* Links found */}
       {meta?.link_count !== null && meta?.link_count !== undefined ? (

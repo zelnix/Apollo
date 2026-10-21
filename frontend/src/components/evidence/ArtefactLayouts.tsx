@@ -20,6 +20,8 @@ export interface LayoutProps {
   /** Raw device/OS record, when that is what was captured. */
   record?: unknown;
   images: ArtefactImage[];
+  /** Screenshots only: show the original and the sent copy next to each other. */
+  side?: boolean;
   onOpenLink: (url: string) => void;
   onViewImage: (image: ArtefactImage) => void;
 }
@@ -61,6 +63,10 @@ const useStyles = makeStyles((c) => ({
   shot: { width: "100%", aspectRatio: 3 / 4, maxHeight: 520, backgroundColor: c.surfaceTertiary },
   shotStrip: { flexDirection: "row", gap: spacing.sm, padding: spacing.sm },
   shotThumb: { width: 56, height: 72, borderRadius: radius.sm, backgroundColor: c.surfaceTertiary },
+  sideRow: { flexDirection: "row", gap: spacing.sm, padding: spacing.sm },
+  sideCol: { flex: 1, gap: spacing.xs },
+  sideImage: { width: "100%", aspectRatio: 3 / 4, maxHeight: 360, borderRadius: radius.sm, backgroundColor: c.surfaceTertiary },
+  sideCaption: { fontFamily: fonts.textMedium, fontSize: 11, lineHeight: 15, color: c.muted, textAlign: "center" },
 
   // ── Post ──
   postHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md },
@@ -210,7 +216,7 @@ export function EmailArtefact({ view, body, images, onOpenLink, onViewImage, tab
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
 
-export function ScreenshotArtefact({ view, body, images, onOpenLink, onViewImage, s }: LayoutProps & { s: Styles }) {
+export function ScreenshotArtefact({ view, body, images, side, onOpenLink, onViewImage, s }: LayoutProps & { s: Styles }) {
   const [main, ...rest] = images;
   // The image's own proportions, read from the file — so the screenshot isn't letterboxed in a box
   // that was never its shape.
@@ -222,12 +228,21 @@ export function ScreenshotArtefact({ view, body, images, onOpenLink, onViewImage
   }, [main?.uri]);
   return (
     <View style={s.frame} testID="evidence-artefact-screenshot">
-      {main ? (
+      {side ? (
+        <View style={s.sideRow} testID="evidence-artefact-side">
+          {images.map((img) => (
+            <Pressable key={img.uri} style={s.sideCol} onPress={() => onViewImage(img)} accessibilityRole="imagebutton" accessibilityLabel={`View ${img.label} full screen`}>
+              <Image source={{ uri: img.uri }} style={[s.sideImage, ratio ? { aspectRatio: ratio } : null]} resizeMode="contain" />
+              <Text style={s.sideCaption}>{img.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : main ? (
         <Pressable onPress={() => onViewImage(main)} accessibilityRole="imagebutton" accessibilityLabel={`View ${main.label} full screen`} testID="evidence-artefact-image">
           <Image source={{ uri: main.uri }} style={[s.shot, ratio ? { aspectRatio: ratio } : null]} resizeMode="contain" />
         </Pressable>
       ) : <Text style={s.empty}>The image is no longer on this device.</Text>}
-      {rest.length ? (
+      {rest.length && !side ? (
         <View style={s.shotStrip}>
           {rest.map((img) => (
             <Pressable key={img.uri} onPress={() => onViewImage(img)} accessibilityRole="imagebutton" accessibilityLabel={`View ${img.label}`}>
