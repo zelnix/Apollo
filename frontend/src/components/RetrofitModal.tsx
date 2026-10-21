@@ -117,20 +117,27 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
   const runRetrofit = useCallback(async () => {
     try {
       setPhase("running");
-      const result = await apiPostEmpty<RetrofitReport>("/enhancements/run", "enhancements-run-v1");
+      setError("");
+      const result = await apiPostEmpty<RetrofitReport & { timeout?: boolean; message?: string }>("/enhancements/run", "enhancements-run-v1");
+      if (result.timeout) {
+        setError(result.message || "The enhancement service took too long to respond. This can happen when the security service is busy processing. Tap Retry to try again.");
+        setPhase("error");
+        return;
+      }
       setReport(result);
       await markRetrofitDone();
       setPhase("done");
     } catch (err: any) {
-      if (auto) {
-        // Auto mode: silently close on failure — user can retry from Settings
-        onClose();
-        return;
-      }
-      setError(err?.message ?? "Something went wrong during the retrofit.");
+      const msg = err?.message ?? "";
+      const isTimeout = msg.includes("timeout") || msg.includes("took too long") || msg.includes("network") || msg.includes("504") || msg.includes("408");
+      setError(
+        isTimeout
+          ? "The security service took too long to respond. This can happen when the service is busy. Tap Retry to try again."
+          : msg || "Something went wrong during the enhancement update. Tap Retry to try again."
+      );
       setPhase("error");
     }
-  }, [auto, onClose]);
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -159,24 +166,34 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
           // Auto mode: skip confirmation, start immediately
           setPhase("running");
           try {
-            const result = await apiPostEmpty<RetrofitReport>("/enhancements/run", "enhancements-run-v1");
+            const result = await apiPostEmpty<RetrofitReport & { timeout?: boolean; message?: string }>("/enhancements/run", "enhancements-run-v1");
+            if (result.timeout) {
+              setError(result.message || "The security service took too long to respond. Tap Retry to try again.");
+              setPhase("error");
+              return;
+            }
             setReport(result);
             await markRetrofitDone();
             setPhase("done");
-          } catch {
-            // Auto mode: silently close on failure
-            onClose();
+          } catch (err: any) {
+            const msg = err?.message ?? "";
+            const isTimeout = msg.includes("timeout") || msg.includes("took too long") || msg.includes("network");
+            setError(
+              isTimeout
+                ? "The security service took too long to respond. Tap Retry to try again."
+                : msg || "Could not complete the enhancement update. Tap Retry to try again."
+            );
+            setPhase("error");
           }
           return;
         }
         // Manual mode: show confirmation screen
         setPhase("confirm");
       } catch {
-        if (auto) { onClose(); return; }
         setPhase("confirm");
       }
     })();
-  }, [visible, auto, onClose]);
+  }, [visible, auto]);
 
   // If auto mode and already done, close silently
   useEffect(() => {
@@ -314,14 +331,24 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
           {phase === "error" ? (
             <View style={s.loadingWrap}>
               <Text style={s.loadingTitle}>Enhancement update</Text>
-              <Text style={s.loadingDesc}>{error || "Could not complete the update. You can try again from Settings."}</Text>
+              <Text style={s.loadingDesc}>{error || "Could not complete the update."}</Text>
+              <Pressable
+                testID="retrofit-retry"
+                style={[s.okButton, { backgroundColor: colors.brand }]}
+                onPress={runRetrofit}
+                accessibilityRole="button"
+                accessibilityLabel="Retry"
+              >
+                <Text style={s.okButtonText}>Retry</Text>
+              </Pressable>
               <Pressable
                 testID="retrofit-ok-error"
-                style={[s.okButton, { backgroundColor: colors.brand }]}
+                style={[s.okButton, { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border, marginTop: spacing.sm }]}
                 onPress={onClose}
                 accessibilityRole="button"
+                accessibilityLabel="Close"
               >
-                <Text style={s.okButtonText}>OK</Text>
+                <Text style={[s.okButtonText, { color: colors.onSurfaceSecondary }]}>Close</Text>
               </Pressable>
             </View>
           ) : null}
