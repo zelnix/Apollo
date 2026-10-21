@@ -2,7 +2,7 @@
 // Default to Overview. Matches the approved Threat Case reporting experience.
 // Apollo detects. Magnum DI investigates. Higgins explains findings and guides users.
 // Evidence tab shows original evidentiary sources, not summaries or interpretations.
-import * as FileSystem from "expo-file-system";
+import * as FileSystemLegacy from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
@@ -34,6 +34,7 @@ import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } f
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
+import { listLocalReports, saveLocalReport, deleteLocalReport } from "@/src/investigation/localReports";
 import type { ActionProposal, Attention, EvidenceItem, Gate, SourceReference } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
@@ -625,13 +626,12 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       if (!token) { setPdfNote("Device not registered. Please restart Apollo."); return; }
       const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf`;
       const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
-      const destination = new FileSystem.File(FileSystem.Paths.cache, filename);
-      const task = new FileSystem.DownloadTask(url, destination, { headers: { Authorization: `Bearer ${token}` } });
-      const file = await task.downloadAsync();
-      if (!file) { setPdfNote("Could not generate the PDF. Please try again."); return; }
+      const fileUri = (FileSystemLegacy.cacheDirectory ?? "") + filename;
+      const result = await FileSystemLegacy.downloadAsync(url, fileUri, { headers: { Authorization: `Bearer ${token}` } });
+      if (!result || result.status !== 200) { setPdfNote("Could not generate the PDF. Please try again."); return; }
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (sharingAvailable) {
-        await Sharing.shareAsync(file.uri, { mimeType: "application/pdf", dialogTitle: "Export Apollo Investigation Report", UTI: "com.adobe.pdf" });
+        await Sharing.shareAsync(result.uri, { mimeType: "application/pdf", dialogTitle: "Export Apollo Investigation Report", UTI: "com.adobe.pdf" });
         setPdfNote("PDF exported successfully.");
       } else if (Platform.OS === "web") { setPdfNote("PDF download is not available in the web preview. Use the Expo Go app on a device."); }
       else { setPdfNote("Sharing is not available on this device."); }
@@ -642,7 +642,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   // ── Load reports + evidence ──
   useEffect(() => {
     if (!state.caseData) { setReports([]); setReportNext(null); return; }
-    void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));
+    void listLocalReports().then((items) => { setReports(items); setReportNext(null); }).catch(() => setReportNote("Saved reports could not be loaded."));
     void investigationApi.listEvidence(state.caseData.id).then((result) => setEvidenceItems(result.items)).catch(() => {});
   }, [state.caseData]);
 
@@ -819,21 +819,19 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
               onPress={exportPdf} />
             {pdfNote ? <Text style={s.muted} testID="inv-pdf-note">{pdfNote}</Text> : null}
             <Button testID="inv-report-save" variant="ghost" label="Save a redacted report" onPress={() => {
-              void investigationApi.saveReport(caseData.id, response.revision).then(({ reportId }) => investigationApi.listReports().then((result) => {
-                setReports(result.items); setReportNext(result.nextCursor); setReportNote(`Saved report ${reportId.slice(0, 8)}. Temporary evidence is not copied.`);
+              void saveLocalReport(caseData.id, response as unknown as Record<string, unknown>, response.revision).then((reportId) => listLocalReports().then((items) => {
+                setReports(items); setReportNext(null); setReportNote(`Saved report ${reportId.slice(0, 8)}. Evidence stays on your device.`);
               })).catch(() => setReportNote("The report could not be saved."));
             }} />
             <Button testID="inv-reports-toggle" variant="ghost" label={`${reportsOpen ? "Hide" : "Manage"} saved reports (${reports.length}${reportNext !== null ? "+" : ""})`} onPress={() => setReportsOpen((v) => !v)} />
             {reportsOpen ? <View style={{ gap: spacing.sm }} testID="inv-reports-list">{reports.map((report) => <View key={report.reportId} style={s.source} testID={`inv-report-${report.reportId}`}>
               <Text style={s.text}>{scrubMessage(report.overview)}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} \u00B7 historical snapshot</Text>
               <Button testID={`inv-report-delete-${report.reportId}`} variant="ghost" label="Delete saved report" onPress={() => {
-                void investigationApi.deleteReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
+                void deleteLocalReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
                   .catch(() => setReportNote("That report could not be deleted."));
               }} />
             </View>)}
-            {reportNext !== null ? <Button testID="inv-reports-load-more" variant="ghost" label="Load more reports" onPress={() => {
-              void investigationApi.listReports(reportNext).then((result) => { setReports((items) => [...items, ...result.items]); setReportNext(result.nextCursor); });
-            }} /> : null}</View> : null}
+            {reportNext !== null ? null : null}</View> : null}
             {reportNote ? <Text style={s.muted} testID="inv-report-note">{reportNote}</Text> : null}
           </View> : null}
         </Card>

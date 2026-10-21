@@ -177,17 +177,17 @@ export default function Ask() {
   }, [deviceId, health, events]);
 
   const scrollToEnd = useCallback((force = false) => { if (force || stick.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true })); }, []);
-  // A new answer from Higgins is brought to the TOP of the view so it is read from its
-  // first line. Two things are needed for that to actually happen:
-  //   1. A trailing spacer, so there is room below the answer for it to rise to the top —
-  //      without it `scrollTo` clamps at the end of the content and the answer settles at
-  //      the bottom, which is the behaviour this replaces.
-  //   2. The target is held, not cleared on the first scroll, so later layout passes
-  //      (destination chips, fonts, the spacer itself) re-apply it instead of the
-  //      content-size handler snapping back to the bottom.
+
+  // ── Scroll-to-top-of-answer logic ──────────────────────────────────────
+  // When Higgins replies, the viewport should land at the TOP of the new
+  // answer so the user reads it from the first line.  Two things are needed:
+  //   1. A trailing spacer so the answer CAN physically reach the top.
+  //   2. A `suppressEnd` flag that prevents `onContentSizeChange` from
+  //      calling `scrollToEnd` while the answer is being laid out.
   const rowY = useRef<Record<string, number>>({});
   const rowH = useRef<Record<string, number>>({});
   const topTarget = useRef<string | null>(null);
+  const suppressEnd = useRef(false);            // ← blocks scrollToEnd in onCSC
   const viewportH = useRef(0);
   const lastAnswerId = useRef<string | null>(null);
   const [spacer, setSpacer] = useState(0);
@@ -198,14 +198,10 @@ export default function Ask() {
     const y = rowY.current[id];
     if (y === undefined) return;
     const target = Math.max(y - spacing.sm, 0);
-    // Fire twice: immediately via rAF, and again after a brief delay so that any
-    // competing scrollToEnd animation (which may still be in flight from the
-    // earlier onContentSizeChange) is overridden on native.
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: target, animated: true }));
-    setTimeout(() => { if (topTarget.current === id) scrollRef.current?.scrollTo({ y: target, animated: false }); }, 120);
+    scrollRef.current?.scrollTo({ y: target, animated: false });
   }, []);
 
-  // Room below the newest answer, so it can actually reach the top of the view.
+  // Room below the newest answer so it can actually reach the top of the view.
   const refreshSpacer = useCallback(() => {
     const id = lastAnswerId.current;
     if (!id || viewportH.current === 0) { setSpacer(0); return; }
@@ -219,24 +215,34 @@ export default function Ask() {
     if (topTarget.current === id) applyTop();
   }, [applyTop, refreshSpacer]);
 
-  // Derive the scroll-to-top target synchronously so onContentSizeChange sees it
-  // on the SAME render pass that adds the new Higgins message — not one tick later
-  // via useEffect (which would let onContentSizeChange fall through to scrollToEnd).
+  // Derive target synchronously on each render.
   const derivedTarget = React.useMemo(() => {
     const last = chatMessages[chatMessages.length - 1];
     return !investigationMode && last?.role === "higgins" ? last.id : null;
   }, [chatMessages, investigationMode]);
 
-  // Keep refs in step — still needed by applyTop / refreshSpacer / noteRow.
+  // Keep refs in sync.
   if (derivedTarget !== lastAnswerId.current) {
     lastAnswerId.current = derivedTarget;
-    if (!derivedTarget) { topTarget.current = null; }
-    else if (stick.current) { topTarget.current = derivedTarget; }
+    if (!derivedTarget) {
+      topTarget.current = null;
+      suppressEnd.current = false;
+    } else if (stick.current) {
+      topTarget.current = derivedTarget;
+      suppressEnd.current = true;            // block scrollToEnd until user drags
+    }
   }
 
   useEffect(() => {
     refreshSpacer();
-    if (topTarget.current) applyTop();
+    if (topTarget.current) {
+      // Multiple attempts to override any in-flight animations
+      applyTop();
+      const t1 = setTimeout(applyTop, 80);
+      const t2 = setTimeout(applyTop, 250);
+      const t3 = setTimeout(applyTop, 500);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
   }, [derivedTarget, applyTop, refreshSpacer]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };
@@ -534,8 +540,8 @@ export default function Ask() {
 
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll}
         onLayout={(e) => { viewportH.current = e.nativeEvent.layout.height; refreshSpacer(); }}
-        onScrollBeginDrag={() => { topTarget.current = null; }}
-        onContentSizeChange={() => { if (topTarget.current) { applyTop(); return; } scrollToEnd(investigationMode); }}>
+        onScrollBeginDrag={() => { topTarget.current = null; suppressEnd.current = false; }}
+        onContentSizeChange={() => { if (topTarget.current) { applyTop(); return; } if (!suppressEnd.current) scrollToEnd(investigationMode); }}>
         {showWelcome ? <>
           <Text style={s.welcomePrompt} testID="higgins-welcome">What can I help you with? Ask me anything, or tap ⓘ to learn what I do.</Text>
           <Animated.View key={rotation} entering={FadeIn.duration(350)} style={s.starters} testID="ask-suggestions">
