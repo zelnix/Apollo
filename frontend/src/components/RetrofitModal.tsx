@@ -122,10 +122,15 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
       await markRetrofitDone();
       setPhase("done");
     } catch (err: any) {
+      if (auto) {
+        // Auto mode: silently close on failure — user can retry from Settings
+        onClose();
+        return;
+      }
       setError(err?.message ?? "Something went wrong during the retrofit.");
       setPhase("error");
     }
-  }, []);
+  }, [auto, onClose]);
 
   useEffect(() => {
     if (!visible) return;
@@ -145,18 +150,33 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
           }
         }
         const status = await apiGet<{ status: string; report?: RetrofitReport }>("/enhancements/status");
-        if (status.status === "completed" && auto) {
+        if (status.status === "completed") {
           await markRetrofitDone();
           setPhase("already_done");
           return;
         }
-        // Show the confirmation screen
+        if (auto) {
+          // Auto mode: skip confirmation, start immediately
+          setPhase("running");
+          try {
+            const result = await apiPostEmpty<RetrofitReport>("/enhancements/run", "enhancements-run-v1");
+            setReport(result);
+            await markRetrofitDone();
+            setPhase("done");
+          } catch {
+            // Auto mode: silently close on failure
+            onClose();
+          }
+          return;
+        }
+        // Manual mode: show confirmation screen
         setPhase("confirm");
       } catch {
+        if (auto) { onClose(); return; }
         setPhase("confirm");
       }
     })();
-  }, [visible, auto]);
+  }, [visible, auto, onClose]);
 
   // If auto mode and already done, close silently
   useEffect(() => {

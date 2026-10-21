@@ -308,24 +308,39 @@ async def revoke_trust(trust_id: str, device_id: str = Query(min_length=8, max_l
 async def user_enhancements_run():
     """Run all new enhancements: retrofit past reports + seed Learn with Higgins articles.
     Idempotent — safe to rerun. This is the user-facing endpoint (no admin key required).
+    Applies a 55-second timeout so a slow Gemini response does not hang the request.
     """
+    import asyncio
     from scripts.retrofit_historical_records import run_migration
     from services.learning import seed_catalogue_sources_feeds, seed_learning_articles
 
-    # 1. Retrofit past investigation reports
-    retrofit_report = await run_migration(dry_run=False)
+    async def _run():
+        # 1. Retrofit past investigation reports
+        retrofit_report = await run_migration(dry_run=False)
+        # 2. Seed sources/feeds catalogue (needed before articles)
+        catalogue = await seed_catalogue_sources_feeds()
+        # 3. Seed Learn with Higgins articles
+        articles = await seed_learning_articles()
+        return {
+            **(retrofit_report or {}),
+            "learning_catalogue": catalogue,
+            "learning_articles": articles,
+        }
 
-    # 2. Seed sources/feeds catalogue (needed before articles)
-    catalogue = await seed_catalogue_sources_feeds()
-
-    # 3. Seed Learn with Higgins articles
-    articles = await seed_learning_articles()
-
-    return {
-        **(retrofit_report or {}),
-        "learning_catalogue": catalogue,
-        "learning_articles": articles,
-    }
+    try:
+        return await asyncio.wait_for(_run(), timeout=55.0)
+    except asyncio.TimeoutError:
+        # Return a partial success so the client doesn't get a raw timeout
+        return {
+            "reviewed": 0,
+            "classified": 0,
+            "reclassified": 0,
+            "briefings_generated": 0,
+            "duplicates_marked": 0,
+            "legacy_marked": 0,
+            "timeout": True,
+            "message": "Enhancement run timed out. Some enhancements may have been partially applied. You can retry from Settings.",
+        }
 
 
 @router.get("/enhancements/status")
