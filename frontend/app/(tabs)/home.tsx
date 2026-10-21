@@ -128,7 +128,8 @@ const useStyles = makeStyles((c) => ({
   // ── Branded header ──
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandLogo: { height: 70, aspectRatio: 2000 / 698 },
+  brandLogo: { height: 55, aspectRatio: 2000 / 698 },
+  brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
 
   // ── Hero status card ──
   heroCard: {
@@ -312,12 +313,15 @@ export default function Home() {
       {/* ── Branded Header ── */}
       <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
         <View style={s.headerRow}>
-          <Image
-            source={require("@/assets/images/apollo-scam-guard-logo.png")}
-            style={s.brandLogo}
-            contentFit="contain"
-            testID="home-brand-title"
-          />
+          <View>
+            <Image
+              source={require("@/assets/images/apollo-scam-guard-logo.png")}
+              style={s.brandLogo}
+              contentFit="contain"
+              testID="home-brand-title"
+            />
+            <Text style={s.brandSubtitle}>Better Protection. Safer You. Safer Tomorrows.</Text>
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
             <AlertsButton testID="home-alerts" />
