@@ -40,6 +40,7 @@ import { scrubMessage } from "@/src/domain/messageVoice";
 import {
   threatCaseId,
   threatCaseStatus,
+  caseGroupKey,
   caseStatusLine,
   STATUS_LABELS,
   STATUS_COLORS,
@@ -360,12 +361,49 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
         <FactRow icon={Search} label="Risk level" value={risk.label} valueColor={risk.color} isLast />
       </Card>
 
+      {/* Repeat checks of this device: one case, every check listed. */}
+      {event.case_key ? <CaseCheckRuns event={event} /> : null}
+
       {/* Triage investigation — the stored deterministic record. No model call. */}
       {event.triage_investigation ? <TriageSummary record={event.triage_investigation} /> : null}
 
       {/* Connected incidents */}
       {event.scent_id ? <ScentSection event={event} /> : null}
     </View>
+  );
+}
+
+/** Repeat checks on the same subject are ONE case. This restates how many checks have been filed
+ *  against it and lets the person open any earlier check. Nothing is re-analysed here. */
+function CaseCheckRuns({ event }: { event: PatrolEvent }) {
+  const s = useStyles();
+  const router = useRouter();
+  const { events } = useApollo();
+  const runs = events
+    .filter((e) => caseGroupKey(e) === caseGroupKey(event))
+    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
+  if (runs.length < 2) return null;
+  const earlier = runs.filter((e) => e.event_id !== event.event_id).slice(0, 5);
+
+  return (
+    <Card style={{ gap: spacing.xs }} testID="tc-overview-runs">
+      <Text style={s.sectionTitle}>Checks on this case</Text>
+      <Text style={s.reportBody} testID="tc-overview-runs-count">
+        Checked {runs.length} times · last checked {formatDateTime(runs[0].occurred_at)}
+      </Text>
+      {earlier.map((run) => (
+        <Pressable
+          key={run.event_id}
+          testID={`tc-overview-run-${run.event_id}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Open the check from ${formatDateTime(run.occurred_at)}`}
+          onPress={() => router.push(`/patrol/${encodeURIComponent(run.event_id)}`)}
+          style={({ pressed }) => [{ paddingVertical: spacing.xs, opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Text style={s.relatedSub}>{formatDateTime(run.occurred_at)} — {run.headline}</Text>
+        </Pressable>
+      ))}
+    </Card>
   );
 }
 

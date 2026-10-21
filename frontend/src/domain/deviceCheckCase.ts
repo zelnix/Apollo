@@ -22,6 +22,10 @@ const STATE_FOR: Record<string, ApolloState> = {
   error: "ears_up",
 };
 
+/** One device = one device-check case. Every recheck files its own patrol entry but shares this key,
+ *  so Threats shows a single device-check case instead of one row per check. */
+export const deviceCheckCaseKey = (deviceId: string | null): string => `device-check:${deviceId ?? "local"}`;
+
 export function deviceCheckEvent(args: {
   eventId: string;
   deviceId: string | null;
@@ -39,9 +43,11 @@ export function deviceCheckEvent(args: {
   return {
     event_id: eventId,
     device_id: deviceId ?? "local",
+    case_key: deviceCheckCaseKey(deviceId),
     category: "device",
     state,
-    status: clear ? "resolved" : "active",
+    // A finished check — clear or not — stays open until the person closes it themselves.
+    status: "active",
     headline: failed ? "Device check didn't run" : `Device check: ${briefing.headline}`,
     what_happened: failed
       ? "Apollo tried to check this device and the check did not complete. Nothing here says the device is clear."
@@ -58,7 +64,7 @@ export function deviceCheckEvent(args: {
     verified_block: false,
     adapter_label: adapterLabel,
     occurred_at: checkedAt,
-    resolved_at: clear ? checkedAt : null,
+    resolved_at: null,
     trust_allowed: false,
     background: false,
     evidence_provenance: "local_device",

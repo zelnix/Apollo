@@ -162,6 +162,10 @@ export interface PatrolEvent {
   scenario?: string | null;
   /** Threat Scent id linking related events (message → link → login → call). */
   scent_id?: string | null;
+  /** Stable case identity for repeat checks on the same subject. Events sharing a case_key are ONE
+   *  case in Threats (latest shown), while each event remains its own entry in patrol history.
+   *  Used by device checks so a recheck after a fix doesn't open a second case. */
+  case_key?: string | null;
   /** Whether "Trust This" may be offered. Only growling-level uncertain items. */
   trust_allowed?: boolean;
   /** Cross-Platform Architecture Directive: raw enforcement evidence backing verified_block, if any.

@@ -35,6 +35,7 @@ import {
   threatCaseStatus,
   STATUS_LABELS,
   STATUS_COLORS,
+  caseGroupKey,
   categoryLabel,
   formatDateTime,
   threatCaseId,
@@ -229,7 +230,7 @@ export default function ThreatsScreen() {
     // Sort by timestamp first so we keep the latest event for each case
     const sorted = [...events].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
     for (const event of sorted) {
-      const caseKey = event.patrol_record?.logicalIssueKey ?? event.event_id;
+      const caseKey = caseGroupKey(event);
       if (seen.has(caseKey)) continue;
       seen.add(caseKey);
       deduped.push(event);

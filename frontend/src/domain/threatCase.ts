@@ -30,6 +30,15 @@ export function threatCaseId(event: PatrolEvent): string {
   return `TC-${year}-${suffix}`;
 }
 
+// ── Case grouping ───────────────────────────────────────────────────────────
+
+/** The key that decides what counts as ONE case in the Threats list. Repeat checks of the same
+ *  subject (today: device checks) carry a stable case_key, so they collapse into a single case
+ *  showing the latest result while every individual check stays visible in patrol history. */
+export function caseGroupKey(event: PatrolEvent): string {
+  return event.case_key ?? event.patrol_record?.logicalIssueKey ?? event.event_id;
+}
+
 // ── Status ──────────────────────────────────────────────────────────────────
 
 export type ThreatCaseStatus =
