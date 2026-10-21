@@ -126,10 +126,10 @@ const useStyles = makeStyles((c) => ({
   scroll: { paddingBottom: spacing["3xl"] },
 
   // ── Branded header ──
-  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandLogo: { height: 50, aspectRatio: 1789 / 537, alignSelf: "flex-start" as const },
-  brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
+  brandLogo: { height: 36, aspectRatio: 1789 / 537 },
+  brandSubtitle: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginTop: 2 },
 
   // ── Hero status card ──
   heroCard: {
@@ -311,22 +311,20 @@ export default function Home() {
   return (
     <View style={s.root}>
       {/* ── Branded Header ── */}
-      <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
+      <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.sm }]}>
         <View style={s.headerRow}>
-          <View>
-            <Image
-              source={require("@/assets/images/apollo-scam-guard-logo.png")}
-              style={s.brandLogo}
-              contentFit="contain"
-              testID="home-brand-title"
-            />
-            <Text style={s.brandSubtitle}>Better Protection. Safer You. Safer Tomorrows.</Text>
-          </View>
+          <Image
+            source={require("@/assets/images/apollo-scam-guard-logo.png")}
+            style={s.brandLogo}
+            contentFit="contain"
+            testID="home-brand-title"
+          />
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
             <AlertsButton testID="home-alerts" />
           </View>
         </View>
+        <Text style={s.brandSubtitle}>Better Protection. Safer You. Safer Tomorrows.</Text>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} testID="home-scroll" showsVerticalScrollIndicator={false}>
