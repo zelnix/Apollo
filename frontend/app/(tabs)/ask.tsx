@@ -178,30 +178,32 @@ export default function Ask() {
 
   const scrollToEnd = useCallback((force = false) => { if (force || stick.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true })); }, []);
 
-  // ── Scroll-to-top-of-answer logic ──────────────────────────────────────
-  // When Higgins replies, the viewport should land at the TOP of the new
-  // answer so the user reads it from the first line.  Two things are needed:
-  //   1. A trailing spacer so the answer CAN physically reach the top.
-  //   2. A `suppressEnd` flag that prevents `onContentSizeChange` from
-  //      calling `scrollToEnd` while the answer is being laid out.
+  // ── Scroll-to-top-of-answer ────────────────────────────────────────────
+  // When Higgins replies the viewport lands at the TOP of the new answer.
+  // A persistent interval re-applies the position every 100 ms so that
+  // late layout passes (link chips, spacer resize, font load) can never
+  // push the view back to the bottom.  The interval is cleared when the
+  // user drags or after 4 s as a safety net.
   const rowY = useRef<Record<string, number>>({});
   const rowH = useRef<Record<string, number>>({});
   const topTarget = useRef<string | null>(null);
-  const suppressEnd = useRef(false);            // ← blocks scrollToEnd in onCSC
+  const scrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const viewportH = useRef(0);
   const lastAnswerId = useRef<string | null>(null);
   const [spacer, setSpacer] = useState(0);
+
+  const clearScrollTimer = useCallback(() => {
+    if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
+  }, []);
 
   const applyTop = useCallback(() => {
     const id = topTarget.current;
     if (!id) return;
     const y = rowY.current[id];
     if (y === undefined) return;
-    const target = Math.max(y - spacing.sm, 0);
-    scrollRef.current?.scrollTo({ y: target, animated: false });
+    scrollRef.current?.scrollTo({ y: Math.max(y - spacing.sm, 0), animated: false });
   }, []);
 
-  // Room below the newest answer so it can actually reach the top of the view.
   const refreshSpacer = useCallback(() => {
     const id = lastAnswerId.current;
     if (!id || viewportH.current === 0) { setSpacer(0); return; }
@@ -215,35 +217,33 @@ export default function Ask() {
     if (topTarget.current === id) applyTop();
   }, [applyTop, refreshSpacer]);
 
-  // Derive target synchronously on each render.
+  // Derive target synchronously.
   const derivedTarget = React.useMemo(() => {
     const last = chatMessages[chatMessages.length - 1];
     return !investigationMode && last?.role === "higgins" ? last.id : null;
   }, [chatMessages, investigationMode]);
 
-  // Keep refs in sync.
   if (derivedTarget !== lastAnswerId.current) {
     lastAnswerId.current = derivedTarget;
     if (!derivedTarget) {
       topTarget.current = null;
-      suppressEnd.current = false;
+      clearScrollTimer();
     } else if (stick.current) {
       topTarget.current = derivedTarget;
-      suppressEnd.current = true;            // block scrollToEnd until user drags
     }
   }
 
   useEffect(() => {
     refreshSpacer();
-    if (topTarget.current) {
-      // Multiple attempts to override any in-flight animations
-      applyTop();
-      const t1 = setTimeout(applyTop, 80);
-      const t2 = setTimeout(applyTop, 250);
-      const t3 = setTimeout(applyTop, 500);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    }
-  }, [derivedTarget, applyTop, refreshSpacer]);
+    if (!topTarget.current) return;
+    // Start a persistent interval that keeps the answer at the top.
+    clearScrollTimer();
+    applyTop();
+    scrollTimer.current = setInterval(applyTop, 100);
+    // Safety: stop after 4 s even if the user hasn't dragged.
+    const safety = setTimeout(() => { clearScrollTimer(); }, 4000);
+    return () => { clearScrollTimer(); clearTimeout(safety); };
+  }, [derivedTarget, applyTop, refreshSpacer, clearScrollTimer]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };
 
@@ -540,8 +540,15 @@ export default function Ask() {
 
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll}
         onLayout={(e) => { viewportH.current = e.nativeEvent.layout.height; refreshSpacer(); }}
-        onScrollBeginDrag={() => { topTarget.current = null; suppressEnd.current = false; }}
-        onContentSizeChange={() => { if (topTarget.current) { applyTop(); return; } if (!suppressEnd.current) scrollToEnd(investigationMode); }}>
+        onScrollBeginDrag={() => { topTarget.current = null; clearScrollTimer(); }}
+        onContentSizeChange={() => {
+          // When holding the answer at the top, re-apply on every layout pass.
+          if (topTarget.current) { applyTop(); return; }
+          // Only auto-scroll-to-end for investigation mode or if the user was
+          // already at the bottom.  Never for regular chat answers.
+          if (investigationMode) scrollToEnd(true);
+          else scrollToEnd(false);
+        }}>
         {showWelcome ? <>
           <Text style={s.welcomePrompt} testID="higgins-welcome">What can I help you with? Ask me anything, or tap ⓘ to learn what I do.</Text>
           <Animated.View key={rotation} entering={FadeIn.duration(350)} style={s.starters} testID="ask-suggestions">
@@ -592,7 +599,7 @@ export default function Ask() {
 
       <View style={[s.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <Pressable testID="ask-check-button" accessibilityRole="button" accessibilityLabel="Submit something for Higgins to check" onPress={() => setCheckSheetOpen(true)} disabled={busy} style={[s.attachBtn, { opacity: busy ? 0.5 : 1 }]}><CirclePlus size={24} color={colors.brandPrimary} /></Pressable>
-        <TextInput ref={inputRef} testID="ask-input" style={s.input} value={text} onChangeText={setText} placeholder={investigationMode ? state.phase === "waiting_user" ? "Answer Higgins' question…" : "Ask about this investigation…" : "Message Higgins…"} placeholderTextColor={colors.muted} multiline returnKeyType="send" blurOnSubmit onSubmitEditing={() => submit(text)} onFocus={() => scrollToEnd(true)} />
+        <TextInput ref={inputRef} testID="ask-input" style={s.input} value={text} onChangeText={setText} placeholder={investigationMode ? state.phase === "waiting_user" ? "Answer Higgins' question…" : "Ask about this investigation…" : "Message Higgins…"} placeholderTextColor={colors.muted} multiline returnKeyType="send" blurOnSubmit onSubmitEditing={() => submit(text)} onFocus={() => { if (!topTarget.current) scrollToEnd(true); }} />
         <Pressable testID="ask-send-button" accessibilityRole="button" accessibilityLabel="Send message to Higgins" onPress={() => submit(text)} disabled={busy || !text.trim()} style={[s.send, { opacity: busy || !text.trim() ? 0.5 : 1 }]}>{busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <SendHorizontal size={20} color={colors.onBrandPrimary} />}</Pressable>
       </View>
     </KeyboardAvoidingView>
