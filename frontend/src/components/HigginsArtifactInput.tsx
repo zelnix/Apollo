@@ -479,7 +479,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     }
     if (key === "messages") {
       const x = SIMULATED_TEXTS.find((t) => t.id === id);
-      if (x) fillSample(x.id, `From ${x.sender}:\n${x.text}`, "Is this message a scam?");
+      if (x) fillSample(x.id, `${x.app ? `Source app: ${x.app}\n` : ""}From ${x.sender}:\n${x.text}`, "Is this message a scam?");
       return;
     }
     if (key === "calls") {

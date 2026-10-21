@@ -28,9 +28,8 @@ import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { API_BASE } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
-import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
+import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport } from "@/src/components/DiReport";
-import { OriginalSourceView } from "@/src/components/OriginalSourceView";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -601,6 +600,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const [evidencePopupVisible, setEvidencePopupVisible] = useState(false);
   const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [hasLocalOriginal, setHasLocalOriginal] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [pdfNote, setPdfNote] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -842,22 +842,16 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {/* ━━━━ TAB 2: EVIDENCE — Original Source Material ━━━━ */}
       {activeTab === "evidence" ? (
         <View style={{ gap: spacing.md }} testID="inv-tab-evidence-content">
-          {/* Explanatory header */}
-          <Card style={[s.card, { gap: spacing.xs }]}>
-            <Text style={s.sectionTitle}>SOURCE EVIDENCE</Text>
-            <Text style={s.muted}>The original material Apollo relied on for this investigation. Content is preserved unaltered.</Text>
-          </Card>
-
-          {caseData ? <OriginalSourceView caseKeys={[caseData.id]} /> : null}
-          {caseData ? <ImageEvidenceCompare caseKey={caseData.id} title={`Apollo investigation ${caseData.id.slice(0, 8)}`} date={caseData.createdAt} summary={caseData.response ? {
+          {caseData ? <EvidenceArtefactCard caseKey={caseData.id} onAvailable={setHasLocalOriginal} packTitle={`Apollo investigation ${caseData.id.slice(0, 8)}`} packDate={caseData.createdAt} packSummary={caseData.response ? {
             overview: caseData.response.overview || null,
             findings: caseData.response.findings.map((f) => f.text),
             steps: caseData.response.actions.map((a) => a.instruction ? `${a.label}: ${a.instruction}` : a.label),
             uncertainties: caseData.response.uncertainties,
           } : null} /> : null}
 
-          {/* Original evidence items — with full source headers and inline content */}
-          {originalEvidence.length ? <>
+          {/* Original evidence items — the server-side chain. Skipped when the exact original is
+              already on this phone, so the same material isn't shown twice. */}
+          {originalEvidence.length && !hasLocalOriginal ? <>
             {originalEvidence.map((ev) => (
               <Card key={ev.id} style={[s.card, { gap: spacing.sm }]}>
                 <EvidenceSourceCard
@@ -882,7 +876,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             </Card>
           </> : null}
 
-          {!originalEvidence.length && !derivedEvidence.length && !failure ? <Card style={s.card}><Text style={s.muted}>No evidence items are available for this investigation.</Text></Card> : null}
+          {!originalEvidence.length && !derivedEvidence.length && !hasLocalOriginal && !failure ? <Card style={s.card}><Text style={s.muted}>No evidence items are available for this investigation.</Text></Card> : null}
 
           {/* Evidence inventory summary */}
           {inventory ? <Card style={[s.card, { gap: spacing.xs }]}>

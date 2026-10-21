@@ -393,7 +393,8 @@ export default function Ask() {
     const KIND: Record<string, OriginalSourceKind> = { websites_links: "link", messages_calls: "text", email_accounts: "email", apps_files: "file", device_internet: "device", screenshot: "screenshot" };
     pendingOriginal.current = result.textContent
       ? (result.category === "websites_links" ? { kind: "link", url: result.textContent } : { kind: KIND[result.category] ?? "text", text: result.textContent })
-      : null;
+      // An image-only submission still has a real original: the picture kept on this phone.
+      : result.imageUri ? { kind: "screenshot" } : null;
     const files = result.imageUri
       ? [{ uri: result.imageUri, name: "screenshot.jpg", mediaType: "image/jpeg" }]
       : [];

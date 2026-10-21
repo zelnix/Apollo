@@ -812,6 +812,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             meta?.reply_to ? { label: "Reply-to", value: meta.reply_to } : null,
             meta?.subject ? { label: "Subject", value: meta.subject } : null,
             meta?.received_at ? { label: "Received", value: new Date(meta.received_at).toLocaleString() } : null,
+            meta?.provider ? { label: "Mailbox", value: meta.provider } : null,
+            ...(meta?.attachment_names ?? []).map((name) => ({ label: "Attachment", value: name })),
           ].filter((f): f is { label: string; value: string } => !!f);
           const texts = parts.filter((p) => p.kind === "text").map((p) => p.body);
           const urls = parts.filter((p) => p.kind === "url").map((p) => p.body);

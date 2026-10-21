@@ -1,3 +1,55 @@
+## Evidence tab restyled: the artefact, as it arrived (2026-06)
+
+**What the owner asked for.** Restyle the case Evidence tab to the attached design — separate screens
+per evidence type, "for a type with a specific design use the message type as the default", and
+"try to cater for the specific evidence type". Owner's three calls: **(1a)** omit anything Apollo
+never captured, **(2a)** build all five layouts with calls/files/apps/links falling back to the
+message layout, **(3a)** keep "Share evidence pack" and "Remove original" under Source details.
+
+**Structure** (`src/components/evidence/EvidenceArtefactCard.tsx`, replaces the old
+`OriginalSourceView` + `ImageEvidenceCompare` pair in `InvestigationView`'s Evidence tab):
+icon + "Original Source / <type> · Preserved on this device · Unaltered" + (i) → **Original |
+Redacted** segmented toggle + (i) → email-only **Email | Headers | Details** tabs → the artefact in
+its own "as received" frame → actions (View full screen / Copy text / Open in browser) →
+**Source details** (type, platform, captured, stored, links, what was blacked out, Share pack,
+Remove original) → an info banner naming exactly what is on screen.
+
+**Five layouts** (`src/components/evidence/ArtefactLayouts.tsx`):
+- **email** — sender row with initial avatar, To, time, subject, body with live links, attachments
+- **screenshot** — the image at its real proportions (read with `Image.getSize`), extra shots as a
+  thumbnail strip, tap for full screen
+- **message** (the default) — sender strip, date chip, incoming bubble, links tappable; the strip is
+  dropped when there is nobody to attribute (a link, a file), and device/network captures render
+  their recorded JSON in the bubble
+- **chat** — as message, headed by the app the capture names
+- **post** — page/handle, platform, post text, link and media
+
+**The toggle now means something.** Original = what was captured on this phone. Redacted = the exact
+copy that left it: text through `redactInvestigationSecrets`, URLs through `purposeLimitedUrl`, and
+for screenshots the real `sentUri`. On the new sign-in-code sample the toggle visibly flips between
+the readable code and the blacked-out copy. When nothing needed hiding the banner says so rather
+than implying a redaction happened.
+
+**Nothing is reconstructed** (`src/domain/evidencePresentation.ts`, pure + 14 tests). The layout and
+every header fact come from saved capture fields, or from header lines the captured text itself
+carries ("From:", "Subject:", "Source app: WhatsApp", "Page: …", "From AusPost:"). Saved fields beat
+parsed ones. A scam that merely *mentions* WhatsApp in its body is still a message — the platform
+must be named by the capture, not the content. An empty capture produces empty facts, and
+"last seen", reaction counts and profile photos are simply absent.
+
+**Supporting changes.** `ask.tsx` now records `{kind:"screenshot"}` for image-only submissions (an
+image-only case had no original record at all); the card also falls back to the image evidence
+record so older cases still render. `ApolloContext` now carries attachment names and the mailbox
+provider into the captured fields. `SimulatedText` gained an optional `app`, with a WhatsApp
+impersonation sample so the chat layout is reachable in the preview. The server-side duplicate of
+the same original is no longer listed under the local card (the full chain is still one tap away).
+
+**Verified in the preview**: message, email (+ Headers tab), screenshot (Original vs blacked-out
+Redacted), WhatsApp chat and a pasted Facebook post all render in their own layout;
+`evidencePresentation.test.ts` 14/14, image/preview suites 43/43 together, tsc + ESLint clean.
+`app/patrol/[id].tsx` still uses the older pair — adopting this card there is the obvious next step.
+
+
 ## Preview-only simulation of the image privacy screening (2026-06)
 
 **Why.** Apollo screens every image on the device before it is sent: on-device text recognition

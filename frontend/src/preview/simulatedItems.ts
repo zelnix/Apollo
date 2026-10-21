@@ -14,6 +14,8 @@ export interface SimulatedText {
   id: string;
   sender: string;
   text: string;
+  /** The app the message arrived in, when it wasn't plain SMS. */
+  app?: string;
   probes: string;
 }
 
@@ -53,6 +55,13 @@ export const SIMULATED_TEXTS: SimulatedText[] = [
     sender: "+44 7700 900182",
     text: "Hi! Remember me from the trading group? My mentor is up 340% this month on AI coin. Minimum entry is only $250 and I can walk you through the wallet setup on WhatsApp.",
     probes: "Investment approach with an outsized return claim and a move to another messaging app.",
+  },
+  {
+    id: "sim-txt-whatsapp-family",
+    sender: "Unknown (+61 455 019 220)",
+    app: "WhatsApp",
+    text: "Hi Mum, my phone is broken so I'm messaging from a friend's WhatsApp. My rent is due today and I can't log in — could you send $1,480 to this account? BSB 013-220 ACC 7741 9032. Please don't call, I can only type.",
+    probes: "Arrives in WhatsApp from an unknown number, claims to be family, asks for a transfer and discourages a call.",
   },
 ];
 
