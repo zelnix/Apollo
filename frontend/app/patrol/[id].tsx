@@ -41,7 +41,6 @@ import {
   threatCaseId,
   threatCaseStatus,
   caseGroupKey,
-  caseStatusLine,
   STATUS_LABELS,
   STATUS_COLORS,
   riskLevel,
@@ -264,7 +263,6 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
   const briefing = record?.higginsBriefing;
   const risk = riskLevel(event.state);
   const hasInvestigation = !!(event.investigation_case_id ?? record?.investigationCaseId);
-  const statusLine = caseStatusLine(event);
 
   // The actual thing this case is about — the recorded identifier when there is one, else the
   // finding statement itself. Never a category name.
@@ -363,20 +361,6 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
               ))}
             </>
           ) : null}
-        </Card>
-      ) : null}
-
-      {/* Current status — taken from this case, so a closed case never reads as still running */}
-      {statusLine ? (
-        <Card style={{ gap: spacing.xs }} testID="tc-overview-status">
-          <Text style={s.sectionTitle}>Current status</Text>
-          <View style={s.progressRow}>
-            <View style={[s.progressDot, { backgroundColor: statusLine.running ? "#2563EB" : colors.muted }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.progressText} testID="tc-overview-status-title">{statusLine.title}</Text>
-              <Text style={s.progressSub} testID="tc-overview-status-detail">{statusLine.detail}</Text>
-            </View>
-          </View>
         </Card>
       ) : null}
 

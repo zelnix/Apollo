@@ -21,7 +21,7 @@ test("the pack lists the recorded facts and every source with what it returned",
     ],
   });
   assert.match(pack, /Apollo Threat Case TC-2026-/);
-  assert.match(pack, /Status: Resolved/);
+  assert.match(pack, /Status: Handled/);
   assert.match(pack, /- Profile name: Acme MDM/);
   assert.match(pack, /- This device: Read directly on the device/);
   assert.match(pack, /Threat-reputation service — didn't answer/);

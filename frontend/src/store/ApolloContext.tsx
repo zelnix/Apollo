@@ -23,6 +23,8 @@ import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
+import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
+import { fetchMessageUrlIntel, linkTriageOutcome, type MessageUrlResult } from "@/src/domain/urlIntel";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { evaluateTriage } from "@/src/domain/triage/engine";
@@ -118,9 +120,12 @@ function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
 export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
-export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
+export type { MessageUrlResult };
 export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
+/** One email check: the deterministic analysis, the link reputation behind it, the single patrol
+ *  record it filed, and the Magnum DI case id when Triage escalated (null when it did not). */
+export interface EmailOutcome { submissionId: string; analysis: EmailAnalysis; urls: MessageUrlResult[]; event: PatrolEvent; investigationCaseId: string | null }
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
  * only reach "growling"/"barking" in the app, never a verified "biting" block.
@@ -164,6 +169,9 @@ interface ApolloContextValue {
   resolution: StateResolution;
   checkLink(input: string, scentId?: string): Promise<CheckOutcome>;
   checkMessage(sender: string, text: string): Promise<MessageOutcome>;
+  /** Gate 1: Check Email — deterministic engine + link reputation + Triage. Files exactly one patrol
+   *  record per check and opens at most one Magnum DI case (reused across correlated evidence). */
+  checkEmail(input: { from: string; subject: string; raw: string; captured?: { from: string; subject: string; text: string } }): Promise<EmailOutcome>;
   /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
    * (never stored server-side), runs each through the same on-device email engine as the paste
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
@@ -919,30 +927,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {    const analysis = analyseMessage(sender, text);
-    let urls: MessageUrlResult[] = []; let remoteError: string | null = null;
+    const remoteError: string | null = null;
     // Gate detection path: local/deterministic analysis + link reputation only.
     // No backend investigation call — Magnum DI investigates only when the person requests it.
-    try {
-      // Fetch URL reputation for links found in the message (existing intel endpoint, not investigation).
-      for (const rawUrl of analysis.signals.urls.slice(0, 5)) {
-        try {
-          const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value: rawUrl, device_id: deviceId ?? undefined, expand: true });
-          const parsed = parseIntelResult(raw);
-          if (parsed) {
-            urls.push({
-              url: rawUrl, host: rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(),
-              verdict: parsed.verdict === "malicious" ? "malicious" : parsed.verdict === "clean" ? "clean" : "unknown",
-              threat_types: parsed.threat_types ?? [],
-              // Real coverage from the reputation service. "none" means nothing could be checked —
-              // it must never be recorded as a completed check.
-              coverage: parsed.coverage === "none" ? "unavailable" : parsed.coverage,
-              redirect_chain: parsed.redirect_chain ?? undefined, final_url: parsed.final_url ?? null,
-              domain_info: parsed.domain_info ?? null,
-            });
-          }
-        } catch { urls.push({ url: rawUrl, host: rawUrl.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase(), verdict: "unknown", threat_types: [], coverage: "unavailable" }); }
-      }
-    } catch (e) { remoteError = e instanceof Error ? e.message : "URL reputation check unavailable."; }
+    const urls = await fetchMessageUrlIntel(analysis.signals.urls, deviceId);
+    // The patrol record this check will file. Known before the investigation starts so the case can
+    // name it, which is what keeps one check to one case.
+    const eventId = Crypto.randomUUID();
     let state = analysis.state; const why = [...analysis.why];
     // Email Guard / Text Guard: automatic pre-click assessment over every checked link plus
     // any display-text-vs-real-destination mismatch. This can only raise state to growling/barking.
@@ -954,9 +945,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     let investigationCaseId: string | null = null;
 
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
-    const linkOutcome = urls.some((u) => u.verdict === "malicious") ? "POSSIBLE_THREAT_IDENTIFIED" as const
-      : urls.some((u) => u.coverage === "unavailable") ? "LIMITED_UNABLE_TO_DETERMINE" as const
-      : urls.length ? "NO_THREAT_IDENTIFIED" as const : null;
+    const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
     const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation }));
 
@@ -974,6 +963,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             urls: analysis.signals.urls.slice(0, 20),
             local_state: state, scenario: analysis.scenario,
             signals: why.slice(0, 20), claimed_brand: analysis.signals.claimedBrand ?? null,
+            client_submission_id: eventId,
           });
           investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
           if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
@@ -991,7 +981,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
         : guardHeadline;
       event = await upsertEvent({
-        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
+        event_id: eventId, device_id: deviceId ?? "local", category: "message", state, status: "active",
         headline: apolloHeadline,
         what_happened: patrolSafeSummary(analysis.state !== "resting" ? analysis.verdict : (guard.why[0] ?? analysis.verdict)),
         why,
@@ -1006,6 +996,92 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void markCheckDone("message");
     return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, explanation: null, assessment: null, remoteError, event };
   }, [correlationFor, deviceId, upsertEvent]);
+
+  // ── Email check (Gate 1) ─────────────────────────────────────────────────
+  // ONE check → ONE record → at most ONE investigation. The deterministic engine runs first, every
+  // link gets the same reputation assessment a manual Check-a-Link gets, Triage then decides
+  // (0 Gemini calls) whether there is a possible threat. Magnum DI is launched ONLY then, and only
+  // once per correlated case; the patrol record this check files is named on the case
+  // (client_submission_id) so Apollo's servers update THAT record instead of filing a second one.
+  const checkEmail = useCallback(async (input: { from: string; subject: string; raw: string; captured?: { from: string; subject: string; text: string } }): Promise<EmailOutcome> => {
+    const analysis = analyseEmail(input.raw, { from: input.from, subject: input.subject });
+    const eventId = Crypto.randomUUID();
+    const urls = await fetchMessageUrlIntel(analysis.urls, deviceId);
+    let state = analysis.state;
+    const why = [...analysis.why];
+    // Email Guard: automatic pre-click assessment of every link plus any display-text-vs-destination
+    // mismatch. This can only raise the state.
+    const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(input.raw));
+    if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
+    why.push(...guard.why);
+    const firstHost = urls.find((u) => u.verdict === "malicious")?.host
+      ?? (analysis.lookalikeUrls[0] ? analysis.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null)
+      ?? urls[0]?.host ?? analysis.senderDomain;
+
+    // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
+    const linkOutcome = linkTriageOutcome(urls);
+    const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation }));
+
+    let investigationCaseId: string | null = null;
+    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+      if (existingCaseId) investigationCaseId = existingCaseId;
+      else {
+        try {
+          const remote = await apiPost<{ urls?: MessageUrlResult[]; investigation_case_id?: string | null; investigation_error?: string | null }>("/message/analyse", "message_check", {
+            device_id: deviceId ?? "local-device",
+            sender: input.from.trim(),
+            text: `${input.subject}\n${input.raw}`,
+            urls: analysis.urls.slice(0, 20),
+            local_state: state,
+            scenario: analysis.scenario,
+            signals: analysis.signalLabels.slice(0, 20),
+            claimed_brand: analysis.claimedBrand,
+            second_opinion: false,
+            client_submission_id: eventId,
+            gate: "email",
+          });
+          investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
+          if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
+          else if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
+        } catch (error) {
+          why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
+        }
+      }
+    }
+
+    // Every email Triage examined is recorded in Patrol — whether or not it became a threat case.
+    const captured = input.captured ?? { from: input.from, subject: input.subject, text: input.raw };
+    const resting = state === "resting";
+    const event = await upsertEvent({
+      event_id: eventId, device_id: deviceId ?? "local", category: "email", state,
+      status: resting ? "resolved" : "active",
+      headline: `Email: ${analysis.title}`,
+      what_happened: patrolSafeSummary(analysis.verdict),
+      why,
+      what_to_do: analysis.recommendation,
+      indicator_host: firstHost, indicator_digest: null, local_indicator: null, verified_block: false,
+      adapter_label: securityAdapter.label,
+      occurred_at: new Date().toISOString(), resolved_at: resting ? new Date().toISOString() : null,
+      trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
+      investigation_case_id: investigationCaseId,
+      triage_investigation: triage,
+    }, {
+      kind: "email",
+      fields: [
+        ...(captured.from.trim() ? [{ label: "From", value: captured.from }] : []),
+        ...(captured.subject.trim() ? [{ label: "Subject", value: captured.subject }] : []),
+        ...(analysis.parsed.attachments.length ? [{ label: "Attachments", value: analysis.parsed.attachments.join(", ") }] : []),
+      ],
+      text: captured.text,
+    });
+    return {
+      submissionId: event.event_id,
+      analysis: { ...analysis, state: event.state, why: event.why },
+      urls, event, investigationCaseId,
+    };
+  }, [correlationFor, deviceId, upsertEvent]);
+
 
   // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
   // default messaging app (opt-in, Settings > Notification access — never READ_SMS) and runs each
@@ -1306,6 +1382,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       return { submissionId: Crypto.randomUUID(), local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
     }
     const indicator = minimalIndicator(local.normalizedUrl);
+    // The patrol record this check will file — named on the case so one check stays one record.
+    const eventId = Crypto.randomUUID();
     let intel: IntelResult | null = null; let intelError: string | null = null;
     try {
       const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined, expand: true });
@@ -1331,6 +1409,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string; investigation_error?: string | null }>("/link/investigate", "link_investigation", {
           device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
           local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
+          client_submission_id: eventId,
         });
         investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
         if (remote.investigation_error) investigationError = remote.investigation_error;
@@ -1340,7 +1419,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
     const isEvent = decision.state !== "resting" || trusted;
     const ev: PatrolEvent = {
-      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
+      event_id: eventId, device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
       state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
       headline: decision.headline,
       what_happened: patrolSafeSummary(decision.what_happened),
@@ -1512,7 +1591,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     privateDnsStatus,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, checkCall, checkNumberRisk,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, checkEmail, scanGmailInbox, recordRecovery, upsertEvent, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

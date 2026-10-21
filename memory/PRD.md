@@ -1,3 +1,48 @@
+## Investigations can complete again + hero artwork + one way out of every screen (2026-06)
+
+**P0 FIXED — every investigation was failing `response_invalid`.** Not a Gemini fault and not a preview
+fault: `services/higgins/evidence.py::model_parts` recorded an examination mark ONLY for
+character-counted evidence, so the `URL from message` item that every message/email check registers
+(`ingest_url` → `unit: "items"`) stayed `not_started` for ever. The coordinator then reported it as
+unexamined material content and Apollo's own validator rejected any answer that said
+`completion: "complete"` — the turn failed with `response_invalid` no matter what came back. Item-counted
+evidence is now marked examined when it is sent (the whole item is in the request, so sending it IS the
+examination). Regression test `backend/tests/test_url_evidence_examined.py` (2 tests, proven to fail
+before the fix and pass after); `test_gemini_request_shape + test_magnum_di_acceptance +
+test_investigation_engine` 44 passed, `test_recovery_fencing + test_enforcement_evidence_gate +
+test_p0_evidence_receipt_indexes` 58 passed.
+
+**Scam Alerts cards restyled** (`app/higgins/scams.tsx`, owner's wording): title now sits ABOVE the pills,
+the severity/region pills are 35% smaller (new opt-in `compact` variant on the shared `Pill` — standard
+pills elsewhere are untouched), and the 44pt severity badge is halved to 22pt and moved to the card's
+top right beside the title. Same treatment on the "Sent by your family" rows.
+
+**Home hero artwork** (`app/(tabs)/home.tsx`). The 3:1 landscape was `contentFit="cover"` on a card whose
+height is driven by text, so ~45% of the picture was cropped away; `contain` then letterboxed it with a
+hard edge. It is now a full-width band pinned to the bottom of the card, sized by its OWN proportions
+(`aspectRatio: 2000/667`), so every device width shows the whole picture undistorted and uncropped
+however tall the card grows. A vertical wash blends the top of the band into the card colour and the
+existing horizontal wash (softened) keeps the text readable.
+
+**One way out of every non-tab screen** (owner: back chevron or X only — no "Done"/"Close"/"Back" buttons).
+Audited all 54 non-tab routes:
+- `app/(tabs)/check-it.tsx` had NO dismiss at all although it is always pushed (Settings → Run a manual
+  check, Support, Higgins) — added a back chevron beside the title.
+- `app/higgins/scam/[id].tsx` used an arrow — now a chevron.
+- Removed screen-level text dismissals: `recheck-close`, `patrol-history-close`,
+  `share-load-error-dismiss`, and the privacy statement's ghost "Back" (replaced by a header back chevron
+  while setup is still running; the X stays once setup is done).
+- The two full-screen modals that read as screens now use an X: the evidence full-screen viewer
+  ("Close" text) and `EvidencePopup` ("Done" text).
+- Left alone deliberately: Done/Close/Cancel inside bottom sheets and confirm dialogs (overlays, not
+  screens), the in-screen chevron on `message-picker` (returns to the thread list), and the setup wizard
+  (`onboarding`, `setup-gates`, `first-check`) which is entered with `router.replace` and has no history.
+
+Verified in the preview: Privacy statement (chevron, no Back button), Check (chevron, returns Home),
+Scam Alerts list, Scam Alert detail, Threat Case → Evidence. tsc + ESLint clean.
+
+
+
 ## Evidence follow-ups: threat cases, chat capture, pack layout, side-by-side (2026-06)
 
 All four of the owner's picks, built on the `EvidenceArtefactCard` from the restyle.

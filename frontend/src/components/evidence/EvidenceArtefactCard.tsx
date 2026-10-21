@@ -22,6 +22,7 @@ import Phone from "lucide-react-native/icons/phone";
 import Share2 from "lucide-react-native/icons/share-2";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import Trash2 from "lucide-react-native/icons/trash";
+import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Modal, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,7 +30,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConversationArtefact, EmailArtefact, FieldRows, PostArtefact, ScreenshotArtefact, useArtefactStyles, type ArtefactImage, type LayoutProps } from "./ArtefactLayouts";
 import { InfoButton } from "@/src/components/InfoButton";
 import { Button } from "@/src/components/ui";
-import { describeArtefact, redactView, type EvidenceLayout } from "@/src/domain/evidencePresentation";
+import { describeArtefact, describeRedaction, redactView, type EvidenceLayout } from "@/src/domain/evidencePresentation";
 import { purposeLimitedUrl, redactInvestigationSecrets } from "@/src/domain/privacy";
 import { listImageEvidence, removeOriginal, subscribeImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
 import { getOriginalSource, subscribeOriginalSource, type OriginalSource } from "@/src/store/originalSource";
@@ -73,10 +74,14 @@ const useStyles = makeStyles((c) => ({
   bannerTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   bannerBody: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
 
+  modeNotice: { gap: 2, padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary, borderLeftWidth: 3, borderLeftColor: c.brandPrimary },
+  modeNoticeTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  modeNoticeBody: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
+
   viewer: { flex: 1, backgroundColor: "#000000" },
   viewerBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   viewerTitle: { flex: 1, fontFamily: fonts.textMedium, fontSize: 15, color: "#FFFFFF" },
-  viewerClose: { fontFamily: fonts.textMedium, fontSize: 15, color: "#FFFFFF", padding: spacing.sm },
+  viewerClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
 }));
 
 const LAYOUT_ICON: Record<EvidenceLayout, React.ComponentType<{ size: number; color: string }>> = {
@@ -208,7 +213,15 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
   if (src === undefined || !source || !view || !shown) return null;
 
   const url = mode === "redacted" && source.url ? purposeLimitedUrl(source.url) : source.url ?? null;
-  const sentCopyIdentical = view.body === shown.body && records.every((r) => !r.cropped && r.redactedRegions === 0);
+  // What is actually different about the copy that left this phone. Stated where the toggle is, so
+  // "Redacted" never looks like it did nothing.
+  const redaction = describeRedaction({
+    original: view, redacted: redactView(view, redactInvestigationSecrets),
+    url: source.url, sentUrl: source.url ? purposeLimitedUrl(source.url) : null,
+    blackedOutRegions: records.reduce((n, r) => n + r.redactedRegions, 0),
+    cropped: records.some((r) => r.cropped),
+  });
+  const sentCopyIdentical = !redaction.changed;
   const Icon = view.layout === "message" ? (KIND_ICON[source.kind] ?? MessageSquare) : LAYOUT_ICON[view.layout];
 
   const layoutProps: LayoutProps & { s: typeof a } = {
@@ -242,6 +255,22 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
         </View>
         <InfoButton info={MODE_INFO} testID={`${testID}-mode-info`} />
       </View>
+
+      {/* ── What is different about the copy that was sent (stated on sight) ── */}
+      {mode !== "original" ? (
+        <View style={s.modeNotice} testID={`${testID}-redaction-notice`}>
+          <Text style={s.modeNoticeTitle}>
+            {sentCopyIdentical ? "Nothing needed hiding" : "What Apollo hid before sending"}
+          </Text>
+          <Text style={s.modeNoticeBody}>
+            {sentCopyIdentical
+              ? (records.some((r) => !r.checked)
+                ? "No password, PIN or code could be read here, so nothing was blacked out. This copy is identical to the original."
+                : "Apollo found no password, PIN or verification code in this material, so this copy is identical to the original above.")
+              : `Blacked out or replaced on this copy: ${redaction.items.join(", ")}. Everything else — the sender, the links and the wording — is exactly as captured.`}
+          </Text>
+        </View>
+      ) : null}
 
       {/* ── Email sub-tabs ── */}
       {view.layout === "email" ? (
@@ -329,7 +358,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
         <View style={[s.viewer, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID={`${testID}-viewer`}>
           <View style={s.viewerBar}>
             <Text style={s.viewerTitle}>{full?.label}</Text>
-            <Pressable onPress={() => setFull(null)} accessibilityRole="button" hitSlop={12} testID={`${testID}-viewer-close`}><Text style={s.viewerClose}>Close</Text></Pressable>
+            <Pressable onPress={() => setFull(null)} accessibilityRole="button" accessibilityLabel="Close full screen" hitSlop={12} style={s.viewerClose} testID={`${testID}-viewer-close`}><X size={22} color="#FFFFFF" /></Pressable>
           </View>
           {full ? <Image source={{ uri: full.uri }} style={{ flex: 1 }} resizeMode="contain" /> : null}
         </View>

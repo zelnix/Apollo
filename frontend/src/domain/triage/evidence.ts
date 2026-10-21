@@ -74,7 +74,9 @@ export function linkTriageEvidence(args: {
 }
 
 export function messageTriageEvidence(args: {
-  analysis: MessageAnalysis;
+  // An email carries the same signals a text does (EmailAnalysis exposes the same `signals`), so
+  // both gates feed the one message adapter.
+  analysis: Pick<MessageAnalysis, "signals" | "verdict" | "why">;
   linkOutcome?: TriageOutcome | null;
   phoneReputation?: { status: string; verdict?: string; fraud_score?: number } | null;
   correlation?: CorrelationInput;

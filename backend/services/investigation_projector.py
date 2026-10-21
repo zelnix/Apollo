@@ -92,6 +92,12 @@ async def project_committed_cases(limit: int = 100) -> int:
         response = latest.response
         state = _dog_state(response)
         existing = await db.patrol_events.find_one({"device_id": case["owner_id"], "investigation_case_id": case["case_id"], "deleted_at": None}, {"_id": 0, "event_id": 1})
+        if not existing and case.get("client_submission_id"):
+            # One record per check: the device filed its own patrol event for this material before
+            # (or just after) the case opened. Update THAT event rather than filing a server twin.
+            existing = await db.patrol_events.find_one(
+                {"device_id": case["owner_id"], "event_id": case["client_submission_id"], "deleted_at": None},
+                {"_id": 0, "event_id": 1})
         event_id = existing["event_id"] if existing else str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-patrol:{case['owner_id']}:{case['case_id']}"))
         category = patrol_category((case.get("gates") or ["text"])[0])
         findings = [redact_investigation_secrets(finding.text)[:400] for finding in response.findings[:6]]
@@ -126,6 +132,8 @@ async def project_committed_cases(limit: int = 100) -> int:
             "scenario": indicators["scenario"],
             "scent_id": None,
             "background": True, "investigation_case_id": case["case_id"],
+            # The investigation has answered: this case is no longer "being investigated".
+            "investigation_completed_at": latest.committed_at,
             "client_submission_id": case.get("client_submission_id"),
             # Mark as server_projected so the frontend knows this has real investigation data
             "evidence_provenance": "server_projected",
@@ -197,6 +205,7 @@ async def project_case_started(case: dict) -> bool:
         "occurred_at": case.get("created_at") or now_utc(), "resolved_at": None, "trust_allowed": False,
         "claimed_brand": indicators["claimed_brand"], "scenario": indicators["scenario"], "scent_id": None,
         "background": True, "investigation_case_id": case["case_id"], "client_submission_id": None,
+        "investigation_completed_at": None,
         "evidence_provenance": "server_projected", "source_metadata": case.get("source_metadata"),
         "initiator": case.get("initiator", "unknown"), "deleted_at": None, "updated_at": now_utc(),
     }

@@ -34,9 +34,12 @@ export function threatCaseId(event: PatrolEvent): string {
 
 /** The key that decides what counts as ONE case in the Threats list. Repeat checks of the same
  *  subject (today: device checks) carry a stable case_key, so they collapse into a single case
- *  showing the latest result while every individual check stays visible in patrol history. */
+ *  showing the latest result while every individual check stays visible in patrol history.
+ *  Two records that name the SAME Magnum DI investigation are the same case — this phone's own
+ *  record and anything Apollo's servers filed for that investigation collapse into one row. */
 export function caseGroupKey(event: PatrolEvent): string {
-  return event.case_key ?? event.patrol_record?.logicalIssueKey ?? event.event_id;
+  const investigation = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;
+  return event.case_key ?? event.patrol_record?.logicalIssueKey ?? (investigation ? `inv:${investigation}` : event.event_id);
 }
 
 // ── Status ──────────────────────────────────────────────────────────────────
@@ -56,51 +59,23 @@ export function threatCaseStatus(event: PatrolEvent): ThreatCaseStatus {
   }
   // Only claim "blocked" when genuine enforcement evidence confirms it
   if (event.verified_block && event.enforcement_evidence) return "blocked";
-  // Active investigation
-  if (event.investigation_case_id || event.patrol_record?.investigationCaseId) return "investigating";
+  // An investigation is only "investigating" while it is actually running. Once Magnum DI has
+  // answered (its result is committed to this device) the case is reported by what it found.
+  const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
+  if (hasInvestigation && !event.investigation_completed_at) return "investigating";
   // Needs user attention
   if (event.state === "barking" || event.state === "biting") return "attention";
   if (event.state === "growling" || event.state === "ears_up") return "monitoring";
   return "monitoring";
 }
 
-/** The one true "current status" line for a case, derived from the case itself.
- *  Never claims work is running on a case that is closed, and never claims it has finished when it
- *  has not. Returns null when there is nothing to state. */
-export function caseStatusLine(event: PatrolEvent): { title: string; detail: string; running: boolean } | null {
-  const status = threatCaseStatus(event);
-  const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
-
-  if (event.resolved_at) {
-    return {
-      title: status === "no_threat" ? "Closed — no threat found" : "Closed",
-      detail: `Nothing is running on this case. Closed ${new Date(event.resolved_at).toLocaleString([], {
-        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.`,
-      running: false,
-    };
-  }
-  if (status === "investigating") {
-    return { title: "Investigating with Magnum DI", detail: "Analysing sender, links and content…", running: true };
-  }
-  if (hasInvestigation) {
-    return { title: "Investigation finished", detail: "The findings are shown above. This case is still open.", running: false };
-  }
-  if (status === "blocked") {
-    return { title: "Blocked by Apollo", detail: "Apollo stopped this and the block was verified.", running: false };
-  }
-  if (status === "attention") {
-    return { title: "Waiting for you", detail: "Apollo has finished looking. Your next step is shown above.", running: false };
-  }
-  return { title: "Being monitored", detail: "Apollo is keeping an eye on this. Nothing is running right now.", running: false };
-}
-
 export const STATUS_LABELS: Record<ThreatCaseStatus, string> = {
   investigating: "Investigating",
   blocked: "Blocked",
-  attention: "Attention",
-  resolved: "Resolved",
+  attention: "Needs you",
+  resolved: "Handled",
   no_threat: "No threat",
-  monitoring: "Monitoring",
+  monitoring: "Keeping watch",
 };
 
 export const STATUS_COLORS: Record<ThreatCaseStatus, { bg: string; text: string }> = {

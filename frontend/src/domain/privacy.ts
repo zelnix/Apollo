@@ -28,9 +28,12 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale"]),
   push_register: new Set(["platform", "device_token"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
-  message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
+  // `client_submission_id` is the id of the patrol record THIS device filed for this check (a
+  // locally generated UUID, no personal content). It lets the investigation name that record, so one
+  // check stays one case instead of being filed twice.
+  message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion", "client_submission_id", "gate"]),
   message_extract: new Set(["device_id"]),
-  link_investigation: new Set(["device_id", "url", "local_state", "local_findings", "claimed_brand"]),
+  link_investigation: new Set(["device_id", "url", "local_state", "local_findings", "claimed_brand", "client_submission_id"]),
   page_extract: new Set(["device_id", "url_hint"]),
   // Gate 3 Phase C: only the link itself — Apollo fetches that page server-side and discards the
   // raw content once turned into short signals (see routers/analysis.py page_crawl, services/webcrawl.py).
@@ -59,7 +62,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   vision_investigate: new Set(["device_id", "extracted_text"]),
   // Tier 2 escalation after a deterministic Possible Threat. Same content the person already submitted
   // to the gate — the message/call details and Apollo's own deterministic findings. Nothing else.
-  message_investigation: new Set(["device_id", "text", "sender", "urls", "local_state", "scenario", "signals", "claimed_brand"]),
+  message_investigation: new Set(["device_id", "text", "sender", "urls", "local_state", "scenario", "signals", "claimed_brand", "client_submission_id", "gate"]),
   call_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
   number_risk_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
 };

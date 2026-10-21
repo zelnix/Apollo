@@ -2,7 +2,7 @@
 // Every section is taken from the official-source alert; empty sections are hidden, never filled in.
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import ArrowLeft from "lucide-react-native/icons/arrow-left";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Banknote from "lucide-react-native/icons/banknote";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleCheck from "lucide-react-native/icons/circle-check";
@@ -154,7 +154,7 @@ export default function ScamAlertDetailScreen() {
 
   const header = (
     <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-      <Pressable testID="scam-detail-back" accessibilityRole="button" accessibilityLabel="Back to Scam Alerts" onPress={() => goBackOrHome(router)} style={s.iconBtn}><ArrowLeft size={24} color={colors.onSurface} /></Pressable>
+      <Pressable testID="scam-detail-back" accessibilityRole="button" accessibilityLabel="Back to Scam Alerts" onPress={() => goBackOrHome(router)} style={s.iconBtn}><ChevronLeft size={24} color={colors.onSurface} /></Pressable>
       <Text style={s.headerTitle}>Scam Alert</Text>
       {alert ? <Pressable testID="scam-detail-share" accessibilityRole="button" accessibilityLabel="Share this scam alert" onPress={() => void shareScamAlert(alert)} style={s.iconBtn}><Share2 size={22} color={colors.onSurface} /></Pressable> : <View style={s.iconBtn} />}
     </View>

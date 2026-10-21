@@ -3,6 +3,7 @@
 // Supports images, text, URLs, documents. Mobile-friendly, accessible, dismissable.
 
 import React, { useEffect, useState } from "react";
+import X from "lucide-react-native/icons/x";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn, SlideInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +19,7 @@ const useStyles = makeStyles((c) => ({
   backdrop: { flex: 1, backgroundColor: c.surface },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: c.surfaceSecondary, borderBottomWidth: 1, borderBottomColor: c.border },
   headerTitle: { fontFamily: fonts.display, fontSize: 18, color: c.onSurface, flex: 1 },
-  closeText: { fontFamily: fonts.textMedium, fontSize: 15, color: c.brandPrimary, paddingLeft: spacing.md },
+  closeBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.lg },
   sectionTitle: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface, marginBottom: spacing.xs },
   sectionSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.muted, marginBottom: spacing.sm },
@@ -167,8 +168,8 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
         {/* Header */}
         <View style={s.header}>
           <Text style={s.headerTitle}>{title}</Text>
-          <Pressable onPress={onClose} hitSlop={16} testID="evidence-popup-close" accessibilityLabel="Close evidence">
-            <Text style={s.closeText}>Done</Text>
+          <Pressable onPress={onClose} hitSlop={16} style={s.closeBtn} testID="evidence-popup-close" accessibilityRole="button" accessibilityLabel="Close evidence">
+            <X size={22} color={colors.onSurface} />
           </Pressable>
         </View>
 

@@ -837,8 +837,16 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
                 continue
             parts.append(types.Part(text=f"{label}\n{text}"))
             words += len(text.split())
+            # The whole retained content of this item is in the part above, so sending it is the
+            # examination. Character-counted items record the span; item-counted items (a URL, an
+            # observation, a specialist-intelligence record — always total=1) record the one item.
+            # Without this, an item-counted evidence row stayed `not_started` for ever and the
+            # validator rejected EVERY answer that said the investigation was complete.
             if row["coverage"].get("unit") == "characters":
                 marks.append((row["evidence_id"], 0, len(text), len(text)))
+            elif row["coverage"].get("unit") == "items":
+                total = row["coverage"].get("total") or 1
+                marks.append((row["evidence_id"], 0, total, total))
         elif row["kind"] == "image":
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
             parts.append(types.Part(text=label))

@@ -910,16 +910,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
               <ChevronRight size={18} color={colors.muted} />
             </Pressable>
           ) : null}
-
-          {/* Link to History tab */}
-          <Pressable style={s.actionCard} onPress={() => setActiveTab("history")} testID="inv-evidence-history-link">
-            <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Clock size={20} color="#1E3A5F" /></View>
-            <View style={s.actionContent}>
-              <Text style={[s.actionTitle, { color: colors.onSurface }]}>Investigation history</Text>
-              <Text style={s.actionDescription}>See the full timeline, attempts and events.</Text>
-            </View>
-            <ChevronRight size={18} color={colors.muted} />
-          </Pressable>
         </View>
       ) : null}
 

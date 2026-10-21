@@ -4,6 +4,7 @@
 
 import { useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Smartphone from "lucide-react-native/icons/smartphone";
@@ -35,6 +36,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 24, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  back: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -spacing.sm },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
   item: { gap: 4, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
   what: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
@@ -129,8 +131,10 @@ export default function PrivacyDisclosure() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Privacy statement</Text>
-        {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
+        {/* Before setup the statement is a step in the flow (back chevron); afterwards it is a screen you close. */}
+        {!setupDone ? <Pressable testID="disclosure-back-button" accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.back}><ChevronLeft size={24} color={colors.onSurface} /></Pressable> : null}
+        <Text style={[s.title, { flex: 1 }]}>Privacy statement</Text>
+        {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" accessibilityLabel="Close privacy statement" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: spacing.xl }]} testID="disclosure-scroll">
 
@@ -284,7 +288,6 @@ export default function PrivacyDisclosure() {
             </View>
           ) : null}
           <Button testID="disclosure-accept-button" label={busy ? "Setting up\u2026" : "I understand \u2014 set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Button testID="disclosure-back-button" variant="ghost" label="Back" onPress={() => goBackOrHome(router)} />
         </View>
       ) : null}
     </View>

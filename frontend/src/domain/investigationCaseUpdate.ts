@@ -65,7 +65,8 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     && event.what_happened === whatHappened
     && JSON.stringify(event.why ?? []) === JSON.stringify(findings)
     && event.what_to_do === whatToDo
-    && event.state === state;
+    && event.state === state
+    && event.investigation_completed_at === inv.committedAt;
   if (unchanged) return null;
 
   return {
@@ -81,5 +82,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     // The result is held on this device; it is this device's own record.
     evidence_provenance: "local_device",
     investigation_case_id: event.investigation_case_id ?? inv.caseId,
+    // Magnum DI has answered — the case is no longer "investigating".
+    investigation_completed_at: inv.committedAt,
   };
 }

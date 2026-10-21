@@ -163,3 +163,28 @@ export function redactView(view: ArtefactView, redact: (value: string) => string
     attachments: view.attachments.map(redact),
   };
 }
+
+/** Exactly what is different about the copy that left this phone — so the Redacted view can state
+ *  it on sight instead of looking identical to the original. `changed: false` means nothing in this
+ *  material needed hiding; it is never presented as "redacted" in that case. */
+export function describeRedaction(args: {
+  original: ArtefactView;
+  redacted: ArtefactView;
+  url?: string | null;
+  sentUrl?: string | null;
+  blackedOutRegions?: number;
+  cropped?: boolean;
+}): { changed: boolean; items: string[] } {
+  const items: string[] = [];
+  const { original, redacted } = args;
+  if (original.body !== redacted.body) items.push("the message text");
+  if (original.subject !== redacted.subject) items.push("the subject line");
+  if (original.sender !== redacted.sender) items.push("the sender line");
+  if (original.fields.some((f, i) => f.value !== redacted.fields[i]?.value)) items.push("one or more captured header fields");
+  if (args.url && args.sentUrl && args.url !== args.sentUrl) items.push("part of the link");
+  const regions = args.blackedOutRegions ?? 0;
+  if (regions > 0) items.push(`${regions} area${regions === 1 ? "" : "s"} of the picture`);
+  if (args.cropped) items.push("the part of the picture that was cropped away");
+  return { changed: items.length > 0, items: Array.from(new Set(items)) };
+}
+

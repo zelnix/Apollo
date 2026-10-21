@@ -309,6 +309,7 @@ export default function CheckMessage() {
             investigationQuestion={askPrompt}
             submissionId={result.event.event_id}
             eventId={result.event.event_id}
+            caseId={result.event.investigation_case_id ?? null}
             actions={msgActions}
           />
         ) : (

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { describeArtefact, linksIn, redactView } from "../src/domain/evidencePresentation.ts";
+import { describeArtefact, describeRedaction, linksIn, redactView } from "../src/domain/evidencePresentation.ts";
 
 const base = { capturedAt: "2026-06-02T09:28:00.000Z", origin: "this_device" as const };
 
@@ -127,4 +127,27 @@ test("the banner names the type Apollo captured, not a generic 'message'", () =>
 
 test("links are read out of the captured text, trailing punctuation dropped", () => {
   assert.deepEqual(linksIn("Pay at https://linkt-au-pay.top/settle.", null), ["https://linkt-au-pay.top/settle"]);
+});
+
+test("the redacted view states exactly what changed — and says so when nothing did", () => {
+  const view = describeArtefact({
+    ...base, kind: "text",
+    text: "From CommBank:\nYour verification code is 884213.",
+  });
+  const sent = redactView(view, (v) => v.replace(/code is \d{6}/i, "code is [redacted]"));
+  const changed = describeRedaction({ original: view, redacted: sent });
+  assert.equal(changed.changed, true);
+  assert.deepEqual(changed.items, ["the message text"]);
+
+  const clean = describeArtefact({ ...base, kind: "text", text: "From AusPost:\nYour parcel was delivered." });
+  const untouched = describeRedaction({ original: clean, redacted: redactView(clean, (v) => v) });
+  assert.equal(untouched.changed, false);
+  assert.deepEqual(untouched.items, []);
+
+  // A picture with a blacked-out area counts as changed even when no text differs.
+  const shot = describeArtefact({ ...base, kind: "screenshot" }, true);
+  assert.deepEqual(
+    describeRedaction({ original: shot, redacted: shot, blackedOutRegions: 2 }).items,
+    ["2 areas of the picture"],
+  );
 });

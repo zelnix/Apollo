@@ -279,6 +279,10 @@ class PatrolEventIn(BaseModel):
     # retries, correlation, outcome, reason, geminiCalls). Server-owned: only the triage projector
     # writes it (services/triage/store.py); never accepted from client submissions.
     triage_investigation: Optional[dict] = None
+    # When the Magnum DI investigation named by investigation_case_id actually answered. Server-owned:
+    # written only by the investigation projector when a response is committed. Until it is set the
+    # case is genuinely still being investigated, so the app never reports a finished case as running.
+    investigation_completed_at: Optional[datetime] = None
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):

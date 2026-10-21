@@ -17,7 +17,6 @@ import type { PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { exportPatrolPdf } from "@/src/utils/exportPatrol";
-import { goBackOrHome } from "@/src/utils/navigation";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -133,7 +132,6 @@ export default function PatrolHistory() {
             ))}
           </>
         )}
-        <Button testID="patrol-history-close" variant="ghost" label="Close" onPress={() => goBackOrHome(router)} />
       </ScrollView>
     </View>
   );

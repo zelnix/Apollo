@@ -68,6 +68,7 @@ def minimal_patrol(body, verified):
     payload.pop('investigation_case_id', None)  # association has its own owner-validated route
     payload.pop('client_submission_id', None)  # server-owned: set only by the investigation projector
     payload.pop('detection_updated_at', None)  # server-owned: set only when new detection evidence arrives
+    payload.pop('investigation_completed_at', None)  # server-owned: set only by the investigation projector
     e = body.enforcement_evidence
     safe_refs = []
     for ref in body.supporting_references[:6]:

@@ -242,6 +242,7 @@ export default function CheckLink() {
             investigationQuestion={askPrompt}
             submissionId={outcome.submissionId}
             eventId={liveEvent.event_id}
+            caseId={liveEvent.investigation_case_id ?? null}
             actions={actions}
           />
         ) : (

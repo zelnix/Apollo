@@ -18,6 +18,10 @@ export interface InvestigationFlowProps {
   testID: string;
   autoStart?: boolean;
   eventId?: string | null;
+  /** An investigation Apollo has ALREADY opened for this exact material (e.g. the case a Gate's
+   *  Triage escalation opened on the server). When set, this flow follows that case instead of
+   *  starting a second one — one check, one case, one Magnum DI investigation. */
+  caseId?: string | null;
   continuityKey?: string;
   onResolved?: (resolved: boolean) => void;
 }
@@ -29,13 +33,14 @@ export function InvestigationFlow({
   testID,
   autoStart = true,
   eventId,
+  caseId,
   continuityKey,
   onResolved,
 }: InvestigationFlowProps) {
   const operationId = continuityKey
     ? `${continuityKey}:${submissionId}`
     : submissionId;
-  const { state, start, ask, continueWith, retry, cancel, remove } =
+  const { state, start, ask, continueWith, retry, cancel, remove, attach } =
     useInvestigation(operationId);
   const started = useRef<string | null>(null);
   const busy =
@@ -56,8 +61,17 @@ export function InvestigationFlow({
   useEffect(() => {
     if (started.current === submissionId) return;
     if (!autoStart) return;
-    const { input, files } = createCaseInput(context, question);
     const boundEventId = eventId ?? null;
+    // Apollo already opened a case for this material: follow it. Starting another would file a
+    // second case for one check (and spend a second Magnum DI call on the same evidence).
+    if (caseId) {
+      started.current = submissionId;
+      void attach(caseId).then((opened) => {
+        if (opened && boundEventId) void rememberCaseForEvent(boundEventId, opened.id);
+      });
+      return;
+    }
+    const { input, files } = createCaseInput(context, question);
     if (continuityKey && state.caseData) {
       if (busy) return;
       started.current = submissionId;

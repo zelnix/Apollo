@@ -22,7 +22,6 @@ import { getBaseline, saveFirstCheck } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { goBackOrHome } from "@/src/utils/navigation";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
 const useStyles = makeStyles((c) => ({
@@ -163,7 +162,6 @@ export default function Recheck() {
             <Card testID="recheck-empty" style={{ gap: spacing.sm }}>
               <Body>Higgins hasn&apos;t run a check on this device yet. Run it now so there is something to compare future checks against.</Body>
             </Card>
-            <Button testID="recheck-close" variant="ghost" label="Close" onPress={() => goBackOrHome(router)} />
           </>
         )}
       </ScrollView>

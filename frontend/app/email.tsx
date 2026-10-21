@@ -2,7 +2,6 @@
 // Matches the approved mock-up: header, description, email card,
 // gold Check email CTA, "or" divider, two action cards, recent emails section.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import * as Crypto from "expo-crypto";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -16,7 +15,7 @@ import Search from "lucide-react-native/icons/search";
 import Trash from "lucide-react-native/icons/trash";
 import User from "lucide-react-native/icons/user";
 import X from "lucide-react-native/icons/x";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -37,11 +36,8 @@ import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScr
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button } from "@/src/components/ui";
-import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
-import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
+import { type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { type PatrolEvent } from "@/src/domain/types";
-import { STATE_RANK } from "@/src/domain/stateMachine";
-import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { buildEmailCheckResult } from "@/src/domain/emailCheckResultAdapter";
@@ -194,18 +190,22 @@ export default function CheckEmail() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox, isMock } = useApollo();
+  const sharedBody = shared?.text || shared?.webUrl || params.text || "";
+  const autoRan = useRef(false);
+  const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox, isMock } = useApollo();
 
   // ── Input state ──
   const [fromState, setFrom] = useState("");
   const [subject, setSubject] = useState("");
-  const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
+  const [raw, setRaw] = useState(sharedBody);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{
     submissionId: string;
     a: EmailAnalysis;
-    event: PatrolEvent | null;
+    event: PatrolEvent;
     urls: MessageUrlResult[];
+    /** The Magnum DI case Apollo opened for this email — null when Triage found no possible threat. */
+    caseId: string | null;
     explanation: null;
     assessment: null;
   } | null>(null);
@@ -262,11 +262,16 @@ export default function CheckEmail() {
 
   useEffect(() => { if (gmailConnected) void loadRecentInbox(); }, [gmailConnected, loadRecentInbox]);
 
-  // Auto-run if shared content arrives
+  // Shared into Apollo from another app (Share → Apollo, or an apollo://email deep link): check it
+  // on arrival and show the email that is being checked, so the share always lands in a real check.
   useEffect(() => {
-    if (raw.trim() && deviceId) { /* content was shared into this screen */ }
+    if (!sharedBody.trim() || !ready || !setupDone || autoRan.current) return;
+    autoRan.current = true;
+    setEmailTextOpen(true);
+    // The sender and subject are read from the shared text's own headers by the email engine.
+    void run({ from: "", subject: "", raw: sharedBody });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sharedBody, ready, setupDone]);
 
   // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
   // alongside a connected one.
@@ -470,69 +475,26 @@ export default function CheckEmail() {
       if (safeRaw !== rawInput) setRaw(safeRaw); else if (source) setRaw(rawInput);
       if (safeSubject !== subjectInput) setSubject(safeSubject); else if (source) setSubject(subjectInput);
       if (source) setFrom(source.from);
-      let a = analyseEmail(safeRaw, { from, subject: safeSubject });
-      let urls: MessageUrlResult[] = [];
-      let investigationCaseId: string | null = null;
-      try {
-        const r = await apiPost<{
-          urls: MessageUrlResult[];
-          investigation_case_id?: string | null;
-        }>("/message/analyse", "message_check", {
-          device_id: deviceId ?? "local-device",
-          sender: from.trim(),
-          text: `${safeSubject}\n${safeRaw}`,
-          urls: a.urls,
-          local_state: a.state,
-          scenario: a.scenario,
-          signals: a.signalLabels.slice(0, 20),
-          claimed_brand: a.claimedBrand,
-          second_opinion: false,
-        });
-        urls = r.urls;
-        investigationCaseId = typeof r.investigation_case_id === "string" ? r.investigation_case_id : null;
-        // URL guard: deterministic link protection still drives state
-        const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(safeRaw));
-        if (STATE_RANK[guard.state] > STATE_RANK[a.state])
-          a = { ...a, state: guard.state, why: [...a.why, ...guard.why] };
-        else if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
-      } catch { /* offline: on-device result stands */ }
-      let event: PatrolEvent | null = null;
-      if (a.state !== "resting") {
-        event = await upsertEvent({
-          event_id: Math.random().toString(36).slice(2) + Date.now().toString(36),
-          device_id: deviceId ?? "local",
-          category: "email",
-          state: a.state,
-          status: "active",
-          headline: `Email: ${a.title}`,
-          what_happened: patrolSafeSummary(a.verdict),
-          why: a.why,
-          what_to_do: a.recommendation,
-          indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain,
-          indicator_digest: null,
-          local_indicator: null,
-          verified_block: false,
-          adapter_label: adapterLabel,
-          occurred_at: new Date().toISOString(),
-          resolved_at: null,
-          trust_allowed: false,
-          claimed_brand: a.claimedBrand,
-          scenario: a.scenario,
-          investigation_case_id: investigationCaseId,
-        }, { kind: "email", fields: [...(from.trim() ? [{ label: "From", value: from }] : []), ...(subjectInput.trim() ? [{ label: "Subject", value: subjectInput }] : [])], text: rawInput });
-        if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
-      }
-      const submissionId = event?.event_id ?? Crypto.randomUUID();
-      setResult({ submissionId, a, event, urls, explanation: null, assessment: null });
+      // ONE check → ONE patrol record → at most ONE Magnum DI case (opened only where Triage finds a
+      // possible threat, and reused when this email correlates with something already investigated).
+      const outcome = await checkEmail({
+        from, subject: safeSubject, raw: safeRaw,
+        captured: { from, subject: subjectInput, text: rawInput },
+      });
+      const a = outcome.analysis;
+      setResult({
+        submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls,
+        caseId: outcome.investigationCaseId, explanation: null, assessment: null,
+      });
       void recordEmailCheck({
-        id: submissionId,
+        id: outcome.submissionId,
         at: new Date().toISOString(),
         state: a.state,
         summary: a.title,
         subject: safeSubject.trim() || a.parsed.subject || undefined,
         sender: from.trim() || a.parsed.fromAddress || undefined,
         account: source ? "Simulated inbox (preview)" : selectedAccount || undefined,
-        eventId: event?.event_id || undefined,
+        eventId: outcome.event.event_id,
         scenario: a.scenario,
       });
       void recordCheck("email", { at: new Date().toISOString(), state: a.state, summary: a.title });
@@ -614,13 +576,14 @@ export default function CheckEmail() {
 
     return (
       <>
-        {result.event ? (
+        {result.caseId ? (
           <InvestigationCheckScreen
             result={model}
             investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
             investigationQuestion={askPrompt}
             submissionId={result.event.event_id}
             eventId={result.event.event_id}
+            caseId={result.caseId}
             actions={emailActions}
           />
         ) : (

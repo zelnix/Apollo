@@ -228,6 +228,7 @@ async def _launch_investigation(
     triage_provider_evidence: dict | None = None,
     source_metadata: dict | None = None,
     initiator: str = "user_check",
+    client_submission_id: str | None = None,
 ) -> tuple[str | None, dict | None, str | None]:
     """Shared investigation lifecycle for compatibility gates.
 
@@ -243,7 +244,7 @@ async def _launch_investigation(
     """
     case_id: str | None = None
     try:
-        case = await repo.create_case(owner, gate, None, initiator=initiator)
+        case = await repo.create_case(owner, gate, None, client_submission_id=client_submission_id, initiator=initiator)
         case_id = case["case_id"]
 
         # Ingest submitted evidence items

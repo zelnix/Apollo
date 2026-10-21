@@ -44,10 +44,17 @@ class MessageAnalyseIn(BaseModel):
     text: str = Field(min_length=1, max_length=TEXT.value)
     urls: list[str] = Field(default_factory=list, max_length=ITEMS.value)
     local_state: ApolloState
+    # Which Gate submitted this material. "message" is NOT a valid investigation gate — writing it
+    # produced cases that could never be read back (GET /investigations/{id} rejected them).
+    gate: Literal["text", "email"] = "text"
     scenario: str = Field(default="", max_length=40)
     signals: list[str] = Field(default_factory=list, max_length=20)
     claimed_brand: Optional[str] = Field(default=None, max_length=60)
     second_opinion: bool = True
+    # The patrol event this device has already filed (or is about to file) for this check. Recording
+    # it on the case means ONE record per check: the investigation projector updates that event
+    # instead of filing a second, server-owned twin for the same material.
+    client_submission_id: Optional[str] = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9._:-]{1,64}$")
 
     @field_validator("urls")
     @classmethod
@@ -88,6 +95,8 @@ class LinkInvestigateIn(BaseModel):
     local_findings: list[str] = Field(default_factory=list, max_length=12)
     claimed_brand: Optional[str] = Field(default=None, max_length=60)
     second_opinion: bool = True
+    # See MessageAnalyseIn.client_submission_id — one patrol record per check.
+    client_submission_id: Optional[str] = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9._:-]{1,64}$")
 
     @field_validator("url")
     @classmethod
@@ -180,9 +189,10 @@ async def message_analyse(body: MessageAnalyseIn, request: Request):
         initial_findings.append(f"Apollo local state: {body.local_state}")
 
     case_id, job, investigation_error = await _launch_investigation(
-        owner, "message", question, submissions,
+        owner, body.gate, question, submissions,
         initial_findings=initial_findings, intel_evidence=intel_evidence,
-        source_metadata={"type": "text", "preview": protected_text[:160], "submitted_at": now_utc()})
+        source_metadata={"type": "text", "preview": protected_text[:160], "submitted_at": now_utc()},
+        client_submission_id=body.client_submission_id)
     return MessageAnalyseOut(urls=results, investigation_case_id=case_id,
                              job=job if isinstance(job, dict) else None,
                              investigation_error=investigation_error)
@@ -226,7 +236,8 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
     case_id, job, investigation_error = await _launch_investigation(
         owner, "link", question, submissions,
         initial_findings=initial_findings, intel_evidence=intel_evidence,
-        source_metadata={"type": "link", "url": normalized[:500], "submitted_at": now_utc()})
+        source_metadata={"type": "link", "url": normalized[:500], "submitted_at": now_utc()},
+        client_submission_id=body.client_submission_id)
     return LinkInvestigateOut(url=normalized, host=host, verdict=intel.verdict,
                              threat_types=intel.threat_types, coverage=intel.coverage,
                              redirect_chain=intel.redirect_chain, final_url=intel.final_url,

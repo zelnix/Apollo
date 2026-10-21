@@ -184,6 +184,10 @@ export interface PatrolEvent {
   recovery_kinds?: string[];
   /** Owner-validated server association for continuing this event after remount or device refresh. */
   investigation_case_id?: string | null;
+  /** When Magnum DI's answer for `investigation_case_id` was committed to this device. Device-local:
+   *  the device holds the result, so only it can say the investigation has finished. While this is
+   *  absent the case is genuinely still being investigated. */
+  investigation_completed_at?: string | null;
   /** Server-owned correlation: links a background-intake submission to its projected Patrol event.
    * Set by the investigation projector; the frontend sets it on local placeholder events for
    * reconciliation. When the server supplies a value, it is authoritative and supersedes the local

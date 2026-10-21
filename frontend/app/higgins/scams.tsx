@@ -42,7 +42,9 @@ const useStyles = makeStyles((c) => ({
   sort: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44, paddingHorizontal: spacing.xs },
   sortText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
-  icon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  // Half the old 44pt badge: it marks the severity, it doesn't lead the card.
+  icon: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   rowBody: { flex: 1, gap: 4 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   title: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface },
@@ -60,13 +62,15 @@ function AlertRow({ item, index }: { item: GovernmentAlert; index: number }) {
       style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
     >
       <Card style={[s.row, { padding: spacing.md }]}>
-        <View style={[s.icon, { backgroundColor: toneTint(colors, tone) }]}><Icon size={22} color={toneColor(colors, tone)} /></View>
         <View style={s.rowBody}>
-          <View style={s.pills}>
-            <Pill testID={`higgins-scam-${index}-severity`} tone={tone} label={severityLabel(item.severity)} />
-            <Pill tone="neutral" label={item.regionLabel} />
+          <View style={s.titleRow}>
+            <Text style={[s.title, { flex: 1 }]} numberOfLines={2}>{item.title}</Text>
+            <View style={[s.icon, { backgroundColor: toneTint(colors, tone) }]}><Icon size={11} color={toneColor(colors, tone)} /></View>
           </View>
-          <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+          <View style={s.pills}>
+            <Pill compact testID={`higgins-scam-${index}-severity`} tone={tone} label={severityLabel(item.severity)} />
+            <Pill compact tone="neutral" label={item.regionLabel} />
+          </View>
           <Text style={s.meta} numberOfLines={1} testID={`higgins-scam-${index}-source-name`}>{`${item.source} · ${item.dateLabel}`}</Text>
         </View>
         <ChevronRight size={20} color={colors.onSurfaceSecondary} />
@@ -166,8 +170,8 @@ export default function GovernmentScamsScreen() {
                   <Pressable key={`${f.url}-${f.from_label}`} testID={`higgins-scams-family-${i}`} accessibilityRole="button" accessibilityLabel={`${f.from_label} sent: ${f.title}`} onPress={() => openScamAlert(router, f.url)} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
                     <Card style={[s.row, { padding: spacing.md }]}>
                       <View style={s.rowBody}>
-                        <View style={s.pills}><Pill tone={SEVERITY_TONE[f.severity]} label={severityLabel(f.severity)} /><Pill tone="neutral" label={`From ${f.from_label}`} /></View>
                         <Text style={s.title} numberOfLines={2}>{f.title}</Text>
+                        <View style={s.pills}><Pill compact tone={SEVERITY_TONE[f.severity]} label={severityLabel(f.severity)} /><Pill compact tone="neutral" label={`From ${f.from_label}`} /></View>
                         <Text style={s.meta} numberOfLines={1}>{`${f.source} · ${f.date_label}`}</Text>
                       </View>
                       <ChevronRight size={20} color={colors.onSurfaceSecondary} />

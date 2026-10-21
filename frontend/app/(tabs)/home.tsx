@@ -138,7 +138,10 @@ const useStyles = makeStyles((c) => ({
     marginHorizontal: spacing.lg, borderRadius: radius.lg, overflow: "hidden",
     minHeight: 140, backgroundColor: "#E8F5EE",
   },
-  heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  // The 3:1 artwork band, pinned to the bottom so it scales with the card's width on any device.
+  heroBgBand: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  heroBgImage: { width: "100%", aspectRatio: 2000 / 667 },
+  heroBandFade: { position: "absolute", top: 0, left: 0, right: 0, height: "55%" },
   heroGradient: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroOverlay: {
     padding: spacing.lg, gap: spacing.md, flexDirection: "column",
@@ -333,17 +336,30 @@ export default function Home() {
           onPress={() => { const route = heroLine?.route ?? voice.ctaRoute; return route ? router.push(route as any) : null; }}
           style={[s.heroCard, compact && { marginHorizontal: spacing.lg }]}
         >
-          <Image
-            source={heroBg}
-            style={s.heroBgImage}
-            contentFit="cover"
-            testID="home-hero-bg"
-          />
+          {/* The artwork is a 3:1 landscape. It is laid out as a full-width band pinned to the bottom of
+              the card and sized BY ITS OWN PROPORTIONS (aspectRatio), so every device shows the whole
+              picture undistorted and uncropped however tall the card grows. A vertical wash blends the
+              top of the band into the card colour, and the horizontal wash keeps the text readable. */}
+          <View style={s.heroBgBand} pointerEvents="none">
+            <Image
+              source={heroBg}
+              style={s.heroBgImage}
+              contentFit="cover"
+              testID="home-hero-bg"
+            />
+            <LinearGradient
+              colors={["#E8F5EE", "rgba(232,245,238,0.55)", "transparent"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              locations={[0, 0.35, 1]}
+              style={s.heroBandFade}
+            />
+          </View>
           <LinearGradient
-            colors={["rgba(232,245,238,0.95)", "rgba(232,245,238,0.85)", "rgba(232,245,238,0.3)", "transparent"]}
+            colors={["rgba(232,245,238,0.95)", "rgba(232,245,238,0.72)", "rgba(232,245,238,0.18)", "transparent"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            locations={[0, 0.62, 0.88, 1]}
+            locations={[0, 0.55, 0.85, 1]}
             style={s.heroGradient}
           />
           <View style={[s.heroOverlay, compact && { padding: spacing.md }]}>

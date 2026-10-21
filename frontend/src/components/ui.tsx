@@ -71,6 +71,10 @@ const useStyles = makeStyles((c) => ({
   pill: { paddingHorizontal: spacing.md, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, alignSelf: "flex-start", flexShrink: 0 },
   pillText: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.2 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  // 35% smaller than the standard pill, for lists where the pills sit under the title as secondary labels.
+  pillCompact: { paddingHorizontal: spacing.sm, height: 18, gap: 4 },
+  pillTextCompact: { fontSize: 8, letterSpacing: 0.1 },
+  dotCompact: { width: 5, height: 5, borderRadius: 2.5 },
   btn: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
   btnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
   section: { fontFamily: fonts.displayBold, fontSize: 13, color: c.brand, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: spacing.md },
@@ -86,14 +90,14 @@ export function Card({ children, style, testID }: { children: React.ReactNode; s
   return <View testID={testID} style={[s.card, style]}>{children}</View>;
 }
 
-export function Pill({ label, tone = "neutral", testID, style }: { label: string; tone?: Tone; testID?: string; style?: StyleProp<ViewStyle> }) {
+export function Pill({ label, tone = "neutral", testID, style, compact = false }: { label: string; tone?: Tone; testID?: string; style?: StyleProp<ViewStyle>; compact?: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
   const color = toneColor(colors, tone);
   return (
-    <View testID={testID} style={[s.pill, { backgroundColor: toneTint(colors, tone) }, style]}>
-      <View style={[s.dot, { backgroundColor: color }]} />
-      <Text style={[s.pillText, { color: toneText(colors, tone) }]}>{label}</Text>
+    <View testID={testID} style={[s.pill, compact && s.pillCompact, { backgroundColor: toneTint(colors, tone) }, style]}>
+      <View style={[s.dot, compact && s.dotCompact, { backgroundColor: color }]} />
+      <Text style={[s.pillText, compact && s.pillTextCompact, { color: toneText(colors, tone) }]}>{label}</Text>
     </View>
   );
 }

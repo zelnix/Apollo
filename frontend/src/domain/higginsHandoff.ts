@@ -115,6 +115,9 @@ export function contextFromEvent(event: PatrolEvent, gate: HigginsGate, summary 
     user_reported_actions: event.recovery_kinds ?? [],
     available_actions: availableActions,
     event_id: event.event_id,
+    // A check that already opened a Magnum DI investigation continues THAT case. Starting a second
+    // one would give the same email or message two separate threat cases.
+    case_id: event.investigation_case_id ?? undefined,
   });
 }
 

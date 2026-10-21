@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { bodyFrom, headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
+import { STATUS_LABELS, threatCaseStatus } from "../src/domain/threatCase.ts";
 
 const placeholder = {
   event_id: "ev1", device_id: "d1", category: "message", state: "sniffing", status: "active",
@@ -91,4 +92,22 @@ test("the body never repeats the headline sentence", () => {
   assert.equal(bodyFrom("Nothing here needs action."), "Nothing here needs action.");
   const patched = investigationPatch(placeholder, investigation())!;
   assert.ok(!patched.what_happened!.startsWith(patched.headline));
+});
+
+test("the case stops saying 'Investigating' once Magnum DI has answered", () => {
+  // Still running: the device has no committed answer yet.
+  assert.equal(threatCaseStatus(placeholder), "investigating");
+
+  const answered = investigationPatch(placeholder, investigation())!;
+  assert.equal(answered.investigation_completed_at, "2026-10-21T03:50:42Z");
+  // The pill now reports what the investigation found, not that it is still looking.
+  assert.equal(threatCaseStatus(answered), "attention");
+  assert.equal(STATUS_LABELS[threatCaseStatus(answered)], "Needs you");
+
+  // Nothing found: the case closes as "No threat".
+  const clear = investigationPatch(placeholder, investigation({
+    assessment: "no_concern_found_within_scope", attention: "none", findings: [],
+    overview: "Nothing in this needs action.",
+  }))!;
+  assert.equal(threatCaseStatus(clear), "no_threat");
 });

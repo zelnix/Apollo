@@ -61,6 +61,8 @@ export interface InvestigationCheckScreenProps {
   submissionId: string;
   /** Patrol event ID to link the investigation to. */
   eventId?: string | null;
+  /** An investigation Apollo already opened for this material — followed instead of starting a new one. */
+  caseId?: string | null;
   /** Optional action buttons below the investigation. */
   actions?: {
     label: string;
@@ -78,6 +80,7 @@ export function InvestigationCheckScreen({
   investigationQuestion,
   submissionId,
   eventId,
+  caseId,
   actions = [],
   onClose,
 }: InvestigationCheckScreenProps) {
@@ -119,6 +122,7 @@ export function InvestigationCheckScreen({
           testID="investigation-check-flow"
           autoStart
           eventId={eventId}
+          caseId={caseId}
         />
 
         {actions.length > 0 ? (

@@ -91,6 +91,8 @@ export function mergeLocalAndRemoteEvents(
         // Absorb server lifecycle metadata.
         patrol_record: remote.patrol_record ?? local.patrol_record,
         investigation_case_id: remote.investigation_case_id ?? local.investigation_case_id,
+        // Either side can be the one that knows the investigation answered.
+        investigation_completed_at: local.investigation_completed_at ?? remote.investigation_completed_at,
         client_submission_id: remote.client_submission_id ?? local.client_submission_id,
         // Lifecycle: preserve local resolution unless genuinely new evidence.
         status: preserveResolution || userReopened ? local.status : remote.status,

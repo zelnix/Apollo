@@ -3,6 +3,7 @@
 // white cards, 2-column and 3-column grids, section-specific backgrounds.
 
 import Bookmark from "lucide-react-native/icons/bookmark";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileSearch from "lucide-react-native/icons/file-search";
 import Globe from "lucide-react-native/icons/globe";
@@ -29,6 +30,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { goBackOrHome } from "@/src/utils/navigation";
 
 const checkHeroBg = require("@/assets/images/check-hero-bg.png");
 
@@ -192,6 +194,8 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
   // Screen title (outside hero card, matches other screens)
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -spacing.sm },
   screenTitle: {
     fontFamily: fonts.displayBold,
     fontSize: 28,
@@ -442,7 +446,19 @@ export default function CheckItScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Screen Title ── */}
-        <Text style={s.screenTitle}>Check</Text>
+        {/* Check is always reached by being pushed (Settings, Support, Higgins), never from the tab bar. */}
+        <View style={s.titleRow}>
+          <Pressable
+            testID="check-it-back"
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => goBackOrHome(router)}
+            style={s.backBtn}
+          >
+            <ChevronLeft size={24} color={colors.onSurface} />
+          </Pressable>
+          <Text style={s.screenTitle}>Check</Text>
+        </View>
 
         {/* ── Hero Card ── */}
         <View style={s.heroOuter} testID="check-hero-card">
