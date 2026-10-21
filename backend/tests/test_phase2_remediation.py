@@ -29,7 +29,7 @@ def test_registered_chat_context_tools_are_read_only_and_bounded():
     assert set(context_tools.READERS) == {
         "get_protection_summary", "get_recent_cases", "get_last_relevant_outcome", "get_saved_reports",
         "get_recent_patrol_outcomes", "get_user_learning_preferences", "get_new_scams_digest",
-        "get_product_capabilities", "get_gate_states",
+        "get_product_capabilities", "get_gate_states", "get_learn_catalogue",
     }
     chat_source = (ROOT / "backend" / "services" / "higgins" / "chat.py").read_text()
     for forbidden in ("coordinator", "investigation_evidence", "web_search", "url_fetch", "file_scrape"):

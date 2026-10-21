@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Check from "lucide-react-native/icons/check";
 import Heart from "lucide-react-native/icons/heart";
 import Phone from "lucide-react-native/icons/phone";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -20,6 +19,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
+import { CloseButton } from "@/src/components/CloseButton";
 
 export interface SharedIncident { scent_id: string; from_label: string; headline: string; state: ApolloState; events: { event_id: string; category: EventCategory; state: ApolloState; headline: string; occurred_at: string; status: string }[]; steps: { id: string; text: string }[]; done: string[]; resolved: boolean; shared_at: string; updated_at: string; phone: string }
 export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string; duration_s?: number; transcript?: string; transcript_status?: "pending" | "ready" | "unavailable" }
@@ -85,7 +85,7 @@ export default function FamilyIncident() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>{inc ? `${inc.from_label}'s incident` : "Shared incident"}</Text>
-        <Pressable testID="family-incident-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CloseButton testID="family-incident-close" onPress={() => goBackOrHome(router)} />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="family-incident-scroll" bottomOffset={24} keyboardShouldPersistTaps="handled">
         <StaleNote queries={[q, notes]} testID="family-incident-stale" />

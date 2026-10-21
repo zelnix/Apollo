@@ -9,7 +9,6 @@ import ChevronDown from "lucide-react-native/icons/chevron-down";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
@@ -44,6 +43,7 @@ import {
 } from "@/src/store/personalDataLearning";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -363,15 +363,7 @@ export default function PersonalDataScreen() {
         <Text style={s.title} testID="personal-data-title">
           My Personal Data
         </Text>
-        <Pressable
-          testID="personal-data-close"
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={() => goBackOrHome(router)}
-          style={s.close}
-        >
-          <X size={22} color={colors.onSurface} />
-        </Pressable>
+        <CloseButton testID="personal-data-close" label="Close My Personal Data" onPress={() => goBackOrHome(router)} />
       </View>
 
       <ScrollView

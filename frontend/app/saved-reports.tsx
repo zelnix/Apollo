@@ -1,5 +1,4 @@
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +7,7 @@ import { Body, Button, Card, Pill } from "@/src/components/ui";
 import * as reportsApi from "@/src/investigation/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface }, header: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.lg }, title: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface }, close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary }, list: { paddingHorizontal: spacing.xl, gap: spacing.md }, reportTitle: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface }, row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm } }));
 
@@ -18,7 +18,7 @@ export default function SavedReportsScreen() {
   const load = async (next?: string | null) => { setLoading(true); setError(null); try { const result = await reportsApi.listReports(next); setItems((old) => next ? [...old, ...result.items] : result.items); setCursor(result.nextCursor); setRetryCursor(null); } catch { setError("Saved reports could not be loaded."); setRetryCursor(next ?? null); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
   return <View style={s.root} testID="saved-reports-screen">
-    <View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-reports-title">Saved reports</Text><Pressable testID="saved-reports-close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable></View>
+    <View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-reports-title">Saved reports</Text><CloseButton testID="saved-reports-close" label="Close saved reports" onPress={() => goBackOrHome(router)} /></View>
     <FlatList testID="saved-reports-list" data={items} keyExtractor={(item) => item.reportId} contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]}
       renderItem={({ item }) => <Pressable testID={`saved-report-open-${item.reportId}`} onPress={() => router.push({ pathname: "/saved-report/[id]", params: { id: item.reportId } })}><Card>
         <View style={s.row}><Text testID={`saved-report-title-${item.reportId}`} style={s.reportTitle}>{item.overview}</Text><Pill testID={`saved-report-historical-${item.reportId}`} tone="neutral" label="Historical" /></View>

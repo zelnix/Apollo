@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { FirstCheckResult } from "@/src/components/FirstCheckResult";
-import { Body, Button } from "@/src/components/ui";
+import { SetupProgress } from "@/src/components/SetupProgress";
+import { Button } from "@/src/components/ui";
 import type { FirstCheckReport } from "@/src/domain/firstCheck";
 import { collectFirstCheck } from "@/src/security/firstCheckSignals";
 import { saveFirstCheck } from "@/src/store/firstCheckStore";
@@ -51,7 +52,8 @@ export default function FirstCheckOnboarding() {
   if (running || !report) {
     return (
       <View style={s.root} testID="first-check-onboarding-loading">
-        <View style={[s.centre, { paddingTop: insets.top }]}>
+        <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={4} /></View>
+        <View style={s.centre}>
           <ApolloLogo size={96} />
           <Text style={s.eyebrow}>Higgins First Check</Text>
           <Text style={s.title}>Checking this device&apos;s starting point…</Text>
@@ -64,7 +66,8 @@ export default function FirstCheckOnboarding() {
 
   return (
     <View style={s.root} testID="first-check-onboarding">
-      <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + spacing.lg, paddingBottom: spacing.xl }]}>
+      <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={4} onBack={() => router.back()} /></View>
+      <ScrollView contentContainerStyle={[s.content, { paddingTop: spacing.lg, paddingBottom: spacing.xl }]}>
         <View style={{ alignItems: "center", gap: spacing.sm }}>
           <ApolloLogo size={72} />
           <Text style={s.eyebrow}>Higgins First Check</Text>
@@ -75,8 +78,8 @@ export default function FirstCheckOnboarding() {
         {report.overall === "ERROR" ? (
           <Button testID="first-check-retry" variant="secondary" label="Try the check again" icon={<RefreshCw size={18} color={colors.brand} />} onPress={() => void run()} />
         ) : null}
-        <Button testID="first-check-continue" label="Continue to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
-        <Text style={s.note}>You can repeat this anytime from Check It → Device Re-check.</Text>
+        <Button testID="first-check-continue" label="Finish — go to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+        <Text style={s.note}>That&apos;s setup done. You can repeat this check anytime from Check It → Re-check my device.</Text>
       </View>
     </View>
   );

@@ -4,9 +4,8 @@
 // test buttons report exactly what the device and the server actually answered.
 import { useRouter } from "expo-router";
 import Bell from "lucide-react-native/icons/bell";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/src/api/client";
@@ -27,6 +26,7 @@ import {
 import { storage } from "@/src/utils/storage";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 interface NotifFailure { kind: string; message: string; at: string; context: string | null }
 
@@ -133,9 +133,7 @@ export default function NotificationCheckScreen() {
   return <View style={s.root} testID="notification-check-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
       <Text style={s.title} testID="notification-check-title">Notification check</Text>
-      <Pressable testID="notification-check-close" accessibilityRole="button" accessibilityLabel="Close Notification check" onPress={() => goBackOrHome(router)} style={s.close}>
-        <X size={22} color={colors.onSurface} />
-      </Pressable>
+      <CloseButton testID="notification-check-close" label="Close Notification check" onPress={() => goBackOrHome(router)} />
     </View>
 
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="notification-check-scroll">

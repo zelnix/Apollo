@@ -22,7 +22,6 @@ import { PhonePickerSheet } from "./PhonePickerSheet";
 import { Sheet } from "./Sheet";
 import { PREVIEW_SIMULATION } from "./SimulatedPicker";
 import { SourcePickerSheet, type SourceChoice } from "./SourcePickerSheet";
-import { SourceHero } from "./SourceHero";
 import { AppDeviceSdk, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -120,21 +119,10 @@ const CATEGORY_CONFIG: Record<HigginsCheckCategory, {
   },
 };
 
-/** The apps a message commonly arrives in. The person names it; Apollo never guesses. */
-const SOURCE_APPS = ["SMS", "WhatsApp", "Messenger", "iMessage", "Telegram", "Instagram"];
-
 const useStyles = makeStyles((c) => ({
   field: { gap: spacing.xs },
   label: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   hint: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.muted },
-  appRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  appChip: {
-    paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, minHeight: 36, justifyContent: "center",
-  },
-  appChipOn: { backgroundColor: c.brandPrimary, borderColor: c.brandPrimary },
-  appChipText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
-  appChipTextOn: { color: c.onBrandPrimary, fontFamily: fonts.textSemibold },
   input: {
     borderWidth: 1,
     borderColor: c.borderStrong,
@@ -148,14 +136,8 @@ const useStyles = makeStyles((c) => ({
     minHeight: 48,
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 84,
     textAlignVertical: "top",
-  },
-  imagePreview: {
-    fontFamily: fonts.textMedium,
-    fontSize: 14,
-    color: c.resting,
-    paddingVertical: spacing.sm,
   },
   imagePreviewWrap: {
     borderRadius: radius.md,
@@ -163,15 +145,20 @@ const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.border,
     width: "100%",
-    height: 200,
+    height: 130,
   },
   imageThumb: {
     width: "100%",
-    height: 200,
+    height: 130,
   },
-  questionField: {
-    marginTop: spacing.sm,
-  },
+  // One compact row of chips instead of a stack of full-width buttons, so the
+  // submit action is never pushed below the fold.
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  sourceChip: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brand, backgroundColor: c.surfaceSecondary },
+  sourceChipText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  cancelBtn: { paddingHorizontal: spacing.sm },
+  errorText: { fontFamily: fonts.textMedium, fontSize: 13, lineHeight: 18, color: c.barkingText },
   helper: {
     fontFamily: fonts.text,
     fontSize: 13,
@@ -209,6 +196,18 @@ const SOURCE_LABEL: Record<SourceKey, string> = {
   concerns: "Choose a sample concern",
 };
 
+/** Short chip wording for the compact source row inside the check sheet. */
+const SOURCE_CHIP: Record<SourceKey, string> = {
+  email: "My email",
+  messages: "My messages",
+  calls: "Recent callers",
+  apps: "Installed apps",
+  files: "My files",
+  screenshots: "Sample screenshots",
+  links: "Sample links",
+  concerns: "Sample concerns",
+};
+
 const SOURCE_TITLE: Record<SourceKey, string> = {
   email: "Your email",
   messages: "Your messages",
@@ -234,23 +233,13 @@ const SOURCE_NOTE: Record<SourceKey, string> = {
 /** Sources with no real list to read on any device — offered in preview only. */
 const PREVIEW_ONLY_SOURCES: SourceKey[] = ["screenshots", "links", "concerns"];
 
-/** The hero card at the top of the sheet: pick one of your own things before typing anything. */
-const HERO_TITLE: Record<HigginsCheckCategory, string> = {
-  screenshot: "Pick a screenshot from this phone",
-  websites_links: "Pick a link",
-  messages_calls: "Pick a message or caller from this phone",
-  email_accounts: "Pick an email from your inbox",
-  apps_files: "Pick an app or file from this phone",
-  device_internet: "Pick a concern",
-};
-
 const HERO_CAPTION: Record<HigginsCheckCategory, string> = {
-  screenshot: "Higgins reads the image you choose. It stays on this phone until you submit it.",
-  websites_links: "Higgins checks where the link really leads.",
-  messages_calls: "Higgins reads only the one message or number you choose — never your inbox or call history.",
-  email_accounts: "Higgins reads only the one email you choose and checks the sender, the links and the request.",
-  apps_files: "Higgins checks the app's source and permissions, or the file's signature and contents.",
-  device_internet: "Higgins starts from what you have noticed on this device.",
+  screenshot: "Apollo reads only the image you choose. It stays on this phone until you submit.",
+  websites_links: "Apollo checks where the link really leads.",
+  messages_calls: "Only the one message or number you choose — never your inbox or call history.",
+  email_accounts: "Only the one email you choose: its sender, its links and what it asks for.",
+  apps_files: "The app's source and permissions, or the file's signature and contents.",
+  device_internet: "Apollo starts from what you have noticed on this device.",
 };
 
 interface InboxItem { id: string; account?: string; from: string; subject: string; snippet: string }
@@ -291,7 +280,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [picker, setPicker] = useState<SourceKey | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   /** The app a pasted message arrived in, when the person names it. */
-  const [sourceApp, setSourceApp] = useState<string | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [apps, setApps] = useState<InstalledAppRef[]>([]);
@@ -312,7 +300,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setSelectedSample(null);
       setPicker(null);
       setSourceError(null);
-      setSourceApp(null);
     }
   }, [visible, category]);
 
@@ -369,8 +356,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const fillSample = useCallback((id: string, text: string, suggestedQuestion?: string) => {
     setContent(text);
     setSelectedSample(id);
-    // Keep the app chip in step with a sample that states which app it came from.
-    setSourceApp(text.match(/^source app:\s*(.+)$/im)?.[1]?.trim() ?? null);
     if (suggestedQuestion) setQuestion((q) => q.trim() || suggestedQuestion);
     // Back to the entry popup, which looks exactly as it does in production.
     setPicker(null);
@@ -560,9 +545,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       category,
       gate: categoryToGate(category),
       question: question.trim() || config.defaultQuestion,
-      // The app the person named is recorded with the message, in the same header form the capture
-      // flows use, so the case shows it the way it arrived.
-      textContent: text ? (sourceApp && !/^source app:/im.test(text) ? `Source app: ${sourceApp}\n${text}` : text) : null,
+      textContent: text || null,
       imageUri: prepared?.imageUri ?? null,
       preparedImage: prepared,
     });
@@ -602,24 +585,51 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       title={config.title}
       testID="higgins-artifact-sheet"
       scrollRef={scrollRef}
+      footer={
+        <>
+          {prepError ? <Text style={s.errorText} testID="higgins-artifact-prep-error">{prepError}</Text> : null}
+          <View style={s.footerRow}>
+            <Button
+              testID="higgins-artifact-cancel"
+              variant="ghost"
+              label="Cancel"
+              onPress={onClose}
+              style={s.cancelBtn}
+            />
+            <Button
+              testID="higgins-artifact-submit"
+              label="Ask Higgins to investigate"
+              onPress={() => void handleSubmit()}
+              disabled={!canSubmit}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </>
+      }
     >
-      {/* Picking beats typing: the person's own things come first, as the hero of the sheet. */}
+      {/* Picking beats typing, but it must not push the submit button off the screen: the person's
+          own sources sit on one compact row of chips rather than a stack of full-width buttons. */}
       {sources.length ? (
-        <SourceHero
-          testID="higgins-artifact-hero"
-          title={HERO_TITLE[category]}
-          caption={HERO_CAPTION[category]}
-          actions={sources.map((key) => ({
-            testID: `higgins-artifact-source-${key}`,
-            label: SOURCE_LABEL[key],
-            disabled: picking,
-            onPress: () => openSource(key),
-          }))}
-        />
+        <View style={s.sourceRow} testID="higgins-artifact-hero">
+          {sources.map((key) => (
+            <Pressable
+              key={key}
+              testID={`higgins-artifact-source-${key}`}
+              accessibilityRole="button"
+              accessibilityLabel={SOURCE_LABEL[key]}
+              disabled={picking}
+              onPress={() => openSource(key)}
+              style={[s.sourceChip, picking && { opacity: 0.5 }]}
+            >
+              <Text style={s.sourceChipText} numberOfLines={1}>{SOURCE_CHIP[key]}</Text>
+            </Pressable>
+          ))}
+        </View>
       ) : null}
+      {sources.length ? <Text style={s.hint}>{HERO_CAPTION[category]}</Text> : null}
       {selectedSample ? (
         <Text style={s.helper} testID="higgins-artifact-sample-loaded">
-          Loaded below. Check it reads the way you expect, then tap &ldquo;Ask Higgins to investigate&rdquo;.
+          Loaded below — check it reads the way you expect.
         </Text>
       ) : null}
       {/* Screenshot: image picker + optional question */}
@@ -630,36 +640,26 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               <Image source={imageUri} style={s.imageThumb} contentFit="cover" />
             </View>
           ) : null}
-          <Button
-            testID={imageUri ? "higgins-artifact-change-image" : "higgins-artifact-pick-image"}
-            variant={imageUri ? "ghost" : "secondary"}
-            label={picking ? "Opening…" : imageUri ? "Choose a different image" : "Select an image"}
-            onPress={() => void pickImage()}
-            disabled={picking}
-          />
-          <Button
-            testID="higgins-artifact-take-photo"
-            variant="ghost"
-            label={imageUri ? "Take a different photo" : "Take a photo"}
-            onPress={() => void takePhoto()}
-            disabled={picking}
-          />
-          <Button
-            testID="higgins-artifact-browse-files"
-            variant="ghost"
-            label="Browse files"
-            onPress={() => void browseForImage()}
-            disabled={picking}
-          />
-          <Text style={s.helper}>
-            Pick from your photos, browse your files, or use the camera for a QR code, a letter, a parcel
-            card or another screen in front of you. The image stays on your device until you submit it.
+          <View style={s.sourceRow}>
+            <Pressable testID={imageUri ? "higgins-artifact-change-image" : "higgins-artifact-pick-image"} accessibilityRole="button" accessibilityLabel={imageUri ? "Choose a different image" : "Select an image"} disabled={picking} onPress={() => void pickImage()} style={[s.sourceChip, picking && { opacity: 0.5 }]}>
+              <Text style={s.sourceChipText}>{picking ? "Opening…" : imageUri ? "Different image" : "My photos"}</Text>
+            </Pressable>
+            <Pressable testID="higgins-artifact-take-photo" accessibilityRole="button" accessibilityLabel={imageUri ? "Take a different photo" : "Take a photo"} disabled={picking} onPress={() => void takePhoto()} style={[s.sourceChip, picking && { opacity: 0.5 }]}>
+              <Text style={s.sourceChipText}>Camera</Text>
+            </Pressable>
+            <Pressable testID="higgins-artifact-browse-files" accessibilityRole="button" accessibilityLabel="Browse files" disabled={picking} onPress={() => void browseForImage()} style={[s.sourceChip, picking && { opacity: 0.5 }]}>
+              <Text style={s.sourceChipText}>Files</Text>
+            </Pressable>
+          </View>
+          <Text style={s.hint}>
+            A screenshot, a QR code, a letter or anything else in front of you. It stays on this phone
+            until you submit it.
           </Text>
           {cameraBlocked ? (
             <>
               <Text style={s.helper} testID="higgins-artifact-camera-blocked">
-                Camera access is turned off for Apollo, so photos cannot be taken. Everything else still
-                works — you can select an image from your photos instead.
+                Camera access is turned off for Apollo, so photos cannot be taken. You can still select
+                an image from your photos.
               </Text>
               <Button
                 testID="higgins-artifact-camera-settings"
@@ -669,16 +669,15 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               />
             </>
           ) : null}
-          <View style={[s.field, s.questionField]}>
+          <View style={s.field}>
             <Text style={s.label}>Your question (optional)</Text>
             <TextInput
               testID="higgins-artifact-question"
-              style={[s.input, s.textArea]}
+              style={s.input}
               value={question}
               onChangeText={setQuestion}
-              placeholder={config.placeholder}
+              placeholder="e.g. Is this a scam?"
               placeholderTextColor={colors.muted}
-              multiline
             />
           </View>
         </>
@@ -716,27 +715,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
               autoCorrect={category !== "websites_links"}
             />
           </View>
-          {/* Where it arrived matters to the investigation and to how the evidence reads later, and
-              only the person can tell Apollo that when they paste a message in by hand. */}
-          {category === "messages_calls" ? (
-            <View style={s.field} testID="higgins-artifact-app">
-              <Text style={s.label}>Which app did it arrive in? (optional)</Text>
-              <View style={s.appRow}>
-                {SOURCE_APPS.map((app) => {
-                  const on = sourceApp === app;
-                  return (
-                    <Pressable key={app} style={[s.appChip, on && s.appChipOn]} testID={`higgins-artifact-app-${app.toLowerCase()}`}
-                      accessibilityRole="radio" accessibilityState={{ selected: on }}
-                      onPress={() => setSourceApp(on ? null : app)}>
-                      <Text style={[s.appChipText, on && s.appChipTextOn]}>{app}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <Text style={s.hint}>Apollo notes this with the message so your case shows it the way it arrived.</Text>
-            </View>
-          ) : null}
-          <View style={[s.field, s.questionField]}>
+          <View style={s.field}>
             <Text style={s.label}>Your question (optional)</Text>
             <TextInput
               testID="higgins-artifact-question"
@@ -750,19 +729,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
         </>
       )}
 
-      {prepError ? <Text style={s.label} testID="higgins-artifact-prep-error">{prepError}</Text> : null}
-      <Button
-        testID="higgins-artifact-submit"
-        label="Ask Higgins to investigate"
-        onPress={() => void handleSubmit()}
-        disabled={!canSubmit}
-      />
-      <Button
-        testID="higgins-artifact-cancel"
-        variant="ghost"
-        label="Cancel"
-        onPress={onClose}
-      />
       {/* The real message/caller lists carry their own permission flow, so they use the shared picker
           that already handles explain → ask → Open Settings. */}
       {!PREVIEW_SIMULATION && (picker === "messages" || picker === "calls") ? (

@@ -39,6 +39,7 @@ import {
 } from "@/src/domain/protectionAreas";
 import { gateTone, type GateId } from "@/src/domain/gates";
 import { CATEGORY_CONTENT } from "@/src/domain/protectionContent";
+import { CallScreenerCard } from "@/src/components/CallScreenerCard";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -573,6 +574,10 @@ function OverviewContent({ area }: { area: ProtectionArea }) {
           ))}
         </View>
       </Card>
+
+      {/* Automatic call screening is only possible when this phone makes Apollo its
+          screener, so the offer belongs with the protection it enables. */}
+      {area.id === "messages_calls" ? <CallScreenerCard testID="protection-detail-screener" /> : null}
 
       {/* Bottom Higgins card */}
       <BottomHigginsCard area={area} />

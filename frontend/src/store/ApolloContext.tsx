@@ -25,6 +25,8 @@ import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/do
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { fetchMessageUrlIntel, linkTriageOutcome, type MessageUrlResult } from "@/src/domain/urlIntel";
+import { fetchEvidencePhoneIntel } from "@/src/domain/phoneIntel";
+import { extractPhoneCandidates, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { evaluateTriage } from "@/src/domain/triage/engine";
@@ -95,6 +97,8 @@ const deviceMeta = () => ({
 });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
+/** The device's region, so a local number in captured material ("0412 345 678") can be resolved. */
+const deviceRegion = () => Localization.getLocales()[0]?.regionCode ?? undefined;
 
 /** Safe JSON parse that returns `fallback` instead of throwing on corrupt data.
  *  Optionally validates parsed shape (e.g. Array.isArray for list keys).
@@ -122,10 +126,10 @@ export interface TrustEntry { trust_id: string; device_id: string; indicator_typ
 export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export type { MessageUrlResult };
-export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
+export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
 /** One email check: the deterministic analysis, the link reputation behind it, the single patrol
  *  record it filed, and the Magnum DI case id when Triage escalated (null when it did not). */
-export interface EmailOutcome { submissionId: string; analysis: EmailAnalysis; urls: MessageUrlResult[]; event: PatrolEvent; investigationCaseId: string | null }
+export interface EmailOutcome { submissionId: string; analysis: EmailAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; event: PatrolEvent; investigationCaseId: string | null }
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
  * only reach "growling"/"barking" in the app, never a verified "biting" block.
@@ -180,7 +184,10 @@ interface ApolloContextValue {
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
   checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null }>;
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
-  checkNumberRisk(number: string, country?: string): Promise<CallRiskResult>;
+  /** `deliberate` marks a check the person asked for (Check a Number, a re-check) as opposed to the
+   *  background screening of an incoming call. A deliberate check that Apollo cannot settle from its
+   *  own sources is escalated to a Magnum DI investigation; background screening never is. */
+  checkNumberRisk(number: string, country?: string, options?: { deliberate?: boolean }): Promise<CallRiskResult>;
   /** `original` = the exact source investigated; saved unaltered on this device for the Evidence tab. */
   upsertEvent(event: PatrolEvent, original?: OriginalSourceInput): Promise<PatrolEvent>;
   reopenEvent(event: PatrolEvent): Promise<void>;
@@ -931,6 +938,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Gate detection path: local/deterministic analysis + link reputation only.
     // No backend investigation call — Magnum DI investigates only when the person requests it.
     const urls = await fetchMessageUrlIntel(analysis.signals.urls, deviceId);
+    // Telephone/mobile numbers in the material get the same treatment as its links: a real
+    // reputation check, recorded as evidence and handed to Triage. A number's reputation is one
+    // signal — on its own it never sets the state of the case.
+    const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${sender}\n${text}`), deviceId, deviceRegion());
     // The patrol record this check will file. Known before the investigation starts so the case can
     // name it, which is what keeps one check to one case.
     const eventId = Crypto.randomUUID();
@@ -940,6 +951,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
     why.push(...guard.why);
+    why.push(...phoneWhyLines(phones));
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
     let investigationCaseId: string | null = null;
@@ -947,7 +959,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation }));
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones) }));
 
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
     if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
@@ -990,11 +1002,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
+        evidence_phones: phones.length ? phones : null,
       }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
-    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, explanation: null, assessment: null, remoteError, event };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, phones, explanation: null, assessment: null, remoteError, event };
   }, [correlationFor, deviceId, upsertEvent]);
 
   // ── Email check (Gate 1) ─────────────────────────────────────────────────
@@ -1007,6 +1020,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const analysis = analyseEmail(input.raw, { from: input.from, subject: input.subject });
     const eventId = Crypto.randomUUID();
     const urls = await fetchMessageUrlIntel(analysis.urls, deviceId);
+    // Telephone/mobile numbers in the email get the same real reputation check the links get.
+    const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${input.from}\n${input.subject}\n${input.raw}`), deviceId, deviceRegion());
     let state = analysis.state;
     const why = [...analysis.why];
     // Email Guard: automatic pre-click assessment of every link plus any display-text-vs-destination
@@ -1014,6 +1029,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(input.raw));
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
     why.push(...guard.why);
+    why.push(...phoneWhyLines(phones));
     const firstHost = urls.find((u) => u.verdict === "malicious")?.host
       ?? (analysis.lookalikeUrls[0] ? analysis.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null)
       ?? urls[0]?.host ?? analysis.senderDomain;
@@ -1021,7 +1037,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation }));
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones) }));
 
     let investigationCaseId: string | null = null;
     if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
@@ -1066,6 +1082,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
       investigation_case_id: investigationCaseId,
       triage_investigation: triage,
+      evidence_phones: phones.length ? phones : null,
     }, {
       kind: "email",
       fields: [
@@ -1078,7 +1095,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return {
       submissionId: event.event_id,
       analysis: { ...analysis, state: event.state, why: event.why },
-      urls, event, investigationCaseId,
+      urls, phones, event, investigationCaseId,
     };
   }, [correlationFor, deviceId, upsertEvent]);
 
@@ -1179,10 +1196,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const { correlation, existingCaseId } = correlationFor({ indicator: input.number?.trim() || null, mechanics: ["remote_access", "scam_call"] });
     const triage = evaluateTriage(callTriageEvidence({ input, analysis, correlation }));
     if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
-      // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat — once per correlated case.
+      // Tier 2 (Magnum DI) runs for a deterministic Possible Threat, AND when Triage could not
+      // settle the call because a source it needed didn't answer — a call Apollo cannot settle
+      // itself is investigated rather than left at "couldn't determine". Once per correlated case.
       let investigationCaseId: string | null = existingCaseId;
       let escalationNote: string | null = null;
-      if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) {
+      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE") && !investigationCaseId) {
         const callSummary = [
           input.claim ? `Caller said: ${input.claim}` : null,
           input.brandName ? `Claimed brand: ${input.brandName}` : null,
@@ -1226,7 +1245,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // native mechanism can act on it next time, and files a growling/barking (never biting) Patrol
   // event — matching Check This Call's existing choice to keep the number itself local-only
   // (`local_indicator`, never synced — see syncEvent's strip above).
-  const checkNumberRisk = useCallback(async (number: string, country?: string): Promise<CallRiskResult> => {
+  const checkNumberRisk = useCallback(async (number: string, country?: string, options?: { deliberate?: boolean }): Promise<CallRiskResult> => {
     const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
     // Auto-detect device region for local numbers without country code
     const region = country || Localization.getLocales()[0]?.regionCode;
@@ -1254,15 +1273,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
       const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
 
-      // Triage first (deterministic, 0 Gemini calls). Magnum DI runs ONLY for a Possible Threat,
-      // and reuses the correlated case when one already exists.
+      // Triage first (deterministic, 0 Gemini calls). Magnum DI runs for a Possible Threat and for a
+      // number Triage could not settle because a source it needed didn't answer, and reuses the
+      // correlated case when one already exists.
       const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
       const triage = evaluateTriage(numberRiskTriageEvidence({
         decision: result.decision, fraudScore: result.fraud_score ?? null,
         recentAbuse: result.recent_abuse ?? null, voip: result.voip ?? null, correlation,
       }));
       let investigationCaseId: string | null = existingCaseId;
-      if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" && !investigationCaseId) try {
+      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE") && !investigationCaseId) try {
         const investigationResult = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
           gate: "call",
           question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
@@ -1308,6 +1328,31 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
       // Expose the case ID on the result so callers (e.g. call-guard manual flow) know an
       // investigation is already in flight and MUST NOT launch a second one.
+      result.investigation_case_id = investigationCaseId;
+    } else if (options?.deliberate && result.decision === "unknown") {
+      // Nobody answered about this number — the reputation service is either not configured here or
+      // could not resolve it. Apollo has no other source to settle it with, so a check the person
+      // deliberately asked for goes to Magnum DI instead of stopping at "couldn't check". No Patrol
+      // finding is filed: there is no finding, only an investigation.
+      const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
+      const triage = evaluateTriage(numberRiskTriageEvidence({ decision: result.decision, unavailable: true, correlation }));
+      let investigationCaseId: string | null = existingCaseId;
+      if (triage.outcome !== "NO_THREAT_IDENTIFIED" && !investigationCaseId) {
+        const unreachable = result.source === "not_configured"
+          ? "the reputation service is not configured in this environment"
+          : "the reputation service could not be reached or could not resolve the number";
+        try {
+          const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
+            gate: "call",
+            question: `Investigate caller ${result.number}. Apollo's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.`,
+            submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nReputation: no data returned (source: ${result.source})`, label: "Number with no reputation data" }],
+            initial_findings: [`Apollo's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
+          });
+          investigationCaseId = typeof created.case?.id === "string" ? created.case.id : null;
+        } catch {
+          investigationCaseId = null;
+        }
+      }
       result.investigation_case_id = investigationCaseId;
     }
     return result;

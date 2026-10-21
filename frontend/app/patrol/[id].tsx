@@ -490,7 +490,7 @@ function RecheckCase({ event }: { event: PatrolEvent }) {
         const outcome = await checkMessage(from, text);
         openResult(outcome.event, "Apollo re-checked the message and found nothing to flag this time.");
       } else if (plan.kind === "number") {
-        const risk = await checkNumberRisk(plan.number);
+        const risk = await checkNumberRisk(plan.number, undefined, { deliberate: true });
         showToast(`Re-check complete: ${risk.higgins.headline}`, "neutral");
       }
     } catch (error) {
@@ -740,7 +740,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
       <View style={s.content}>
         {/* The artefact itself, as it arrived, with the copy that was sent alongside it. */}
         <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
-          packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} testID="tc-evidence-artefact" />
+          packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />
 
         {/* Primary: Evidence investigated by Magnum DI */}
         {!hasLocalOriginal ? (
@@ -847,7 +847,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
     <View style={s.content}>
       {/* The artefact itself, when the exact original is on this phone. */}
       <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
-        packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} testID="tc-evidence-artefact" />
+        packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />
 
       <View style={s.evidenceSection} testID="tc-evidence-original">
         <View style={s.evidenceHeader}>

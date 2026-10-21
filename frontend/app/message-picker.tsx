@@ -5,7 +5,6 @@
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Search from "lucide-react-native/icons/search";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +14,7 @@ import { filterConversations, groupSms, timeLabel, type SmsConversation } from "
 import { PhonePickers, type RecentSms } from "@/src/security/phonePickers";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 type Phase = "checking" | "need_permission" | "requesting" | "ready" | "denied" | "unsupported";
 
@@ -78,7 +78,7 @@ export default function MessagePicker() {
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
       {open ? <Pressable testID="message-picker-back" accessibilityRole="button" onPress={() => setOpen(null)} style={s.iconBtn}><ChevronLeft size={22} color={colors.onSurface} /></Pressable> : null}
       <Text style={s.title}>{open ? open.display : "Your messages"}</Text>
-      <Pressable testID="message-picker-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.iconBtn}><X size={20} color={colors.onSurface} /></Pressable>
+      <CloseButton testID="message-picker-close" onPress={() => goBackOrHome(router)} />
     </View>
 
     {phase === "unsupported" ? (

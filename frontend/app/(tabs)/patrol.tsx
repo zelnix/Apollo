@@ -91,18 +91,6 @@ function cardSubtitle(event: PatrolEvent): string {
   return preview ? preview.slice(0, 40) : "";
 }
 
-// ── Status accent color (left bar on card) ───────────────────────────────────
-
-function accentColor(status: ThreatCaseStatus): string {
-  switch (status) {
-    case "investigating": return "#DC2626";
-    case "blocked": return "#DC2626";
-    case "attention": return "#DC2626";
-    case "resolved": return "#10B981";
-    case "no_threat": return "#6B7280";
-    case "monitoring": return "#D97706";
-  }
-}
 
 // ── Filter types ─────────────────────────────────────────────────────────────
 
@@ -146,18 +134,19 @@ const useStyles = makeStyles((c) => ({
   filterOptionText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
   filterOptionTextActive: { color: "#FFFFFF", fontFamily: fonts.textSemibold },
   filterOptionCount: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  // Threat card
-  card: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, backgroundColor: c.surfaceSecondary, flexDirection: "row", overflow: "hidden", borderWidth: 1, borderColor: c.border },
-  cardAccent: { width: 4 },
+  // Threat card — the Home card shape: compact meta row, full-width words, action bottom right.
+  card: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, padding: spacing.lg, backgroundColor: c.surfaceSecondary, borderWidth: 0.25, borderColor: c.border, gap: 2 },
   historyLink: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm },
   historyLinkText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
-  cardBody: { flex: 1, flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.md },
-  cardIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  cardContent: { flex: 1, gap: 4 },
-  cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, lineHeight: 21 },
-  cardSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  cardMetaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: 2 },
-  cardMeta: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  cardTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  cardIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  cardWords: { gap: 2, marginTop: 2 },
+  cardTitle: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface, lineHeight: 21 },
+  cardSubtitle: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  cardMeta: { flex: 1, fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: 2 },
+  cardAction: { flexDirection: "row", alignItems: "center", gap: 4 },
+  cardActionText: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
   cardCaseId: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
   // Status pill
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
@@ -177,29 +166,32 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
   const title = cardTitle(event);
   const subtitle = cardSubtitle(event);
   const statusColor = STATUS_COLORS[status];
-  const accent = accentColor(status);
 
   return (
     <Pressable style={({ pressed }) => [s.card, { opacity: pressed ? 0.85 : 1 }]} onPress={onPress} accessibilityRole="button" testID={`threat-card-${event.event_id}`}>
-      <View style={[s.cardAccent, { backgroundColor: accent }]} />
-      <View style={s.cardBody}>
+      {/* Same shape as the Home cards: icon, time and status on one compact row, the words beneath
+          at full card width, and the action at the bottom right. */}
+      <View style={s.cardTopRow}>
         <View style={[s.cardIcon, { backgroundColor: si.bg }]}>
-          <IconEl size={22} color={si.fg} />
+          <IconEl size={16} color={si.fg} />
         </View>
-        <View style={s.cardContent}>
-          <Text style={s.cardTitle} numberOfLines={3}>{title}</Text>
-          {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
-          <View style={s.cardMetaRow}>
-            <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
-              <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
-            </View>
-            <Text style={s.cardMeta} testID={`threat-card-${event.event_id}-meta`}>
-              {si.label} · {formatDateTime(event.occurred_at)}
-            </Text>
-          </View>
-          <Text style={s.cardCaseId}>{threatCaseId(event)}</Text>
+        <Text style={s.cardMeta} numberOfLines={1} testID={`threat-card-${event.event_id}-meta`}>
+          {si.label} · {formatDateTime(event.occurred_at)}
+        </Text>
+        <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
+          <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
         </View>
-        <ChevronRight size={18} color={colors.muted} />
+      </View>
+      <View style={s.cardWords}>
+        <Text style={s.cardTitle} numberOfLines={3}>{title}</Text>
+        {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+      </View>
+      <View style={s.cardFooter}>
+        <Text style={s.cardCaseId}>{threatCaseId(event)}</Text>
+        <View style={s.cardAction}>
+          <Text style={s.cardActionText}>View threat</Text>
+          <ChevronRight size={14} color={colors.brand} />
+        </View>
       </View>
     </Pressable>
   );

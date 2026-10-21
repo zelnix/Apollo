@@ -82,10 +82,16 @@ def _mock_health_check_response() -> dict:
 def _mock_chat_response() -> dict:
     """Chat JSON response matching ModelChatReply schema."""
     return {
-        "reply": "[MOCK] This is a deterministic preview response from Apollo's mock provider. "
-                 "No paid Gemini inference was performed.",
-        "actions": [],
-        "suggested_followups": [],
+        "answer": "[MOCK] This is a deterministic preview response from Apollo's mock provider. "
+                  "No paid Gemini inference was performed. In the live app I answer from Apollo's "
+                  "own product knowledge and the live reading of your phone, and I link you "
+                  "straight to the screen you need.",
+        "evidenceBasis": ["mock_provider"],
+        "uncertainty": [],
+        "clarification": None,
+        "recommendInvestigation": False,
+        "destination": None,
+        "navigate": ["/(tabs)/check-it"],
     }
 
 

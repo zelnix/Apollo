@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
+import { SetupProgress } from "@/src/components/SetupProgress";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { GATE_ORDER, GATE_PERMISSIONS, GATE_SNOOZE_MS, gateAppliesToPlatform, gateSnoozeKey, type GatePermId } from "@/src/domain/gatePermissions";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
@@ -72,7 +73,8 @@ export default function SetupGates() {
   const leaving = useRef(false);
 
   // After permissions/platform setup, onboarding proceeds to Higgins First Check (spec §4) BEFORE the
-  // normal all-clear experience — never straight to Home.
+  // normal all-clear experience — never straight to Home. Used only when there is no recap to come
+  // back to, so it replaces rather than stacks.
   const goHome = useCallback(() => { if (leaving.current) return; leaving.current = true; router.replace("/first-check"); }, [router]);
 
   // Read a Gate's REAL on/pending state. Returns null when the Gate isn't applicable here
@@ -159,16 +161,20 @@ export default function SetupGates() {
 
   const notNow = async () => { if (current) await snooze(current); advance(); };
   const skipRest = async () => { if (steps) for (let i = idx; i < steps.length; i++) await snooze(steps[i]); await finish(); };
+  // Back steps within the walkthrough, and out to the privacy statement from the first one.
+  const back = useCallback(() => { if (idx > 0) { setIdx((i) => i - 1); return; } router.back(); }, [idx, router]);
+  const backFromRecap = useCallback(() => { if (steps?.length) { setRecap(null); setRecapUnknown([]); return; } router.back(); }, [steps, router]);
 
   if (recap !== null) {
     const onCount = recap.filter((r) => r.on).length;
     return (
       <View style={s.root} testID="setup-gates-recap">
-        <View style={[s.content, { paddingTop: insets.top }]}>
+        <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={3} onBack={backFromRecap} testID="setup-gates-recap-progress" /></View>
+        <View style={s.content}>
           <View style={{ gap: spacing.sm }}>
             <ApolloLogo size={72} />
-            <Text style={s.eyebrow}>You&apos;re set up</Text>
-            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Apollo is ready" : "Setup complete — some protections pending"}</Text>
+            <Text style={s.eyebrow}>Protections</Text>
+            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Every protection this phone allows is on" : "Protections set — some are still pending"}</Text>
             <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} {recap.length === 1 ? "protection" : "protections"} enabled</Text>
           </View>
           <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-list">
@@ -187,7 +193,8 @@ export default function SetupGates() {
           {onCount < recap.length ? <Body style={{ color: colors.muted }}>You can enable anything marked pending anytime from Protection or Settings.</Body> : null}
         </View>
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-          <Button testID="setup-gates-recap-done" label="Go to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+          <Button testID="setup-gates-recap-done" label="Next: your first check" onPress={() => router.push("/first-check")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+          <Text style={s.note}>One last step. Apollo never assumes a new phone is clean, so it reads this device&apos;s starting point before it begins watching.</Text>
         </View>
       </View>
     );
@@ -200,11 +207,12 @@ export default function SetupGates() {
   const copy = GATE_PERMISSIONS[current];
   return (
     <View style={s.root} testID="setup-gates-root">
-      <View style={[s.content, { paddingTop: insets.top }]}>
+      <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={3} onBack={back} /></View>
+      <View style={s.content}>
         <View style={{ gap: spacing.sm }}>
           <ApolloLogo size={72} />
           <Text style={s.eyebrow}>Finish setting up</Text>
-          <Text style={s.progress} testID="setup-gates-progress">Step {idx + 1} of {steps.length}</Text>
+          <Text style={s.progress} testID="setup-gates-progress">Protection {idx + 1} of {steps.length}</Text>
         </View>
         <Text style={s.title} testID="setup-gates-title">{copy.enableLabel}?</Text>
         <Card style={{ gap: spacing.sm }} testID={`setup-gates-card-${current}`}>

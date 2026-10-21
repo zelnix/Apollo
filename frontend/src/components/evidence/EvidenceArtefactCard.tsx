@@ -31,6 +31,7 @@ import { ConversationArtefact, EmailArtefact, FieldRows, PostArtefact, Screensho
 import { InfoButton } from "@/src/components/InfoButton";
 import { Button } from "@/src/components/ui";
 import { describeArtefact, describeRedaction, redactView, type EvidenceLayout } from "@/src/domain/evidencePresentation";
+import { phoneFindingLine, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { purposeLimitedUrl, redactInvestigationSecrets } from "@/src/domain/privacy";
 import { listImageEvidence, removeOriginal, subscribeImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
 import { getOriginalSource, subscribeOriginalSource, type OriginalSource } from "@/src/store/originalSource";
@@ -65,6 +66,8 @@ const useStyles = makeStyles((c) => ({
   detailsToggle: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
   detailsTitle: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   details: { gap: spacing.sm, paddingBottom: spacing.sm },
+  phones: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
+  phonesTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.muted },
   confirm: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
   confirmText: { fontFamily: fonts.textMedium, fontSize: 13, lineHeight: 19, color: c.onSurface },
@@ -125,7 +128,7 @@ function imageNotes(r: ImageEvidenceRecord): string[] {
   return out;
 }
 
-export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummary, onAvailable, testID = "evidence-artefact" }: {
+export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummary, phones, onAvailable, testID = "evidence-artefact" }: {
   /** Every key this case is known by — a threat case carries both its event id and its
    *  investigation id, and the original may have been filed under either. */
   caseKeys: (string | null | undefined)[];
@@ -133,6 +136,8 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
   packTitle: string;
   packDate: string;
   packSummary?: PackSummary | null;
+  /** Telephone/mobile numbers found in this material and what the reputation service returned. */
+  phones?: EvidencePhoneResult[] | null;
   /** Reports whether a local original exists, so the screen can drop its server-side duplicate. */
   onAvailable?: (available: boolean) => void;
   testID?: string;
@@ -319,6 +324,13 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
             { label: "Stored", value: "On this phone only. Deleted when you delete this case." },
             ...(view.links.length ? [{ label: "Links", value: view.links.join("\n") }] : []),
           ]} />
+          {phones?.length ? (
+            <View style={s.phones} testID={`${testID}-phones`}>
+              <Text style={s.phonesTitle}>Phone numbers in this material</Text>
+              {phones.map((p) => <Text key={p.number} style={s.note} testID={`${testID}-phone-${p.number}`}>{phoneFindingLine(p)}</Text>)}
+              <Text style={s.note}>Checked with Apollo&apos;s caller-reputation service. A number&apos;s reputation is one signal — it is never the verdict on its own.</Text>
+            </View>
+          ) : null}
           {records.flatMap(imageNotes).map((n) => <Text key={n} style={s.note}>{n}</Text>)}
           {confirmId ? (
             <View style={s.confirm} testID={`${testID}-remove-confirm`}>

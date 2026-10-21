@@ -3,15 +3,15 @@
 // application controls and operational items in a mobile-friendly format.
 
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React from "react";
-import { ScrollView, Pressable, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { COMPLIANCE_MATRIX_DISCLOSURE } from "@/src/domain/privacyInventory";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -38,16 +38,13 @@ export default function ComplianceMatrixScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { colors } = useTheme();
   const data = COMPLIANCE_MATRIX_DISCLOSURE;
 
   return (
     <View style={s.root} testID="compliance-matrix-screen">
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title} testID="matrix-title">{data.title}</Text>
-        <Pressable testID="matrix-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}>
-          <X size={22} color={colors.onSurface} />
-        </Pressable>
+        <CloseButton testID="matrix-close" label="Close compliance matrix" onPress={() => goBackOrHome(router)} />
       </View>
 
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="matrix-scroll">

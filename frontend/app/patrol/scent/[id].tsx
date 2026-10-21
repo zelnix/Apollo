@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import Check from "lucide-react-native/icons/check";
 import Heart from "lucide-react-native/icons/heart";
 import Phone from "lucide-react-native/icons/phone";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +19,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -79,7 +79,7 @@ export default function IncidentTimeline() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Incident timeline</Text>
-        <Pressable testID="incident-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CloseButton testID="incident-close" onPress={() => goBackOrHome(router)} />
       </View>
       {!linked.length ? <View style={s.content}><Body>This incident is no longer available.</Body></View> : (
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="incident-scroll">

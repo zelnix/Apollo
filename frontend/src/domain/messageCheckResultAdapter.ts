@@ -24,8 +24,11 @@ export function buildMessageCheckResult(args: {
   explanation: { summary?: string; why?: string[]; recommendation?: string } | null;
   /** Per-URL reputation results from the link check pass. */
   urlResults: { url: string; verdict: string }[];
+  /** Reputation results for the telephone/mobile numbers found in the message itself. */
+  phones?: { raw: string; decision: string; fraud_score: number | null }[];
 }): CheckResultModel {
   const { analysis: a, event, sender, explanation, urlResults } = args;
+  const phones = args.phones ?? [];
   const subject = sender.trim() || a.signals.claimedBrand || "Unknown sender";
 
   const items: CheckItem[] = [];
@@ -61,6 +64,23 @@ export function buildMessageCheckResult(args: {
         ? `${dangerous} link${dangerous > 1 ? "s" : ""} confirmed dangerous.`
         : `${a.signals.urls.length} link${a.signals.urls.length > 1 ? "s" : ""} found. Check each with Apollo.`,
       raw: { urls: a.signals.urls },
+    });
+  }
+
+  // Phone numbers inside the message, each checked against the caller-reputation service.
+  if (phones.length) {
+    const flagged = phones.filter((p) => p.decision === "avoid" || p.decision === "review");
+    const unchecked = phones.filter((p) => p.decision === "unknown");
+    items.push({
+      id: "msg:phones",
+      name: `Phone numbers (${phones.length})`,
+      status: flagged.length ? "concern" : unchecked.length === phones.length ? "incomplete" : "clear",
+      finding: flagged.length
+        ? `${flagged.map((p) => `${p.raw} — ${p.decision === "avoid" ? "strong fraud or spam signals" : "some risk signals"}${p.fraud_score === null ? "" : ` (fraud score ${p.fraud_score}/100)`}`).join("; ")}.`
+        : unchecked.length === phones.length
+          ? `${phones.map((p) => p.raw).join(", ")} — reputation data was unavailable, so ${phones.length === 1 ? "it was" : "they were"} not checked.`
+          : `${phones.map((p) => p.raw).join(", ")} — no fraud or abuse signals reported.`,
+      raw: { phones },
     });
   }
 

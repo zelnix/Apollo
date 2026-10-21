@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Linking, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
 
@@ -12,6 +11,7 @@ import * as reportsApi from "@/src/investigation/client";
 import { prepareReportPdf } from "@/src/investigation/reportFile";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface }, header: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.lg }, title: { fontFamily: fonts.displayBold, fontSize: 25, color: c.onSurface }, close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary }, content: { paddingHorizontal: spacing.xl, gap: spacing.xl }, row: { flexDirection: "row", alignItems: "center", gap: spacing.sm }, body: { fontFamily: fonts.text, fontSize: 16, lineHeight: 25, color: c.onSurface } }));
 
@@ -28,7 +28,7 @@ export default function SavedReportDetail() {
     catch { setError("Apollo could not prepare this saved report for sharing."); }
     finally { setExporting(false); }
   };
-  return <View style={s.root} testID="saved-report-detail-screen"><View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-report-detail-title">Saved report</Text><Pressable testID="saved-report-detail-close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable></View>
+  return <View style={s.root} testID="saved-report-detail-screen"><View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-report-detail-title">Saved report</Text><CloseButton testID="saved-report-detail-close" label="Close saved report" onPress={() => goBackOrHome(router)} /></View>
     {!report ? <View style={{ padding: spacing.xl, gap: spacing.md }}>{error ? <><Body testID="saved-report-detail-error">{error}</Body><Button testID="saved-report-detail-retry" label="Retry" onPress={load} /></> : <ActivityIndicator testID="saved-report-detail-loading" color={colors.brand} />}</View> : <ScrollView testID="saved-report-detail-scroll" contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={s.row}><Pill testID="saved-report-historical-badge" tone="neutral" label="Historical · not live status" /></View>
       <Card testID="saved-report-overview"><SectionTitle>Overview</SectionTitle><Text style={s.body}>{scrubMessage(report.overview)}</Text><Body>{new Date(report.savedAt).toLocaleString()} · {report.gates.join(", ")}</Body></Card>

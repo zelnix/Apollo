@@ -5,7 +5,6 @@
 // Architecture: Submit -> Apollo privacy protection -> Magnum DI investigation -> this screen.
 // CheckResultScreen handles deterministic/device results; this handles investigation results.
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +15,7 @@ import type { CheckResultModel } from "@/src/domain/checkResult";
 import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "./CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -97,15 +97,7 @@ export function InvestigationCheckScreen({
           <Text style={s.title}>{result.gate}</Text>
           <Text style={s.checkType}>{result.checkType}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={close}
-          style={s.close}
-          testID="investigation-check-close"
-        >
-          <X size={20} color={colors.onSurface} />
-        </Pressable>
+        <CloseButton testID="investigation-check-close" onPress={close} />
       </View>
 
       <ScrollView

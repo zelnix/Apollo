@@ -7,6 +7,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloLogo } from "@/src/components/ApolloLogo";
+import { SetupProgress } from "@/src/components/SetupProgress";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME, type ApolloState } from "@/src/domain/types";
@@ -37,7 +38,8 @@ export default function Onboarding() {
 
   return (
     <View style={s.root} testID="initial-onboarding-root">
-      <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + spacing["2xl"], paddingBottom: spacing.xl }]} testID="onboarding-screen">
+      <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={1} /></View>
+      <ScrollView contentContainerStyle={[s.content, { paddingTop: spacing.lg, paddingBottom: spacing.xl }]} testID="onboarding-screen">
         <View style={{ alignItems: "flex-start", gap: spacing.md }}>
           <ApolloLogo size={112} testID="onboarding-logo" />
           <Text style={s.eyebrow}>Apollo</Text>
@@ -74,7 +76,7 @@ export default function Onboarding() {
       </ScrollView>
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Button testID="onboarding-start-button" label="Continue" onPress={() => router.push("/privacy-disclosure")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
-        <Text style={s.note}>Next: the privacy disclosure — exactly what leaves your device and when.</Text>
+        <Text style={s.note}>Next: the privacy statement — exactly what leaves your device and when.</Text>
       </View>
     </View>
   );

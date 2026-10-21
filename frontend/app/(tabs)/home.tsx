@@ -128,10 +128,7 @@ const useStyles = makeStyles((c) => ({
   // ── Branded header ──
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandTitle: { fontFamily: fonts.displayBold, fontSize: 28, lineHeight: 34, color: c.onSurface },
-  // "Scam Guard" sits back from "Apollo": lighter weight, muted colour, slightly smaller.
-  brandTitleSoft: { fontFamily: fonts.text, fontSize: 24, lineHeight: 34, color: c.onSurfaceSecondary },
-  brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
+  brandLogo: { height: 70, aspectRatio: 2000 / 698 },
 
   // ── Hero status card ──
   heroCard: {
@@ -315,14 +312,16 @@ export default function Home() {
       {/* ── Branded Header ── */}
       <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
         <View style={s.headerRow}>
-          <View>
-            <Text style={s.brandTitle} testID="home-brand-title">
-              Apollo<Text style={s.brandTitleSoft}> Scam Guard</Text>
-            </Text>
-            <Text style={s.brandSubtitle}>Better Protected. Safer You. Safer Tomorrows.</Text>
+          <Image
+            source={require("@/assets/images/apollo-scam-guard-logo.png")}
+            style={s.brandLogo}
+            contentFit="contain"
+            testID="home-brand-title"
+          />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
+            <AlertsButton testID="home-alerts" />
           </View>
-          {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
-          <AlertsButton testID="home-alerts" />
         </View>
       </View>
 

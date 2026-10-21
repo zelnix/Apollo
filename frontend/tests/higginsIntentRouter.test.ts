@@ -144,13 +144,33 @@ describe("Local Knowledge — Help & Navigation", () => {
     "What is Higgins?",
     "Tell me about Apollo",
     "Help me find settings",
-    "How do I check a phone number?",
     "What can you do?",
   ];
 
   for (const msg of messages) {
     it(`"${msg}" → local_knowledge`, () => {
       assertRoute(msg, "local_knowledge");
+    });
+  }
+});
+
+// ── Wayfinding: "where is it" / "how do I turn it on" ───────────────────
+// These belong to Higgins himself: he holds Apollo's whole screen map and
+// answers with a tap straight through. They must never be read as a status
+// question ("where do I turn on call screening" ≠ "is call screening on").
+
+describe("Wayfinding — Higgins answers and links", () => {
+  const messages = [
+    "How do I check a phone number?",
+    "Where do I turn on call screening?",
+    "Where is my threat history?",
+    "How can I connect my email?",
+    "Take me to my saved checks",
+  ];
+
+  for (const msg of messages) {
+    it(`"${msg}" → ask_higgins`, () => {
+      assertRoute(msg, "ask_higgins");
     });
   }
 });

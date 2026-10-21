@@ -6,9 +6,8 @@
 // a pasted check (src/store/ApolloContext.checkMessage) — nothing here invents a separate verdict path.
 import { useRouter } from "expo-router";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -32,6 +31,7 @@ import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -124,7 +124,7 @@ export default function TextGuard() {
   // UNIVERSAL CHECK RESULT — when the text check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
-    const model = buildMessageCheckResult({ analysis: a, event: result.event ?? null, sender, explanation: result.explanation ?? null, urlResults: result.urls ?? [] });
+    const model = buildMessageCheckResult({ analysis: a, event: result.event ?? null, sender, explanation: result.explanation ?? null, urlResults: result.urls ?? [], phones: result.phones ?? [] });
     const askPrompt = `About the text I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const textActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     textActions.push({ testID: "textguard-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
@@ -173,7 +173,7 @@ export default function TextGuard() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Message screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+          <CloseButton testID="textguard-close" onPress={() => goBackOrHome(router)} />
           <InfoButton info={{ title: "About message screening", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Magnum DI's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Magnum DI policy."] }} testID="textguard-info" />
         </View>
       </View>

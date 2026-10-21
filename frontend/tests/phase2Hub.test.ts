@@ -16,11 +16,12 @@ test("Higgins opens straight into a conversation (no hub/dashboard front doors)"
   assert.match(source, /Message Higgins/);
 });
 
-test("Empty state shows one Higgins welcome and tappable starters", () => {
+test("Empty state shows one Higgins welcome and tappable quick questions", () => {
   assert.match(source, /testID="higgins-welcome"/);
   assert.match(source, /Hello! I'm Higgins/);
   assert.match(source, /ask-suggestion-\$\{index\}/);
-  assert.match(source, /STARTERS = \[/);
+  // The suggestions are drawn from the rotating quick-question pool.
+  assert.match(source, /pickQuickQuestions/);
   // Starters submit as ordinary user messages.
   assert.match(source, /onPress=\{\(\) => submit\(question\)\}/);
 });
@@ -33,10 +34,10 @@ test("Clearing history lives next to the info button and requires confirmation",
   assert.doesNotMatch(source, /testID="higgins-menu"/);
 });
 
-test("About Higgins states real capabilities and limits (Apollo acts, Higgins interprets)", () => {
+test("About Higgins states real capabilities and limits (Apollo acts, Magnum DI investigates)", () => {
   assert.match(source, /testID="higgins-header-info"/);
-  assert.match(source, /Apollo acts; Higgins interprets/);
-  assert.match(source, /can't inspect links, files or your device/);
+  assert.match(source, /savant of this app/);
+  assert.match(source, /What Higgins doesn't do is investigate/);
 });
 
 test("The investigation hand-off flow is preserved", () => {

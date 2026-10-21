@@ -1,6 +1,5 @@
 // Saved App Reports — list of saved App Gate investigations with inline full detail. On-device only.
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,8 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { deleteAppReport, listAppReports } from "@/src/store/appReportStore";
 import type { AppReportSnapshot } from "@/src/domain/appReport";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -30,7 +30,7 @@ function Sec({ title, lines, styles: s, testID }: { title: string; lines: string
 }
 
 export default function AppReportsScreen() {
-  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
+  const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter();
   const [items, setItems] = useState<AppReportSnapshot[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => { void listAppReports().then(setItems); }, []);
@@ -39,7 +39,7 @@ export default function AppReportsScreen() {
   return <View style={s.root} testID="app-reports-screen">
     <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
       <Text style={s.title} testID="app-reports-title">Saved app checks</Text>
-      <Pressable testID="app-reports-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+      <CloseButton testID="app-reports-close" label="Close app reports" onPress={() => goBackOrHome(router)} />
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="app-reports-scroll">
       {items.length === 0 ? <Card testID="app-reports-empty"><Body>No app checks saved yet. Run an app check and tap &quot;Save this check&quot; to keep it here.</Body></Card> : items.map((r) => {

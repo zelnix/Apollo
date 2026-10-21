@@ -3,7 +3,6 @@ import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
 import MonitorUp from "lucide-react-native/icons/monitor-up";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Alert, Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -19,6 +18,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
+import { CloseButton } from "@/src/components/CloseButton";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
 interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
@@ -125,7 +125,7 @@ export default function Family() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Family sharing</Text>
-        <Pressable testID="family-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CloseButton testID="family-close" label="Close Family" onPress={() => goBackOrHome(router)} />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-scroll">
         <Body>Share only Barking and Biting alerts — headline, website and what to do — with someone you trust. Never the full link, never your browsing.</Body>

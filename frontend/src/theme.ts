@@ -115,6 +115,24 @@ const light = {
   bitingWash: "rgba(217,83,79,0.13)",
   unknownWash: "rgba(122,135,148,0.05)",
 
+  // Settings group accents — category colours for the Settings group headings ONLY (the small icon
+  // chip and the tint behind it). Deliberately separate hues from the Apollo STATE colours above, so
+  // a coloured chip here is never read as a security verdict. Never use these on a status element.
+  groupProtection: "#1F8A70",
+  groupProtectionTint: "rgba(31,138,112,0.14)",
+  groupAlerts: "#C2740B",
+  groupAlertsTint: "rgba(194,116,11,0.14)",
+  groupAccounts: "#2B6CB0",
+  groupAccountsTint: "rgba(43,108,176,0.14)",
+  groupData: "#6B46C1",
+  groupDataTint: "rgba(107,70,193,0.14)",
+  groupApp: "#475569",
+  groupAppTint: "rgba(71,85,105,0.14)",
+  groupHelp: "#0E7490",
+  groupHelpTint: "rgba(14,116,144,0.14)",
+  groupPolicies: "#8A5A2B",
+  groupPoliciesTint: "rgba(138,90,43,0.14)",
+
   scrim: "rgba(11,18,32,0.55)",
   glass: "rgba(255,255,255,0.88)",
 };

@@ -2,7 +2,6 @@
 // "Delete My Apollo Data" flow (type-to-confirm). Deletion erases the service copy, wipes this phone
 // and returns Apollo to a first-run state. Offline deletion is recorded as pending and retried on reconnect.
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +14,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { storage } from "@/src/utils/storage";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -78,7 +78,7 @@ export default function PrivacyDataScreen() {
     <View style={s.root} testID="privacy-data-screen">
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title} testID="privacy-data-title">Privacy &amp; data</Text>
-        <Pressable testID="privacy-data-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CloseButton testID="privacy-data-close" onPress={() => goBackOrHome(router)} />
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="privacy-data-scroll" keyboardShouldPersistTaps="handled">
         <Body testID="privacy-data-intro">Apollo uses an anonymous device identity — no account, no name, no advertising tracking. Here is everything Apollo stores for this device, where it lives and for how long.</Body>

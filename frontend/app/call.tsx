@@ -2,7 +2,6 @@
 // answers, "Hang Up & Verify" first. No audio is recorded; analysis is from what the user selects
 // (plus an optional typed description they provide).
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -26,6 +25,7 @@ import { recordCheck } from "@/src/store/checkHistoryStore";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -140,7 +140,7 @@ export default function CheckCall() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Call screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Pressable testID="call-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+          <CloseButton testID="call-close" onPress={() => goBackOrHome(router)} />
           <InfoButton info={{ title: "About call screening", body: ["This screen is designed for use during a live call. Big buttons and short answers help you make decisions under pressure.", "Tell Apollo what the caller is asking you to do and it will assess the risk. No audio is recorded — Apollo analyses only what you select or type."] }} testID="call-info" />
         </View>
       </View>

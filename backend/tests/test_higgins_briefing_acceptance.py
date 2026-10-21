@@ -84,7 +84,8 @@ class TestChatPrompt:
         from services.higgins.chat import SYSTEM
         assert "APOLLO DETECTS" in SYSTEM
         assert "MAGNUM DI INVESTIGATES" in SYSTEM
-        assert "HIGGINS COMMUNICATES" in SYSTEM
+        # Higgins' role line includes COMMUNICATES (may be preceded by other duties)
+        assert "COMMUNICATES" in SYSTEM and "HIGGINS" in SYSTEM
 
     def test_chat_ordinary_boundaries(self):
         from services.higgins.chat import SYSTEM

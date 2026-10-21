@@ -202,6 +202,10 @@ export interface PatrolEvent {
    *  checked, results, evidence, coverage gaps, retries, correlation and the final outcome.
    *  Present for every outcome — No Threat, Possible Threat and Limited alike. */
   triage_investigation?: import("./triage/contract").TriageInvestigationRecord | null;
+  /** Telephone/mobile numbers found in this case's ORIGINAL EVIDENCE and exactly what the reputation
+   *  service returned for each. Device-local: numbers are never part of the Patrol sync payload
+   *  (see patrolPayload). */
+  evidence_phones?: import("./phoneNumbers").EvidencePhoneResult[] | null;
 }
 
 /** Recorded identifiers from the original submitted item. Every field is actual

@@ -160,6 +160,25 @@ async def learn_articles(query: str) -> dict:
         return _result([], ["learn_with_higgins_catalogue"], confidence="low")
 
 
+async def learn_index() -> dict:
+    """The Learn with Higgins catalogue as titles only.
+
+    Supplied on every turn so Higgins knows which articles exist and can name and
+    link the right one. Full article bodies are only fetched when the question is
+    actually educational (see `learn_articles`).
+    """
+    try:
+        result = await learning.list_articles(
+            category=None, audience=None, tag=None, risk_context=None,
+            content_type=None, language=None, search=None, cursor=None, limit=30,
+        )
+        items = [{"slug": item["slug"], "title": item["title"], "category": item.get("category", "")}
+                 for item in result.get("items", [])]
+        return _result(items, ["learn_with_higgins_catalogue"])
+    except Exception:
+        return _result([], ["learn_with_higgins_catalogue"], confidence="low")
+
+
 # ── Deterministic context classifier ─────────────────────────────────────────
 
 class ContextPlan:
@@ -289,7 +308,29 @@ READERS: dict[str, Callable[[str], Awaitable[dict]]] = {
     "get_last_relevant_outcome": lambda owner: patrol(owner, one=True), "get_saved_reports": saved_reports,
     "get_recent_patrol_outcomes": patrol, "get_user_learning_preferences": preferences, "get_new_scams_digest": scams,
     "get_product_capabilities": product_capabilities, "get_gate_states": gate_states,
+    "get_learn_catalogue": lambda _owner: learn_index(),
 }
+
+# Higgins is the savant of Apollo, so these are gathered on every turn rather than
+# only when a question happens to match a pattern. Everything the service holds for
+# this person is in front of him before he answers.
+CORE_READERS: tuple[str, ...] = (
+    "get_protection_summary",
+    "get_gate_states",
+    "get_recent_patrol_outcomes",
+    "get_recent_cases",
+    "get_new_scams_digest",
+    "get_learn_catalogue",
+)
+
+
+def with_core_readers(plan: ContextPlan) -> ContextPlan:
+    """Return the plan with the always-on Apollo readers merged in, order preserved."""
+    merged = list(CORE_READERS)
+    for reader in plan.readers:
+        if reader not in merged:
+            merged.append(reader)
+    return ContextPlan(merged, plan.label, plan.learn_query)
 
 
 async def execute(owner: str, name: str) -> dict:
@@ -348,8 +389,9 @@ def _format_context_items(reader_name: str, items: list[dict]) -> str:
     """Format context items into a readable text block for the prompt."""
     if not items:
         return "No data available."
+    limit = 30 if reader_name == "get_learn_catalogue" else 8
     parts = []
-    for item in items[:8]:
+    for item in items[:limit]:
         if isinstance(item, dict):
             # Filter out internal fields and format compactly
             display = {k: v for k, v in item.items() if v is not None and k not in ("_id",)}

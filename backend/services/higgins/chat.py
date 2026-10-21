@@ -24,6 +24,7 @@ from pydantic.alias_generators import to_camel
 
 from core.db import db
 from core.redaction import redact_investigation_secrets
+from services.higgins import app_knowledge
 from services.higgins import context as memory
 from services.higgins import context_tools, provider
 from services.higgins.contracts import Wire
@@ -35,9 +36,11 @@ from services.higgins.pipeline_submit import (
 
 log = logging.getLogger("apollo.higgins.chat")
 
-SYSTEM = """You are Higgins, Apollo's trusted adviser, interpreter and guide.
+_SYSTEM_BASE = """You are Higgins, Apollo's trusted adviser, interpreter and guide.
 
-APOLLO DETECTS AND PROTECTS. MAGNUM DI INVESTIGATES. HIGGINS COMMUNICATES, EXPLAINS AND GUIDES.
+APOLLO DETECTS AND PROTECTS. MAGNUM DI INVESTIGATES AND SEARCHES. HIGGINS KNOWS APOLLO AND SCAMS, AND COMMUNICATES, EXPLAINS AND GUIDES.
+
+You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in Apollo, and you know how scams and fraud work. You are not a general assistant and you do not investigate: Magnum DI owns investigation and external searching, Apollo owns detection and protection.
 
 SCOPE — STRICTLY ENFORCED:
 You specialise ONLY in:
@@ -102,7 +105,13 @@ User-facing protection names:
 - Device & Internet — device settings + network security monitoring
 - Vision — photograph/upload safety checks
 
+DEVICE SNAPSHOT: when a block headed CURRENT APOLLO STATE ON THIS PHONE is supplied, it is a live, authoritative reading of this person's own app. Use it for any question about their protections, threats, permissions, alerts or settings. It is the truth about their phone; never contradict it and never guess past it.
+
+NAVIGATION: return the route string in `navigate` for any Apollo destination your answer points to, chosen only from the APOLLO PRODUCT KNOWLEDGE route list. At most two. Only when the destination genuinely answers the question.
+
 Return only the required JSON."""
+
+SYSTEM = _SYSTEM_BASE + "\n\n" + app_knowledge.knowledge_block()
 
 
 class ModelChatReply(Wire):
@@ -113,6 +122,99 @@ class ModelChatReply(Wire):
     clarification: Optional[str] = Field(default=None, max_length=300)
     recommend_investigation: bool = False
     destination: Optional[Literal["check_it", "higgins_case"]] = None
+    navigate: list[str] = Field(default_factory=list, max_length=4)
+
+
+class NavTarget(Wire):
+    """A validated Apollo destination the person can tap straight through to."""
+    route: str
+    label: str
+
+
+class SnapshotGate(Wire):
+    """One protection, exactly as the phone currently reports it."""
+    id: str = Field(max_length=40)
+    title: str = Field(max_length=60)
+    status: str = Field(max_length=80)
+    tone: str = Field(max_length=20)
+    automatic: bool = False
+    coverage: str = Field(default="", max_length=40)
+
+
+class DeviceSnapshot(Wire):
+    """Everything Apollo holds on this phone, as the phone reads it right now.
+
+    Every field is a state reading or a short headline Apollo itself wrote. No
+    message bodies, screenshots, files or secrets are ever carried here.
+    """
+    platform: Optional[str] = Field(default=None, max_length=20)
+    checked_at: Optional[str] = Field(default=None, max_length=40)
+    protection_on: Optional[bool] = None
+    adapter: Optional[str] = Field(default=None, max_length=80)
+    gates: list[SnapshotGate] = Field(default_factory=list, max_length=14)
+    permissions: list[str] = Field(default_factory=list, max_length=14)
+    network: Optional[str] = Field(default=None, max_length=240)
+    threat_counts: list[str] = Field(default_factory=list, max_length=8)
+    open_threats: list[str] = Field(default_factory=list, max_length=8)
+    alerts: Optional[str] = Field(default=None, max_length=120)
+    quiet_hours: Optional[str] = Field(default=None, max_length=80)
+    battery_saver: Optional[bool] = None
+    trusted_links: Optional[int] = None
+    saved_checks: Optional[int] = None
+    personal_data: Optional[str] = Field(default=None, max_length=160)
+    call_screener: Optional[str] = Field(default=None, max_length=240)
+    email_accounts: Optional[str] = Field(default=None, max_length=160)
+    notes: list[str] = Field(default_factory=list, max_length=10)
+
+
+def _render_snapshot(snap: DeviceSnapshot) -> str:
+    """Turn the snapshot into the authoritative state block for the prompt."""
+    lines: list[str] = ["--- CURRENT APOLLO STATE ON THIS PHONE (live reading, authoritative) ---"]
+    if snap.platform:
+        lines.append(f"Platform: {snap.platform}")
+    if snap.adapter:
+        lines.append(f"Protection engine: {snap.adapter}")
+    if snap.protection_on is not None:
+        lines.append(f"Apollo protection switched on: {'yes' if snap.protection_on else 'no'}")
+    if snap.checked_at:
+        lines.append(f"Status last read at: {snap.checked_at}")
+    if snap.gates:
+        lines.append("Protections:")
+        for gate in snap.gates:
+            detail = f"  - {gate.title} ({gate.id}): {gate.status} [tone={gate.tone}"
+            if gate.coverage:
+                detail += f", coverage={gate.coverage}"
+            detail += f", {'automatic' if gate.automatic else 'manual checks only'}]"
+            lines.append(detail)
+    if snap.permissions:
+        lines.append("Permissions: " + "; ".join(snap.permissions))
+    if snap.network:
+        lines.append(f"Internet connection: {snap.network}")
+    if snap.call_screener:
+        lines.append(f"Call screening: {snap.call_screener}")
+    if snap.threat_counts:
+        lines.append("Threats recorded: " + "; ".join(snap.threat_counts))
+    if snap.open_threats:
+        lines.append("Threats currently open:")
+        lines.extend(f"  - {item}" for item in snap.open_threats)
+    if snap.alerts:
+        lines.append(f"Security alerts: {snap.alerts}")
+    if snap.quiet_hours:
+        lines.append(f"Quiet hours: {snap.quiet_hours}")
+    if snap.battery_saver is not None:
+        lines.append(f"Battery saver: {'on' if snap.battery_saver else 'off'}")
+    if snap.trusted_links is not None:
+        lines.append(f"Trusted links saved: {snap.trusted_links}")
+    if snap.saved_checks is not None:
+        lines.append(f"Saved checks kept: {snap.saved_checks}")
+    if snap.personal_data:
+        lines.append(f"Personal data protected: {snap.personal_data}")
+    if snap.email_accounts:
+        lines.append(f"Email accounts: {snap.email_accounts}")
+    if snap.notes:
+        lines.extend(f"Note: {item}" for item in snap.notes)
+    lines.append("--- END CURRENT APOLLO STATE ---")
+    return "\n".join(lines)
 
 
 class ContextUse(Wire):
@@ -144,6 +246,7 @@ class ChatReply(Wire):
     clarification: Optional[str]
     context_used: list[ContextUse]
     suggested_actions: list[SuggestedAction]
+    navigation: list[NavTarget] = Field(default_factory=list)
     investigation_available: bool
     investigative_work_started: bool = False
     pipeline_case_id: Optional[str] = None
@@ -151,7 +254,8 @@ class ChatReply(Wire):
 
 
 async def reply(owner: str, conversation_id: str, turn_id: str, message: str, previous_turn_ids: list[str],
-                selected_patrol_record_id: str | None = None, selected_report_id: str | None = None) -> ChatReply:
+                selected_patrol_record_id: str | None = None, selected_report_id: str | None = None,
+                device_snapshot: DeviceSnapshot | None = None) -> ChatReply:
     clean = redact_investigation_secrets(message).strip()
     history = await memory.turn_history(owner, previous_turn_ids[-8:])
 
@@ -263,12 +367,15 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
             pass  # Decryption or parsing failed — fall through to normal flow
 
     # ── P2: Deterministic context selection ───────────────────────────────────
-    # Instead of asking Gemini to choose tools, determine the minimum context needed.
+    # Higgins is the savant of Apollo: the core Apollo readers are gathered on every
+    # turn so he always answers from what is actually true, and the classifier adds
+    # whatever else the specific question needs on top.
     plan = context_tools.classify_context(
         clean,
         has_selected_report=bool(investigation_context),
         has_selected_patrol_record=bool(selected_patrol_record_id),
     )
+    plan = context_tools.with_core_readers(plan)
     log.info("higgins_context_plan device=%s plan=%s readers=%s", owner[:12], plan.label, plan.readers)
 
     # Gather the required context deterministically
@@ -278,7 +385,8 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                         observed_at=u.get("observedAt")) for u in context_uses_raw]
 
     # ── P3: Build prompt with pre-injected context ───────────────────────────
-    context_block = investigation_context + ("\n\n" + apollo_context if apollo_context else "")
+    snapshot_block = _render_snapshot(device_snapshot) if device_snapshot else ""
+    context_block = investigation_context + ("\n\n" + snapshot_block if snapshot_block else "") + ("\n\n" + apollo_context if apollo_context else "")
     history_block = json.dumps([{"role": item.role, "content": item.content, "turnId": item.turn_id} for item in history], ensure_ascii=False) if history else "[]"
 
     prompt = json.dumps({
@@ -336,11 +444,21 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         destination = parsed.destination or "higgins_case"
         actions.append(SuggestedAction(destination=destination, label="Investigate this" if destination == "higgins_case" else "Open Check It",
                                        purpose="Start a separate, explicit investigation of the item you choose. Nothing has started yet."))
+    # Deep links: only genuine Apollo destinations survive. An invented route is dropped
+    # rather than offered, so a tap can never land the person nowhere.
+    navigation: list[NavTarget] = []
+    for route in parsed.navigate:
+        candidate = str(route or "").strip()
+        if app_knowledge.valid_route(candidate) and all(candidate != item.route for item in navigation):
+            navigation.append(NavTarget(route=candidate, label=app_knowledge.route_label(candidate)))
+        if len(navigation) == 2:
+            break
     combined = parsed.answer + (f"\n\n{parsed.clarification}" if parsed.clarification else "")
     expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, clean, combined,
         classification="ordinary_chat", context_sources=[item.source for item in uses], investigation_available=investigation_available)
     return ChatReply(turn_id=turn_id, conversation_id=conversation_id, answer=parsed.answer,
                      evidence_basis=parsed.evidence_basis, uncertainty=parsed.uncertainty,
                      clarification=parsed.clarification, context_used=uses, suggested_actions=actions,
+                     navigation=navigation,
                      investigation_available=investigation_available,
                      retention=ChatRetention(server_content_expires_at=expires.isoformat()))

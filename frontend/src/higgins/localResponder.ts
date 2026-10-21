@@ -11,9 +11,23 @@
 import type { DiagnosticResult } from "./diagnosticCore";
 import type { LocalKnowledgeIntent } from "./intentRouter";
 import type { HigginsChatMessage } from "./chatClient";
+import { navLinks, type NavLink } from "./appMap";
 import * as Crypto from "expo-crypto";
 
 // ── Turn diagnostic results into Higgins messages ────────────────────────────
+
+/** Where each on-device answer sensibly leads, so the person can tap straight through. */
+const DIAGNOSTIC_LINKS: Record<string, NavLink[]> = {
+  protection_status: navLinks("/gates"),
+  site_status: navLinks("/gates"),
+  call_status: navLinks("/call-guard", "/gates"),
+  text_status: navLinks("/text-guard", "/gates"),
+  app_status: navLinks("/app-check", "/gates"),
+  vpn_status: navLinks("/network", "/gates"),
+  permission_status: navLinks("/gates"),
+  notification_status: navLinks("/notification-check"),
+  current_issues: navLinks("/(tabs)/patrol"),
+};
 
 export function diagnosticToHigginsMessage(result: DiagnosticResult, conversationId: string): HigginsChatMessage {
   const caveats = result.caveats.length > 0
@@ -27,6 +41,7 @@ export function diagnosticToHigginsMessage(result: DiagnosticResult, conversatio
     content: result.summary + caveats,
     createdAt: new Date().toISOString(),
     conversationId,
+    links: DIAGNOSTIC_LINKS[result.intent],
   };
 }
 
@@ -34,44 +49,59 @@ export function diagnosticToHigginsMessage(result: DiagnosticResult, conversatio
 
 const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
   how_apollo_works:
-    "Apollo is your scam protection system. It works in three parts:\n\n" +
-    "• **Apollo** observes and detects threats automatically — monitoring websites, calls, messages, and apps.\n" +
-    "• **Magnum DI** investigates when deeper analysis is needed — examining evidence, checking reputation databases, and analysing content.\n" +
-    "• **Higgins** (that's me) communicates findings to you in plain English and helps you decide what to do.\n\n" +
-    "Apollo runs on your device. Your personal data stays local. Only sanitised evidence is sent for investigation when needed.",
+    "Apollo is your scam protection, and three of us do the work:\n\n" +
+    "• **Apollo** watches and detects — websites, calls, messages, apps, your device and your connection. Apollo acts on the phone.\n" +
+    "• **Magnum DI** investigates — examining evidence and searching reputation and intelligence sources when something needs a real answer.\n" +
+    "• **Higgins** (me) knows Apollo and scams. I explain what was found, guide you, and take you to the right screen.\n\n" +
+    "Every check runs on your device first and produces exactly one threat case. If the rules settle it cleanly, that's your answer. If something looks possible, or can't be determined, it escalates to Magnum DI for a full investigation.",
 
   what_is_higgins:
-    "I'm Higgins — Apollo's trusted adviser, interpreter and guide.\n\n" +
-    "I explain what Apollo has found, interpret security alerts, answer your cyber-safety questions, and guide you through what to do next.\n\n" +
-    "When you ask me to check something specific — a phone number, link, message or email — I'll send it through Magnum DI for a full investigation and present the results.",
+    "I'm Higgins — Apollo's trusted adviser, interpreter and guide, and the savant of this app.\n\n" +
+    "I know every screen, check, protection, setting and privacy rule in Apollo, and I know how scams work. Ask me where something is and I'll take you there. Ask me why Apollo is growling and I'll tell you from what your phone actually reports.\n\n" +
+    "What I don't do is investigate — when you ask me to check a number, link, message or email, Magnum DI runs the investigation and I bring you the findings.",
 
   what_is_magnum_di:
-    "Magnum DI is Apollo's investigation engine.\n\n" +
-    "When you submit something suspicious — a screenshot, URL, message, email, or phone number — Magnum DI analyses it using reputation databases, AI analysis, and other intelligence sources.\n\n" +
-    "Magnum DI only runs when investigation is actually needed. Device status questions like \"Am I protected?\" are answered locally by Apollo without Magnum DI.",
+    "Magnum DI is Apollo's investigator, and the only part of Apollo that searches the outside world.\n\n" +
+    "When something is submitted — a screenshot, link, message, email or phone number — Magnum DI examines the evidence and searches reputation and intelligence sources, then returns a full briefing with findings and recommended actions.\n\n" +
+    "Magnum DI runs only when it's genuinely needed. \"Am I protected?\" is answered on your phone, with no investigation at all.",
 
   explain_feature:
-    "Apollo has several protection features:\n\n" +
-    "• **Site Gate** — blocks malicious websites using DNS filtering via a local VPN.\n" +
-    "• **Call Gate** — checks phone numbers against fraud databases.\n" +
-    "• **Text Gate** — monitors messages for scam indicators.\n" +
-    "• **App Gate** — reviews app permissions and behaviours.\n\n" +
-    "Each gate can run automatically or be used on-demand. Check the Protection tab to see what's active.",
+    "Apollo's protections, by the names you'll see:\n\n" +
+    "• **Websites & Links** — automatic website blocking plus manual link checks.\n" +
+    "• **Messages & Calls** — message screening plus call and number risk checks.\n" +
+    "• **Email & Accounts** — email monitoring plus account compromise checks.\n" +
+    "• **Apps & Files** — app and file safety checks.\n" +
+    "• **Device & Internet** — device settings plus network security monitoring.\n" +
+    "• **Vision** — screenshot and photograph safety checks.\n\n" +
+    "Each one is automatic wherever your phone genuinely allows it, and always available as a manual check where it doesn't. All protections shows you the real status of every one.",
 
   help_navigation:
-    "Here's how to find things in Apollo:\n\n" +
-    "• **Home** — overview of your protection status and recent activity.\n" +
-    "• **Check** — run manual checks on numbers, links, messages, and more.\n" +
-    "• **Protection** — see and manage your active protections.\n" +
-    "• **Ask Higgins** (here) — ask me anything or submit something for investigation.\n" +
-    "• **Settings** — manage your personal data, privacy, and preferences.",
+    "Here's the whole app:\n\n" +
+    "• **Home** — your protection status and anything needing attention.\n" +
+    "• **Threats** — every threat Apollo found or you checked. Tap one for the full case and evidence.\n" +
+    "• **Scam Alerts** — current campaigns from government and cyber-authority feeds.\n" +
+    "• **Higgins** (here) — ask me anything; the + button submits something for a check.\n" +
+    "• **Settings** — protections, alerts, accounts and family, your data, and the privacy statement.\n\n" +
+    "**Check It** is the hub for every manual check: a message, a website link, a file, a number, a QR code, an email, an app, an account alert, your device or your internet.",
 
   explain_alert:
-    "When Apollo detects something concerning, it shows an alert with a colour-coded severity:\n\n" +
-    "• **Red (Barking)** — high risk. Apollo strongly recommends you avoid this.\n" +
-    "• **Amber (Growling)** — some risk detected. Review carefully before proceeding.\n" +
-    "• **Green (Resting)** — no strong risk signal detected. This doesn't guarantee safety.\n\n" +
-    "Tap any alert to see the full investigation details, evidence, and what to do next.",
+    "Apollo tells you how worried it is by how it behaves:\n\n" +
+    "• **Patrolling** — nothing of concern in the checks that completed.\n" +
+    "• **Sniffing** — noticed something, looking closer.\n" +
+    "• **Growling** — a possible concern. Caution, or an investigation.\n" +
+    "• **Barking** — a significant concern that needs your attention.\n" +
+    "• **Biting** — a real block, confirmed by the device's own evidence.\n\n" +
+    "Tap any threat to see the full case: what happened, the evidence, the original item exactly as it arrived, and what to do.",
+};
+
+/** Where each canned answer sensibly leads. */
+const KNOWLEDGE_LINKS: Record<LocalKnowledgeIntent, NavLink[]> = {
+  how_apollo_works: navLinks("/gates"),
+  what_is_higgins: navLinks("/higgins/learning"),
+  what_is_magnum_di: navLinks("/(tabs)/check-it"),
+  explain_feature: navLinks("/gates"),
+  help_navigation: navLinks("/(tabs)/check-it", "/(tabs)/settings"),
+  explain_alert: navLinks("/(tabs)/patrol"),
 };
 
 export function knowledgeToHigginsMessage(intent: LocalKnowledgeIntent, conversationId: string): HigginsChatMessage {
@@ -83,6 +113,7 @@ export function knowledgeToHigginsMessage(intent: LocalKnowledgeIntent, conversa
     content,
     createdAt: new Date().toISOString(),
     conversationId,
+    links: KNOWLEDGE_LINKS[intent] ?? KNOWLEDGE_LINKS.how_apollo_works,
   };
 }
 

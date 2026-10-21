@@ -22,7 +22,10 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
-  higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId"]),
+  // `deviceSnapshot` is the live reading of this phone's own Apollo state (protection
+  // statuses, permission states, settings values, counts and headlines Apollo wrote).
+  // It carries no message content, screenshots, files, links or secrets.
+  higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId", "deviceSnapshot"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale"]),

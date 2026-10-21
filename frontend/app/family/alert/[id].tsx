@@ -4,9 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import MessageCircle from "lucide-react-native/icons/message-circle";
 import Phone from "lucide-react-native/icons/phone";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
-import { Linking, Pressable, Text, TextInput, View } from "react-native";
+import { Linking, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,6 +16,7 @@ import { scrubMessage } from "@/src/domain/messageVoice";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "@/src/components/CloseButton";
 
 export interface SharedAlert {
   event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string;
@@ -73,7 +73,7 @@ export default function FamilyAlert() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Family alert</Text>
-        <Pressable testID="family-alert-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CloseButton testID="family-alert-close" onPress={() => goBackOrHome(router)} />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-alert-scroll">
         {shared.isLoading ? <Body>Loading…</Body> : shared.isError && !shared.data ? (

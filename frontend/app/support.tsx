@@ -13,7 +13,6 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Copy from "lucide-react-native/icons/copy";
 import FileDown from "lucide-react-native/icons/file-down";
 import Mail from "lucide-react-native/icons/mail";
-import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,6 +32,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
 import { recentNativeFailures } from "@/src/security/nativeDiagnostics";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const USER_EMAIL_KEY = "apollo.support.user_email.v1";
 
@@ -177,7 +177,7 @@ export default function SupportScreen() {
   return <View style={s.root} testID="support-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
       <Text style={s.title} testID="support-title">Support</Text>
-      <Pressable testID="support-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+      <CloseButton testID="support-close" label="Close Support" onPress={() => goBackOrHome(router)} />
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="support-scroll">
 

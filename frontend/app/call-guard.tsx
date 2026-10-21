@@ -2,8 +2,9 @@
 // Matches the approved mock-up exactly: header, description, phone card,
 // gold Check number CTA, "or" divider, recent calls section.
 //
-// Magnum DI investigation lifecycle: idle → investigating → completed | failed | timed_out.
-// The UI always represents exactly one truthful investigation state.
+// One number → one reputation check → at most ONE Magnum DI investigation. Apollo's own Triage
+// decides whether to open one (see checkNumberRisk); this screen FOLLOWS that case through the
+// shared InvestigationFlow instead of starting a second investigation of its own.
 import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -23,12 +24,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import * as Localization from "expo-localization";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet, apiPost } from "@/src/api/client";
 import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
+import { CallScreenerCard } from "@/src/components/CallScreenerCard";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
@@ -36,7 +36,6 @@ import { PhonePickers } from "@/src/security/phonePickers";
 import { Body, Button } from "@/src/components/ui";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
-import { type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
@@ -46,19 +45,9 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 
-// ── Magnum DI investigation lifecycle ────────────────────────────────────────
-// Explicit state machine: exactly one state is active at any time.
-// "idle"          → no investigation started or result cleared
-// "investigating" → API request in flight, spinner shown
-// "completed"     → API returned a result, findings shown
-// "failed"        → API returned an error, error message shown
-// "timed_out"     → API did not respond within the deadline
-export type InvestigationPhase = "idle" | "investigating" | "completed" | "failed" | "timed_out";
-
-/** Poll interval for checking investigation case status (2 seconds). */
-const INVESTIGATION_POLL_MS = 2_000;
-/** Maximum time to poll for investigation completion (60 seconds). */
-const INVESTIGATION_TIMEOUT_MS = 60_000;
+// ── Magnum DI investigation ──────────────────────────────────────────────────
+// The investigation itself is owned by `InvestigationFlow`, which attaches to the case Apollo's
+// Triage opened for this number. This screen only needs to know whether such a case exists.
 
 // Reporting links for all jurisdictions
 const REPORT_LINKS = {
@@ -156,7 +145,7 @@ export default function CheckNumber() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkNumberRisk, showToast, deviceId } = useApollo();
+  const { checkNumberRisk, showToast } = useApollo();
   const inputRef = useRef<TextInput>(null);
 
   // ── State ──
@@ -165,17 +154,6 @@ export default function CheckNumber() {
   const [result, setResult] = useState<CallRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  // ── Magnum DI investigation state machine ──
-  const [investigationPhase, setInvestigationPhase] = useState<InvestigationPhase>("idle");
-  const [investigationResult, setInvestigationResult] = useState<Record<string, unknown> | null>(null);
-  const [investigationError, setInvestigationError] = useState<string | null>(null);
-  const investigationAbortRef = useRef<AbortController | null>(null);
-
-  // Optional details (kept for investigation API but no input UI in this view)
-  const [asks] = useState<CallAsk[]>([]);
-  const [claim] = useState<CallClaim>("unknown");
-  const [transcript] = useState("");
 
   // Phone picker
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
@@ -213,110 +191,6 @@ export default function CheckNumber() {
     }
   };
 
-  // ── Build investigation request body ──
-  const buildInvestigationBody = useCallback((): Record<string, unknown> => {
-    const body: Record<string, unknown> = { device_id: deviceId ?? "local", number: numberState.trim() };
-    const _region = Localization.getLocales()[0]?.regionCode;
-    if (_region) body.country = _region;
-    if (asks.length > 0 && !asks.includes("nothing")) body.caller_asks = asks;
-    if (claim !== "unknown") body.caller_claim = claim;
-    if (transcript.trim()) body.transcript = transcript.trim();
-    return body;
-  }, [deviceId, numberState, asks, claim, transcript]);
-
-  // ── Bounded Magnum DI investigation with explicit lifecycle ──
-  // ── Bounded Magnum DI investigation with explicit lifecycle ──
-  // Accepts an optional `existingCaseId` — when checkNumberRisk already created a case,
-  // we skip the POST /call/investigate entirely and just poll for completion (exactly 0
-  // additional Gemini calls). Only when no case exists yet do we create one.
-  const runBoundedInvestigation = useCallback(async (existingCaseId?: string | null) => {
-    // Abort any in-flight investigation
-    if (investigationAbortRef.current) investigationAbortRef.current.abort();
-    const abort = new AbortController();
-    investigationAbortRef.current = abort;
-
-    // Transition: → investigating
-    setInvestigationPhase("investigating");
-    setInvestigationResult(null);
-    setInvestigationError(null);
-
-    try {
-      let caseId = existingCaseId ?? null;
-
-      // Only create a NEW investigation if checkNumberRisk did not already create one.
-      if (!caseId) {
-        const body = buildInvestigationBody();
-        const created = await apiPost<{ investigation_case_id?: string; job?: Record<string, unknown>; reputation?: Record<string, unknown>; investigation_error?: string | null }>("/call/investigate", "call_investigate", body);
-
-        if (abort.signal.aborted) return;
-
-        caseId = created.investigation_case_id ?? null;
-        if (!caseId) {
-          // The investigation never started. Reputation data (if any) still stands, but this is a
-          // FAILED investigation — it is never presented as a completed one.
-          setInvestigationResult(created.reputation ? { type: "reputation_only", ...created.reputation } : null);
-          setInvestigationPhase("failed");
-          setInvestigationError(created.investigation_error
-            ?? (created.reputation
-              ? "Magnum DI didn't start an investigation, so only the caller reputation below is available. No investigation conclusion has been substituted."
-              : "Magnum DI didn't start an investigation and no caller reputation was returned, so Apollo has nothing to report about this number."));
-          return;
-        }
-      }
-
-      // Poll for investigation completion
-      const deadline = Date.now() + INVESTIGATION_TIMEOUT_MS;
-      while (Date.now() < deadline && !abort.signal.aborted) {
-        await new Promise((resolve) => setTimeout(resolve, INVESTIGATION_POLL_MS));
-        if (abort.signal.aborted) return;
-        try {
-          const caseStatus = await apiGet<Record<string, unknown>>(`/investigations/${caseId}`);
-          if (abort.signal.aborted) return;
-          const status = caseStatus.status as string;
-          if (status === "complete" || status === "settled") {
-            setInvestigationResult({ ...caseStatus, investigation_case_id: caseId });
-            setInvestigationPhase("completed");
-            return;
-          }
-          if (status === "failed" || status === "cancelled") {
-            // Use the server's own classification of what failed rather than a generic sentence.
-            const failure = caseStatus.failure as { message?: string } | undefined;
-            setInvestigationPhase("failed");
-            setInvestigationError(failure?.message
-              ? `${failure.message} The caller reputation information is still available.`
-              : status === "cancelled"
-                ? "The investigation was cancelled before it finished. The caller reputation information is still available."
-                : "The investigation could not complete and Apollo couldn't determine why. The caller reputation information is still available.");
-            return;
-          }
-          // Still running — continue polling
-        } catch {
-          // Network error during poll — continue polling until timeout
-        }
-      }
-
-      // Timeout — investigation still running
-      if (!abort.signal.aborted) {
-        setInvestigationPhase("timed_out");
-        setInvestigationError("The investigation is still running. You can check your investigation history for the results.");
-      }
-    } catch {
-      if (abort.signal.aborted) {
-        setInvestigationPhase("timed_out");
-        setInvestigationError("The investigation took too long and was stopped. The caller reputation information is still available.");
-      } else {
-        setInvestigationPhase("failed");
-        setInvestigationError(
-          "Magnum DI couldn\u2019t complete the investigation. The caller reputation information is still available."
-        );
-      }
-    } finally {
-      if (investigationAbortRef.current === abort) {
-        investigationAbortRef.current = null;
-      }
-    }
-  }, [buildInvestigationBody]);
-
   // ── Primary investigation action ──
   // `pickedNumber` lets a simulated selection be checked immediately. Everything below is the same
   // real flow a typed number runs: real reputation check, then the real Magnum DI investigation only
@@ -328,56 +202,27 @@ export default function CheckNumber() {
     setBusy(true);
     setError(null);
     setResult(null);
-    setInvestigationResult(null);
-    setInvestigationPhase("idle");
-    setInvestigationError(null);
     try {
-      // Step 1: Quick IPQS reputation check
-      const riskResult = await checkNumberRisk(number.trim());
+      // The reputation check. `deliberate` marks it as a check the person asked for, so Triage can
+      // escalate a number Apollo cannot settle from its own sources to a Magnum DI investigation.
+      // Where it does, the case id comes back on the result and the shared InvestigationFlow below
+      // FOLLOWS that case — this screen never opens a second investigation of the same number.
+      const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true });
       setResult(riskResult);
       void recordCheck("call", {
         at: new Date().toISOString(),
         state: riskResult.decision === "avoid" ? "barking" : riskResult.decision === "review" ? "growling" : "resting",
         summary: riskResult.higgins?.headline ?? riskResult.number,
       });
-
-      // Step 2: Full Magnum DI investigation (bounded lifecycle)
-      // CRITICAL FIX: checkNumberRisk already creates a Magnum DI case for risky numbers
-      // ("avoid" / "review"). Pass that case ID so runBoundedInvestigation polls it instead
-      // of creating a SECOND investigation (which was the double-Gemini-call bug).
-      setBusy(false); // Reputation done — dismiss the checking modal
-      // Triage decides: Magnum DI runs ONLY when deterministic Triage reached POSSIBLE THREAT
-      // (checkNumberRisk creates the case in that single situation). No threat / limited stays
-      // at the reputation result with zero Gemini calls.
-      if (riskResult.investigation_case_id) {
-        void runBoundedInvestigation(riskResult.investigation_case_id);
-      } else {
-        setInvestigationResult({ type: "reputation_only", ...(riskResult.higgins ?? {}) } as Record<string, unknown>);
-        setInvestigationPhase("completed");
-      }
+      setBusy(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not check this number. Please try again.");
       setBusy(false);
     }
   };
 
-  const retryInvestigation = () => {
-    if (!numberState.trim() || !deviceId) return;
-    // Retry uses the same bounded lifecycle — cannot leave UI permanently investigating
-    void runBoundedInvestigation();
-  };
-
-  // Cleanup abort on unmount
-  useEffect(() => {
-    return () => { investigationAbortRef.current?.abort(); };
-  }, []);
-
   const resetCheck = () => {
-    investigationAbortRef.current?.abort();
     setResult(null);
-    setInvestigationResult(null);
-    setInvestigationPhase("idle");
-    setInvestigationError(null);
     setNumber("");
     setSaved(false);
     setError(null);
@@ -386,59 +231,15 @@ export default function CheckNumber() {
 
   // ── RESULT VIEW ──
   if (result) {
-    const model = buildCallRiskCheckResult({ result });
     const allReportLinks = [...REPORT_LINKS.AU, ...REPORT_LINKS.UK, ...REPORT_LINKS.US];
-    const inv = investigationResult as Record<string, unknown> | null;
-    const higginsData = inv?.higgins as Record<string, string | string[]> | undefined;
-    const enhancedModel = inv && higginsData?.exact_response ? {
-      ...model,
-      headline: (higginsData.headline as string) || model.headline,
-      higginsSays: (higginsData.exact_response as string) || model.higginsSays,
-      whatToDo: (higginsData.next_action as string) || model.whatToDo,
-      whatToDoLinks: (result.decision === "avoid" || result.decision === "review") ? allReportLinks : model.whatToDoLinks,
-    } : {
+    const model = buildCallRiskCheckResult({ result });
+    const enhancedModel = {
       ...model,
       whatToDoLinks: (result.decision === "avoid" || result.decision === "review") ? allReportLinks : model.whatToDoLinks,
     };
 
     const askPrompt = `About the number I just checked: ${result.number}. ${enhancedModel.headline} Can you walk me through what Apollo found and what I should do?`;
     const callActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
-
-    // ── Magnum DI investigation status (exactly one state) ──
-    if (investigationPhase === "investigating") {
-      // Active investigation — show ONLY the investigating indicator, nothing else
-      callActions.push({ testID: "callguard-investigating", variant: "ghost", label: "Magnum DI is investigating\u2026", onPress: () => {} });
-    } else if (investigationPhase === "failed" || investigationPhase === "timed_out") {
-      // Investigation failed or timed out — show error, preserve reputation, offer retry
-      callActions.push({
-        testID: "callguard-investigation-error",
-        variant: "ghost",
-        label: investigationError ?? "Magnum DI couldn\u2019t complete the investigation.",
-        onPress: () => {},
-      });
-      callActions.push({
-        testID: "callguard-retry-investigation",
-        variant: "secondary",
-        label: "Try investigation again",
-        onPress: retryInvestigation,
-      });
-    } else if (investigationPhase === "completed" && inv && !(higginsData?.exact_response)) {
-      // Completed but no useful content — the server returned an empty/malformed response
-      callActions.push({
-        testID: "callguard-investigation-empty",
-        variant: "ghost",
-        label: "Magnum DI completed but returned no analysis. The caller reputation information is still available.",
-        onPress: () => {},
-      });
-      callActions.push({
-        testID: "callguard-retry-investigation",
-        variant: "secondary",
-        label: "Try investigation again",
-        onPress: retryInvestigation,
-      });
-    }
-    // If phase === "completed" with good data, no action needed — findings already shown in enhancedModel
-    // If phase === "idle", investigation hasn't started yet (shouldn't happen after runInvestigation)
 
     callActions.push({
       testID: "callguard-save", variant: "ghost",
@@ -484,6 +285,7 @@ export default function CheckNumber() {
         investigationQuestion={askPrompt}
         submissionId={`callguard-${result.number.replace(/[^A-Za-z0-9._:-]/g, "")}-${Date.now().toString(36)}`}
         eventId={null}
+        caseId={result.investigation_case_id ?? null}
         actions={callActions}
       />
     );
@@ -677,6 +479,10 @@ export default function CheckNumber() {
             <Button testID="callguard-retry" variant="secondary" label="Try again" onPress={() => void runInvestigation()} />
           </View>
         ) : null}
+
+        {/* Checking a number is the deliberate act; screening every incoming call is the
+            standing protection. This is where a person comes to turn that on. */}
+        <CallScreenerCard testID="callguard-screener" />
       </KeyboardAwareScrollView>
 
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />

@@ -44,6 +44,7 @@ import { buildEmailCheckResult } from "@/src/domain/emailCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
+import type { EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
@@ -204,6 +205,8 @@ export default function CheckEmail() {
     a: EmailAnalysis;
     event: PatrolEvent;
     urls: MessageUrlResult[];
+    /** Reputation for the telephone/mobile numbers the email itself contains. */
+    phones: EvidencePhoneResult[];
     /** The Magnum DI case Apollo opened for this email — null when Triage found no possible threat. */
     caseId: string | null;
     explanation: null;
@@ -483,7 +486,7 @@ export default function CheckEmail() {
       });
       const a = outcome.analysis;
       setResult({
-        submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls,
+        submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls, phones: outcome.phones,
         caseId: outcome.investigationCaseId, explanation: null, assessment: null,
       });
       void recordEmailCheck({
@@ -521,6 +524,7 @@ export default function CheckEmail() {
       subject,
       submissionId: result.submissionId,
       urlResults: result.urls,
+      phones: result.phones,
       explanation: result.explanation,
     });
     const askPrompt = `About the email I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;

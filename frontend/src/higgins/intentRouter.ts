@@ -19,7 +19,7 @@
 
 // ── Route types ──────────────────────────────────────────────────────────────
 
-export type HigginsRoute = "local_diagnostic" | "investigation" | "local_knowledge" | "clarify";
+export type HigginsRoute = "local_diagnostic" | "investigation" | "local_knowledge" | "clarify" | "ask_higgins";
 
 export type LocalDiagnosticIntent =
   | "protection_status"
@@ -67,6 +67,26 @@ interface PatternRule {
   confidence: number;
   reason: string;
 }
+
+// "Where is it?" is not "Is it on?". A question about finding or turning something
+// on goes to Higgins himself, who holds the whole app map and answers with a tap
+// straight through to the screen. Checked before the status patterns, which would
+// otherwise read "where do I turn on call screening" as "is call screening on".
+const WAYFINDING_PATTERNS: PatternRule[] = [
+  {
+    patterns: [
+      /\bwhere\s+(?:is|are|do i|can i|would i|should i|will i)\b/i,
+      /\bhow\s+(?:do|can)\s+i\s+(?:turn|switch|set|enable|disable|connect|disconnect|add|remove|open|find|get to|reach|start|stop|check|change|clear|delete)\b/i,
+      /\bhow\s+(?:do|can)\s+i\s+\w+\s+(?:it|this|that|them)\s+(?:on|off)\b/i,
+      /\b(?:take|bring|send|get)\s+me\s+to\b/i,
+      /\b(?:show|open)\s+(?:me\s+)?(?:my|the)\s+\w+/i,
+      /\bwhich\s+screen\b/i,
+    ],
+    route: "ask_higgins",
+    confidence: 0.9,
+    reason: "Wayfinding question — Higgins knows the app and can link straight to it",
+  },
+];
 
 const DIAGNOSTIC_PATTERNS: PatternRule[] = [
   // Protection status
@@ -316,7 +336,16 @@ export function classifyIntent(
   }
 
   // Layer 1: Deterministic pattern matching
-  // Check diagnostics first — these should NEVER reach Magnum DI
+  // Wayfinding first — "where is X" must never be answered as "is X on".
+  for (const rule of WAYFINDING_PATTERNS) {
+    for (const pattern of rule.patterns) {
+      if (pattern.test(trimmed)) {
+        return { route: rule.route, confidence: rule.confidence, reason: rule.reason };
+      }
+    }
+  }
+
+  // Check diagnostics next — these should NEVER reach Magnum DI
   for (const rule of DIAGNOSTIC_PATTERNS) {
     for (const pattern of rule.patterns) {
       if (pattern.test(trimmed)) {
@@ -381,11 +410,12 @@ export function classifyIntent(
     };
   }
 
-  // Default: treat longer messages as knowledge/general chat → send to Higgins API
+  // Default: anything with no strong local signal belongs to Higgins himself, who
+  // answers from Apollo's product knowledge, this phone's live state and his own
+  // knowledge of scams. A canned local answer here would be a guess.
   return {
-    route: "local_knowledge",
-    knowledgeIntent: "how_apollo_works",
+    route: "ask_higgins",
     confidence: 0.5,
-    reason: "No strong signal — defaulting to general Higgins chat",
+    reason: "No strong local signal — Higgins answers it",
   };
 }

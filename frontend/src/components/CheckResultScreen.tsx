@@ -10,7 +10,6 @@ import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import ExternalLink from "lucide-react-native/icons/external-link";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useState } from "react";
 import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +19,7 @@ import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/check
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CloseButton } from "./CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -85,15 +85,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
           <Text style={s.title}>{result.gate}</Text>
           <Text style={s.checkType}>{result.checkType}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={close}
-          style={s.close}
-          testID="check-result-close"
-        >
-          <X size={20} color={colors.onSurface} />
-        </Pressable>
+        <CloseButton testID="check-result-close" onPress={close} />
       </View>
 
       <ScrollView

@@ -3,11 +3,13 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Trash2 from "lucide-react-native/icons/trash";
 import Info from "lucide-react-native/icons/info";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CirclePlus from "lucide-react-native/icons/circle-plus";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InvestigationView } from "@/src/components/InvestigationView";
@@ -24,8 +26,12 @@ import { clearHandoffTransfers, takeHandoff } from "@/src/domain/handoffTransfer
 import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
 import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
+import { resolveNavLinks } from "@/src/higgins/appMap";
+import { buildDeviceSnapshot, loadSnapshotExtras, type SnapshotExtras } from "@/src/higgins/deviceSnapshot";
+import { useCallScreener } from "@/src/hooks/useCallScreener";
 import { clearLocalChat, loadLocalChat, saveLocalChat } from "@/src/higgins/chatMemory";
 import { clearStarterMemory, loadStarterMemory, recordStarter, topStarters } from "@/src/higgins/starterMemory";
+import { pickQuickQuestions } from "@/src/higgins/quickQuestions";
 import { classifyIntent } from "@/src/higgins/intentRouter";
 import { detectCheckIntent } from "@/src/higgins/checkIntent";
 import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStatus, getVpnStatus, getNotificationDiagnostic } from "@/src/higgins/diagnosticCore";
@@ -41,8 +47,7 @@ import { buildDailyActivity } from "@/src/domain/dailyActivity";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
-const STARTERS = ["I want to check an email", "I want to check a message", "I want to check a call", "Why is Apollo barking?", "Is my device protected?"];
-const ABOUT = "Higgins is Apollo’s trusted handler. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right check or protection screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
+const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in Apollo, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. Magnum DI examines evidence and searches the outside world; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
@@ -72,8 +77,12 @@ const useStyles = makeStyles((c) => ({
   msgUser: { fontFamily: fonts.text, fontSize: 16, lineHeight: 24, color: c.onBrandPrimary },
   time: { fontFamily: fonts.text, fontSize: 11, color: c.muted, marginTop: 3, marginHorizontal: 6 },
 
-  starters: { gap: spacing.sm, alignSelf: "flex-start", maxWidth: "92%", marginLeft: 34, marginTop: spacing.xs },
-  starter: { minHeight: 44, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brandPrimary, backgroundColor: c.surface, justifyContent: "center", alignSelf: "flex-start" },
+  // Destinations Higgins offered for an answer — a tap straight to the screen he named.
+  linkRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
+  linkChip: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, paddingLeft: spacing.md, paddingRight: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brandPrimary, backgroundColor: c.surface },
+  linkText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary },
+
+  starters: { gap: spacing.sm, alignSelf: "flex-start", maxWidth: "92%", marginLeft: 34, marginTop: spacing.xs },  starter: { minHeight: 44, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brandPrimary, backgroundColor: c.surface, justifyContent: "center", alignSelf: "flex-start" },
   starterText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
 
   composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, backgroundColor: c.glass, borderTopWidth: 1, borderTopColor: c.border },
@@ -92,13 +101,18 @@ const useStyles = makeStyles((c) => ({
 }));
 
 export default function Ask() {
-  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter(); const { deviceId, isMock, events, resolution } = useApollo(); const health = useProtectionHealth();
+  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
+  const { deviceId, isMock, events, resolution, trust, adapterLabel, network, notificationStatus, quietHours, quietNow, lowPower } = useApollo();
+  const health = useProtectionHealth();
+  const callScreener = useCallScreener();
   const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string; screenshotUri?: string; screenshotName?: string; screenshotType?: string }>();
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null); const [aboutOpen, setAboutOpen] = useState(false); const [confirmClear, setConfirmClear] = useState(false);
   const [starters, setStarters] = useState<string[]>([]);
+  const [rotation, setRotation] = useState(0);
+  const [snapshotExtras, setSnapshotExtras] = useState<SnapshotExtras | null>(null);
   // Higgins check flow state
   const [checkSheetOpen, setCheckSheetOpen] = useState(false);
   const [artifactCategory, setArtifactCategory] = useState<HigginsCheckCategory | null>(null);
@@ -113,6 +127,7 @@ export default function Ask() {
     if (!deviceId) return;
     void loadLocalChat().then(setChatMessages).catch(() => undefined);
     void loadStarterMemory().then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
+    void loadSnapshotExtras().then(setSnapshotExtras).catch(() => undefined);
     void higginsHistory(deviceId).catch(() => undefined); // server keeps only five-minute content and non-content receipts
   }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
@@ -162,6 +177,56 @@ export default function Ask() {
   }, [deviceId, health, events]);
 
   const scrollToEnd = useCallback((force = false) => { if (force || stick.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true })); }, []);
+  // A new answer from Higgins is brought to the TOP of the view so it is read from its
+  // first line. Two things are needed for that to actually happen:
+  //   1. A trailing spacer, so there is room below the answer for it to rise to the top —
+  //      without it `scrollTo` clamps at the end of the content and the answer settles at
+  //      the bottom, which is the behaviour this replaces.
+  //   2. The target is held, not cleared on the first scroll, so later layout passes
+  //      (destination chips, fonts, the spacer itself) re-apply it instead of the
+  //      content-size handler snapping back to the bottom.
+  const rowY = useRef<Record<string, number>>({});
+  const rowH = useRef<Record<string, number>>({});
+  const topTarget = useRef<string | null>(null);
+  const viewportH = useRef(0);
+  const lastAnswerId = useRef<string | null>(null);
+  const [spacer, setSpacer] = useState(0);
+
+  const applyTop = useCallback(() => {
+    const id = topTarget.current;
+    if (!id) return;
+    const y = rowY.current[id];
+    if (y === undefined) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(y - spacing.sm, 0), animated: true }));
+  }, []);
+
+  // Room below the newest answer, so it can actually reach the top of the view.
+  const refreshSpacer = useCallback(() => {
+    const id = lastAnswerId.current;
+    if (!id || viewportH.current === 0) { setSpacer(0); return; }
+    setSpacer(Math.max(0, Math.round(viewportH.current - (rowH.current[id] ?? 0) - spacing.xl * 2)));
+  }, []);
+
+  const noteRow = useCallback((id: string, y: number, height: number) => {
+    rowY.current[id] = y;
+    rowH.current[id] = height;
+    if (id === lastAnswerId.current) refreshSpacer();
+    if (topTarget.current === id) applyTop();
+  }, [applyTop, refreshSpacer]);
+
+  useEffect(() => {
+    const last = chatMessages[chatMessages.length - 1];
+    const answerId = !investigationMode && last?.role === "higgins" ? last.id : null;
+    lastAnswerId.current = answerId;
+    refreshSpacer();
+    // The person's own message, or an investigation: follow the conversation to the
+    // bottom, and stop holding the previous answer at the top.
+    if (!answerId) { topTarget.current = null; return; }
+    if (!stick.current) return;
+    topTarget.current = answerId;
+    applyTop();
+  }, [chatMessages, investigationMode, applyTop, refreshSpacer]);
+
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };
 
   const startInvestigation = useCallback((message: string, context?: HigginsIssueContext | null) => {
@@ -171,6 +236,16 @@ export default function Ask() {
     void start(input, files, operationId).then((created) => { if (created && (context ?? activeContext)?.event_id) void rememberCaseForEvent((context ?? activeContext)!.event_id!, created.id); });
   }, [activeContext, busy, deviceId, router, start]);
 
+  // Higgins is the savant of Apollo: every question goes up with a live, state-only
+  // reading of this phone, so he answers from what is actually true here.
+  const snapshot = useMemo(() => buildDeviceSnapshot({
+    health, events, trustCount: trust.length, notificationStatus, quietHours, quietNow, lowPower,
+    adapterLabel, network, callScreener: callScreener.state === "checking" ? null : `${callScreener.summary} — ${callScreener.detail}`,
+    isMock, extras: snapshotExtras ?? undefined,
+  }), [health, events, trust.length, notificationStatus, quietHours, quietNow, lowPower, adapterLabel, network, callScreener.state, callScreener.summary, callScreener.detail, isMock, snapshotExtras]);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+
   const sendToHiggins = useCallback((message: string, appendUser: boolean) => {
     setChatBusy(true); setChatError(null); setLastAction(null); stick.current = true;
     const turnId = Crypto.randomUUID();
@@ -179,8 +254,9 @@ export default function Ask() {
       const optimistic: HigginsChatMessage = { id: Crypto.randomUUID(), turnId, role: "user", content: message, createdAt: new Date().toISOString(), conversationId: conversationId.current };
       setChatMessages((current) => { const next = [...current, optimistic]; void saveLocalChat(next); return next; });
     }
-    void askHiggins(message, conversationId.current, turnId, previousTurnIds).then((reply) => {
-      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId }]; void saveLocalChat(next); return next; });
+    void askHiggins(message, conversationId.current, turnId, previousTurnIds, snapshotRef.current).then((reply) => {
+      const links = resolveNavLinks(reply.navigation);
+      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
     }).catch(() => setChatError("Magnum DI could not answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
@@ -262,12 +338,13 @@ export default function Ask() {
       return true;
     }
 
-    // route === "investigation" or unhandled → send to API
+    // route === "investigation" / "ask_higgins" or unhandled → send to the Higgins API
     return false;
   }, [chatMessages, health, investigationMode, state.caseData, events, resolution]);
 
   const submit = (message: string) => {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
+    stick.current = true; // sending means "follow the conversation", wherever it was scrolled to
     // Active investigation → route to investigation case directly
     if (investigationMode || activeContext || state.caseData) { setText(""); if (state.caseData) void ask(clean); else startInvestigation(clean, activeContext); return; }
 
@@ -404,7 +481,19 @@ export default function Ask() {
 
   const caseStatus = state.phase === "answered" ? "Magnum DI has finished this investigation." : state.phase === "waiting_user" ? "Magnum DI needs one answer from you" : state.phase === "failed" ? `Investigation incomplete${state.error ? ` — ${state.error}` : ""}.${state.failure || state.caseData ? " Retry available." : ""}` : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Magnum DI is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
-  const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 5), [starters]);
+  // Twenty ideas in the space of four: a fresh handful is drawn every few seconds, with
+  // whatever this person has asked before kept at the front. Rotation stops as soon as a
+  // conversation starts, so nothing moves under a thumb that is already reaching for it.
+  const welcomeStarters = useMemo(() => {
+    const own = starters.slice(0, 2);
+    return [...own, ...pickQuickQuestions(4 - own.length, own)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [starters, rotation]);
+  useEffect(() => {
+    if (!showWelcome) return;
+    const timer = setInterval(() => setRotation((n) => n + 1), 7000);
+    return () => clearInterval(timer);
+  }, [showWelcome]);
   const showRepeatRow = !investigationMode && chatMessages.length > 0 && !text.trim() && starters.length > 0;
 
   return <View style={s.root} testID="higgins-screen">
@@ -431,19 +520,31 @@ export default function Ask() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       {activeContext ? <Card style={s.context} testID="ask-active-issue"><Pill tone={activeContext.assessment_state} label={`${activeContext.gate.toUpperCase()} GATE`} testID="ask-active-gate" /><Body testID="ask-active-summary">{activeContext.issue_summary}</Body>{state.caseData ? <Body testID="ask-handoff-reference">Case reference: {state.caseData.id.slice(0, 8)}</Body> : null}<Button testID="ask-new-conversation" variant="ghost" label="Back to chat" onPress={newQuestion} disabled={busy} /></Card> : null}
 
-      <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll} onContentSizeChange={() => scrollToEnd(investigationMode)}>
+      <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll}
+        onLayout={(e) => { viewportH.current = e.nativeEvent.layout.height; refreshSpacer(); }}
+        onScrollBeginDrag={() => { topTarget.current = null; }}
+        onContentSizeChange={() => { if (topTarget.current) { applyTop(); return; } scrollToEnd(investigationMode); }}>
         {showWelcome ? <>
           <Text style={s.welcomePrompt} testID="higgins-welcome">What can I help you with? Ask me anything, or tap ⓘ to learn what I do.</Text>
-          <View style={s.starters} testID="ask-suggestions">
+          <Animated.View key={rotation} entering={FadeIn.duration(350)} style={s.starters} testID="ask-suggestions">
             {welcomeStarters.map((question, index) => <Pressable key={question} testID={`ask-suggestion-${index}`} style={s.starter} accessibilityRole="button" onPress={() => submit(question)} disabled={busy}><Text style={s.starterText} numberOfLines={2}>{question}</Text></Pressable>)}
-          </View>
+          </Animated.View>
         </> : null}
 
         {!investigationMode ? chatMessages.map((message) => message.role === "user"
-          ? <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowUser}><View style={s.bubbleUser}><Text style={s.msgUser}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
-          : <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowHiggins}>
+          ? <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowUser} onLayout={(e) => noteRow(message.id, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}><View style={s.bubbleUser}><Text style={s.msgUser}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
+          : <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowHiggins} onLayout={(e) => noteRow(message.id, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}>
               <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
-              <View style={{ flexShrink: 1 }}><View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
+              <View style={{ flexShrink: 1 }}>
+                <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View>
+                {message.links?.length ? <View style={s.linkRow} testID={`ask-links-${message.id}`}>
+                  {message.links.map((link, index) => <Pressable key={link.route} testID={`ask-link-${message.id}-${index}`} accessibilityRole="button" accessibilityLabel={`Open ${link.label}`} style={s.linkChip} onPress={() => router.push(link.route as never)}>
+                    <Text style={s.linkText} numberOfLines={1}>{link.label}</Text>
+                    <ChevronRight size={15} color={colors.brandPrimary} />
+                  </Pressable>)}
+                </View> : null}
+                <Text style={s.time}>{formatTime(message.createdAt)}</Text>
+              </View>
             </View>) : null}
 
         {!investigationMode && chatBusy ? <View style={s.rowHiggins} testID="ask-chat-progress">
@@ -462,6 +563,7 @@ export default function Ask() {
         {investigationMode && state.undeleted ? <Button testID="ask-retry-delete" variant="ghost" label="Try deleting again" onPress={() => void retryDelete()} /> : null}
         {investigationMode ? <Button testID="ask-clear-temporary-history" label="Clear this investigation" variant="ghost" onPress={() => void deleteInvestigation()} /> : null}
         {investigationMode ? <Text testID="ask-processing-state" style={[s.subtitle, { paddingHorizontal: spacing.lg, paddingTop: spacing.xs }]}>{caseStatus}</Text> : null}
+        {spacer > 0 ? <View style={{ height: spacer }} testID="ask-top-spacer" /> : null}
       </ScrollView>
 
       {showRepeatRow ? <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={s.repeatRow} testID="higgins-repeat-row">

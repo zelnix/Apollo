@@ -3,15 +3,15 @@
 // categorised as active, optional or unconfigured.
 
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
 import React from "react";
-import { ScrollView, Pressable, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Card, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { THIRD_PARTY_REGISTER, THIRD_PARTY_SERVICES_DISCLOSURE } from "@/src/domain/privacyInventory";
+import { CloseButton } from "@/src/components/CloseButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -32,15 +32,12 @@ export default function ThirdPartyRegisterScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { colors } = useTheme();
 
   return (
     <View style={s.root} testID="third-party-register-screen">
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title} testID="register-title">{THIRD_PARTY_REGISTER.title}</Text>
-        <Pressable testID="register-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}>
-          <X size={22} color={colors.onSurface} />
-        </Pressable>
+        <CloseButton testID="register-close" label="Close third-party services" onPress={() => goBackOrHome(router)} />
       </View>
 
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="register-scroll">

@@ -3,8 +3,6 @@
 // "Transparent Data Use and Necessary Sharing" governing principle.
 
 import { useRouter } from "expo-router";
-import X from "lucide-react-native/icons/x";
-import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Smartphone from "lucide-react-native/icons/smartphone";
@@ -14,6 +12,8 @@ import React, { useState, useCallback } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CloseButton } from "@/src/components/CloseButton";
+import { SetupProgress } from "@/src/components/SetupProgress";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -36,7 +36,6 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 24, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
-  back: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -spacing.sm },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
   item: { gap: 4, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
   what: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
@@ -120,7 +119,7 @@ export default function PrivacyDisclosure() {
 
   const accept = async () => {
     setBusy(true); setError(null); setTechnicalDetail(null); setShowDetail(false);
-    try { await completeSetup(); router.replace("/setup-gates"); }
+    try { await completeSetup(); router.push("/setup-gates"); }
     catch (e) {
       setError(SETUP_FAILURE_MESSAGE);
       setTechnicalDetail(e instanceof Error ? e.message : String(e));
@@ -130,11 +129,16 @@ export default function PrivacyDisclosure() {
 
   return (
     <View style={s.root}>
-      <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        {/* Before setup the statement is a step in the flow (back chevron); afterwards it is a screen you close. */}
-        {!setupDone ? <Pressable testID="disclosure-back-button" accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.back}><ChevronLeft size={24} color={colors.onSurface} /></Pressable> : null}
+      {/* During setup this is step 2 of 4, with a way back. Afterwards it is simply a
+          document you opened, so it gets a close button instead. */}
+      {!setupDone ? (
+        <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.md }}>
+          <SetupProgress step={2} onBack={() => goBackOrHome(router)} testID="disclosure-progress" />
+        </View>
+      ) : null}
+      <View style={[s.top, { paddingTop: setupDone ? insets.top + spacing.md : 0 }]}>
         <Text style={[s.title, { flex: 1 }]}>Privacy statement</Text>
-        {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" accessibilityLabel="Close privacy statement" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
+        {setupDone ? <CloseButton testID="disclosure-close" label="Close privacy statement" onPress={() => goBackOrHome(router)} /> : null}
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: spacing.xl }]} testID="disclosure-scroll">
 
@@ -288,6 +292,7 @@ export default function PrivacyDisclosure() {
             </View>
           ) : null}
           <Button testID="disclosure-accept-button" label={busy ? "Setting up\u2026" : "I understand \u2014 set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
+          <Text style={s.legal}>Next: turning on the protections this phone allows.</Text>
         </View>
       ) : null}
     </View>

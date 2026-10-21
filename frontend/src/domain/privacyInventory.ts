@@ -126,13 +126,13 @@ export const CAPABILITY_DATA_USE = [
   },
   {
     capability: 'Ask Higgins (text chat)',
-    local: 'Questions are composed on your device.',
-    backend: 'Questions and requested speech are sent to Apollo\u2019s backend using the owner-managed key. Personal identifiers in research queries are minimised within Apollo\u2019s backend before transmission to Gemini.',
+    local: 'Questions are composed on your device. A state-only reading of your own Apollo app \u2014 protection statuses, permission states, settings values, counts and the headlines Apollo itself wrote \u2014 is assembled on the device to accompany the question.',
+    backend: 'Questions, that state reading and requested speech are sent to Apollo\u2019s backend using the owner-managed key. Personal identifiers in research queries are minimised within Apollo\u2019s backend before transmission to Gemini.',
     thirdParty: 'Google Gemini receives the privacy-processed query for AI response.',
-    shared: 'Privacy-processed question or speech request',
-    necessary: 'AI responses and speech generation require transmitting your query to the AI provider.',
+    shared: 'Privacy-processed question or speech request, plus your Apollo protection state',
+    necessary: 'AI responses and speech generation require transmitting your query to the AI provider. The state reading is what lets Higgins answer about your actual phone instead of guessing.',
     activation: 'Manual: when you send a question, tap read-aloud, or enable automatic read-aloud',
-    withheld: 'Private messages or secrets you should not paste into the chat field',
+    withheld: 'Message bodies, screenshots, files, links you checked, personal details and secrets are never part of the state reading. Private messages or secrets you should not paste into the chat field',
   },
 ];
 
