@@ -127,9 +127,9 @@ const useStyles = makeStyles((c) => ({
 
   // ── Branded header ──
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   brandLogo: { height: 36, aspectRatio: 1789 / 537 },
-  brandSubtitle: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginTop: 2 },
+  brandSubtitle: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginTop: 1, letterSpacing: 0.3 },
 
   // ── Hero status card ──
   heroCard: {
@@ -315,7 +315,7 @@ export default function Home() {
         <View style={s.headerRow}>
           <Image
             source={require("@/assets/images/apollo-scam-guard-logo.png")}
-            style={s.brandLogo}
+            style={{ height: Math.max(28, Math.min(36, screenW * 0.085)), aspectRatio: 1789 / 537 }}
             contentFit="contain"
             testID="home-brand-title"
           />
@@ -324,7 +324,7 @@ export default function Home() {
             <AlertsButton testID="home-alerts" />
           </View>
         </View>
-        <Text style={s.brandSubtitle}>Better Protection. Safer You. Safer Tomorrows.</Text>
+        <Text style={[s.brandSubtitle, { fontSize: Math.max(9, Math.min(11, screenW * 0.028)) }]}>Better Protection. Safer You. Safer Tomorrows.</Text>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} testID="home-scroll" showsVerticalScrollIndicator={false}>
