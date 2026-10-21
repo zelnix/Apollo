@@ -7,6 +7,7 @@ import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
+import { AlertsButton } from "@/src/components/AlertsButton";
 import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { RetrofitModal } from "@/src/components/RetrofitModal";
@@ -64,7 +65,7 @@ export default function SettingsScreen() {
   );
 
   return <View style={s.root} testID="settings-screen">
-    <View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="settings-title">Settings</Text>{isTab ? <InfoButton info={SETTINGS_INFO} testID="settings-info" /> : <Pressable testID="settings-close" accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => goBackOrHome(router)} style={s.close}><X size={22} color={colors.onSurface} /></Pressable>}</View>
+    <View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="settings-title">Settings</Text>{isTab ? <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><AlertsButton testID="settings-alerts" /><InfoButton info={SETTINGS_INFO} testID="settings-info" /></View> : <Pressable testID="settings-close" accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => goBackOrHome(router)} style={s.close}><X size={22} color={colors.onSurface} /></Pressable>}</View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="settings-scroll">
 
       <View><SectionTitle>Check</SectionTitle>
@@ -88,6 +89,7 @@ export default function SettingsScreen() {
           {notificationStatus === "denied" || notificationStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Allow security alerts" onPress={() => void enableNotifications()} /> : null}
           {notificationStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open notification settings" onPress={() => void Linking.openSettings()} /> : null}
           <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
+          <NavRow label="Notification check" hint="See whether alerts can reach this phone, and send a test alert" onPress={() => router.push("/notification-check")} testID="settings-notification-check" />
           <SwitchRow label="Quiet hours" hint="Silence non-urgent reminders at night. Urgent threat and family alerts still appear." value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} testID="settings-quiet-switch" />
           {quietHours.enabled ? <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}><View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View><Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /></View> : null}
         </Card>

@@ -287,6 +287,16 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
   const meaning = (briefing?.meaning ?? "").trim();
   const evidenceSummary = [established, meaning !== established ? meaning : ""].filter(Boolean);
 
+  // What Apollo actually found — the recorded findings for this case. The stored investigation adds
+  // what it could not settle. Never a restatement of the summary above.
+  const investigation = useCaseInvestigation(event);
+  const findings = Array.from(new Set([
+    ...(event.why ?? []),
+    ...(briefing?.evidence_points ?? []),
+    ...(investigation?.response?.findings ?? []).map((f) => f.text),
+  ].map((line) => (line ?? "").trim()).filter((line) => !!line && !looksLikeInternalCode(line) && line !== established && line !== meaning)));
+  const uncertainties = (investigation?.response?.uncertainties ?? []).map((u) => u.trim()).filter(Boolean);
+
   // What to do — or an explicit statement that nothing needs doing.
   const action = (shownWhatToDo || "").trim();
   const noAction = !action || /^no action required\.?$/i.test(action);
@@ -330,6 +340,30 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
             </Text>
           ) : null}
           {original?.url ? <Text style={s.reportBody} testID="tc-overview-checking-url" selectable>{purposeLimitedUrl(original.url)}</Text> : null}
+        </Card>
+      ) : null}
+
+      {/* What Apollo found — the actual findings recorded for this case, never a summary of them. */}
+      {findings.length ? (
+        <Card style={{ gap: spacing.xs }} testID="tc-overview-findings">
+          <Text style={s.sectionTitle}>What Apollo found</Text>
+          {findings.map((finding, i) => (
+            <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Text style={{ color: colors.muted, marginTop: 1 }}>•</Text>
+              <Text style={[s.reportBody, { flex: 1 }]} testID={`tc-overview-finding-${i}`}>{finding}</Text>
+            </View>
+          ))}
+          {uncertainties.length ? (
+            <>
+              <Text style={s.reportLabel}>What isn&apos;t settled</Text>
+              {uncertainties.map((item, i) => (
+                <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Text style={{ color: colors.muted, marginTop: 1 }}>•</Text>
+                  <Text style={[s.reportBody, { flex: 1 }]} testID={`tc-overview-uncertainty-${i}`}>{item}</Text>
+                </View>
+              ))}
+            </>
+          ) : null}
         </Card>
       ) : null}
 
@@ -1080,7 +1114,11 @@ function HistoryContent({ event }: { event: PatrolEvent }) {
   const router = useRouter();
   const { events } = useApollo();
   const inv = useCaseInvestigation(event);
-  const timeline = buildTimeline(event, buildCaseSources({ event, investigation: inv }));
+  const timeline = buildTimeline(event, buildCaseSources({ event, investigation: inv }), {
+    completedAt: inv?.committedAt ?? null,
+    conclusion: inv?.response?.overview ?? null,
+    findingCount: inv?.response?.findings?.length,
+  });
   const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
 
   // Merge related events into timeline chronologically
@@ -1193,7 +1231,7 @@ export default function ThreatCaseScreen() {
         <Pressable testID="tc-back" onPress={() => goBackOrHome(router)} style={s.backBtn}>
           <ChevronLeft size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={s.headerTitle} numberOfLines={1} testID="tc-case-id">
+        <Text style={s.headerTitle} testID="tc-case-id">
           Threat Case #{caseId}
         </Text>
       </View>

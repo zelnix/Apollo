@@ -899,7 +899,7 @@ export default function GateDetailsScreen() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle} numberOfLines={1}>
+          <Text style={s.headerTitle}>
             {gate.title}
           </Text>
         </View>

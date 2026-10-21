@@ -30,7 +30,7 @@ import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 import { SimulatedPicker } from "@/src/components/SimulatedPicker";
-import { SIMULATED_APPS } from "@/src/preview/simulatedItems";
+import { SIMULATED_APPS } from "@/src/preview/samples";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";

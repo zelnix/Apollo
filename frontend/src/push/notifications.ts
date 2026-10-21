@@ -1,9 +1,9 @@
-// Push notifications: local on-device alerts + remote Expo push token registration.
+// Push notifications: local on-device alerts + registration with Apollo's managed push relay.
 // Loading lazily keeps web/Expo Go from evaluating unavailable native notification modules.
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import { Platform } from "react-native";
 
-import { apiPost } from "@/src/api/client";
+import { apiGet, apiPost, apiPostEmpty } from "@/src/api/client";
 
 export type NotificationStatus = "granted" | "denied" | "undetermined" | "blocked" | "unsupported";
 export type LocalAlert = { title: string; body: string; channel: "apollo_alerts" | "family"; actionUrl: string };
@@ -158,49 +158,67 @@ export async function scheduleLocalAlert(alert: LocalAlert): Promise<string> {
   });
 }
 
-// ------------------------------------------------------------------ remote push token registration
-
-/** Expo project ID from app config (used to scope the push token to this project). */
-const PROJECT_ID: string | undefined =
-  Constants.expoConfig?.extra?.eas?.projectId ??
-  (Constants.expoConfig as unknown as Record<string, unknown> | undefined)?.projectId as string | undefined;
+// ------------------------------------------------------------------ remote push registration
 
 /**
- * Request an Expo push token and register it with the backend.
- * Returns the token string on success or null on failure.
+ * Register this device's native push token (FCM on Android, APNs on iOS) with Apollo's servers,
+ * which forward it to the managed alert relay. The relay resolves the token from the installation id
+ * at send time, so Apollo's own database never stores it.
  *
- * This function is safe to call repeatedly — the backend upserts by device_id,
- * so a duplicate registration is a no-op. It never throws; callers degrade gracefully.
+ * Safe to call repeatedly — the backend upserts by device, so a duplicate registration is a no-op,
+ * and tokens rotate, so re-registering on every app open is intended. It never throws.
  *
- * Prerequisites (will return { registered: false } if unmet):
+ * Prerequisites (will return { registered: false } with the real reason if unmet):
  * - Native build (not Expo Go, not web)
  * - Notification permission granted
- * - google-services.json present (Android) or APNs entitlement (iOS)
- * - EXPO_PUSH_ENABLED + EXPO_PUSH_ACCESS_TOKEN on the backend
+ * - google-services.json present (Android) or APNs key uploaded at build time (iOS)
+ * - The managed alert key on the backend, which the build pipeline fills in at publish time
  */
 export async function registerRemotePush(): Promise<PushRegistrationResult> {
   const N = loadNotifications();
   if (!N) return { token: null, registered: false, reason: "Push tokens require a native build (not Expo Go or web)." };
-  if (!PROJECT_ID) return { token: null, registered: false, reason: "Expo project ID is not configured in app.json." };
 
   const permStatus = await getNotificationStatus();
   if (permStatus !== "granted") return { token: null, registered: false, reason: `Notification permission is ${permStatus}.` };
 
   try {
-    const { data: token } = await N.getExpoPushTokenAsync({ projectId: PROJECT_ID });
-    if (!token) return { token: null, registered: false, reason: "Expo returned an empty push token." };
+    const { data: token } = await N.getDevicePushTokenAsync();
+    if (!token) return { token: null, registered: false, reason: "This device returned an empty push token." };
 
     await apiPost("/register-push", "push_register", {
       platform: Platform.OS as string,
-      provider: "expo",
-      projectId: PROJECT_ID,
-      device_token: token,
+      device_token: typeof token === "string" ? token : String(token),
     });
 
-    return { token, registered: true };
+    return { token: typeof token === "string" ? token : String(token), registered: true };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Push token registration failed.";
-    // 503 = backend push not configured (EXPO_PUSH_ENABLED/ACCESS_TOKEN missing) — not a client error.
+    const message = error instanceof Error ? error.message : "Push registration failed.";
+    // 503 = the managed alert key is not in place yet (it arrives when the app is published).
     return { token: null, registered: false, reason: message };
   }
+}
+
+// ------------------------------------------------------------------ on-device diagnostics
+// Permission, registration and delivery are three separate states. The Notification check screen
+// reads each one from its real source so a person can see exactly which one is failing.
+
+export interface PushRegistrationState {
+  configured: boolean;
+  registered: boolean;
+  registeredAt: string | null;
+  provider: string | null;
+  setupDetail: string | null;
+}
+
+/** Server's view of this installation's push registration. */
+export function getPushRegistration() {
+  return apiGet<PushRegistrationState>("/push/registration");
+}
+
+/** Ask Apollo's servers to send this installation a sample alert. Returns the delivery state. */
+export function sendServerTestAlert() {
+  return apiPostEmpty<{ deliveryId: string; state: string; failureCode: string | null }>(
+    "/push/test",
+    `push-test-${Date.now()}`,
+  );
 }

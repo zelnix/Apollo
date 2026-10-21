@@ -205,7 +205,12 @@ export interface TimelineEntry {
  * Build a truthful chronological timeline from PatrolEvent data.
  * Only includes events that actually occurred — no fabricated stages.
  */
-export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): TimelineEntry[] {
+export function buildTimeline(
+  event: PatrolEvent,
+  sources: CaseSource[] = [],
+  /** What the stored investigation recorded, when there is one. */
+  investigation: { completedAt?: string | null; conclusion?: string | null; findingCount?: number } = {},
+): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const record = event.patrol_record;
   const subject = threatSubject(event);
@@ -268,12 +273,14 @@ export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): T
   }
 
   // 4. Magnum DI investigation (only if one actually exists)
-  // Factual timeline: Investigation requested → Personal-data protection applied → Sent to Magnum DI → Response received
+  // Factual timeline: Investigation requested → Personal-data protection applied → Sent to Magnum DI
+  // → Response received. The first three happened when the case was opened; the response carries the
+  // time it was committed to this device and what it actually concluded.
   const investigationId = event.investigation_case_id ?? record?.investigationCaseId;
   if (investigationId) {
     entries.push({
       id: `tl-${idx++}`,
-      timestamp: null,
+      timestamp: event.occurred_at,
       title: "Investigation requested",
       description: subject
         ? `You requested a Magnum DI investigation for ${subjectDescriptor(subject)}.`
@@ -283,7 +290,7 @@ export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): T
     });
     entries.push({
       id: `tl-${idx++}`,
-      timestamp: null,
+      timestamp: event.occurred_at,
       title: "Personal-data protection applied",
       description: "Credentials removed; your personal information protected before evidence left this device.",
       dotColor: "#059669",
@@ -291,17 +298,21 @@ export function buildTimeline(event: PatrolEvent, sources: CaseSource[] = []): T
     });
     entries.push({
       id: `tl-${idx++}`,
-      timestamp: null,
+      timestamp: event.occurred_at,
       title: "Sent to Magnum DI",
       description: "Protected evidence submitted for investigation.",
       dotColor: "#2563EB",
       iconId: "gathering",
     });
+    const conclusion = (investigation.conclusion ?? "").replace(/\s+/g, " ").trim();
+    const findingCount = investigation.findingCount ?? (event.why ?? []).length;
     entries.push({
       id: `tl-${idx++}`,
-      timestamp: null,
-      title: "Response received",
-      description: "Magnum DI completed its investigation and returned findings.",
+      timestamp: investigation.completedAt ?? null,
+      title: investigation.completedAt || conclusion ? "Magnum DI answered" : "Waiting for Magnum DI",
+      description: conclusion
+        ? `${conclusion}${findingCount ? ` ${findingCount} finding${findingCount === 1 ? "" : "s"} recorded on this device.` : ""}`
+        : "Magnum DI has not answered yet.",
       dotColor: "#059669",
       iconId: "findings",
     });

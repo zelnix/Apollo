@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
+import { AlertsButton } from "@/src/components/AlertsButton";
 import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
 import { RetrofitModal, hasRetrofitRun } from "@/src/components/RetrofitModal";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
@@ -317,6 +318,7 @@ export default function Home() {
             <Text style={s.brandSubtitle}>Better Protected. Safer You. Safer Tomorrows.</Text>
           </View>
           {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
+          <AlertsButton testID="home-alerts" />
         </View>
       </View>
 

@@ -24,7 +24,7 @@ import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter"
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
 import { SimulatedPicker } from "@/src/components/SimulatedPicker";
-import { SIMULATED_TEXTS } from "@/src/preview/simulatedItems";
+import { SIMULATED_TEXTS } from "@/src/preview/samples";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";

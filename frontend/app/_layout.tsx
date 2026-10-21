@@ -117,6 +117,7 @@ export default function RootLayout() {
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
                   <Stack.Screen name="privacy-data" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="notification-check" options={{ presentation: "modal" }} />
                   <Stack.Screen name="protection-details" options={{ presentation: "modal" }} />
                   <Stack.Screen name="support" options={{ presentation: "modal" }} />
                   <Stack.Screen name="digest" options={{ presentation: "modal" }} />

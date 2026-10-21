@@ -38,7 +38,7 @@ import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapte
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { SimulatedPicker } from "@/src/components/SimulatedPicker";
-import { SIMULATED_CALLS } from "@/src/preview/simulatedItems";
+import { SIMULATED_CALLS } from "@/src/preview/samples";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { recordCheck } from "@/src/store/checkHistoryStore";

@@ -44,6 +44,7 @@ import {
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import type { PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
+import { AlertsButton } from "@/src/components/AlertsButton";
 import { subjectRowLabel } from "@/src/domain/threatSubject";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -274,6 +275,7 @@ export default function ThreatsScreen() {
       {/* Title */}
       <View style={[s.titleRow, { paddingTop: insets.top + spacing.sm }]}>
         <Text style={s.titleText}>Threats</Text>
+        <AlertsButton testID="threats-alerts" />
         <InfoButton info={THREATS_INFO} testID="threats-info" />
       </View>
       <Text style={s.subtitleText} testID="threats-last-check">

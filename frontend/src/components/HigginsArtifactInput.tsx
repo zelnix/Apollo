@@ -18,16 +18,17 @@ import { Image } from "expo-image";
 
 import { Sheet } from "./Sheet";
 import { SimulatedPicker } from "./SimulatedPicker";
-import { SIMULATED_EMAILS } from "@/src/preview/simulatedInbox";
 import {
+  PREVIEW_SAMPLES_ENABLED,
   SIMULATED_APPS,
   SIMULATED_CALLS,
   SIMULATED_DEVICE_CONCERNS,
+  SIMULATED_EMAILS,
   SIMULATED_FILES,
   SIMULATED_LINKS,
   SIMULATED_SCREENSHOTS,
   SIMULATED_TEXTS,
-} from "@/src/preview/simulatedItems";
+} from "@/src/preview/samples";
 import { ImageUploadPrep, type PreparedImage } from "./ImageUploadPrep";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Button } from "./ui";
@@ -194,6 +195,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [prepError, setPrepError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
+  const [samplesOpen, setSamplesOpen] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const config = category ? CATEGORY_CONFIG[category] : null;
@@ -209,6 +211,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setPrepError(null);
       setCameraBlocked(false);
       setSelectedSample(null);
+      setSamplesOpen(false);
     }
   }, [visible, category]);
 
@@ -266,8 +269,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     setContent(text);
     setSelectedSample(id);
     if (suggestedQuestion) setQuestion((q) => q.trim() || suggestedQuestion);
-    // The field sits below the sample list, so bring it into view — otherwise the tap looks ignored.
-    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    // Back to the entry popup, which looks exactly as it does in production.
+    setSamplesOpen(false);
   }, []);
 
   const fillSampleScreenshot = useCallback(async (id: string) => {
@@ -280,7 +283,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setImageUri(asset.localUri ?? asset.uri);
       setSelectedSample(sample.id);
       setQuestion((q) => q.trim() || sample.question);
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+      setSamplesOpen(false);
     } catch (err) {
       console.warn("[HigginsArtifactInput] Sample screenshot error:", err);
     } finally {
@@ -316,6 +319,124 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
   if (!visible || !category || !config) return null;
 
+  // Preview samples never sit inside the entry popup: they open in their own picker, so the popup a
+  // person fills in here is exactly the popup production shows.
+  const sampleSections = !PREVIEW_SAMPLES_ENABLED ? null : category === "screenshot" ? (
+    <SimulatedPicker
+      testID="higgins-sample-screenshots"
+      title="Sample screenshots"
+      note={SAMPLE_NOTE}
+      items={SIMULATED_SCREENSHOTS.map((x) => ({ id: x.id, primary: x.label, probes: x.probes }))}
+      onSelect={(id) => void fillSampleScreenshot(id)}
+      selectedId={selectedSample}
+      disabled={picking}
+    />
+  ) : category === "device_internet" ? (
+    <SimulatedPicker
+      testID="higgins-sample-device"
+      title="Sample concerns"
+      note={SAMPLE_NOTE}
+      items={SIMULATED_DEVICE_CONCERNS.map((x) => ({ id: x.id, primary: x.concern, probes: x.probes }))}
+      onSelect={(id) => {
+        const sample = SIMULATED_DEVICE_CONCERNS.find((x) => x.id === id);
+        if (sample) fillSample(sample.id, sample.concern);
+      }}
+      selectedId={selectedSample}
+    />
+  ) : category === "websites_links" ? (
+    <SimulatedPicker
+      testID="higgins-sample-links"
+      title="Sample links"
+      note={SAMPLE_NOTE}
+      items={SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, probes: x.probes }))}
+      onSelect={(id) => {
+        const sample = SIMULATED_LINKS.find((x) => x.id === id);
+        if (sample) fillSample(sample.id, sample.url, "Is this website safe?");
+      }}
+      selectedId={selectedSample}
+    />
+  ) : category === "messages_calls" ? (
+    <>
+      <SimulatedPicker
+        testID="higgins-sample-messages"
+        title="Sample messages"
+        note={SAMPLE_NOTE}
+        items={SIMULATED_TEXTS.map((x) => ({ id: x.id, primary: x.sender, secondary: x.text, probes: x.probes }))}
+        onSelect={(id) => {
+          const sample = SIMULATED_TEXTS.find((x) => x.id === id);
+          if (sample) fillSample(sample.id, `From ${sample.sender}:\n${sample.text}`, "Is this message a scam?");
+        }}
+        selectedId={selectedSample}
+      />
+      <SimulatedPicker
+        testID="higgins-sample-calls"
+        title="Sample callers"
+        note={SAMPLE_NOTE}
+        items={SIMULATED_CALLS.map((x) => ({ id: x.id, primary: x.number, secondary: x.name ?? undefined, probes: x.probes }))}
+        onSelect={(id) => {
+          const sample = SIMULATED_CALLS.find((x) => x.id === id);
+          if (sample) {
+            fillSample(
+              sample.id,
+              sample.name ? `${sample.number} (saved as ${sample.name})` : sample.number,
+              "Who called me from this number?",
+            );
+          }
+        }}
+        selectedId={selectedSample}
+      />
+    </>
+  ) : category === "email_accounts" ? (
+    <SimulatedPicker
+      testID="higgins-sample-emails"
+      title="Sample emails"
+      note={SAMPLE_NOTE}
+      items={SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, probes: x.probes }))}
+      onSelect={(id) => {
+        const sample = SIMULATED_EMAILS.find((x) => x.id === id);
+        if (sample) {
+          fillSample(
+            sample.id,
+            `From: ${sample.from}\nSubject: ${sample.subject}\n\n${sample.body}`,
+            "Is this email legitimate?",
+          );
+        }
+      }}
+      selectedId={selectedSample}
+    />
+  ) : category === "apps_files" ? (
+    <>
+      <SimulatedPicker
+        testID="higgins-sample-apps"
+        title="Sample apps"
+        note={SAMPLE_NOTE}
+        items={SIMULATED_APPS.map((x) => ({ id: x.id, primary: x.appName, secondary: x.packageId, probes: x.probes }))}
+        onSelect={(id) => {
+          const sample = SIMULATED_APPS.find((x) => x.id === id);
+          if (sample) {
+            fillSample(
+              sample.id,
+              `${sample.appName} (${sample.packageId}) by ${sample.developer}`,
+              "Is this app safe to use?",
+            );
+          }
+        }}
+        selectedId={selectedSample}
+      />
+      <SimulatedPicker
+        testID="higgins-sample-files"
+        title="Sample files"
+        note={SAMPLE_NOTE}
+        items={SIMULATED_FILES.map((x) => ({ id: x.id, primary: x.name, secondary: x.mime, probes: x.probes }))}
+        onSelect={(id) => {
+          const sample = SIMULATED_FILES.find((x) => x.id === id);
+          if (sample) fillSample(sample.id, `${sample.name} (${sample.mime})`, "Is this file safe to open?");
+        }}
+        selectedId={selectedSample}
+      />
+    </>
+  ) : null;
+
   return (
     <Sheet
       visible={visible}
@@ -332,19 +453,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       {/* Screenshot: image picker + optional question */}
       {category === "screenshot" ? (
         <>
-          <SimulatedPicker
-            testID="higgins-sample-screenshots"
-            title="Sample screenshots"
-            note={SAMPLE_NOTE}
-            items={SIMULATED_SCREENSHOTS.map((x) => ({
-              id: x.id,
-              primary: x.label,
-              probes: x.probes,
-            }))}
-            onSelect={(id) => void fillSampleScreenshot(id)}
-            selectedId={selectedSample}
-            disabled={picking}
-          />
           {imageUri ? (
             <View style={s.imagePreviewWrap} testID="higgins-artifact-image-selected">
               <Image source={imageUri} style={s.imageThumb} contentFit="cover" />
@@ -398,21 +506,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       ) : category === "device_internet" ? (
         /* Device & Internet: optional description */
         <View style={s.field}>
-          <SimulatedPicker
-            testID="higgins-sample-device"
-            title="Sample concerns"
-            note={SAMPLE_NOTE}
-            items={SIMULATED_DEVICE_CONCERNS.map((x) => ({
-              id: x.id,
-              primary: x.concern,
-              probes: x.probes,
-            }))}
-            onSelect={(id) => {
-              const sample = SIMULATED_DEVICE_CONCERNS.find((x) => x.id === id);
-              if (sample) fillSample(sample.id, sample.concern);
-            }}
-          selectedId={selectedSample}
-              />
           <Text style={s.label}>Describe your concern (optional)</Text>
           <TextInput
             testID="higgins-artifact-content"
@@ -427,133 +520,6 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       ) : (
         /* Text-based categories: content input + optional question */
         <>
-          {category === "websites_links" ? (
-            <SimulatedPicker
-              testID="higgins-sample-links"
-              title="Sample links"
-              note={SAMPLE_NOTE}
-              items={SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, probes: x.probes }))}
-              onSelect={(id) => {
-                const sample = SIMULATED_LINKS.find((x) => x.id === id);
-                if (sample) fillSample(sample.id, sample.url, "Is this website safe?");
-              }}
-            selectedId={selectedSample}
-              />
-          ) : null}
-
-          {category === "messages_calls" ? (
-            <>
-              <SimulatedPicker
-                testID="higgins-sample-messages"
-                title="Sample messages"
-                note={SAMPLE_NOTE}
-                items={SIMULATED_TEXTS.map((x) => ({
-                  id: x.id,
-                  primary: x.sender,
-                  secondary: x.text,
-                  probes: x.probes,
-                }))}
-                onSelect={(id) => {
-                  const sample = SIMULATED_TEXTS.find((x) => x.id === id);
-                  if (sample) fillSample(sample.id, `From ${sample.sender}:\n${sample.text}`, "Is this message a scam?");
-                }}
-              selectedId={selectedSample}
-              />
-              <SimulatedPicker
-                testID="higgins-sample-calls"
-                title="Sample callers"
-                note={SAMPLE_NOTE}
-                items={SIMULATED_CALLS.map((x) => ({
-                  id: x.id,
-                  primary: x.number,
-                  secondary: x.name ?? undefined,
-                  probes: x.probes,
-                }))}
-                onSelect={(id) => {
-                  const sample = SIMULATED_CALLS.find((x) => x.id === id);
-                  if (sample) {
-                    fillSample(
-                      sample.id,
-                      sample.name ? `${sample.number} (saved as ${sample.name})` : sample.number,
-                      "Who called me from this number?",
-                    );
-                  }
-                }}
-              selectedId={selectedSample}
-              />
-            </>
-          ) : null}
-
-          {category === "email_accounts" ? (
-            <SimulatedPicker
-              testID="higgins-sample-emails"
-              title="Sample emails"
-              note={SAMPLE_NOTE}
-              items={SIMULATED_EMAILS.map((x) => ({
-                id: x.id,
-                primary: x.subject,
-                secondary: x.from,
-                probes: x.probes,
-              }))}
-              onSelect={(id) => {
-                const sample = SIMULATED_EMAILS.find((x) => x.id === id);
-                if (sample) {
-                  fillSample(
-                    sample.id,
-                    `From: ${sample.from}\nSubject: ${sample.subject}\n\n${sample.body}`,
-                    "Is this email legitimate?",
-                  );
-                }
-              }}
-            selectedId={selectedSample}
-              />
-          ) : null}
-
-          {category === "apps_files" ? (
-            <>
-              <SimulatedPicker
-                testID="higgins-sample-apps"
-                title="Sample apps"
-                note={SAMPLE_NOTE}
-                items={SIMULATED_APPS.map((x) => ({
-                  id: x.id,
-                  primary: x.appName,
-                  secondary: x.packageId,
-                  probes: x.probes,
-                }))}
-                onSelect={(id) => {
-                  const sample = SIMULATED_APPS.find((x) => x.id === id);
-                  if (sample) {
-                    fillSample(
-                      sample.id,
-                      `${sample.appName} (${sample.packageId}) by ${sample.developer}`,
-                      "Is this app safe to use?",
-                    );
-                  }
-                }}
-              selectedId={selectedSample}
-              />
-              <SimulatedPicker
-                testID="higgins-sample-files"
-                title="Sample files"
-                note={SAMPLE_NOTE}
-                items={SIMULATED_FILES.map((x) => ({
-                  id: x.id,
-                  primary: x.name,
-                  secondary: x.mime,
-                  probes: x.probes,
-                }))}
-                onSelect={(id) => {
-                  const sample = SIMULATED_FILES.find((x) => x.id === id);
-                  if (sample) {
-                    fillSample(sample.id, `${sample.name} (${sample.mime})`, "Is this file safe to open?");
-                  }
-                }}
-              selectedId={selectedSample}
-              />
-            </>
-          ) : null}
-
           <View style={s.field}>
             <Text style={s.label}>
               {category === "websites_links" ? "URL" : "Content"}
@@ -592,12 +558,36 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
         onPress={() => void handleSubmit()}
         disabled={!canSubmit}
       />
+      {sampleSections ? (
+        <Button
+          testID="higgins-artifact-open-samples"
+          variant="ghost"
+          label="Use a preview sample"
+          onPress={() => setSamplesOpen(true)}
+        />
+      ) : null}
       <Button
         testID="higgins-artifact-cancel"
         variant="ghost"
         label="Cancel"
         onPress={onClose}
       />
+      {sampleSections ? (
+        <Sheet
+          visible={samplesOpen}
+          onClose={() => setSamplesOpen(false)}
+          title="Preview samples"
+          testID="higgins-artifact-samples-sheet"
+        >
+          {sampleSections}
+          <Button
+            testID="higgins-artifact-samples-close"
+            variant="ghost"
+            label="Back"
+            onPress={() => setSamplesOpen(false)}
+          />
+        </Sheet>
+      ) : null}
       {screening ? (
         <ImageUploadPrep
           visible={!!screening}

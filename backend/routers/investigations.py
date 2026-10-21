@@ -106,7 +106,7 @@ async def capabilities():
                     {"name": "phone_reputation", "status": "available" if IPQS_API_KEY else "unconfigured", "reason": None if IPQS_API_KEY else "IPQS_API_KEY"},
                     {"name": "breach_lookup", "status": "available" if HIBP_API_KEY else "unconfigured", "reason": None if HIBP_API_KEY else "HIBP_API_KEY"},
                     {"name": "guardian_email", "status": "available" if email_configured() else "unconfigured", "reason": None if email_configured() else "RESEND_API_KEY / RESEND_FROM_EMAIL"},
-                    {"name": "push_delivery", "status": "available" if push_configured() else "unconfigured", "reason": None if push_configured() else "EXPO_PUSH_ENABLED / EXPO_PUSH_ACCESS_TOKEN"},
+                    {"name": "push_delivery", "status": "available" if push_configured() else "unconfigured", "reason": None if push_configured() else "EMERGENT_PUSH_KEY"},
                     {"name": "family_voice_storage", "status": "available" if storage_configured() else "unconfigured", "reason": None if storage_configured() else "FAMILY_STORAGE_BUCKET / ACCESS_KEY_ID / SECRET_ACCESS_KEY"}]
     bounds = {**policy()["bounds"], "fileBytes": {"value": ev.MAX_FILE_BYTES, "unit": "bytes", "purpose": "per-file upload ceiling", "overflow": "413; item listed as not received"},
               "caseBytes": {"value": ev.MAX_CASE_BYTES, "unit": "bytes", "purpose": "aggregate active-case payload", "overflow": "413"},

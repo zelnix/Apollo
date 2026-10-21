@@ -6,11 +6,12 @@ import Info from "lucide-react-native/icons/info";
 import CirclePlus from "lucide-react-native/icons/circle-plus";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Linking, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InvestigationView } from "@/src/components/InvestigationView";
+import { AlertsButton } from "@/src/components/AlertsButton";
 import { HigginsCheckSheet, type HigginsCheckCategory } from "@/src/components/HigginsCheckSheet";
 import { HigginsArtifactInput, type ArtifactResult } from "@/src/components/HigginsArtifactInput";
 import type { PreparedImage } from "@/src/components/ImageUploadPrep";
@@ -29,7 +30,7 @@ import { classifyIntent } from "@/src/higgins/intentRouter";
 import { detectCheckIntent } from "@/src/higgins/checkIntent";
 import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStatus, getVpnStatus, getNotificationDiagnostic } from "@/src/higgins/diagnosticCore";
 import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage } from "@/src/higgins/localResponder";
-import { getNotificationHealth, type NotificationHealth } from "@/src/push/notifications";
+import { getNotificationHealth } from "@/src/push/notifications";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
@@ -46,14 +47,17 @@ const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeStr
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
+  // Column: the icon row can never squeeze the words, so nothing in the header is ever truncated.
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: 42, height: 42 },
   aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
   aboutAvatarImg: { width: "100%", height: 150, borderRadius: 16, marginBottom: spacing.sm },
   headerText: { flex: 1 },
   name: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
-  subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
   menuBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
 
   list: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
@@ -79,11 +83,6 @@ const useStyles = makeStyles((c) => ({
   send: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
   attachBtn: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
 
-  // Notification reminder banner
-  notifBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: "rgba(229,162,26,0.12)", borderTopWidth: 1, borderTopColor: "rgba(229,162,26,0.25)", minHeight: 44 },
-  notifBannerText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.ears_upText, flex: 1 },
-  notifBannerAction: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary, paddingLeft: spacing.sm },
-
   context: { marginHorizontal: spacing.xl, marginTop: spacing.md, gap: spacing.xs, borderColor: c.navyBorder },
 
   sheetBody: { fontFamily: fonts.text, fontSize: 15, lineHeight: 23, color: c.onSurfaceSecondary },
@@ -104,9 +103,6 @@ export default function Ask() {
   const [artifactCategory, setArtifactCategory] = useState<HigginsCheckCategory | null>(null);
   const [artifactSheetOpen, setArtifactSheetOpen] = useState(false);
   const [artifactQuestion, setArtifactQuestion] = useState("");
-  // Notification health — detect whether notifications + Apollo alerts channel are enabled
-  const [notifHealth, setNotifHealth] = useState<NotificationHealth | null>(null);
-  const notifReminderShown = useRef(false);
   const conversationId = useRef(Crypto.randomUUID()); const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null); const inputRef = useRef<TextInput>(null); const contextRecorded = useRef<string | null>(null); const stick = useRef(true);
   const caseBusy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   const busy = caseBusy || chatBusy;
@@ -163,42 +159,6 @@ export default function Ask() {
 
     void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}${activitySuffix}` }).catch(() => undefined);
   }, [deviceId, health, events]);
-
-  // ── Notification health check + Higgins reminder ──────────────────────────
-  // On mount and on every foreground resume, check if notifications + Apollo alerts channel are enabled.
-  // If disabled, Higgins injects a reminder message. The reminder stops once notifications are enabled.
-  useEffect(() => {
-    const checkNotifHealth = async () => {
-      const nh = await getNotificationHealth();
-      setNotifHealth(nh);
-      // Inject a Higgins reminder if notifications are not fully enabled
-      // and we haven't already shown a reminder in this session
-      if (!nh.fullyEnabled && !notifReminderShown.current && deviceId) {
-        notifReminderShown.current = true;
-        const reminder: HigginsChatMessage = {
-          id: Crypto.randomUUID(),
-          turnId: Crypto.randomUUID(),
-          role: "higgins",
-          content: `\u26a0\ufe0f **Notifications are not enabled**\n\n${nh.disabledReason ?? "Apollo cannot send you alerts about threats."}\n\nWithout notifications, Apollo can detect threats but can\u2019t alert you. Tap **Turn on notifications** below to fix this.`,
-          createdAt: new Date().toISOString(),
-          conversationId: conversationId.current,
-        };
-        setChatMessages((current) => {
-          // Don't add duplicate reminders
-          if (current.some((m) => m.content.includes("Notifications are not enabled"))) return current;
-          const next = [...current, reminder];
-          void saveLocalChat(next);
-          return next;
-        });
-      } else if (nh.fullyEnabled && notifReminderShown.current) {
-        // Notifications were just enabled — clear the flag so we don't re-remind
-        notifReminderShown.current = false;
-      }
-    };
-    void checkNotifHealth();
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void checkNotifHealth(); });
-    return () => sub.remove();
-  }, [deviceId]);
 
   const scrollToEnd = useCallback((force = false) => { if (force || stick.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true })); }, []);
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };
@@ -264,7 +224,6 @@ export default function Ask() {
           // Async — need to fetch notification health first
           void (async () => {
             const nh = await getNotificationHealth();
-            setNotifHealth(nh);
             const nr = getNotificationDiagnostic(nh);
             const msg = diagnosticToHigginsMessage(nr, conversationId.current);
             setChatMessages((current) => { const next = [...current, msg]; void saveLocalChat(next); return next; });
@@ -449,18 +408,21 @@ export default function Ask() {
   return <View style={s.root} testID="higgins-screen">
     <View style={{ paddingTop: insets.top + spacing.md }}>
       <View style={s.header} testID="higgins-header">
-        <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
-        <View style={s.headerText}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <Text style={s.name}>Higgins</Text>
-            {isMock ? <DevTag label="Preview" testID="higgins-mock-pill" /> : null}
+        <View style={s.headerRow}>
+          <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
+          <View style={s.headerText}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Text style={s.name}>Higgins</Text>
+              {isMock ? <DevTag label="Preview" testID="higgins-mock-pill" /> : null}
+            </View>
           </View>
-          <Text style={s.subtitle} numberOfLines={1}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>
+          <View style={s.headerActions}>
+            <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={20} color={colors.onSurface} /></Pressable>
+            <AlertsButton testID="higgins-alerts" />
+            <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={[s.menuBtn, { alignItems: "flex-end" }]} onPress={() => setAboutOpen(true)}><Info size={23} color={colors.onSurface} /></Pressable>
+          </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={20} color={colors.onSurface} /></Pressable>
-          <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={[s.menuBtn, { alignItems: "flex-end" }]} onPress={() => setAboutOpen(true)}><Info size={23} color={colors.onSurface} /></Pressable>
-        </View>
+        <Text style={s.subtitle}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>
       </View>
     </View>
 
@@ -504,21 +466,7 @@ export default function Ask() {
         {starters.map((question, index) => <Pressable key={question} testID={`higgins-repeat-${index}`} style={s.repeatChip} accessibilityRole="button" accessibilityLabel={`Ask again: ${question}`} onPress={() => submit(question)} disabled={busy}><Text style={s.repeatText} numberOfLines={1}>{question}</Text></Pressable>)}
       </ScrollView> : null}
 
-      {/* Notification reminder banner — shown when notifications or Apollo alerts channel are disabled */}
-      {notifHealth && !notifHealth.fullyEnabled ? (
-        <Pressable
-          testID="ask-notif-banner"
-          accessibilityRole="button"
-          accessibilityLabel="Turn on notifications"
-          onPress={() => void Linking.openSettings()}
-          style={s.notifBanner}
-        >
-          <Text style={s.notifBannerText}>
-            Notifications are off — Apollo can&apos;t alert you about threats.
-          </Text>
-          <Text style={s.notifBannerAction}>Turn on notifications →</Text>
-        </Pressable>
-      ) : null}
+      {/* Notifications: the bell in the header carries the "notifications are off" warning dot. */}
 
       <View style={[s.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <Pressable testID="ask-check-button" accessibilityRole="button" accessibilityLabel="Submit something for Higgins to check" onPress={() => setCheckSheetOpen(true)} disabled={busy} style={[s.attachBtn, { opacity: busy ? 0.5 : 1 }]}><CirclePlus size={24} color={colors.brandPrimary} /></Pressable>

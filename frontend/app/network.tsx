@@ -45,7 +45,7 @@ const useStyles = makeStyles((c) => ({
   why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   label: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  statTitle: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface },
+  statTitle: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface, flexShrink: 1 },
 }));
 
 export default function CheckNetwork() {
@@ -158,7 +158,7 @@ export default function CheckNetwork() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
         <Text style={s.subtitle}>Monitor your connection for DNS hijacking and insecure Wi-Fi.</Text>
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
-          <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={protectionTone} label={monitoring ? "Active" : unsupported ? "Unsupported" : network?.connected === false ? "Offline" : "Checking"} testID="network-protection-pill" /></View>
+          <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={protectionTone} label={monitoring ? "Active" : unsupported ? "Unsupported" : network?.connected === false ? "Offline" : "Checking"} testID="network-protection-pill" /></View>
           <Body testID="network-protection-detail">{unsupported ? (guard?.detail ?? "") : monitoring ? "Apollo is watching this connection. It re-checks when you switch networks or reopen the app, reading the connection type, Wi‑Fi security and captive-portal status the platform reports." : !network?.connected ? "You're offline. Apollo will assess the connection as soon as you reconnect." : "Apollo is reading the current connection…"}</Body>
           <Text style={s.label}>Current network</Text>
           <Body testID="network-current">{!network?.connected ? "Not connected" : network.type === "wifi" ? `Wi‑Fi${network.ssid ? ` “${network.ssid}”` : " (name not revealed)"} · security ${network.wifiSecurity === "unknown" ? "not revealed" : network.wifiSecurity.toUpperCase()}${trustedSsids.includes(network.ssid ?? "") ? " · trusted" : ""}` : network.type === "cellular" ? "Mobile data" : `Connected via ${network.type}`}{vpnOn ? " · VPN on" : ""}</Body>

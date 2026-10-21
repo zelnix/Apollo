@@ -52,7 +52,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { getShareIntake } from "@/src/share/shareIntake";
-import { SIMULATED_EMAILS } from "@/src/preview/simulatedInbox";
+import { SIMULATED_EMAILS, PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import {
   listEmailAccounts,
@@ -275,7 +275,8 @@ export default function CheckEmail() {
 
   // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
   // alongside a connected one.
-  const showSimulatedInbox = (Platform.OS === "web" || isMock) && gmailConnected !== true;
+  // Preview only: never in a production build, and never when a real mailbox is connected.
+  const showSimulatedInbox = PREVIEW_SAMPLES_ENABLED && (Platform.OS === "web" || isMock) && gmailConnected !== true;
 
   // ── Derived ──
   const allAccounts = useMemo((): EmailAccount[] => {

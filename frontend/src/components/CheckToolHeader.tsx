@@ -45,10 +45,8 @@ export function CheckToolHeader({
         <ChevronLeft size={24} color={colors.onSurface} />
       </Pressable>
 
-      <Text
-        style={[styles.title, { color: colors.onSurface }]}
-        numberOfLines={1}
-      >
+      {/* No line clamp: the title wraps rather than being cut off by the icons beside it. */}
+      <Text style={[styles.title, { color: colors.onSurface }]}>
         {title}
       </Text>
 

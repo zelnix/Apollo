@@ -50,6 +50,14 @@ if not _PROVIDER_MODE:
 # Separate dev key for live_test mode (never the production key)
 _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
 
+# Deployment environment. "production" means a shipped app is talking to this backend, where the
+# preview simulator and the mock provider must never answer — a person would be shown a fixed
+# simulated verdict as if it were a real investigation. Fail-closed: anything other than the known
+# non-production values is treated as production.
+APOLLO_ENV = os.getenv("APOLLO_ENV", "").strip().lower() or "production"
+IS_PRODUCTION_ENV = APOLLO_ENV not in ("preview", "development", "staging", "test")
+_NON_PRODUCTION_MODES = ("simulated", "mock", "live_test")
+
 def get_provider_mode() -> str:
     """Return the current provider mode: 'mock', 'live', or 'live_test'."""
     return _PROVIDER_MODE
@@ -62,12 +70,18 @@ def _validate_mode_at_import() -> None:
             "Use a free-tier Google AI Studio development project key.")
     if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
         raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
+    if IS_PRODUCTION_ENV and _PROVIDER_MODE in _NON_PRODUCTION_MODES:
+        raise RuntimeError(
+            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' is a preview-only mode and cannot run with "
+            f"APOLLO_ENV='{APOLLO_ENV}'. A shipped app would be shown simulated results as if they were "
+            "real investigations. Set APOLLO_PROVIDER_MODE=live for production, or APOLLO_ENV=preview "
+            "for the preview environment.")
 
 _validate_mode_at_import()
 
 _gateway_log = _logging.getLogger("apollo.gateway")
-_gateway_log.info("provider_mode=%s gemini_key_configured=%s dev_key_configured=%s",
-                  _PROVIDER_MODE, bool(GEMINI_API_KEY), bool(_GEMINI_DEV_API_KEY))
+_gateway_log.info("provider_mode=%s apollo_env=%s gemini_key_configured=%s dev_key_configured=%s",
+                  _PROVIDER_MODE, APOLLO_ENV, bool(GEMINI_API_KEY), bool(_GEMINI_DEV_API_KEY))
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
 # input, Search grounding and structured outputs, which is everything the investigation request uses.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")

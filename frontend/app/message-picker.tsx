@@ -77,7 +77,7 @@ export default function MessagePicker() {
   return <View style={s.root} testID="message-picker-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
       {open ? <Pressable testID="message-picker-back" accessibilityRole="button" onPress={() => setOpen(null)} style={s.iconBtn}><ChevronLeft size={22} color={colors.onSurface} /></Pressable> : null}
-      <Text style={s.title} numberOfLines={1}>{open ? open.display : "Your messages"}</Text>
+      <Text style={s.title}>{open ? open.display : "Your messages"}</Text>
       <Pressable testID="message-picker-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.iconBtn}><X size={20} color={colors.onSurface} /></Pressable>
     </View>
 

@@ -40,6 +40,8 @@ import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } f
 import { freshObservation, unavailableObservation, boundedObservation } from '@/src/domain/protectionObservation';
 import { patrolPayload } from '@/src/domain/patrolPayload';
 import { mergeLocalAndRemoteEvents } from '@/src/domain/eventMerge';
+import { investigationPatch } from '@/src/domain/investigationCaseUpdate';
+import { getInvestigation, subscribeDeviceInvestigations } from '@/src/investigation/deviceStore';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
@@ -701,7 +703,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
       // Pick the single most specific notification for this event change.
       const alert = eventLocalAlert(event) ?? completedCheckAlert(event) ?? protectionUpdateAlert(event);
-      if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
+      // Quiet hours silence everything EXCEPT a live threat. (All Apollo alerts now share the one
+      // "apollo_alerts" channel, so severity comes from the event state, not the channel name.)
+      const urgent = event.state === "barking" || event.state === "biting";
+      if (alert && (urgent || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
     }
     if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
   }, [ready, events]);
@@ -843,6 +848,31 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void syncEvent(e);
     return e;
   }, [persistEvents, syncEvent]);
+
+  // ── A finished investigation becomes the case's own content ───────────────
+  // The server purges a completed investigation the moment this device commits it, so its patrol
+  // projection can only ever say "Apollo is investigating this". The real answer is in device
+  // storage: apply it to the case so Threats, the case screen and its history show the actual
+  // findings, the actual conclusion and the actual next step.
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    const apply = async () => {
+      const caseIds = Array.from(new Set(eventsRef.current
+        .map((e) => e.investigation_case_id ?? e.patrol_record?.investigationCaseId)
+        .filter((id): id is string => !!id)));
+      for (const caseId of caseIds) {
+        const event = eventsRef.current.find((e) => (e.investigation_case_id ?? e.patrol_record?.investigationCaseId) === caseId);
+        if (!event) continue;
+        const inv = await getInvestigation(caseId).catch(() => null);
+        const patch = investigationPatch(event, inv);
+        if (patch && live) await upsertEvent(patch);
+      }
+    };
+    void apply();
+    const unsubscribe = subscribeDeviceInvestigations(() => { void apply(); });
+    return () => { live = false; unsubscribe(); };
+  }, [ready, events, upsertEvent]);
 
   // ── Triage correlation (deterministic) ───────────────────────────────────
   // Related evidence (same Threat Scent / same indicator) with a compatible mechanic belongs to ONE

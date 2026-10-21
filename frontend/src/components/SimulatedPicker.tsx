@@ -5,11 +5,13 @@
 
 import { Platform, Pressable, Text, View } from "react-native";
 
+import { PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
 import { IS_PREVIEW_HARNESS } from "@/src/security/securityAdapter";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-/** True only where the preview cannot reach the real source of this input. */
-export const PREVIEW_SIMULATION = Platform.OS === "web" || IS_PREVIEW_HARNESS;
+/** True only in a preview build where the real source of this input cannot be reached. Every shipped
+ *  build — native or web — fails this, so no simulated input can ever be offered to a real user. */
+export const PREVIEW_SIMULATION = PREVIEW_SAMPLES_ENABLED && (Platform.OS === "web" || IS_PREVIEW_HARNESS);
 
 export interface SimulatedChoice {
   id: string;

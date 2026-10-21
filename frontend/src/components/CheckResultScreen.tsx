@@ -71,6 +71,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [itemsOpen, setItemsOpen] = useState<Record<string, boolean>>({});
+  // Two independent sections: opening the technical evidence must not also open the checklist.
+  const [checkedOpen, setCheckedOpen] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -132,14 +134,15 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
         <Card style={{ gap: 0 }} testID="check-result-items">
           <Pressable
             accessibilityRole="button"
-            onPress={() => setFullOpen((prev) => !prev)}
+            accessibilityLabel={checkedOpen ? "Hide what Apollo checked" : "Show what Apollo checked"}
+            onPress={() => setCheckedOpen((prev) => !prev)}
             style={s.disclosureBtn}
             testID="check-result-items-toggle"
           >
             <Text style={s.disclosureLabel}>What Apollo checked</Text>
-            {fullOpen ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
+            {checkedOpen ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
           </Pressable>
-          {fullOpen ? (
+          {checkedOpen ? (
             <>
               {result.items.length === 0 ? (
                 <Body>Apollo did not record any check items.</Body>

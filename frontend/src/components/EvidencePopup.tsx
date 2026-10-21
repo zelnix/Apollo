@@ -166,7 +166,7 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
       <Animated.View entering={FadeIn} style={[s.backdrop, { paddingTop: insets.top }]} testID="evidence-popup">
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
+          <Text style={s.headerTitle}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={16} testID="evidence-popup-close" accessibilityLabel="Close evidence">
             <Text style={s.closeText}>Done</Text>
           </Pressable>

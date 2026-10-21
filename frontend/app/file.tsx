@@ -21,7 +21,7 @@ import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@
 import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
 import { type PatrolEvent } from "@/src/domain/types";
 import { SimulatedPicker } from "@/src/components/SimulatedPicker";
-import { SIMULATED_FILES } from "@/src/preview/simulatedItems";
+import { SIMULATED_FILES } from "@/src/preview/samples";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";

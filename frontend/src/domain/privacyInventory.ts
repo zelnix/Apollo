@@ -107,8 +107,8 @@ export const CAPABILITY_DATA_USE = [
   {
     capability: 'Push notifications and alerts',
     local: 'Apollo determines when a security alert should be sent.',
-    backend: 'Notification content and delivery token are sent to Apollo\u2019s managed push relay.',
-    thirdParty: 'Expo push service, Google FCM and Apple APNs deliver the notification to your device.',
+    backend: 'Notification content and this phone\u2019s delivery token are passed to Apollo\u2019s managed push relay, which keeps the token; Apollo\u2019s own records never store it.',
+    thirdParty: 'Apollo\u2019s managed push relay, Google FCM and Apple APNs deliver the notification to your device.',
     shared: 'Push delivery token and notification content',
     necessary: 'Push delivery requires sharing the delivery token and notification content with the platform push service.',
     activation: 'User-enabled: only when you enable notifications in Settings',

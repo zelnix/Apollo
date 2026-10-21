@@ -1,3 +1,94 @@
+## Remote alerts moved to Apollo's managed push relay (2026-06)
+
+**Why.** Two faults, both proven from the real delivery history. (1) `subtitle: null` made the provider reject whole
+batches with HTTP 400 — see the entry below. (2) Every registration in `push_registrations` carried Expo project
+`47cd97c4-…` (the project Emergent's build pipeline uses) while the backend was configured to send from `b2eb337d-…`
+(the owner's own project in `app.config.js`): registrations from a real build were rejected 422, and the older tokens all
+came back `DeviceNotRegistered`. Owner's decision: move to the managed relay rather than reconcile Expo projects.
+
+**Backend (`routers/push.py`).** Sends now go to `https://integrations.emergentagent.com` with `X-Push-Key:
+$EMERGENT_PUSH_KEY`: `POST /api/v1/push/users/register` on registration and `POST /api/v1/push/trigger` to send.
+`EXPO_PUSH_ENABLED` / `EXPO_PUSH_ACCESS_TOKEN` / `EXPO_PROJECT_ID` are gone from `.env` and the code;
+`EMERGENT_PUSH_KEY=placeholder` is in `.env` and the build pipeline fills in the real value at publish (never edit it).
+`push_configured()` is false while the key is still the placeholder, so `/register-push` and `/push/test` fail closed
+with a typed 503 that says the alert channel is switched on at publish time — no silent pretend-success.
+- **Device tokens are no longer stored.** `register_push` forwards the native FCM/APNs token and keeps only
+  `{device_id, registration_id, platform, provider, registered_at}`, `$unset`ting any legacy `token`/`project_id`.
+  `scripts/purge_expo_push_registrations.py` removed the 19 stale Expo rows (those installations re-register on next
+  launch, which the app does on every open).
+- **The durable delivery ledger is unchanged** (`push_deliveries`: one row per owner/event/channel/recipient, payload
+  digest, attempt history, bounded retries). Relay 202 → `provider_accepted` (a hand-off, never a sighting). Billing
+  refusals (`insufficient_credits`, `integration_disabled`, `daily_limit_reached`) are recorded as the failure reason
+  and never retried in a loop; 401 → `push_key_invalid`; timeout → `outcome_unknown`. `409
+  idempotency_key_in_progress` is retried with the same key (3× / 3s) because it is not a failure.
+- Expo receipts no longer exist, so `reconcile_receipts` and its 5-minute loop in `server.py` are deleted;
+  `device_observed` stays in the state union for historical rows only.
+
+**Frontend.** `registerRemotePush()` uses `getDevicePushTokenAsync()` (native token) and posts `{platform,
+device_token}` — no `projectId`, no Expo token. The egress allow-list for `push_register` shrank to those two fields.
+`app/_layout.tsx` already satisfies the rest of the contract (module-scope `setNotificationHandler` + channels, warm
+`addNotificationResponseReceivedListener`, cold-start `getLastNotificationResponseAsync`, listener cleanup).
+`expo-notifications` bumped to 57.0.23. Android `googleServicesFile` (Firebase `apollo-243ad`, package
+`app.apollo.hwg`) and the `expo-notifications` plugin with both alert sounds were already wired in `app.config.js`.
+Deliberate deviation from the playbook: no weekly "notifications are off" nudge dialog — the owner removed inline
+notification nudges in favour of the alert bell's warning dot plus Settings → Notification check.
+
+**Tests.** `tests/test_push_message_shape.py` now pins the relay payload (`_relay_data`): subtext/action_url/sound
+omitted when blank, never null, channel and sound per alert type. `tests/test_iter6_push.py` asserts the placeholder-key
+503 instead of the old Expo-token rules. `test_iter6_push + test_iter33_api_regression + test_device_auth` = 43 passed;
+`test_family.py + test_family_nudge.py + test_family_weekly_push.py` = 17 passed, 6 skipped.
+
+**Still only provable on a real build.** Expo Go and the web preview cannot obtain a native push token (the Notification
+check screen says exactly that), and the managed key only exists after Publish → Deploy → Generate build, where the
+build UI also asks for a Google service account JSON (Android) and an APNs `.p8` key (iOS).
+
+
+## Header truncation, production-shaped entry popup, and the push notification investigation (2026-06)
+
+**Headers never cut their own words.** The Higgins header is now a column: avatar + "Higgins" + the three iconbuttons (clear chat / alerts bell / about) on one row, and the subtitle on its own full-width line below — the icons
+can no longer squeeze it (it used to render "Apollo's t…"). The one-line clamps were also removed from every header
+title that sits beside icons: `CheckToolHeader`, `app/gate-details.tsx`, `app/patrol/[id].tsx` (`tc-case-id`),
+`src/components/EvidencePopup.tsx`, `app/message-picker.tsx`; `ScreenHeader`'s title gained `flexShrink: 1` so a long
+root title wraps instead of overflowing.
+
+**The check entry popup looks exactly like production.** `HigginsArtifactInput` no longer renders the preview sample
+lists inside the entry sheet. The popup is just the production fields (Content / URL + optional question + "Ask Higgins
+to investigate"); a "Use a preview sample" ghost button opens a second "Preview samples" sheet, and choosing a sample
+fills the fields and returns to the popup. The button only exists when `PREVIEW_SAMPLES_ENABLED` is true, so a shipped
+build has no sample affordance at all.
+
+**Verified in preview (specific findings regression, owner item 1a):** simulated bank-impersonation email → real Triage
+escalation → Magnum DI → case `TC-2026-78DBB` Overview shows the actual findings, not generic text: "The link goes to
+commbank-alerts.co", "the sender address is security@commbank-alerts.co — the domain … is not an official address",
+plus a WHAT ISN'T SETTLED section. `investigationCaseUpdate.ts` is doing its job.
+
+**Push notifications — two real faults found (owner item 2b).**
+1. **FIXED (server, confirmed live):** `routers/push.py::_message` always sent `"subtitle": data.get("subtext")`, so any
+   sender without a subtext sent `subtitle: null`. Expo validates the whole batch and answers **HTTP 400
+   VALIDATION_ERROR** (`"0.subtitle": Expected string, received null`) — which is exactly the `provider_http_400` state on
+   every family weekly/nudge delivery in `push_deliveries`. `subtitle` is now only included when it is a non-empty
+   string. Verified against the live Expo API with a non-existent token: all three real payload shapes now return HTTP
+   200 with a per-message ticket. Unit test: `backend/tests/test_push_message_shape.py` (4 pass).
+2. **OPEN (needs the owner's decision):** every stored push registration carries Expo project
+   `47cd97c4-e5a6-41fa-9fde-257a5de031af` (the project the installed builds were made under), while the backend's
+   `EXPO_PROJECT_ID` is the canonical `b2eb337d-2687-46bf-b1cc-292d30c0b601` from `app.config.js`. So today a real build
+   is REJECTED at `/register-push` with 422, and the older tokens all came back `DeviceNotRegistered` from Expo. Remote
+   alerts (app closed) cannot work until the build and the server agree on one Expo project, or push moves to the
+   Emergent-managed path (`google-services.json` for `app.apollo.hwg` / Firebase `apollo-243ad` is already in the repo).
+
+**New screen `app/notification-check.tsx`** (Settings → Alerts & voice → "Notification check", modal): shows the three
+separate states from their real sources — OS permission, the Android "Apollo alerts" category, and the server's
+registration (`GET /push/registration`) — plus the last recorded failure (`apollo.notif.lastFailure`). Two honest tests:
+"Send a test alert to this phone" (real local schedule) and "Send a test alert from Apollo's servers" (registers a fresh
+token, then `POST /push/test`), each reporting exactly what the device or the relay answered — never claiming delivery.
+`/push/test` accepts an empty body and its 409 carries `detail` so the app can show the reason.
+
+**Independent disclosures on a check result.** On `CheckResultScreen` "What Apollo checked" and "Full investigation
+details" shared one `fullOpen` state, so opening either expanded both. "What Apollo checked" now has its own
+`checkedOpen` state.
+
+
+
 ## Preview Gemini simulator + DI tab (2026-06)
 
 **Simulator at the boundary only.** New provider mode `APOLLO_PROVIDER_MODE=simulated` (set in the preview backend .env;
@@ -2292,3 +2383,21 @@ Test: `frontend/tests/deviceCheckCase.test.ts` (6 pass).
 2. **Every user-initiated check files its own patrol entry.** The old content-signature guard in `app/device.tsx` silently dropped a recheck that found the same thing (and a background refresh while the briefing was open could file a duplicate). Replaced with a per-run guard: `notifyRun` increments on each user-initiated check, the briefing records its run (`briefingRun`), and the case effect files exactly one entry per run. Background refreshes never change `briefingRun` and are still never recorded.
 3. **"Since the check before this one".** New pure module `src/domain/deviceCheckProgress.ts`: `comparableChecks(data)` reads the review results stored with a check (null when that check recorded none), `compareDeviceChecks(before, now)` returns the changes — `fixed` (was action/review, now OBSERVED correct), `new_problem`, `still_open`, `not_confirmed` (was a problem, now unreadable — never counted as fixed) — plus a one-line summary ("1 fixed · 1 still needing attention"). Rendered inside the `tc-overview-runs` card on the case screen, comparing this check with the one immediately before it; nothing is shown when the earlier check kept no comparable results (e.g. web, or a failed read). Test: `frontend/tests/deviceCheckProgress.test.ts` (5 pass).
 Verified in the preview: two rechecks → 2 patrol-history entries, 1 Threats case ("Checked 2 times · last checked …", earlier check listed and tappable), "Close this device check" → case reads Resolved.
+
+## Preview simulators kept out of shipped builds (Jun 2026)
+Single gate `src/preview/samples.ts`: `PREVIEW_SAMPLES_ENABLED = __DEV__ && EXPO_PUBLIC_PREVIEW_SAMPLES !== "off"`. The Emergent preview is the Metro dev server, so `__DEV__` is the only signal that is automatically false in every shipped build (native or exported web) and cannot be re-enabled by a mis-set env var. All sample data (`simulatedItems`, `simulatedInbox`) is now loaded ONLY through this module — every collection is empty when the gate is off, so a screen that forgets its own gate has nothing to show. `SimulatedPicker.PREVIEW_SIMULATION` and `app/email.tsx`'s simulated inbox both sit behind it. Guard test: `frontend/tests/previewGating.test.ts` (4 pass) fails the build if any file imports the raw sample modules directly.
+Backend: new `APOLLO_ENV` (preview|development|staging|test; anything else or unset = production). In production the preview-only provider modes (`simulated`, `mock`, `live_test`) refuse to start with an explicit error — only `live` may run. `backend/.env` now carries `APOLLO_ENV=preview`. Test: `backend/tests/test_provider_environment_guard.py` (4 pass).
+Belt and braces: a DI record marked `simulated` renders a loud "not a real investigation" notice in a shipped build (`DiReport`).
+KNOWN LIMIT (told to the user): the sample *strings* still exist in a production bundle as unreachable dead code. Metro keeps the module in the dependency graph even with `EXPO_UNSTABLE_TREE_SHAKING`; removing the bytes needs a resolver alias in `metro.config.js`, which is a protected file in this environment.
+
+## Alerts bell in main tab headers + notification card removed (Jun 2026)
+- Removed the "Notifications are off" banner from the Higgins screen AND the chat reminder Higgins used to post (`app/(tabs)/ask.tsx`; `notifHealth` state, `notifReminderShown` and the banner styles all deleted).
+- New `src/components/AlertsButton.tsx`: bell that opens the Alerts tab, with an amber dot when notifications are off. The dot never appears when the platform reports `unsupported` (web/Expo Go) — nothing for the person to turn on there. Refreshes on screen focus.
+- Placed next to the info icon on Home (`home-alerts`), Threats (`threats-alerts`), Higgins (`higgins-alerts`), Settings tab (`settings-alerts`) and via `RootScreenHeader` for Alerts/Protection.
+
+## Why Apollo notifications never reached the notification bar (Jun 2026)
+Three real causes found and fixed:
+1. **Project ID mismatch** — `backend/.env` had `EXPO_PROJECT_ID=higgins-refine` while the app sends `extra.eas.projectId = b2eb337d-2687-46bf-b1cc-292d30c0b601`. `POST /api/register-push` rejects a mismatch with 422, so no device token was ever stored and the backend could never send anything. `.env` corrected to the UUID.
+2. **Pushes addressed to deleted Android channels** — `routers/push.py` sent `channelId: "threats"` / `"growling"`, but the app consolidated to `apollo_alerts` and explicitly DELETES the legacy channels. Android drops notifications addressed to a non-existent channel. `PUSH_THREAT`/`PUSH_GROWL` now use `apollo_alerts`; priority `high` follows that channel. (`tests/test_iter6_push.py` 14 pass.)
+3. **Quiet hours silenced everything** — `ApolloContext` tested `alert.channel !== "growling"`, impossible since the channel rename, so the quiet-hours check never applied correctly. Severity now comes from the event state: `barking`/`biting` always deliver, everything else respects quiet hours.
+Still true by design: notifications are OFF in Expo Go and web (`SUPPORTED` excludes `StoreClient`) — they can only be seen in an installed build.

@@ -68,7 +68,7 @@ export function capabilityTone(status: CapabilityStatus): Tone {
 
 const useStyles = makeStyles((c) => ({
   card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg },
-  pill: { paddingHorizontal: spacing.md, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, alignSelf: "flex-start" },
+  pill: { paddingHorizontal: spacing.md, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, alignSelf: "flex-start", flexShrink: 0 },
   pillText: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.2 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   btn: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
@@ -123,7 +123,7 @@ export function ScreenHeader({ title, right, testID }: { title: string; right?: 
   const s = useStyles();
   return (
     <View style={s.header} testID={testID}>
-      <Text style={s.h1}>{title}</Text>
+      <Text style={[s.h1, { flexShrink: 1 }]}>{title}</Text>
       {right}
     </View>
   );

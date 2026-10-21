@@ -1,8 +1,8 @@
 """Apollo V1 iteration-6 backend tests: Emergent-managed push relay & non-blocking failure.
 
 Covers:
-- POST /api/register-push validation (short user_id, bad platform)
-- POST /api/register-push in dev with EMERGENT_PUSH_KEY=placeholder -> 500 with expected detail
+- POST /api/register-push validation (foreign user_id, bad platform, short token)
+- POST /api/register-push with EMERGENT_PUSH_KEY=placeholder -> typed 503 naming the missing setup
 - POST /api/patrol/events with state=biting, background=true still returns 200 (push failure is non-blocking)
 - background defaults to false when omitted
 - Full pairing flow guardian fan-out (already covered by iter4 but re-verifies with new device_ids)
@@ -56,15 +56,14 @@ class TestRegisterPushValidation:
 
 # ------------------------- /api/register-push placeholder key ------------------
 class TestRegisterPushDev:
-    def test_valid_body_without_owner_push_credentials_is_typed_503(self, s):
-        """Spec §10A: raw FCM/APNs-looking tokens are rejected (422) before any configuration check; a valid Expo token
-        without the owner's push configuration fails closed with a typed 503 naming the missing setup."""
-        raw = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"tok-{uuid.uuid4().hex}"})
-        assert raw.status_code == 422, raw.text
-        r = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"ExponentPushToken[{uuid.uuid4().hex}]"})
-        assert r.status_code in (201, 422, 503), r.text
+    def test_valid_body_without_the_managed_alert_key_is_typed_503(self, s):
+        """Spec §10A: with EMERGENT_PUSH_KEY still a placeholder (before the app is published), a
+        well-formed native token fails closed with a typed 503 that names the missing setup — never a
+        silent success. Once the build pipeline fills the key in, the same call registers (201)."""
+        r = s.post(f"{API}/register-push", json={"platform": "android", "device_token": f"fcm-{uuid.uuid4().hex}{uuid.uuid4().hex}"})
+        assert r.status_code in (201, 503), r.text
         if r.status_code == 503:
-            assert "Expo push configuration" in r.json().get("detail", "")
+            assert "alert key" in r.json().get("detail", ""), r.text
 
 
 # ------------------------- /api/patrol/events background field ------------------

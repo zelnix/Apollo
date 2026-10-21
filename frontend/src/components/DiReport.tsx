@@ -154,6 +154,15 @@ export function DiReport({ caseId }: { caseId: string | null }) {
               </View>
             ) : null}
 
+            {record.simulated && !__DEV__ ? (
+              <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
+                <Text style={s.diNoticeText}>
+                  This record came from the preview simulator, not from Gemini. It is NOT a real investigation and
+                  must not be relied on. Report this — the app is pointing at a preview backend.
+                </Text>
+              </View>
+            ) : null}
+
             <Card testID={`tc-di-investigation-${index}`}>
               <Text style={s.sectionTitle}>Investigation</Text>
               <DiRow label="Investigation ID:" value={record.investigationId} />

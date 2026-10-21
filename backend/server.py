@@ -179,17 +179,6 @@ async def lifespan(_: FastAPI):
                 logger.warning("family assist maintenance failed")
             await asyncio.sleep(15)
     family_assist_task = asyncio.create_task(family_assist_loop(), name="apollo-family-assist")
-    async def push_receipt_loop():
-        while True:
-            try:
-                await push.reconcile_receipts()
-            except asyncio.CancelledError:
-                raise
-            except Exception:  # noqa: BLE001
-                logger.warning("push receipt reconciliation failed")
-            await asyncio.sleep(300)
-
-    receipts_task = asyncio.create_task(push_receipt_loop())
     maintenance_task = asyncio.create_task(supervise_maintenance(), name="apollo-maintenance-supervisor")
 
     # 7. learn_weekly_publish_loop — Auto-publish pending learning candidates (weekly cadence).
@@ -215,12 +204,11 @@ async def lifespan(_: FastAPI):
     yield
     learn_publish_task.cancel()
     maintenance_task.cancel()
-    receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(learn_publish_task, maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(learn_publish_task, maintenance_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

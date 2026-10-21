@@ -5,15 +5,21 @@ Apollo → Magnum DI → Gemini Simulator → Magnum DI → Higgins
 Everything before this point is the real production pipeline: the real Magnum DI prompt, the real
 investigation evidence, the real on-device privacy screening and redaction, and the real attachments
 that would have been transmitted. This module replaces ONLY the external Gemini API call, and it
-always succeeds, returning the one fixed V1 response for every investigation.
+always succeeds.
+
+The investigation result is derived from THE ACTUAL EVIDENCE that was sent (see preview_analysis):
+the sender, the link, the amount, the request and the pressure present in the material are named, so
+a preview investigation says something specific instead of a fixed paragraph. It is deterministic and
+rule-based, it quotes only what the evidence contains, and it is labelled SIMULATED everywhere.
 
 What it does NOT do: it does not simulate Magnum DI, evidence handling, privacy/redaction, Higgins,
-findings, state management or investigation reporting. The returned material goes through the real
-validation, commit and Higgins workflow exactly as a live Gemini response would.
+state management or investigation reporting. The returned material goes through the real validation,
+commit and Higgins workflow exactly as a live Gemini response would.
 """
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from typing import Any
@@ -22,6 +28,7 @@ from google.genai import types
 
 from services.gemini_usage import record_usage as _record_usage
 from services.higgins.llm_boundary import Purpose
+from services.higgins.preview_analysis import EvidenceBlock, analyse
 
 # ── The one fixed V1 response ────────────────────────────────────────────────
 # Returned verbatim as the provider's material for every preview investigation. Higgins decides how
@@ -47,52 +54,46 @@ FIXED_PREVIEW_RESPONSE = (
 SIMULATED_NOTE = "SIMULATED — No Gemini API call was made"
 
 
-def _investigation_payload() -> dict:
-    """The fixed response in the shape the real investigation contract expects, so the real
-    validator, the real commit and the real Higgins workflow process it unchanged."""
-    return {
-        "overview": "Magnum DI analysed the submitted content for scam, phishing, fraud, impersonation "
-                    "and malicious-link indicators and reports characteristics that may warrant caution "
-                    "and further investigation.",
-        "explanationMarkdown": FIXED_PREVIEW_RESPONSE,
-        "assessment": "uncertain",
-        "attention": "review",
-        "attentionReason": "The material contains characteristics that may warrant caution until the "
-                           "sender or organisation has been independently verified.",
-        "findings": [
-            {
-                "text": "The content was analysed for indicators associated with scams, phishing, fraud, "
-                        "impersonation, malicious links and deceptive requests.",
-                "basis": "inference",
-                "confidence": "medium",
-                "evidenceIds": [],
-                "sourceIds": [],
-                "supersedesFindingIds": [],
-            },
-            {
-                "text": "Independent verification of the sender or organisation, using trusted contact "
-                        "details, is required before passwords, security codes, banking details or "
-                        "personal information are provided.",
-                "basis": "inference",
-                "confidence": "medium",
-                "evidenceIds": [],
-                "sourceIds": [],
-                "supersedesFindingIds": [],
-            },
-        ],
-        "uncertainties": [
-            "Whether the claims in the content can be independently verified is not established by the "
-            "evidence available in this investigation.",
-        ],
-        "scope": "Analysis of the submitted content for scam, phishing, fraud, impersonation and "
-                 "malicious-link indicators.",
-        "sourceIds": [],
-        "remainingEvidenceIds": [],
-        "actions": [],
-        "recommendedActionIndex": None,
-        "question": None,
-        "completion": "complete",
-    }
+def _investigation_payload(blocks: list[EvidenceBlock]) -> dict:
+    """The simulated result in the shape the real investigation contract expects, built from the
+    evidence that was actually sent, so the real validator, commit and Higgins workflow process it
+    unchanged."""
+    return analyse(blocks)
+
+
+_EVIDENCE_LABEL = re.compile(r"^\[evidence ([^\s\]·]+)[^\]]*\]\s*", re.I)
+_KIND = re.compile(r"kind=([a-z_]+)", re.I)
+
+
+def evidence_blocks(contents: Any) -> list[EvidenceBlock]:
+    """Read the evidence back out of the request that was about to be sent to Gemini.
+
+    Every evidence part carries its registered id in the label line (evidence.py::model_parts), so the
+    findings can cite real evidence ids and the text can be quoted exactly as the model would see it.
+    """
+    blocks: list[EvidenceBlock] = []
+    items = contents if isinstance(contents, list) else [contents]
+    for item in items:
+        parts = getattr(item, "parts", None) or ([item] if not isinstance(item, (list, tuple)) else list(item))
+        for part in parts:
+            text = getattr(part, "text", None)
+            if text:
+                label_match = _EVIDENCE_LABEL.match(text.strip())
+                if label_match:
+                    label_line = text.strip().split("\n", 1)[0]
+                    kind_match = _KIND.search(label_line)
+                    blocks.append(EvidenceBlock(
+                        evidence_id=label_match.group(1),
+                        kind=(kind_match.group(1) if kind_match else "text"),
+                        label=label_line.strip("[]"),
+                        text=_EVIDENCE_LABEL.sub("", text.strip(), count=1),
+                    ))
+                else:
+                    # The person's own question/message — evidence for what they asked, not an item.
+                    blocks.append(EvidenceBlock(evidence_id=None, kind="question", label="the question you asked", text=text.strip()))
+            elif getattr(part, "inline_data", None) is not None:
+                blocks.append(EvidenceBlock(evidence_id=None, kind="image", label="an image you submitted", text=""))
+    return blocks
 
 
 def _chat_payload() -> dict:
@@ -103,13 +104,13 @@ def _health_payload() -> dict:
     return {"status": "operational", "analysis": SIMULATED_NOTE, "risk_assessment": "none"}
 
 
-def simulated_text(purpose: Purpose, json_output: bool) -> str:
+def simulated_text(purpose: Purpose, json_output: bool, blocks: list[EvidenceBlock] | None = None) -> str:
     """The material the simulator returns at the boundary, in the form the caller asked for."""
     name = purpose.value if hasattr(purpose, "value") else str(purpose)
     if not json_output and name not in ("investigation",):
         return FIXED_PREVIEW_RESPONSE
     if name == "investigation":
-        return json.dumps(_investigation_payload(), ensure_ascii=False)
+        return json.dumps(_investigation_payload(blocks or []), ensure_ascii=False)
     if name in ("chat", "conversation", "assistant"):
         return json.dumps(_chat_payload(), ensure_ascii=False)
     if name in ("health", "health_check", "diagnostics"):
@@ -140,7 +141,7 @@ async def simulate_generate(
     from services.higgins.provider import GeminiResult  # local import: avoids a circular import
 
     started = time.monotonic()
-    text = simulated_text(purpose, json_output)
+    text = simulated_text(purpose, json_output, evidence_blocks(contents))
     prompt_chars = (len(system) if system else 0) + int(payload_audit.get("total_text_chars") or 0)
     usage = {
         "prompt_token_count": _estimate_tokens(prompt_chars),
