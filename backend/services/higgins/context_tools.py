@@ -182,16 +182,20 @@ async def learn_index() -> dict:
 # ── Deterministic context classifier ─────────────────────────────────────────
 
 class ContextPlan:
-    """Minimum set of context readers to call for a given question."""
-    __slots__ = ("readers", "label", "learn_query")
+    """Minimum set of context readers and knowledge modules for a Higgins question."""
+    __slots__ = ("readers", "label", "learn_query", "knowledge_modules", "route_groups")
 
-    def __init__(self, readers: list[str], label: str, learn_query: Optional[str] = None):
+    def __init__(self, readers: list[str], label: str, learn_query: Optional[str] = None,
+                 knowledge_modules: Optional[list[str]] = None,
+                 route_groups: Optional[list[str]] = None):
         self.readers = readers
         self.label = label
         self.learn_query = learn_query
+        self.knowledge_modules = knowledge_modules or []
+        self.route_groups = route_groups or []
 
     def __repr__(self) -> str:
-        return f"ContextPlan({self.label}, readers={self.readers})"
+        return f"ContextPlan({self.label}, readers={self.readers}, modules={self.knowledge_modules}, routes={self.route_groups})"
 
 
 # Patterns for deterministic classification — ordered by specificity
@@ -245,60 +249,164 @@ _DEVICE_INFO_RE = re.compile(
 )
 
 
+# ── Navigation / route-need patterns ─────────────────────────────────────────
+_NAVIGATE_RE = re.compile(
+    r"(?i)(?:where|how)\s+(?:do i|can i|to)\s+(?:find|go|get|open|see|access|navigate|get to)"
+    r"|(?:show\s+me|take\s+me|open|go\s+to|navigate\s+to)"
+    r"|(?:where\s+(?:is|are)\s+(?:the|my)?)"
+)
+_CHECKS_RE = re.compile(
+    r"(?i)(?:check|scan|verify|inspect|test|analyse|analyze)\s+(?:a|an|my|this|that|the)?\s*"
+    r"(?:link|url|file|app|message|email|number|code|qr|screenshot|photo|picture|image|device|network|internet|wifi|wi-fi|account|text)"
+    r"|(?:how\s+(?:do i|can i|to)\s+(?:check|scan|verify|test))"
+    r"|(?:call\s+screen)"
+)
+_RECORDS_RE = re.compile(
+    r"(?i)(?:history|saved|past|previous|record|archive|digest|weekly)"
+    r"|(?:what\s+(?:have i|did i)\s+(?:checked|scanned|looked at))"
+)
+_SETTINGS_RE = re.compile(
+    r"(?i)(?:setting|configure|config|option|preference|toggle|turn\s+(?:on|off))"
+    r"|(?:quiet\s+hours|battery\s+saver|notification)"
+    r"|(?:family|email\s+account)"
+)
+_PRIVACY_RE = re.compile(
+    r"(?i)(?:privacy|data|store|collect|track|share|send|upload|keep|retain|delete|erase|gdpr|personal\s+data|personal\s+information)"
+    r"|(?:what\s+(?:does|do)\s+(?:apollo|you|higgins)\s+(?:store|collect|keep|know|send|share|track))"
+    r"|(?:(?:my|our|user)\s+data)"
+)
+_FLOWS_RE = re.compile(
+    r"(?i)(?:how\s+(?:does|do)\s+(?:checks?|triage|investigation|escalation|sharing|screening)\s+work)"
+    r"|(?:what\s+(?:happens|occurs)\s+(?:when|after|if))"
+    r"|(?:sniffing|growling|barking|biting|patrolling)"
+    r"|(?:one\s+case|dedup|share\s+into)"
+    r"|(?:what\s+(?:are|is)\s+(?:the\s+)?(?:states?|stages?|status|tone))"
+)
+_CALL_SCREENING_RE = re.compile(
+    r"(?i)(?:call\s+screen|caller\s+id|spam\s+(?:block|filter|screen))"
+    r"|(?:default\s+(?:call|dialer|phone)\s+(?:app|screen|handler))"
+    r"|(?:screen\s+(?:my\s+)?calls)"
+)
+
+
 def classify_context(message: str, *, has_selected_report: bool = False,
                      has_selected_patrol_record: bool = False) -> ContextPlan:
     """Deterministically select the minimum Apollo context required for a Higgins question.
 
     This replaces the previous pattern of asking Gemini to choose from a toolbox
     of context functions.  The classification is fast, predictable and testable.
+
+    Returns a ContextPlan that now also includes knowledge_modules and route_groups
+    for the modular prompt architecture.
     """
     msg = message.strip()
 
-    # If viewing a specific investigation report, no extra context needed —
-    # the report content is injected directly by the caller.
-    if has_selected_report:
-        return ContextPlan([], "investigation_report_context")
+    # ── Classify knowledge modules and route groups ──────────────────────
+    modules: list[str] = []
+    routes: list[str] = []
 
-    # If viewing a patrol record, supply that record's context
-    if has_selected_patrol_record:
-        return ContextPlan(["get_last_relevant_outcome"], "patrol_record_context")
+    # Fail-safe: when navigation intent is detected, include tabs overview
+    needs_navigation = bool(_NAVIGATE_RE.search(msg))
+    if needs_navigation:
+        routes.append("tabs")
 
-    # Protection / device status
-    if _PROTECTION_RE.search(msg):
-        return ContextPlan(["get_protection_summary", "get_gate_states"], "protection_status")
+    # Check-related → checks routes + flows
+    if _CHECKS_RE.search(msg):
+        routes.append("checks")
+        if "flows" not in modules:
+            modules.append("flows")
 
-    # Current issues / "Why is Apollo growling?"
-    if _CURRENT_ISSUES_RE.search(msg):
-        return ContextPlan(["get_last_relevant_outcome", "get_protection_summary"], "current_issues")
+    # Records / history
+    if _RECORDS_RE.search(msg):
+        routes.append("records")
 
-    # Device info (OS version, model, etc.)
-    if _DEVICE_INFO_RE.search(msg):
-        return ContextPlan(["get_product_capabilities"], "device_info")
+    # Settings
+    if _SETTINGS_RE.search(msg):
+        routes.append("settings")
+        if "settings_detail" not in modules:
+            modules.append("settings_detail")
 
-    # Patrol history / recent activity (check BEFORE investigation explain)
-    if _PATROL_HISTORY_RE.search(msg):
-        return ContextPlan(["get_recent_patrol_outcomes"], "patrol_history")
+    # Privacy
+    if _PRIVACY_RE.search(msg):
+        if "privacy" not in modules:
+            modules.append("privacy")
+        if "settings" not in routes:
+            routes.append("settings")   # privacy routes live under settings
 
-    # Scam Alerts
-    if _SCAM_ALERTS_RE.search(msg):
-        return ContextPlan(["get_new_scams_digest"], "scam_alerts")
+    # Flows (states, how things work)
+    if _FLOWS_RE.search(msg):
+        if "flows" not in modules:
+            modules.append("flows")
 
-    # Investigation explanation (only when NOT already viewing a report)
-    if _INVESTIGATION_EXPLAIN_RE.search(msg):
-        return ContextPlan(["get_recent_cases", "get_saved_reports"], "investigation_explain")
+    # Call screening
+    if _CALL_SCREENING_RE.search(msg):
+        if "call_screening" not in modules:
+            modules.append("call_screening")
+        if "checks" not in routes:
+            routes.append("checks")
 
-    # Learn with Higgins / educational content
+    # Learning
     if _LEARN_RE.search(msg):
-        # Extract a search query from the message
-        learn_query = msg[:80]
-        return ContextPlan([], "learn_articles", learn_query=learn_query)
+        if "learning" not in routes:
+            routes.append("learning")
 
-    # Product info / "What does Apollo do?"
+    # ── Fail-safe: unknown classification gets baseline context ──────────
+    # If nothing matched for modules and it's a product question, include flows + tabs
     if _PRODUCT_INFO_RE.search(msg):
-        return ContextPlan(["get_product_capabilities"], "product_info")
+        if not modules:
+            modules.append("flows")
+        if not routes:
+            routes.append("tabs")
+            routes.append("checks")
 
-    # Default: no context needed (general security/scam question)
-    return ContextPlan([], "general_knowledge")
+    # ── Classify context readers (unchanged logic) ───────────────────────
+    if has_selected_report:
+        return ContextPlan([], "investigation_report_context",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if has_selected_patrol_record:
+        return ContextPlan(["get_last_relevant_outcome"], "patrol_record_context",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _PROTECTION_RE.search(msg):
+        return ContextPlan(["get_protection_summary", "get_gate_states"], "protection_status",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _CURRENT_ISSUES_RE.search(msg):
+        if "flows" not in modules:
+            modules.append("flows")  # fail-safe: states need flows context
+        return ContextPlan(["get_last_relevant_outcome", "get_protection_summary"], "current_issues",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _DEVICE_INFO_RE.search(msg):
+        return ContextPlan(["get_product_capabilities"], "device_info",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _PATROL_HISTORY_RE.search(msg):
+        if "records" not in routes:
+            routes.append("records")
+        return ContextPlan(["get_recent_patrol_outcomes"], "patrol_history",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _SCAM_ALERTS_RE.search(msg):
+        return ContextPlan(["get_new_scams_digest"], "scam_alerts",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _INVESTIGATION_EXPLAIN_RE.search(msg):
+        return ContextPlan(["get_recent_cases", "get_saved_reports"], "investigation_explain",
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _LEARN_RE.search(msg):
+        learn_query = msg[:80]
+        return ContextPlan([], "learn_articles", learn_query=learn_query,
+                           knowledge_modules=modules, route_groups=routes)
+
+    if _PRODUCT_INFO_RE.search(msg):
+        return ContextPlan(["get_product_capabilities"], "product_info",
+                           knowledge_modules=modules, route_groups=routes)
+
+    return ContextPlan([], "general_knowledge",
+                       knowledge_modules=modules, route_groups=routes)
 
 
 # ── Reader registry (unchanged) ──────────────────────────────────────────────
@@ -330,7 +438,9 @@ def with_core_readers(plan: ContextPlan) -> ContextPlan:
     for reader in plan.readers:
         if reader not in merged:
             merged.append(reader)
-    return ContextPlan(merged, plan.label, plan.learn_query)
+    return ContextPlan(merged, plan.label, plan.learn_query,
+                       knowledge_modules=plan.knowledge_modules,
+                       route_groups=plan.route_groups)
 
 
 async def execute(owner: str, name: str) -> dict:
