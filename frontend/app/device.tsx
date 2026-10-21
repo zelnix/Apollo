@@ -174,10 +174,14 @@ export default function CheckDevice() {
   type RecheckPhase = "idle" | "investigating" | "briefing";
   const [recheckPhase, setRecheckPhase] = useState<RecheckPhase>("idle");
   const [briefing, setBriefing] = useState<{ headline: string; findings: string[]; action: string | null; overall: string } | null>(null);
+  // Which user-initiated check produced the briefing on screen. Background refreshes never change it,
+  // so a refresh while the briefing is open can never file a second patrol entry.
+  const [briefingRun, setBriefingRun] = useState<number | null>(null);
+  const notifyRun = useRef(0);
 
   const refreshDevice = useCallback(async (notify = false) => {
     setChecking(true);
-    if (notify) setRecheckPhase("investigating");
+    if (notify) { notifyRun.current += 1; setRecheckPhase("investigating"); }
     try {
       const collectSignals = hostKind && securityAdapter.getDeviceSecuritySignals ? securityAdapter.getDeviceSecuritySignals() : AppDeviceSdk.getDeviceSecuritySignals(platform);
       const [nextSignals, recent, previousRaw] = await Promise.all([collectSignals, AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
@@ -206,6 +210,7 @@ export default function CheckDevice() {
           : "Apollo couldn't complete the device check and the reason could not be determined.";
       if (notify) {
         setBriefing({ headline: "Device check didn't run", findings: [detail, "Nothing here says the device is clear — the check was not completed."], action: null, overall: "error" });
+        setBriefingRun(notifyRun.current);
         setRecheckPhase("briefing");
       } else {
         showToast(detail, "growling");
@@ -280,19 +285,20 @@ export default function CheckDevice() {
         : "A few settings are worth reviewing";
 
     setBriefing({ headline, findings, action: actionItem, overall: overallLabel });
+    setBriefingRun(notifyRun.current);
     setRecheckPhase("briefing");
   }, [recheckPhase, checking, review, result]);
 
   // ── A completed device check is a case ──
-  // One patrol record per user-initiated check, so it is listed in Threats, kept in patrol history
-  // and opened through the same threat-case screen as every other case. Background refreshes (simply
-  // opening this screen) are not cases and are never recorded.
-  const recordedBriefing = useRef<string | null>(null);
+  // Every USER-INITIATED check files its own patrol entry, so the full trail is in patrol history.
+  // All checks of this device share one case key, so Threats shows ONE device-check case with the
+  // latest result instead of a new case per check. Background refreshes (simply opening this screen)
+  // are not checks the person asked for and are never recorded.
+  const recordedRun = useRef<number | null>(null);
   useEffect(() => {
-    if (recheckPhase !== "briefing" || !briefing || checking) return;
-    const signature = `${briefing.overall}|${briefing.headline}|${briefing.findings.join("|")}`;
-    if (recordedBriefing.current === signature) return;
-    recordedBriefing.current = signature;
+    if (recheckPhase !== "briefing" || !briefing || checking || briefingRun === null) return;
+    if (recordedRun.current === briefingRun) return;
+    recordedRun.current = briefingRun;
     const checkedAt = new Date().toISOString();
     const event = deviceCheckEvent({
       eventId: Crypto.randomUUID(), deviceId, briefing, adapterLabel, checkedAt,
@@ -308,7 +314,7 @@ export default function CheckDevice() {
       text: briefing.findings.join("\n"),
       data: review ? { overall: review.overall, results: review.results } : { state: result.state, findings: result.findings },
     }).catch(() => undefined);
-  }, [recheckPhase, briefing, checking, deviceId, adapterLabel, hostKind, platform, review, result, upsertEvent]);
+  }, [recheckPhase, briefing, briefingRun, checking, deviceId, adapterLabel, hostKind, platform, review, result, upsertEvent]);
 
   const openCheck = (r: CheckResult) => {
     if (!r.settings) return;

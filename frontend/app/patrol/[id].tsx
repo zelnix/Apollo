@@ -65,6 +65,7 @@ import { ImageEvidenceCompare } from "@/src/components/ImageEvidenceCompare";
 import { OriginalSourceView } from "@/src/components/OriginalSourceView";
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
 import { getOriginalSource, type OriginalSource } from "@/src/store/originalSource";
@@ -362,7 +363,7 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
       </Card>
 
       {/* Repeat checks of this device: one case, every check listed. */}
-      {event.case_key ? <CaseCheckRuns event={event} /> : null}
+      {event.case_key ? <CaseCheckRuns event={event} original={original} /> : null}
 
       {/* Triage investigation — the stored deterministic record. No model call. */}
       {event.triage_investigation ? <TriageSummary record={event.triage_investigation} /> : null}
@@ -373,15 +374,37 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
   );
 }
 
+const CHANGE_PREFIX: Record<string, string> = { fixed: "Fixed", new_problem: "New", still_open: "Still open", not_confirmed: "Not confirmed" };
+
 /** Repeat checks on the same subject are ONE case. This restates how many checks have been filed
- *  against it and lets the person open any earlier check. Nothing is re-analysed here. */
-function CaseCheckRuns({ event }: { event: PatrolEvent }) {
+ *  against it, what changed since the previous check, and lets the person open any earlier check.
+ *  Nothing is re-analysed here — every line comes from what each check recorded at the time. */
+function CaseCheckRuns({ event, original }: { event: PatrolEvent; original: OriginalSource | null }) {
   const s = useStyles();
   const router = useRouter();
   const { events } = useApollo();
   const runs = events
     .filter((e) => caseGroupKey(e) === caseGroupKey(event))
     .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
+  const index = runs.findIndex((e) => e.event_id === event.event_id);
+  const previousRun = index >= 0 ? runs[index + 1] ?? null : null;
+
+  // What changed since the check immediately before this one — compared from what each check
+  // actually recorded. Nothing is compared when the earlier check kept no comparable results.
+  const [progress, setProgress] = useState<DeviceCheckProgress | null>(null);
+  useEffect(() => {
+    let live = true;
+    const current = comparableChecks(original?.data);
+    if (!previousRun || !current) { setProgress(null); return; }
+    void getOriginalSource(previousRun.event_id)
+      .then((prior) => {
+        const before = comparableChecks(prior?.data);
+        if (live) setProgress(before ? compareDeviceChecks(before, current) : null);
+      })
+      .catch(() => { if (live) setProgress(null); });
+    return () => { live = false; };
+  }, [previousRun, original]);
+
   if (runs.length < 2) return null;
   const earlier = runs.filter((e) => e.event_id !== event.event_id).slice(0, 5);
 
@@ -391,6 +414,17 @@ function CaseCheckRuns({ event }: { event: PatrolEvent }) {
       <Text style={s.reportBody} testID="tc-overview-runs-count">
         Checked {runs.length} times · last checked {formatDateTime(runs[0].occurred_at)}
       </Text>
+      {progress ? (
+        <View style={{ gap: spacing.xs, marginTop: spacing.xs }} testID="tc-overview-runs-progress">
+          <Text style={s.reportLabel}>Since the check before this one</Text>
+          <Text style={s.reportBody} testID="tc-overview-runs-progress-summary">{progress.summary}</Text>
+          {progress.changes.map((change) => (
+            <Text key={change.id} style={s.relatedSub} testID={`tc-overview-runs-change-${change.id}`}>
+              {CHANGE_PREFIX[change.kind]} — {change.title}: {change.detail}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {earlier.map((run) => (
         <Pressable
           key={run.event_id}

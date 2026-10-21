@@ -1379,14 +1379,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const resolveEvent = useCallback(async (event: PatrolEvent) => {
     const resolvedAt = new Date().toISOString();
-    // Resolve the tapped event AND all scent-linked siblings (same logical incident).
+    // Resolve the tapped event AND all scent-linked siblings (same logical incident), plus earlier
+    // checks filed on the same case (same case_key) — closing a case closes every check in it.
     // Without this, marking one copy as contained leaves identical-looking duplicates active.
-    const siblings = event.scent_id
-      ? eventsRef.current.filter((e) => e.scent_id === event.scent_id && !e.resolved_at && e.event_id !== event.event_id)
-      : [];
+    const siblings = eventsRef.current.filter((e) => !e.resolved_at && e.event_id !== event.event_id &&
+      ((!!event.scent_id && e.scent_id === event.scent_id) || (!!event.case_key && e.case_key === event.case_key)));
     await upsertEvent({ ...event, status: "resolved", resolved_at: resolvedAt });
     for (const sib of siblings) await upsertEvent({ ...sib, status: "resolved", resolved_at: resolvedAt });
-    showToast("Marked as handled. Apollo will rest after a fresh check.", "neutral");
+    showToast(event.category === "device"
+      ? "Device check closed. Rechecking your device files a new check on this case."
+      : "Marked as handled. Apollo will rest after a fresh check.", "neutral");
   }, [showToast, upsertEvent]);
 
   // Undo "contained/handled": reopen locally and on the server (PATCH reopen clears resolved_at).

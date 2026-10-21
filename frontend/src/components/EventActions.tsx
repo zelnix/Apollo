@@ -27,7 +27,9 @@ export function EventActions({ event, originalEvidence, hideAsk = false }: { eve
   if (!active) {
     return (
       <View style={{ gap: spacing.sm }}>
-        <Body>This event is {event.status === "trusted" ? "trusted (this exact link only)" : event.status === "blocked" ? "blocked and contained" : "handled"}.</Body>
+        <Body>{event.category === "device"
+          ? "This device check is closed. Rechecking your device files a new check on this case."
+          : `This event is ${event.status === "trusted" ? "trusted (this exact link only)" : event.status === "blocked" ? "blocked and contained" : "handled"}.`}</Body>
         {hideAsk ? null : <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={askHiggins} />}
       </View>
     );
@@ -45,7 +47,7 @@ export function EventActions({ event, originalEvidence, hideAsk = false }: { eve
           {event.state === "growling" && event.trust_allowed ? (
             <Button testID="event-trust-button" variant="secondary" label="Trust this exact link" onPress={wrap("trust", () => trustEvent(event))} disabled={!!busy} />
           ) : null}
-          <Button testID="event-handled-button" variant="ghost" label="Mark as handled" onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
+          <Button testID="event-handled-button" variant="ghost" label={event.category === "device" ? "Close this device check" : "Mark as handled"} onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
         </>
       )}
       {hideAsk ? null : <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={askHiggins} />}
