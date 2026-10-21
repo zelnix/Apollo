@@ -21,7 +21,7 @@
  * No unscreened image may be transmitted externally.
  */
 import * as ImageManipulator from "expo-image-manipulator";
-import { File as ExpoFile } from "expo-file-system";
+import * as FS from "expo-file-system/legacy";
 
 // Non-blocking personal data learning — accumulates suggestions silently.
 let _learnFromScreenshot: ((text: string) => Promise<void>) | null = null;
@@ -309,8 +309,7 @@ export async function cleanupScreeningFiles(result: ScreeningResult): Promise<vo
   const uris = [result.sanitisedImageUri, result.strippedImageUri].filter(Boolean) as string[];
   for (const uri of uris) {
     try {
-      const file = new ExpoFile(uri);
-      if (file.exists) file.delete();
+      await FS.deleteAsync(uri, { idempotent: true });
     } catch {
       /* best-effort cleanup */
       if (__DEV__) {

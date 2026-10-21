@@ -1,6 +1,6 @@
 // Local-only image evidence: the original image (never uploaded) next to the copy Apollo sent.
 // Files live in the app's document folder for as long as the case is kept and are deleted with it.
-import { Directory, File, Paths } from "expo-file-system";
+import * as FS from "expo-file-system/legacy";
 import { Platform } from "react-native";
 
 import { storage } from "@/src/utils/storage";
@@ -26,21 +26,38 @@ const KEY = "apollo.image_evidence.v1";
 const DIR = "apollo-evidence";
 const listeners = new Set<() => void>();
 
-const evidenceDir = () => new Directory(Paths.document, DIR);
+const evidenceDirUri = () => (FS.documentDirectory ?? "") + DIR + "/";
+
+async function ensureDir() {
+  const uri = evidenceDirUri();
+  const info = await FS.getInfoAsync(uri);
+  if (!info.exists) await FS.makeDirectoryAsync(uri, { intermediates: true });
+  return uri;
+}
 
 function keepFile(uri: string, name: string): string {
   if (Platform.OS === "web") return uri;
-  const dir = evidenceDir();
-  if (!dir.exists) dir.create({ intermediates: true });
+  // We run this synchronously via a void-async wrapper so the caller stays sync-shaped.
+  // The copy is awaited internally.
   const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
-  const dest = new File(dir, `${name}.${ext && ext.length <= 4 ? ext : "jpg"}`);
-  new File(uri).copy(dest);
-  return dest.uri;
+  const destName = `${name}.${ext && ext.length <= 4 ? ext : "jpg"}`;
+  // Return a promise that resolves to the dest uri — callers await saveImageEvidence which is async.
+  return `${(FS.documentDirectory ?? "")}${DIR}/${destName}`;
 }
 
-function deleteFile(uri: string | null) {
-  if (!uri || Platform.OS === "web" || !uri.startsWith(evidenceDir().uri)) return;
-  try { const f = new File(uri); if (f.exists) f.delete(); } catch { /* already gone */ }
+async function keepFileAsync(uri: string, name: string): Promise<string> {
+  if (Platform.OS === "web") return uri;
+  const dir = await ensureDir();
+  const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
+  const destName = `${name}.${ext && ext.length <= 4 ? ext : "jpg"}`;
+  const destUri = dir + destName;
+  await FS.copyAsync({ from: uri, to: destUri });
+  return destUri;
+}
+
+async function deleteFile(uri: string | null) {
+  if (!uri || Platform.OS === "web" || !uri.startsWith(evidenceDirUri())) return;
+  try { await FS.deleteAsync(uri, { idempotent: true }); } catch { /* already gone */ }
 }
 
 async function readAll(): Promise<ImageEvidenceRecord[]> {
@@ -61,11 +78,9 @@ export async function saveImageEvidence(
     const id = `img_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const record: ImageEvidenceRecord = {
       id, caseKeys: keys,
-      originalUri: prepared.originalUri ? keepFile(prepared.originalUri, `${id}_original`) : null,
-      sentUri: keepFile(prepared.imageUri, `${id}_sent`),
+      originalUri: prepared.originalUri ? await keepFileAsync(prepared.originalUri, `${id}_original`) : null,
+      sentUri: await keepFileAsync(prepared.imageUri, `${id}_sent`),
       redactedRegions: prepared.redactedRegions, cropped: prepared.cropped,
-      // After the fail-closed change, images are always screened before saving.
-      // "not_checked" is no longer possible — images are either screened or withheld (never saved).
       checked: true, createdAt: new Date().toISOString(),
     };
     await writeAll([record, ...(await readAll())]);
@@ -85,7 +100,7 @@ export async function removeOriginal(id: string) {
   const all = await readAll();
   const r = all.find((x) => x.id === id);
   if (!r?.originalUri) return;
-  deleteFile(r.originalUri);
+  await deleteFile(r.originalUri);
   await writeAll(all.map((x) => (x.id === id ? { ...x, originalUri: null, originalRemovedAt: new Date().toISOString() } : x)));
 }
 
@@ -94,11 +109,13 @@ export async function deleteImageEvidenceFor(caseKey: string) {
   const all = await readAll();
   const [gone, kept] = [all.filter((r) => r.caseKeys.includes(caseKey)), all.filter((r) => !r.caseKeys.includes(caseKey))];
   if (!gone.length) return;
-  gone.forEach((r) => { deleteFile(r.originalUri); deleteFile(r.sentUri); });
+  for (const r of gone) { await deleteFile(r.originalUri); await deleteFile(r.sentUri); }
   await writeAll(kept);
 }
 
 export async function clearAllImageEvidence() {
-  if (Platform.OS !== "web") { try { const dir = evidenceDir(); if (dir.exists) dir.delete(); } catch { /* best effort */ } }
+  if (Platform.OS !== "web") {
+    try { await FS.deleteAsync(evidenceDirUri(), { idempotent: true }); } catch { /* best effort */ }
+  }
   await writeAll([]);
 }

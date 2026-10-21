@@ -2,7 +2,7 @@
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
-import { File, Paths } from "expo-file-system";
+import * as FS from "expo-file-system/legacy";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
@@ -18,7 +18,7 @@ import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { buildFileCheckResult } from "@/src/domain/fileCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
-import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
+import { FILE_SIZE_LIMIT, FILE_SAMPLE_BYTES, inspectSample, type Inspection } from '@/src/domain/fileInspection';
 import { type PatrolEvent } from "@/src/domain/types";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
@@ -106,11 +106,9 @@ export default function CheckFile() {
         await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false);
         return;
       }
-      const target = new File(Paths.cache, sim.name);
-      if (target.exists) target.delete();
-      target.create();
-      target.write(sim.content);
-      await analyseAsset({ uri: target.uri, name: sim.name, mimeType: sim.mime, size }, "unknown", true);
+      const targetUri = (FS.cacheDirectory ?? "") + sim.name;
+      await FS.writeAsStringAsync(targetUri, sim.content, { encoding: FS.EncodingType.UTF8 });
+      await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true);
     } catch (error) {
       setPickerError(error instanceof Error ? error.message : "Apollo could not prepare the simulated file.");
     }
@@ -141,8 +139,16 @@ export default function CheckFile() {
           if (!bytes.length || bytes.length > FILE_SIZE_LIMIT) throw new Error("invalid file size");
           inspected = inspectSample(bytes);
         } else {
-          const file = new File(asset.uri);
-          inspected = inspectWithHandle(file);
+          // Native: read bytes via legacy expo-file-system
+          const info = await FS.getInfoAsync(asset.uri);
+          const fileSize = info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
+          if (fileSize <= 0 || fileSize > FILE_SIZE_LIMIT) throw new Error("invalid file size");
+          const readLen = Math.min(FILE_SAMPLE_BYTES, fileSize);
+          const b64 = await FS.readAsStringAsync(asset.uri, { encoding: FS.EncodingType.Base64, length: readLen, position: 0 });
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          inspected = inspectSample(bytes);
         }
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });

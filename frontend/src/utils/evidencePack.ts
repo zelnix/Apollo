@@ -1,6 +1,6 @@
 // Evidence Pack: one PDF with the original image, the sent copy, case title, date and notes,
 // shared through the phone's share sheet (print dialog on web). Built on the device.
-import { File } from "expo-file-system";
+import * as FS from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
@@ -15,7 +15,7 @@ async function embeddable(uri: string): Promise<string> {
   if (Platform.OS === "web" || uri.startsWith("data:")) return uri;
   const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
   const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-  return `data:${mime};base64,${await new File(uri).base64()}`;
+  return `data:${mime};base64,${await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 })}`;
 }
 
 export interface PackSummary { overview: string | null; findings: string[]; steps: string[]; uncertainties: string[] }
@@ -72,6 +72,6 @@ ${ARTEFACT_CSS}
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Share evidence pack", UTI: "com.adobe.pdf" });
     else await Print.printAsync({ uri });
   } finally {
-    try { const f = new File(uri); if (f.exists) f.delete(); } catch { /* temp file */ }
+    try { await FS.deleteAsync(uri, { idempotent: true }); } catch { /* temp file */ }
   }
 }
