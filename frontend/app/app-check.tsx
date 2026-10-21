@@ -3,7 +3,6 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import X from "lucide-react-native/icons/x";
-import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
@@ -29,7 +28,9 @@ import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
-import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SourceHero } from "@/src/components/SourceHero";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
 import { SIMULATED_APPS } from "@/src/preview/samples";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -62,10 +63,6 @@ const useStyles = makeStyles((c) => ({
   permRow: { gap: 4, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   sectionLine: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface },
   sectionHeading: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted, marginTop: spacing.xs },
-  // ── Device-first picker styles ──
-  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
-  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
-  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
   orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   orLine: { flex: 1, height: 1, backgroundColor: c.border },
   orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
@@ -97,6 +94,7 @@ export default function CheckApp() {
   // Pick-from-installed-apps (Android): list launchable apps so the person doesn't have to type the name.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [installedApps, setInstalledApps] = useState<InstalledAppRef[] | null>(null);
+  const [appPicker, setAppPicker] = useState(false);
   const [appsLoading, setAppsLoading] = useState(false);
   const [pickedPackage, setPickedPackage] = useState<string | null>(null);
   // Set when a simulated app has been filled in and the ordinary check should run once the fields land.
@@ -282,47 +280,25 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Text style={s.subtitle}>Pick an app from your device or enter the name to check.</Text>
-
-            <SimulatedPicker
-              testID="app-simulated"
-              title="Simulated installed apps"
-              note="This is NOT your real app list and nothing is read from this device. These samples stand in for apps and their stated permissions so the real app check can be exercised in the preview. Apollo checks whichever you pick and decides the outcome himself."
-              disabled={busy}
-              items={SIMULATED_APPS.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, probes: a.probes }))}
-              onSelect={(id) => {
-                const a = SIMULATED_APPS.find((x) => x.id === id);
-                if (!a) return;
-                // Fill the same fields the person would answer, then let the normal check run.
-                setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
-                setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
-                setAutoRun(a.appName);
-              }}
+            <SourceHero
+              testID="app-hero"
+              title="Pick an app from this phone"
+              caption="Apollo checks the app's source, its stated permissions and what it says it does. Nothing is installed or changed."
+              actions={[{
+                testID: "app-pick-installed",
+                label: appsLoading ? "Reading your apps…" : "Choose an installed app",
+                disabled: busy || appsLoading,
+                icon: <Smartphone size={20} color={colors.onBrandPrimary} />,
+                onPress: () => { if (canPickApps) { void openPicker(); return; } setAppPicker(true); },
+              }]}
             />
 
-            {/* ── Device-First: Pick from installed apps (Android) ── */}
-            {canPickApps ? (
-              <Pressable
-                testID="app-pick-installed"
-                accessibilityRole="button"
-                accessibilityLabel="Pick from installed apps"
-                onPress={() => void openPicker()}
-                style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
-              >
-                <Smartphone size={22} color={colors.onBrandPrimary} />
-                <Text style={s.devicePickerText}>Pick from installed apps</Text>
-                <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
-              </Pressable>
-            ) : null}
-
             {/* ── Or divider ── */}
-            {canPickApps ? (
-              <View style={s.orDivider}>
-                <View style={s.orLine} />
-                <Text style={s.orText}>or enter manually</Text>
-                <View style={s.orLine} />
-              </View>
-            ) : null}
+            <View style={s.orDivider}>
+              <View style={s.orLine} />
+              <Text style={s.orText}>or enter manually</Text>
+              <View style={s.orLine} />
+            </View>
 
             {/* ── Manual app name entry (secondary) ── */}
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="App name" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
@@ -368,7 +344,26 @@ export default function CheckApp() {
             </ScrollView>}
         <Button testID="app-picker-close" variant="ghost" label="Close" onPress={() => { setPickerOpen(false); setAppQuery(""); }} />
       </Sheet>
-      
+      <SourcePickerSheet
+        visible={appPicker}
+        title="Installed apps"
+        note="Each one stands in for an app and its stated permissions. Apollo runs the real app check on whichever you pick."
+        preview={PREVIEW_SIMULATION}
+        error={PREVIEW_SIMULATION ? null : "Apollo can't list installed apps on this build. Type the app name below instead — this needs a production Android build."}
+        items={SIMULATED_APPS.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
+        emptyText="There are no apps to choose from here."
+        onSelect={(id) => {
+          setAppPicker(false);
+          const a = SIMULATED_APPS.find((x) => x.id === id);
+          if (!a) return;
+          // Fill the same fields the person would answer, then let the normal check run.
+          setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
+          setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
+          setAutoRun(a.appName);
+        }}
+        onClose={() => setAppPicker(false)}
+        testID="app-source-picker"
+      />
     </View>
   );
 }

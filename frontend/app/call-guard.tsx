@@ -37,7 +37,9 @@ import { Body, Button } from "@/src/components/ui";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
-import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SourceHero } from "@/src/components/SourceHero";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
 import { SIMULATED_CALLS } from "@/src/preview/samples";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -177,6 +179,7 @@ export default function CheckNumber() {
 
   // Phone picker
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
+  const [callSourcePicker, setCallSourcePicker] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported();
 
@@ -545,18 +548,17 @@ export default function CheckNumber() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Description ── */}
-        <Text style={s.description}>
-          Choose a number from your recent calls or enter one yourself.{"\n"}Magnum DI will investigate it for possible scams.
-        </Text>
-
-        <SimulatedPicker
-          testID="callguard-simulated"
-          title="Simulated recent calls"
-          note="This is NOT your real call log and nothing is read from this device. These sample numbers exist so the real number check can be exercised in the preview. Apollo checks whichever you pick and decides the outcome himself."
-          disabled={busy}
-          items={SIMULATED_CALLS.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, probes: c.probes }))}
-          onSelect={(id) => { const c = SIMULATED_CALLS.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}
+        <SourceHero
+          testID="callguard-hero"
+          title="Pick a number from your recent calls"
+          caption="Apollo checks the number's reputation, line type and fraud history — without you having to call back."
+          actions={[{
+            testID: "callguard-pick-caller",
+            label: busy ? "Checking…" : "Choose a recent caller",
+            disabled: busy,
+            icon: <Clock size={20} color={colors.onBrandPrimary} />,
+            onPress: () => { if (canPickPhone) { setCallerPickerOpen(true); return; } setCallSourcePicker(true); },
+          }]}
         />
 
         {/* ── Recent Calls Dropdown (above phone input) ── */}
@@ -678,6 +680,18 @@ export default function CheckNumber() {
       </KeyboardAwareScrollView>
 
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />
+      <SourcePickerSheet
+        visible={callSourcePicker}
+        title="Recent callers"
+        note="Apollo runs the real number check on whichever you pick."
+        preview={PREVIEW_SIMULATION}
+        error={PREVIEW_SIMULATION ? null : "Apollo can't read the call log on this build. Enter or paste the number below instead."}
+        items={SIMULATED_CALLS.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes }))}
+        emptyText="There are no recent callers to choose from here."
+        onSelect={(id) => { setCallSourcePicker(false); const c = SIMULATED_CALLS.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}
+        onClose={() => setCallSourcePicker(false)}
+        testID="callguard-source-picker"
+      />
 
       {/* ── Checking overlay modal ── */}
       <CheckingModal

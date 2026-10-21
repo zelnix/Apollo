@@ -34,7 +34,6 @@ load_dotenv("/app/frontend/.env")
 
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
-BACKEND_LOG = "/var/log/supervisor/backend.err.log"
 
 
 @pytest.fixture(scope="module")
@@ -44,25 +43,6 @@ def s():
     return sess
 
 
-def _log_tail(nbytes: int = 8000) -> str:
-    try:
-        with open(BACKEND_LOG, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - nbytes))
-            return f.read().decode("utf-8", errors="ignore")
-    except FileNotFoundError:
-        # try the other supervisor log name
-        for alt in ("/var/log/supervisor/backend.out.log",):
-            try:
-                with open(alt, "rb") as f:
-                    f.seek(0, 2)
-                    size = f.tell()
-                    f.seek(max(0, size - nbytes))
-                    return f.read().decode("utf-8", errors="ignore")
-            except FileNotFoundError:
-                continue
-        return ""
 
 
 # --------------------------------------------------------------------- Quiet hours (settings CRUD)
@@ -168,32 +148,34 @@ class TestPatrolPushSuppression:
         # sanity
         assert s.get(f"{API}/devices/{dev}/settings").json()["quiet_now"] is True
 
-    def test_growling_bg_true_in_quiet_hours_suppressed(self, s):
+    def test_growling_bg_true_in_quiet_hours_is_held_not_dropped(self, s):
+        """Quiet hours hold a gentle alert for the morning instead of dropping it. The hold is a real
+        record, so it is asserted through the API rather than a log line."""
         dev = f"dev-qh-grow-{uuid.uuid4().hex[:10]}"
         self._enable_quiet_now(s, dev)
-        before = _log_tail()
-        r = s.post(f"{API}/patrol/events", json=self._payload(dev, "growling", True))
+        payload = self._payload(dev, "growling", True)
+        r = s.post(f"{API}/patrol/events", json=payload)
         assert r.status_code == 200, r.text
         # allow background task to run
         time.sleep(1.5)
-        after = _log_tail()
-        added = after[len(before):] if after.startswith(before) else after
-        assert "growling push suppressed by quiet hours" in added, added[-1500:]
+        alerts = s.get(f"{API}/push/alerts", params={"device_id": dev}).json()
+        held = [a for a in alerts if a["state"] == "held" and a["alertKey"] == f"owner-{payload['event_id']}"]
+        assert held, f"growling alert was not held for the morning: {alerts[:5]}"
+        assert held[0]["heldUntil"], held[0]
+        assert held[0]["openedAt"] is None, "a held alert has not been seen by anyone"
 
     def test_barking_bg_true_in_quiet_hours_not_suppressed(self, s):
         dev = f"dev-qh-bark-{uuid.uuid4().hex[:10]}"
         self._enable_quiet_now(s, dev)
-        before = _log_tail()
-        r = s.post(f"{API}/patrol/events", json=self._payload(dev, "barking", True))
+        payload = self._payload(dev, "barking", True)
+        r = s.post(f"{API}/patrol/events", json=payload)
         assert r.status_code == 200, r.text
         time.sleep(1.5)
-        after = _log_tail()
-        added = after[len(before):] if after.startswith(before) else after
-        # barking must NOT be suppressed by quiet hours. The key assertion is that there is NO
-        # "growling push suppressed" log line for this barking event. The device may not have a
-        # push token, so the push may silently skip or fail — either outcome is acceptable as
-        # long as the barking event was NOT suppressed.
-        assert "growling push suppressed" not in added, f"barking should not be suppressed: {added[-500:]}"
+        # A live threat is never held for the morning. The device may have no push destination, so the
+        # send itself may fail — what matters is that it was attempted now, not parked until morning.
+        alerts = s.get(f"{API}/push/alerts", params={"device_id": dev}).json()
+        held = [a for a in alerts if a["state"] == "held" and a["alertKey"] == f"owner-{payload['event_id']}"]
+        assert not held, f"barking should not be held for the morning: {held}"
 
     def test_growling_bg_false_no_push_attempt(self, s):
         dev = f"dev-qh-grow-fg-{uuid.uuid4().hex[:10]}"

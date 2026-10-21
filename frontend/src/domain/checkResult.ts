@@ -45,15 +45,18 @@ export interface EvidenceRow {
   value: string;
 }
 
+/** Which Apollo protection performed a check. */
+export type CheckResultGate =
+  | "Link checking" | "Website protection" | "Message screening" | "Call screening" | "Internet monitoring"
+  | "App checking" | "Device monitoring" | "Email monitoring" | "File checking" | "Account alerts"
+  | "Device Re-check";
+
 /** The canonical structured result for ANY manual Apollo check. */
 export interface CheckResultModel {
   /** Internal id — stable across navigation / history. */
   id: string;
   /** Which Apollo protection performed the check. */
-  gate:
-    | "Link checking" | "Website protection" | "Message screening" | "Call screening" | "Internet monitoring"
-    | "App checking" | "Device monitoring" | "Email monitoring" | "File checking" | "Account alerts"
-    | "Device Re-check";
+  gate: CheckResultGate;
   /** Short label for the KIND of check, e.g. "Link check", "Message check". */
   checkType: string;
   /** What was checked, in a short human string (e.g. "www.godaddy.com"). */

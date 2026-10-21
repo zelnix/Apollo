@@ -53,6 +53,8 @@ import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { SIMULATED_EMAILS, PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
+import { SourceHero } from "@/src/components/SourceHero";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import {
   listEmailAccounts,
@@ -136,14 +138,6 @@ const useStyles = makeStyles((c) => ({
   // Email row
   emailRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
   // Simulated inbox (preview only) — deliberately marked so it can never read as a real mailbox.
-  simInbox: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: c.gold, backgroundColor: c.surfaceSecondary, paddingVertical: spacing.md },
-  simInboxHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
-  simInboxTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
-  simInboxTag: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: c.gold },
-  simInboxTagText: { fontFamily: fonts.textSemibold, fontSize: 10, letterSpacing: 0.5, color: "#1B2437" },
-  simInboxSub: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, marginTop: spacing.xs },
-  simRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, marginTop: spacing.xs },
-  simRowProbe: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary, marginTop: 2 },
   emailRowIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   emailRowUnknownWell: { backgroundColor: c.surfaceTertiary },
   emailRowContactWell: {},
@@ -243,6 +237,7 @@ export default function CheckEmail() {
   // ── Inbox picker state (preserved) ──
   type InboxPreview = { id: string; account: string; from: string; subject: string; date: string; snippet: string };
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [emailSourcePicker, setEmailSourcePicker] = useState(false);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerMessages, setPickerMessages] = useState<InboxPreview[]>([]);
   const [pickerAccount, setPickerAccount] = useState<string | null>(null);
@@ -707,47 +702,18 @@ export default function CheckEmail() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Description ── */}
-        <Text style={s.description}>
-          Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
-        </Text>
-
-        {/* ── Simulated inbox — PREVIEW ONLY ──
-            Sample emails that exist purely to feed Apollo's real email check when the preview has
-            no connected mailbox. Selecting one runs the same run() flow a real email runs: real
-            on-device analysis, real Triage, and real Magnum DI only where Triage escalates. */}
-        {showSimulatedInbox ? (
-          <View style={s.simInbox} testID="email-simulated-inbox">
-            <View style={s.simInboxHeader}>
-              <Inbox size={18} color={colors.onSurface} />
-              <Text style={s.simInboxTitle}>Simulated inbox</Text>
-              <View style={s.simInboxTag}><Text style={s.simInboxTagText}>PREVIEW ONLY</Text></View>
-            </View>
-            <Text style={s.simInboxSub}>
-              This is NOT a connected mailbox and no real email is read. These are sample emails built into the
-              preview so the real email check can be exercised. Apollo runs his own checks on whichever one you
-              pick and decides the outcome himself — nothing here is pre-judged.
-            </Text>
-            {SIMULATED_EMAILS.map((sim, i) => (
-              <Pressable
-                key={sim.id}
-                testID={`email-simulated-${i}`}
-                accessibilityRole="button"
-                accessibilityLabel={`Check the simulated email from ${sim.from}`}
-                disabled={busy}
-                onPress={() => void run({ from: sim.from, subject: sim.subject, raw: sim.body })}
-                style={({ pressed }) => [s.simRow, { opacity: pressed || busy ? 0.7 : 1 }]}
-              >
-                <View style={s.emailRowInfo}>
-                  <Text style={s.emailRowSender} numberOfLines={1}>{sim.from}</Text>
-                  <Text style={s.emailRowSubject} numberOfLines={2}>{sim.subject}</Text>
-                  <Text style={s.simRowProbe} numberOfLines={2}>{sim.probes}</Text>
-                </View>
-                <ChevronRight size={16} color={colors.muted} />
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
+        <SourceHero
+          testID="email-hero"
+          title="Pick an email from your inbox"
+          caption="Apollo reads the one email you choose and checks the sender, the links and what it is asking you to do."
+          actions={[{
+            testID: "email-pick-inbox",
+            label: busy ? "Checking…" : "Choose an email",
+            disabled: busy,
+            icon: <Inbox size={20} color={colors.onBrandPrimary} />,
+            onPress: () => { if (showSimulatedInbox) { setEmailSourcePicker(true); return; } void openInboxPicker(); },
+          }]}
+        />
 
         {/* ── Recent Emails Dropdown (above action cards) ── */}
         <View style={s.recentDropdown} testID="email-recent-section">
@@ -1079,6 +1045,21 @@ export default function CheckEmail() {
         title="Checking email"
         subject={subject.trim() ? subject.trim() : fromState.trim() ? `From: ${fromState.trim()}` : undefined}
         description={"Magnum DI is reviewing headers, sender\nreputation and content for phishing patterns."}
+      />
+      <SourcePickerSheet
+        visible={emailSourcePicker}
+        title="Your inbox"
+        note="Apollo runs the real email check on whichever one you pick — on-device analysis first, then Magnum DI where it matters."
+        preview
+        items={SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes }))}
+        emptyText="There are no emails to choose from here."
+        onSelect={(id) => {
+          setEmailSourcePicker(false);
+          const sim = SIMULATED_EMAILS.find((x) => x.id === id);
+          if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body });
+        }}
+        onClose={() => setEmailSourcePicker(false)}
+        testID="email-source-picker"
       />
     </View>
   );

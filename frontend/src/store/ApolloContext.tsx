@@ -44,6 +44,7 @@ import { investigationPatch } from '@/src/domain/investigationCaseUpdate';
 import { getInvestigation, subscribeDeviceInvestigations } from '@/src/investigation/deviceStore';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
+import { holdAlert, releaseHeldAlerts } from "@/src/push/alertLog";
 import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
 import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
 import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectionAlerts";
@@ -703,13 +704,30 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
       // Pick the single most specific notification for this event change.
       const alert = eventLocalAlert(event) ?? completedCheckAlert(event) ?? protectionUpdateAlert(event);
-      // Quiet hours silence everything EXCEPT a live threat. (All Apollo alerts now share the one
-      // "apollo_alerts" channel, so severity comes from the event state, not the channel name.)
+      // Quiet hours hold everything EXCEPT a live threat until the morning. (All Apollo alerts now
+      // share the one "apollo_alerts" channel, so severity comes from the event state, not the channel.)
       const urgent = event.state === "barking" || event.state === "biting";
-      if (alert && (urgent || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
+      if (alert) {
+        if (urgent || !isQuietNow(quietRef.current)) void scheduleLocalAlert(alert).catch((e) => logNotifDiagnostic("scheduling", e, `event=${event.event_id}`));
+        // Quiet hours hold a gentle alert instead of dropping it; it is released, on its own, when the
+        // window ends (see the release effect below).
+        else void holdAlert(`held-${event.event_id}-${event.state}`, alert).catch(() => undefined);
+      }
     }
     if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
   }, [ready, events]);
+
+  // Morning release: everything held during quiet hours is handed to the OS separately, in the order it
+  // was raised. Runs when the window ends and once at launch, so alerts held while the app was closed
+  // still arrive rather than disappearing.
+  const wasQuiet = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    const previous = wasQuiet.current;
+    wasQuiet.current = quietNow;
+    if (quietNow || previous === false) return;
+    void releaseHeldAlerts((alert, id) => scheduleLocalAlert(alert, id)).catch(() => undefined);
+  }, [ready, quietNow]);
 
   const lastObservedProtection = useRef<ProtectionStatus | null>(null);
   useEffect(() => {

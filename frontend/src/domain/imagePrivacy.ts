@@ -43,6 +43,7 @@ export {
 } from "./imagePrivacyCore.ts";
 
 import { detectSensitiveContent, redactText, classifyRegions, hasVisuallySignificantContent, extractSenderFromText } from "./imagePrivacyCore.ts";
+import { simulatedRead } from "../preview/simulatedScreening";
 
 export type { SensitiveType, ScreeningContext } from "./privacyPolicy.ts";
 
@@ -77,6 +78,9 @@ export interface ScreeningResult {
   detectedSender: string | null;
   /** The image that was screened, unmodified (kept on device as original evidence). */
   sourceUri?: string;
+  /** Set only in a preview build where the device read was simulated — shown before sending so a
+   *  simulated read is never mistaken for a real on-device one. Absent in every shipped build. */
+  previewNotice?: string;
 }
 
 export type SubmissionChoice =
@@ -208,7 +212,18 @@ async function screenImageInner(
   }
 
   // Step 2: Attempt on-device OCR
-  const regions = await extractTextLocally(stripped.uri, context);
+  let regions = await extractTextLocally(stripped.uri, context);
+  let previewNotice: string | undefined;
+
+  // A preview build has no native text recogniser. The EXTERNAL READ — and only that — is replaced
+  // there, and what it returns goes through the same classification below as a real device read.
+  if (regions === null) {
+    const simulated = simulatedRead(imageUri);
+    if (simulated) {
+      regions = classifyRegions(simulated.blocks, context);
+      previewNotice = simulated.notice;
+    }
+  }
 
   if (regions === null) {
     return {
@@ -249,7 +264,7 @@ async function screenImageInner(
   if (purpose === "message_screenshot") {
     const summaryParts: string[] = [];
     if (hasCredentials) summaryParts.push("credentials detected and redacted");
-    if (summaryParts.length === 0) summaryParts.push("no sensitive content detected");
+    if (summaryParts.length === 0) summaryParts.push(previewNotice && regions.length === 0 ? "no text was read, so nothing in the image was checked" : "no sensitive content detected");
     if (detectedSender) summaryParts.push(`sender preserved: ${detectedSender}`);
 
     return {
@@ -257,10 +272,11 @@ async function screenImageInner(
       sensitiveRegions, allRegions: regions,
       sanitisedImageUri: null, strippedImageUri: stripped.uri,
       hasRedactions: hasCredentials,
-      screeningSummary: `Text extracted locally. ${summaryParts.join("; ")}. Personal details and sender information are kept as evidence.`,
+      screeningSummary: `${previewNotice ? "Text recognition simulated in this preview. " : "Text extracted locally. "}${summaryParts.join("; ")}. Personal details and sender information are kept as evidence.`,
       textOnlySuitable: true,
       dimensions: { width: stripped.width, height: stripped.height },
       detectedSender,
+      previewNotice,
     };
   }
 
@@ -269,7 +285,7 @@ async function screenImageInner(
   // copy after the user continues. This function only detects and reports.
   const summaryParts: string[] = [];
   if (hasCredentials) summaryParts.push("credentials detected — they will be blacked out on the copy sent");
-  if (summaryParts.length === 0) summaryParts.push("no sensitive content detected");
+  if (summaryParts.length === 0) summaryParts.push(previewNotice && regions.length === 0 ? "no text was read, so nothing in the image was checked" : "no sensitive content detected");
   if (detectedSender) summaryParts.push(`sender preserved as evidence: ${detectedSender}`);
 
   const textOnly = !hasVisuallySignificantContent(regions);
@@ -280,10 +296,11 @@ async function screenImageInner(
     sensitiveRegions, allRegions: regions,
     sanitisedImageUri: null, strippedImageUri: stripped.uri,
     hasRedactions: sensitiveRegions.length > 0,
-    screeningSummary: `${summaryParts.join("; ")}. Metadata stripped. Personal details and sender information are kept as evidence.`,
+    screeningSummary: `${previewNotice ? "Text recognition simulated in this preview. " : ""}${summaryParts.join("; ")}. Metadata stripped. Personal details and sender information are kept as evidence.`,
     textOnlySuitable: textOnly,
     dimensions: { width: stripped.width, height: stripped.height },
     detectedSender,
+    previewNotice,
   };
 }
 

@@ -13,6 +13,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { SafeStartScreen } from "@/src/components/SafeStartScreen";
 import { ToastHost } from "@/src/components/Toast";
+import { apiPostEmpty } from "@/src/api/client";
+import { markAlertOpened } from "@/src/push/alertLog";
 import { ensureNotificationChannels, loadNotifications } from "@/src/push/notifications";
 import { queryClient } from "@/src/query-client";
 import { getSecurityBootError } from "@/src/security/securityBoot";
@@ -39,8 +41,19 @@ if (Notifications) {
   if (Platform.OS === "android") void ensureNotificationChannels().catch(() => undefined);
 }
 
+// A tap is the one honest proof an alert arrived. Local alerts carry their log id; alerts sent from
+// Apollo's servers carry their alert key in the deep link, which is reported back so the delivery
+// ledger can say "opened on this phone" instead of only "accepted for delivery".
+function recordOpened(data: Record<string, unknown> | undefined, url: string | undefined) {
+  const localId = typeof data?.alert_id === "string" ? data.alert_id : null;
+  if (localId) void markAlertOpened(localId).catch(() => undefined);
+  const key = url?.match(/[?&]a=([^&]+)/)?.[1];
+  if (key) void apiPostEmpty(`/push/alerts/${encodeURIComponent(decodeURIComponent(key))}/opened`, `opened-${key}`).catch(() => undefined);
+}
+
 function openFromNotification(router: ReturnType<typeof useRouter>, data: Record<string, unknown> | undefined) {
   const url = (data?.deeplink ?? data?.action_url) as string | undefined;
+  recordOpened(data, url);
   if (!url) return;
   if (url.startsWith("http")) void Linking.openURL(url);
   else router.push(url as never);

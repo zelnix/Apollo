@@ -10,17 +10,74 @@ Structural rules:
 - DIRECT: Action-needed/urgent attention requires at least one action with a non-empty instruction
 - GUIDE: When actions exist, recommendedActionIndex must be set; instructions must be actionable
 - VERIFY: Completion 'complete' requires all material evidence examined; fabricated evidence rejected
+
+Findings that make the same point are merged before the response is returned, so the same fact is
+never stated twice in one result.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Optional
 
 from pydantic import ValidationError
 
-from services.higgins.contracts import ActionProposal, Finding, HigginsResponse, ModelResponse, Question
+from services.higgins.contracts import ActionProposal, Finding, HigginsResponse, ModelFinding, ModelResponse, Question
 
 CAPABILITY_ACTIONS = {"open_settings", "request_permission", "recheck"}
+
+# ── Finding de-duplication ───────────────────────────────────────────────────
+# Two findings that make the same point are one finding. The person reads the result once, so the
+# same fact restated in slightly different words reads as padding and buries what is actually new.
+_WORD_RE = re.compile(r"[a-z0-9][a-z0-9.\-]*")
+_FILLER = {"a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "can", "does", "for", "from",
+           "has", "have", "in", "is", "it", "its", "not", "of", "on", "or", "that", "the", "this", "to",
+           "was", "were", "which", "with", "you", "your"}
+
+
+def _signature(text: str) -> frozenset[str]:
+    """The meaning-bearing words of a finding. Equivalent hostnames reduce to the same token."""
+    low = text.lower().replace("www.", "")
+    return frozenset(w for w in (word.strip(".-") for word in _WORD_RE.findall(low)) if w and w not in _FILLER)
+
+
+def _weight(finding: ModelFinding) -> tuple[int, int]:
+    """How much a finding carries: cited evidence first, then how much it actually says."""
+    return (len(finding.evidence_ids) + len(finding.source_ids), len(finding.text))
+
+
+def deduplicate_findings(findings: list[ModelFinding]) -> list[ModelFinding]:
+    """Merge findings describing the same underlying issue, keeping the most informative one.
+
+    A finding is a duplicate when its meaning-bearing words are contained in (or almost identical to)
+    one already kept. The more informative version survives in the original position, so ordering and
+    the "at least one finding" guarantee are both preserved.
+    """
+    kept: list[ModelFinding] = []
+    signatures: list[frozenset[str]] = []
+    for finding in findings:
+        signature = _signature(finding.text)
+        if not signature:
+            kept.append(finding)
+            signatures.append(signature)
+            continue
+        replaced = False
+        for index, existing in enumerate(signatures):
+            overlap = len(signature & existing)
+            if not overlap:
+                continue
+            same_point = (overlap == len(signature) or overlap == len(existing)
+                          or overlap / len(signature | existing) >= 0.8)
+            if not same_point:
+                continue
+            if _weight(finding) > _weight(kept[index]):
+                kept[index], signatures[index] = finding, signature
+            replaced = True
+            break
+        if not replaced:
+            kept.append(finding)
+            signatures.append(signature)
+    return kept
 
 
 def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: set[str], capability_ids: set[str],
@@ -105,7 +162,7 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         question = Question.model_validate(pending_question)
     response = HigginsResponse(revision=revision, overview=model.overview, explanation_markdown=model.explanation_markdown, assessment=model.assessment,
                                attention=model.attention, attention_reason=model.attention_reason,
-                               findings=[Finding(id=str(uuid.uuid4()), **f.model_dump()) for f in model.findings], uncertainties=model.uncertainties,
+                               findings=[Finding(id=str(uuid.uuid4()), **f.model_dump()) for f in deduplicate_findings(model.findings)], uncertainties=model.uncertainties,
                                scope=model.scope, source_ids=model.source_ids, remaining_evidence_ids=model.remaining_evidence_ids, actions=actions,
                                recommended_action_id=actions[model.recommended_action_index].id if model.recommended_action_index is not None and actions else None,
                                question=question, completion=model.completion)

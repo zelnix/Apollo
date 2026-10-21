@@ -271,4 +271,18 @@ export const SIMULATED_SCREENSHOTS: SimulatedScreenshot[] = [
     question: "Is this delivery message a scam?",
     probes: "A plain delivery notice: no link, no request, no urgency.",
   },
+  {
+    id: "sim-shot-sms-code",
+    label: "Sign-in code message from +61 476 300 112",
+    asset: require("../../assets/images/preview/sim-shot-sms-code.png"),
+    question: "Is this message really from my bank?",
+    probes: "Shows a six-digit sign-in code in the message, and asks for it to be sent back.",
+  },
+  {
+    id: "sim-shot-email-password",
+    label: "Mailbox password reset email",
+    asset: require("../../assets/images/preview/sim-shot-email-password.png"),
+    question: "Is this password reset genuine?",
+    probes: "Shows a temporary password in a box the text recogniser can read but cannot place on the image.",
+  },
 ];

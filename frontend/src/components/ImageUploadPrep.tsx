@@ -56,6 +56,12 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
       setPrepError("Apollo can't verify this image is safe to send because on-device text recognition is unavailable. Type the text manually, or use a native build for automatic screening.");
       return;
     }
+    // A credential the recogniser read but couldn't place has no box to black out — a zero-size box
+    // would leave it plainly visible on the copy that gets sent. Fail closed.
+    if (credentials.some((r) => !r.frame || r.frame.width <= 0 || r.frame.height <= 0)) {
+      setPrepError("This image appears to show a password, PIN or verification code, and Apollo couldn't work out exactly where it sits, so it couldn't black it out and the image wasn't sent. Crop that part out and try again.");
+      return;
+    }
     setBusy("Preparing image…");
     const base = { originalUri, cropped, text: screening.extractedText || null, screening };
     try {
@@ -71,7 +77,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
     } finally {
       setBusy(null);
     }
-  }, [screening, credentials.length, onComplete, originalUri, cropped]);
+  }, [screening, credentials, onComplete, originalUri, cropped]);
 
   const onCropped = useCallback(async (uri: string) => {
     setCropping(false); setPrepError(null); setBusy("Checking cropped image…");
@@ -93,6 +99,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
         onCrop={cropSource && !sendError ? () => setCropping(true) : undefined}
         busyLabel={busy ?? (sending ? "Sending…" : null)}
         error={prepError ?? sendError}
+        notice={screening.previewNotice}
         onRetry={sendError ? onRetrySubmission : prepError ? () => void prepare() : undefined}
         testID="image-upload-prep"
       />

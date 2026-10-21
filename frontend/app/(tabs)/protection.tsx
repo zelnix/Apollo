@@ -583,13 +583,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FBFEFC",
   },
   heroBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: "100%",
     height: "100%",
     opacity: 0.7,
   },
   heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
   },

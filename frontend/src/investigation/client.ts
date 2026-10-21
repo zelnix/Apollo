@@ -15,7 +15,6 @@ import { screenImage } from "@/src/domain/imagePrivacy";
 async function investigationImageMeta(uri: string, gate?: SanitizationReceipt): Promise<Record<string, unknown>> {
   if (gate) {
     if (gate.decision === "withheld") return Promise.reject(new Error("This image was withheld."));
-    if (gate.decision === "not_checked") return Promise.reject(new Error("Apollo could not verify this image is safe to send (on-device text recognition unavailable). Type the text manually or try again with a native build."));
     return sanitizationMetadata(gate);
   }
   const screening = await screenImage(uri, "investigation_evidence");

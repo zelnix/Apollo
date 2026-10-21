@@ -29,8 +29,8 @@ export const MOCK_THREAT_EVENT: PatrolEvent = {
   ],
   what_to_do:
     "Open Settings → Security → Device admin apps (Android) or Settings → General → VPN & Device Management (iPhone), find \"Acme IT Mobile Device Management\", and confirm with your work or school that they installed it. Remove it if nobody can account for it.",
-  indicator_host: undefined,
-  indicator_digest: undefined,
+  indicator_host: null,
+  indicator_digest: null,
   local_indicator: undefined,
   verified_block: false,
   evidence_provenance: "local_device",

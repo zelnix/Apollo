@@ -11,7 +11,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { alertHistory, type AlertHistoryRow } from "@/src/domain/alertHistory";
+import { readAlertLog } from "@/src/push/alertLog";
 import {
+  getAlertHistory,
   getNotificationHealth,
   getPushRegistration,
   registerRemotePush,
@@ -57,6 +60,7 @@ export default function NotificationCheckScreen() {
   const [registration, setRegistration] = useState<PushRegistrationState | null>(null);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [lastFailure, setLastFailure] = useState<NotifFailure | null>(null);
+  const [history, setHistory] = useState<AlertHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"device" | "server" | null>(null);
   const [deviceResult, setDeviceResult] = useState<string | null>(null);
@@ -69,6 +73,11 @@ export default function NotificationCheckScreen() {
     try { setRegistration(await getPushRegistration()); }
     catch (e) { setRegistration(null); setRegistrationError(e instanceof Error ? e.message : "Apollo's servers could not be reached."); }
     setLastFailure(await readLastFailure());
+    const [server, device] = await Promise.all([
+      getAlertHistory().catch(() => []),
+      readAlertLog().catch(() => []),
+    ]);
+    setHistory(alertHistory(server, device));
     setLoading(false);
   }, []);
 
@@ -229,6 +238,33 @@ export default function NotificationCheckScreen() {
             disabled={busy !== null}
           />
           {serverResult ? <Card style={s.result} testID="notification-check-server-result"><Body>{serverResult}</Body></Card> : null}
+        </Card>
+      </View>
+
+      <View>
+        <SectionTitle>Alert history</SectionTitle>
+        <Card testID="notification-check-history">
+          <Body>
+            Every alert Apollo raised, and what became of it. &ldquo;Accepted&rdquo; means the delivery service took
+            it on — only &ldquo;opened&rdquo; proves it reached you, because nothing can see your notification bar.
+          </Body>
+          {history.length === 0 ? (
+            <Body testID="notification-check-history-empty">Apollo has not raised an alert on this phone yet.</Body>
+          ) : (
+            history.map((row) => (
+              <View key={row.id} style={s.row} testID={`notification-check-history-${row.id}`}>
+                <View style={s.rowHead}>
+                  <Text style={s.rowLabel}>{row.title}</Text>
+                  <Text style={s.mono}>{new Date(row.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</Text>
+                </View>
+                <Body>
+                  {row.status}
+                  {row.opened ? " · Opened on this phone" : ""}
+                </Body>
+                <Text style={s.mono}>{row.source === "server" ? "Sent from Apollo's servers" : "Raised on this phone"}</Text>
+              </View>
+            ))
+          )}
         </Card>
       </View>
 

@@ -5,6 +5,8 @@ import { Platform } from "react-native";
 
 import { apiGet, apiPost, apiPostEmpty } from "@/src/api/client";
 
+import { recordAlert } from "./alertLog";
+
 export type NotificationStatus = "granted" | "denied" | "undetermined" | "blocked" | "unsupported";
 export type LocalAlert = { title: string; body: string; channel: "apollo_alerts" | "family"; actionUrl: string };
 export type PushRegistrationResult = { token: string; registered: true } | { token: null; registered: false; reason: string };
@@ -144,18 +146,28 @@ export async function ensureNotificationChannels(): Promise<void> {
   return channelsReady;
 }
 
-/** Schedule locally; an OS permission or scheduling failure never masquerades as delivery. */
-export async function scheduleLocalAlert(alert: LocalAlert): Promise<string> {
+/** Schedule locally; an OS permission or scheduling failure never masquerades as delivery.
+ *  Every attempt is written to the on-device alert log, successes and failures alike, so a person can
+ *  later see exactly what Apollo tried to show them. */
+export async function scheduleLocalAlert(alert: LocalAlert, logId?: string): Promise<string> {
+  const id = logId ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const N = loadNotifications();
-  if (!N) throw new Error("Local notifications need an installed Apollo build.");
+  const fail = async (message: string): Promise<never> => {
+    if (!logId) await recordAlert({ id, title: alert.title, body: alert.body, at: new Date().toISOString(), state: "failed", detail: message });
+    throw new Error(message);
+  };
+  if (!N) return fail("Local notifications need an installed Apollo build.");
   await ensureNotificationChannels();
-  if (await getNotificationStatus() !== "granted") throw new Error("Notification permission is not granted.");
+  if (await getNotificationStatus() !== "granted") return fail("Notification permission is not granted.");
   // Route all alerts through the consolidated channel. Family uses its own channel.
   const channelId = alert.channel === "family" ? FAMILY_CHANNEL : APOLLO_ALERTS_CHANNEL;
-  return N.scheduleNotificationAsync({
-    content: { title: alert.title, body: alert.body, sound: "default", data: { action_url: alert.actionUrl } },
+  const scheduled = await N.scheduleNotificationAsync({
+    content: { title: alert.title, body: alert.body, sound: "default", data: { action_url: alert.actionUrl, alert_id: id } },
     trigger: Platform.OS === "android" ? { channelId } : null,
   });
+  // A held alert already has its row; releasing it updates that row instead of adding a second one.
+  if (!logId) await recordAlert({ id, title: alert.title, body: alert.body, at: new Date().toISOString(), state: "shown" });
+  return scheduled;
 }
 
 // ------------------------------------------------------------------ remote push registration
@@ -213,6 +225,22 @@ export interface PushRegistrationState {
 /** Server's view of this installation's push registration. */
 export function getPushRegistration() {
   return apiGet<PushRegistrationState>("/push/registration");
+}
+
+export interface ServerAlert {
+  alertKey: string;
+  title: string;
+  state: "queued" | "submitted" | "provider_accepted" | "device_observed" | "failed" | "outcome_unknown" | "held";
+  failureCode: string | null;
+  sentAt: string;
+  updatedAt: string;
+  heldUntil?: string;
+  openedAt: string | null;
+}
+
+/** Every alert Apollo's servers sent to this installation, and what became of each one. */
+export function getAlertHistory(limit = 30) {
+  return apiGet<ServerAlert[]>(`/push/alerts?limit=${limit}`);
 }
 
 /** Ask Apollo's servers to send this installation a sample alert. Returns the delivery state. */

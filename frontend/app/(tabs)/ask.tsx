@@ -32,6 +32,7 @@ import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStat
 import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage } from "@/src/higgins/localResponder";
 import { getNotificationHealth } from "@/src/push/notifications";
 import { useInvestigation } from "@/src/investigation/caseStore";
+import type { Gate } from "@/src/investigation/types";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useProtectionHealth } from "@/src/protection/healthStore";
@@ -130,7 +131,7 @@ export default function Ask() {
     router.setParams({ screenshotUri: "", screenshotName: "", screenshotType: "", prompt: "" });
     setInvestigationMode(true); setText(""); setRouteError(null); setChatError(null); setLastAction(null);
     const operationId = Crypto.randomUUID(); router.setParams({ operationId });
-    const input = { gate: null as string | null, question, submissions: [] as { clientItemId: string; kind: "text" | "url"; value: string; label: string }[], initialFindingRefs: [] as string[], initialFindings: [] as string[] };
+    const input = { gate: null as Gate | null, question, submissions: [] as { clientItemId: string; kind: "text" | "url"; value: string; label: string }[], initialFindingRefs: [] as string[], initialFindings: [] as string[] };
     void start(input, [{ uri, name, mediaType: type }], operationId);
   }, [params.screenshotUri, params.screenshotName, params.screenshotType, params.prompt, deviceId, router, start]);
 

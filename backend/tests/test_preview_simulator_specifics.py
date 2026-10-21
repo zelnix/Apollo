@@ -73,3 +73,24 @@ def test_scope_states_what_was_and_was_not_done():
     assert "EV-1" in out["scope"]
     assert "No website was opened" in out["scope"]
     assert out["uncertainties"]
+
+
+def test_no_section_is_a_copy_of_another():
+    """Each section says something different: conclusion, consequence, evidence, reasoning."""
+    out = _result(BANK_TEXT)
+    finding_texts = [f["text"] for f in out["findings"]]
+    assert out["overview"] not in finding_texts
+    assert out["attentionReason"] not in finding_texts
+    assert out["attentionReason"] not in out["overview"]
+    for text in finding_texts:
+        assert text not in out["overview"]
+        assert text not in out["explanationMarkdown"]
+    # The briefing is reasoning, not a reprint of the uncertainties, scope or actions.
+    for line in out["uncertainties"] + [a["instruction"] for a in out["actions"]] + [out["scope"]]:
+        assert line not in out["explanationMarkdown"]
+
+
+def test_the_brand_article_agrees_with_the_name():
+    out = _result("ING: confirm your account at https://abc.net.au/ing")
+    assert "an ING" in out["overview"]
+    assert " a ING" not in out["overview"]

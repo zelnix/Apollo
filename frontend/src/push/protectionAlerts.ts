@@ -42,7 +42,7 @@ export function protectionUpdateAlert(event: PatrolEvent): LocalAlert | null {
   return {
     title: "Apollo updated your protection",
     body: event.headline || "Apollo successfully installed updated website security rules.",
-    channel: "default",
+    channel: "apollo_alerts",
     actionUrl: `/patrol/${encodeURIComponent(event.event_id)}`,
   };
 }
@@ -60,7 +60,7 @@ export function dailySummaryAlert(activity: DailyActivity): LocalAlert | null {
   return {
     title: "Apollo's Day on Patrol",
     body: activity.summary,
-    channel: "default",
+    channel: "apollo_alerts",
     actionUrl: "/(tabs)/patrol",
   };
 }

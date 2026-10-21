@@ -31,7 +31,7 @@ interface TextGuardLocalFindingsDeps {
     analyzer: string;
     findings: Array<{ ruleId: string; title: string }>;
   }>>;
-  acknowledgeTextGuardLocalFindings: (ids: string[]) => Promise<void>;
+  acknowledgeTextGuardLocalFindings: (ids: string[]) => Promise<unknown>;
   /** Called when the device read itself failed, so the gap can be reported rather than hidden. */
   onReadFailure?: (message: string) => void;
 }

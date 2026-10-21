@@ -42,6 +42,10 @@ import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { PhonePickers, type RecentSms } from "@/src/security/phonePickers";
+import { SourceHero } from "@/src/components/SourceHero";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
+import { SIMULATED_TEXTS } from "@/src/preview/samples";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -135,6 +139,7 @@ export default function CheckMessage() {
   const sharedImage = shared?.files?.find((file) => (file.mimeType ?? "").startsWith("image/"))?.path || params.imageUri || "";
   const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
+  const [messagePicker, setMessagePicker] = useState(false);
   const [text, setText] = useState(String(sharedText));
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
   const [result, setResult] = useState<MessageOutcome | null>(null);
@@ -361,29 +366,24 @@ export default function CheckMessage() {
       </View>
 
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]} bottomOffset={24} testID="message-scroll">
-        {/* ── Description ── */}
-        <Text style={s.description}>
-          Choose a message from your device, take a screenshot, or enter the text.{"\n"}Magnum DI will investigate it for possible scams.
-        </Text>
+        <SourceHero
+          testID="message-hero"
+          title="Pick a message from this phone"
+          caption="Apollo reads the one message you choose — never your inbox or your history."
+          actions={[{
+            testID: "message-pick-sms",
+            label: "Choose a message",
+            icon: <MessageSquare size={20} color={colors.onBrandPrimary} />,
+            onPress: () => {
+              if (canPickSms) { router.push("/message-picker"); return; }
+              if (PREVIEW_SIMULATION) { setMessagePicker(true); return; }
+              showToast(Platform.OS === "ios" ? "Direct message access is not available on iOS. Use the share or screenshot options instead." : "Message access requires a native build with SMS permission.", "neutral");
+            },
+          }]}
+        />
 
-        {/* ── Two action cards ── */}
+        {/* ── Screenshot action card ── */}
         <View style={s.actionCardsRow}>
-          {/* Select from messages */}
-          <Pressable
-            testID="message-pick-sms"
-            accessibilityRole="button"
-            accessibilityLabel="Select from messages"
-            onPress={() => canPickSms ? router.push("/message-picker") : showToast(Platform.OS === "ios" ? "Direct message access is not available on iOS. Use the share or screenshot options instead." : "Message access requires a native build with SMS permission.", "neutral")}
-            style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
-          >
-            <View style={s.actionCardHeader}>
-              <View style={s.actionCardIconWell}><MessageSquare size={20} color={colors.onSurface} /></View>
-              <Text style={s.actionCardTitle}>Select from messages</Text>
-              <ChevronRight size={18} color={colors.muted} />
-            </View>
-            <Text style={s.actionCardSub}>Choose a message from your messaging app.</Text>
-          </Pressable>
-
           {/* Take a screenshot */}
           <Pressable
             testID="message-screenshot"
@@ -529,6 +529,24 @@ export default function CheckMessage() {
 
       <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+
+      <SourcePickerSheet
+        visible={messagePicker}
+        title="Your messages"
+        note="Apollo runs the real message check on whichever one you pick."
+        preview
+        items={SIMULATED_TEXTS.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes }))}
+        emptyText="There are no messages to choose from here."
+        onSelect={(id) => {
+          setMessagePicker(false);
+          const m = SIMULATED_TEXTS.find((x) => x.id === id);
+          if (!m) return;
+          setSender(m.sender); setText(m.text);
+          void run(m.text, m.sender);
+        }}
+        onClose={() => setMessagePicker(false)}
+        testID="message-source-picker"
+      />
 
       {/* ── Upload warning — credentials are blacked out on the analysis copy ── */}
       {gateScreening && (

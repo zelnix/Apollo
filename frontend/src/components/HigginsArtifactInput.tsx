@@ -11,15 +11,22 @@
  */
 
 import { Asset } from "expo-asset";
+import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, ScrollView, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Linking, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 
+import { apiGet } from "@/src/api/client";
+import { PhonePickerSheet } from "./PhonePickerSheet";
 import { Sheet } from "./Sheet";
-import { SimulatedPicker } from "./SimulatedPicker";
+import { PREVIEW_SIMULATION } from "./SimulatedPicker";
+import { SourcePickerSheet, type SourceChoice } from "./SourcePickerSheet";
+import { SourceHero } from "./SourceHero";
+import { AppDeviceSdk, type InstalledAppRef } from "@/src/security/appDeviceSdk";
+import { PhonePickers } from "@/src/security/phonePickers";
+import { useApollo } from "@/src/store/ApolloContext";
 import {
-  PREVIEW_SAMPLES_ENABLED,
   SIMULATED_APPS,
   SIMULATED_CALLS,
   SIMULATED_DEVICE_CONCERNS,
@@ -29,6 +36,7 @@ import {
   SIMULATED_SCREENSHOTS,
   SIMULATED_TEXTS,
 } from "@/src/preview/samples";
+import { registerPreviewImage } from "@/src/preview/simulatedScreening";
 import { ImageUploadPrep, type PreparedImage } from "./ImageUploadPrep";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Button } from "./ui";
@@ -163,6 +171,78 @@ const useStyles = makeStyles((c) => ({
 const SAMPLE_NOTE =
   "Preview only. Selecting one fills the box below — Higgins still runs the real check when you submit.";
 
+// ── Pick from my own things ──────────────────────────────────────────────────
+// Each category names the sources a person can pick from instead of typing. On a real phone these read
+// the person's own items; in a preview build the same button opens clearly-tagged sample items, because
+// the real source (inbox, call log, installed apps) cannot be reached there.
+type SourceKey = "email" | "messages" | "calls" | "apps" | "files" | "screenshots" | "links" | "concerns";
+
+const CATEGORY_SOURCES: Record<HigginsCheckCategory, SourceKey[]> = {
+  screenshot: ["screenshots"],
+  websites_links: ["links"],
+  messages_calls: ["messages", "calls"],
+  email_accounts: ["email"],
+  apps_files: ["apps", "files"],
+  device_internet: ["concerns"],
+};
+
+const SOURCE_LABEL: Record<SourceKey, string> = {
+  email: "Choose from my email",
+  messages: "Choose a message",
+  calls: "Choose a recent caller",
+  apps: "Choose an installed app",
+  files: "Choose a file",
+  screenshots: "Choose a sample screenshot",
+  links: "Choose a sample link",
+  concerns: "Choose a sample concern",
+};
+
+const SOURCE_TITLE: Record<SourceKey, string> = {
+  email: "Your email",
+  messages: "Your messages",
+  calls: "Recent callers",
+  apps: "Installed apps",
+  files: "Your files",
+  screenshots: "Sample screenshots",
+  links: "Sample links",
+  concerns: "Sample concerns",
+};
+
+const SOURCE_NOTE: Record<SourceKey, string> = {
+  email: "Pick an email and Apollo fills the box below with it. Nothing is sent until you submit.",
+  messages: "Pick a message and Apollo fills the box below with it. Nothing is sent until you submit.",
+  calls: "Pick a number and Apollo fills the box below with it. Nothing is sent until you submit.",
+  apps: "Pick an app and Apollo fills the box below with its name. Nothing is sent until you submit.",
+  files: "Pick a file and Apollo fills the box below with its name and type. Nothing is sent until you submit.",
+  screenshots: SAMPLE_NOTE,
+  links: SAMPLE_NOTE,
+  concerns: SAMPLE_NOTE,
+};
+
+/** Sources with no real list to read on any device — offered in preview only. */
+const PREVIEW_ONLY_SOURCES: SourceKey[] = ["screenshots", "links", "concerns"];
+
+/** The hero card at the top of the sheet: pick one of your own things before typing anything. */
+const HERO_TITLE: Record<HigginsCheckCategory, string> = {
+  screenshot: "Pick a screenshot from this phone",
+  websites_links: "Pick a link",
+  messages_calls: "Pick a message or caller from this phone",
+  email_accounts: "Pick an email from your inbox",
+  apps_files: "Pick an app or file from this phone",
+  device_internet: "Pick a concern",
+};
+
+const HERO_CAPTION: Record<HigginsCheckCategory, string> = {
+  screenshot: "Higgins reads the image you choose. It stays on this phone until you submit it.",
+  websites_links: "Higgins checks where the link really leads.",
+  messages_calls: "Higgins reads only the one message or number you choose — never your inbox or call history.",
+  email_accounts: "Higgins reads only the one email you choose and checks the sender, the links and the request.",
+  apps_files: "Higgins checks the app's source and permissions, or the file's signature and contents.",
+  device_internet: "Higgins starts from what you have noticed on this device.",
+};
+
+interface InboxItem { id: string; account?: string; from: string; subject: string; snippet: string }
+
 export interface ArtifactResult {
   category: HigginsCheckCategory;
   gate: Gate | null;
@@ -187,6 +267,7 @@ interface Props {
 export function HigginsArtifactInput({ visible, category, initialQuestion, onClose, onSubmit }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
+  const { deviceId } = useApollo();
   const [content, setContent] = useState("");
   const [question, setQuestion] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -195,7 +276,11 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [prepError, setPrepError] = useState<string | null>(null);
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
-  const [samplesOpen, setSamplesOpen] = useState(false);
+  const [picker, setPicker] = useState<SourceKey | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [apps, setApps] = useState<InstalledAppRef[]>([]);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const config = category ? CATEGORY_CONFIG[category] : null;
@@ -211,7 +296,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setPrepError(null);
       setCameraBlocked(false);
       setSelectedSample(null);
-      setSamplesOpen(false);
+      setPicker(null);
+      setSourceError(null);
     }
   }, [visible, category]);
 
@@ -263,14 +349,14 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     }
   }, []);
 
-  // Preview-only: fill the field with a sample. The person still submits, and the submission runs
-  // Apollo's real check — nothing here decides or pre-empts a verdict.
+  // Whatever is picked — real item or preview sample — lands in the same field the person could have
+  // typed into. The submission still runs Apollo's real check; nothing here pre-empts a verdict.
   const fillSample = useCallback((id: string, text: string, suggestedQuestion?: string) => {
     setContent(text);
     setSelectedSample(id);
     if (suggestedQuestion) setQuestion((q) => q.trim() || suggestedQuestion);
     // Back to the entry popup, which looks exactly as it does in production.
-    setSamplesOpen(false);
+    setPicker(null);
   }, []);
 
   const fillSampleScreenshot = useCallback(async (id: string) => {
@@ -280,16 +366,175 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     try {
       const asset = Asset.fromModule(sample.asset);
       await asset.downloadAsync();
-      setImageUri(asset.localUri ?? asset.uri);
+      const uri = asset.localUri ?? asset.uri;
+      // The preview has no native text recogniser; this tells the screening boundary that the text
+      // of THIS sample image is known, so the real screening can run on its actual contents.
+      registerPreviewImage(uri, sample.id);
+      setImageUri(uri);
       setSelectedSample(sample.id);
       setQuestion((q) => q.trim() || sample.question);
-      setSamplesOpen(false);
+      setPicker(null);
     } catch (err) {
       console.warn("[HigginsArtifactInput] Sample screenshot error:", err);
     } finally {
       setPicking(false);
     }
   }, []);
+
+  // ── Real sources ───────────────────────────────────────────────────────────
+  // A failed read is reported as a failed read. It is never shown as "nothing found", and the typed
+  // field always stays available so a person is never dead-ended.
+  const loadInbox = useCallback(async () => {
+    if (!deviceId) { setSourceError("Apollo hasn't finished starting up. Try again in a moment."); return; }
+    setSourceLoading(true);
+    setSourceError(null);
+    try {
+      const status = await apiGet<{ connected: boolean }>(`/gmail/status?device_id=${deviceId}`);
+      if (!status.connected) {
+        setInbox([]);
+        setSourceError("No email account is connected yet. Connect one in Apollo's email check, or paste the email into the box instead.");
+        return;
+      }
+      const data = await apiGet<{ messages: InboxItem[] }>(`/gmail/messages?device_id=${deviceId}&limit=10`);
+      setInbox(data.messages ?? []);
+    } catch {
+      setInbox([]);
+      setSourceError("Apollo couldn't read your inbox just now. You can paste the email into the box instead.");
+    } finally {
+      setSourceLoading(false);
+    }
+  }, [deviceId]);
+
+  const loadApps = useCallback(async () => {
+    setSourceLoading(true);
+    setSourceError(null);
+    try {
+      setApps(await AppDeviceSdk.listInstalledApps());
+    } catch {
+      setApps([]);
+      setSourceError("Apollo couldn't read the list of installed apps from this device. Type the app name into the box instead.");
+    } finally {
+      setSourceLoading(false);
+    }
+  }, []);
+
+  /** Pick a real file: its name and type go in the field, which is what a file check works from. */
+  const pickFile = useCallback(async () => {
+    setPicking(true);
+    setPrepError(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      const file = !res.canceled ? res.assets?.[0] : null;
+      if (file) fillSample(file.uri, `${file.name}${file.mimeType ? ` (${file.mimeType})` : ""}`, "Is this file safe to open?");
+    } catch {
+      setPrepError("Apollo couldn't open the file picker. You can type the file name and type instead.");
+    } finally {
+      setPicking(false);
+    }
+  }, [fillSample]);
+
+  /** Screenshot category: browse the file system for an image, alongside the gallery and camera. */
+  const browseForImage = useCallback(async () => {
+    setPicking(true);
+    setPrepError(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: "image/*", copyToCacheDirectory: true, multiple: false });
+      const file = !res.canceled ? res.assets?.[0] : null;
+      if (file) { setImageUri(file.uri); setSelectedSample(null); }
+    } catch {
+      setPrepError("Apollo couldn't open the file browser. You can select an image from your photos instead.");
+    } finally {
+      setPicking(false);
+    }
+  }, []);
+
+  const openSource = useCallback((key: SourceKey) => {
+    // The OS file picker is its own screen — no list of Apollo's to show in front of it.
+    if (key === "files" && !PREVIEW_SIMULATION) { void pickFile(); return; }
+    setSourceError(null);
+    setPicker(key);
+    if (PREVIEW_SIMULATION) return;  // sample rows need no loading
+    if (key === "email") void loadInbox();
+    if (key === "apps") void loadApps();
+  }, [loadApps, loadInbox, pickFile]);
+
+  // Preview rows, shaped exactly like the real ones so the picker behaves identically either way.
+  const previewRows = useMemo<Record<SourceKey, SourceChoice[]>>(() => ({
+    email: SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes })),
+    messages: SIMULATED_TEXTS.map((x) => ({ id: x.id, primary: x.sender, secondary: x.text, meta: x.probes })),
+    calls: SIMULATED_CALLS.map((x) => ({ id: x.id, primary: x.number, secondary: x.name ?? undefined, meta: x.probes })),
+    apps: SIMULATED_APPS.map((x) => ({ id: x.id, primary: x.appName, secondary: x.packageId, meta: x.probes })),
+    files: SIMULATED_FILES.map((x) => ({ id: x.id, primary: x.name, secondary: x.mime, meta: x.probes })),
+    screenshots: SIMULATED_SCREENSHOTS.map((x) => ({ id: x.id, primary: x.label, meta: x.probes })),
+    links: SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, meta: x.probes })),
+    concerns: SIMULATED_DEVICE_CONCERNS.map((x) => ({ id: x.id, primary: x.concern, meta: x.probes })),
+  }), []);
+
+  const pickPreview = useCallback((key: SourceKey, id: string) => {
+    if (key === "screenshots") { void fillSampleScreenshot(id); return; }
+    if (key === "email") {
+      const x = SIMULATED_EMAILS.find((e) => e.id === id);
+      if (x) fillSample(x.id, `From: ${x.from}\nSubject: ${x.subject}\n\n${x.body}`, "Is this email legitimate?");
+      return;
+    }
+    if (key === "messages") {
+      const x = SIMULATED_TEXTS.find((t) => t.id === id);
+      if (x) fillSample(x.id, `From ${x.sender}:\n${x.text}`, "Is this message a scam?");
+      return;
+    }
+    if (key === "calls") {
+      const x = SIMULATED_CALLS.find((c) => c.id === id);
+      if (x) fillSample(x.id, x.name ? `${x.number} (saved as ${x.name})` : x.number, "Who called me from this number?");
+      return;
+    }
+    if (key === "apps") {
+      const x = SIMULATED_APPS.find((a) => a.id === id);
+      if (x) fillSample(x.id, `${x.appName} (${x.packageId}) by ${x.developer}`, "Is this app safe to use?");
+      return;
+    }
+    if (key === "files") {
+      const x = SIMULATED_FILES.find((f) => f.id === id);
+      if (x) fillSample(x.id, `${x.name} (${x.mime})`, "Is this file safe to open?");
+      return;
+    }
+    if (key === "links") {
+      const x = SIMULATED_LINKS.find((l) => l.id === id);
+      if (x) fillSample(x.id, x.url, "Is this website safe?");
+      return;
+    }
+    const concern = SIMULATED_DEVICE_CONCERNS.find((c) => c.id === id);
+    if (concern) fillSample(concern.id, concern.concern);
+  }, [fillSample, fillSampleScreenshot]);
+
+  /** A real email: fetch the full body so the check reads the whole message, not just the preview line. */
+  const pickInboxEmail = useCallback(async (id: string) => {
+    const msg = inbox.find((m) => m.id === id);
+    if (!msg) return;
+    setSourceLoading(true);
+    let body = msg.snippet;
+    try {
+      const detail = await apiGet<{ from: string; subject: string; body: string }>(
+        `/gmail/message/${id}?device_id=${deviceId}${msg.account ? `&email=${encodeURIComponent(msg.account)}` : ""}`,
+      );
+      body = detail.body || msg.snippet;
+    } catch {
+      // Keep the preview line rather than nothing, and say what was used.
+      setPrepError("Apollo could only read the preview line of that email, not the full message.");
+    } finally {
+      setSourceLoading(false);
+    }
+    fillSample(id, `From: ${msg.from}\nSubject: ${msg.subject}\n\n${body}`, "Is this email legitimate?");
+  }, [deviceId, fillSample, inbox]);
+
+  const pickFromSource = useCallback((key: SourceKey, id: string) => {
+    if (PREVIEW_SIMULATION) { pickPreview(key, id); return; }
+    if (key === "email") { void pickInboxEmail(id); return; }
+    if (key === "apps") {
+      const app = apps.find((a) => a.packageId === id);
+      if (app) fillSample(app.packageId, `${app.appName} (${app.packageId})`, "Is this app safe to use?");
+    }
+  }, [apps, fillSample, pickInboxEmail, pickPreview]);
+
 
   const submit = (prepared: PreparedImage | null) => {
     if (!category || !config) return;
@@ -319,123 +564,16 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
   if (!visible || !category || !config) return null;
 
-  // Preview samples never sit inside the entry popup: they open in their own picker, so the popup a
-  // person fills in here is exactly the popup production shows.
-  const sampleSections = !PREVIEW_SAMPLES_ENABLED ? null : category === "screenshot" ? (
-    <SimulatedPicker
-      testID="higgins-sample-screenshots"
-      title="Sample screenshots"
-      note={SAMPLE_NOTE}
-      items={SIMULATED_SCREENSHOTS.map((x) => ({ id: x.id, primary: x.label, probes: x.probes }))}
-      onSelect={(id) => void fillSampleScreenshot(id)}
-      selectedId={selectedSample}
-      disabled={picking}
-    />
-  ) : category === "device_internet" ? (
-    <SimulatedPicker
-      testID="higgins-sample-device"
-      title="Sample concerns"
-      note={SAMPLE_NOTE}
-      items={SIMULATED_DEVICE_CONCERNS.map((x) => ({ id: x.id, primary: x.concern, probes: x.probes }))}
-      onSelect={(id) => {
-        const sample = SIMULATED_DEVICE_CONCERNS.find((x) => x.id === id);
-        if (sample) fillSample(sample.id, sample.concern);
-      }}
-      selectedId={selectedSample}
-    />
-  ) : category === "websites_links" ? (
-    <SimulatedPicker
-      testID="higgins-sample-links"
-      title="Sample links"
-      note={SAMPLE_NOTE}
-      items={SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, probes: x.probes }))}
-      onSelect={(id) => {
-        const sample = SIMULATED_LINKS.find((x) => x.id === id);
-        if (sample) fillSample(sample.id, sample.url, "Is this website safe?");
-      }}
-      selectedId={selectedSample}
-    />
-  ) : category === "messages_calls" ? (
-    <>
-      <SimulatedPicker
-        testID="higgins-sample-messages"
-        title="Sample messages"
-        note={SAMPLE_NOTE}
-        items={SIMULATED_TEXTS.map((x) => ({ id: x.id, primary: x.sender, secondary: x.text, probes: x.probes }))}
-        onSelect={(id) => {
-          const sample = SIMULATED_TEXTS.find((x) => x.id === id);
-          if (sample) fillSample(sample.id, `From ${sample.sender}:\n${sample.text}`, "Is this message a scam?");
-        }}
-        selectedId={selectedSample}
-      />
-      <SimulatedPicker
-        testID="higgins-sample-calls"
-        title="Sample callers"
-        note={SAMPLE_NOTE}
-        items={SIMULATED_CALLS.map((x) => ({ id: x.id, primary: x.number, secondary: x.name ?? undefined, probes: x.probes }))}
-        onSelect={(id) => {
-          const sample = SIMULATED_CALLS.find((x) => x.id === id);
-          if (sample) {
-            fillSample(
-              sample.id,
-              sample.name ? `${sample.number} (saved as ${sample.name})` : sample.number,
-              "Who called me from this number?",
-            );
-          }
-        }}
-        selectedId={selectedSample}
-      />
-    </>
-  ) : category === "email_accounts" ? (
-    <SimulatedPicker
-      testID="higgins-sample-emails"
-      title="Sample emails"
-      note={SAMPLE_NOTE}
-      items={SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, probes: x.probes }))}
-      onSelect={(id) => {
-        const sample = SIMULATED_EMAILS.find((x) => x.id === id);
-        if (sample) {
-          fillSample(
-            sample.id,
-            `From: ${sample.from}\nSubject: ${sample.subject}\n\n${sample.body}`,
-            "Is this email legitimate?",
-          );
-        }
-      }}
-      selectedId={selectedSample}
-    />
-  ) : category === "apps_files" ? (
-    <>
-      <SimulatedPicker
-        testID="higgins-sample-apps"
-        title="Sample apps"
-        note={SAMPLE_NOTE}
-        items={SIMULATED_APPS.map((x) => ({ id: x.id, primary: x.appName, secondary: x.packageId, probes: x.probes }))}
-        onSelect={(id) => {
-          const sample = SIMULATED_APPS.find((x) => x.id === id);
-          if (sample) {
-            fillSample(
-              sample.id,
-              `${sample.appName} (${sample.packageId}) by ${sample.developer}`,
-              "Is this app safe to use?",
-            );
-          }
-        }}
-        selectedId={selectedSample}
-      />
-      <SimulatedPicker
-        testID="higgins-sample-files"
-        title="Sample files"
-        note={SAMPLE_NOTE}
-        items={SIMULATED_FILES.map((x) => ({ id: x.id, primary: x.name, secondary: x.mime, probes: x.probes }))}
-        onSelect={(id) => {
-          const sample = SIMULATED_FILES.find((x) => x.id === id);
-          if (sample) fillSample(sample.id, `${sample.name} (${sample.mime})`, "Is this file safe to open?");
-        }}
-        selectedId={selectedSample}
-      />
-    </>
-  ) : null;
+  // Which "choose from my ..." buttons this category offers. Preview-only sources appear only in a
+  // preview build; sources that need a native list are hidden where the platform cannot provide one,
+  // so a button is never offered that can only dead-end.
+  const sources = CATEGORY_SOURCES[category].filter((key) => {
+    if (PREVIEW_ONLY_SOURCES.includes(key)) return PREVIEW_SIMULATION;
+    if (PREVIEW_SIMULATION) return true;
+    if (key === "messages" || key === "calls") return PhonePickers.isSupported();
+    if (key === "apps") return Platform.OS === "android";
+    return true;  // email (asks the server) and files (the OS picker) work everywhere
+  });
 
   return (
     <Sheet
@@ -445,9 +583,23 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       testID="higgins-artifact-sheet"
       scrollRef={scrollRef}
     >
+      {/* Picking beats typing: the person's own things come first, as the hero of the sheet. */}
+      {sources.length ? (
+        <SourceHero
+          testID="higgins-artifact-hero"
+          title={HERO_TITLE[category]}
+          caption={HERO_CAPTION[category]}
+          actions={sources.map((key) => ({
+            testID: `higgins-artifact-source-${key}`,
+            label: SOURCE_LABEL[key],
+            disabled: picking,
+            onPress: () => openSource(key),
+          }))}
+        />
+      ) : null}
       {selectedSample ? (
         <Text style={s.helper} testID="higgins-artifact-sample-loaded">
-          Sample loaded below. Check it reads the way you expect, then tap &ldquo;Ask Higgins to investigate&rdquo;.
+          Loaded below. Check it reads the way you expect, then tap &ldquo;Ask Higgins to investigate&rdquo;.
         </Text>
       ) : null}
       {/* Screenshot: image picker + optional question */}
@@ -472,9 +624,16 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
             onPress={() => void takePhoto()}
             disabled={picking}
           />
+          <Button
+            testID="higgins-artifact-browse-files"
+            variant="ghost"
+            label="Browse files"
+            onPress={() => void browseForImage()}
+            disabled={picking}
+          />
           <Text style={s.helper}>
-            Use the camera for a QR code, a letter, a parcel card or another screen in front of you.
-            The photo stays on your device until you submit it.
+            Pick from your photos, browse your files, or use the camera for a QR code, a letter, a parcel
+            card or another screen in front of you. The image stays on your device until you submit it.
           </Text>
           {cameraBlocked ? (
             <>
@@ -558,35 +717,46 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
         onPress={() => void handleSubmit()}
         disabled={!canSubmit}
       />
-      {sampleSections ? (
-        <Button
-          testID="higgins-artifact-open-samples"
-          variant="ghost"
-          label="Use a preview sample"
-          onPress={() => setSamplesOpen(true)}
-        />
-      ) : null}
       <Button
         testID="higgins-artifact-cancel"
         variant="ghost"
         label="Cancel"
         onPress={onClose}
       />
-      {sampleSections ? (
-        <Sheet
-          visible={samplesOpen}
-          onClose={() => setSamplesOpen(false)}
-          title="Preview samples"
-          testID="higgins-artifact-samples-sheet"
-        >
-          {sampleSections}
-          <Button
-            testID="higgins-artifact-samples-close"
-            variant="ghost"
-            label="Back"
-            onPress={() => setSamplesOpen(false)}
-          />
-        </Sheet>
+      {/* The real message/caller lists carry their own permission flow, so they use the shared picker
+          that already handles explain → ask → Open Settings. */}
+      {!PREVIEW_SIMULATION && (picker === "messages" || picker === "calls") ? (
+        <PhonePickerSheet
+          visible
+          mode={picker === "messages" ? "sms" : "calls"}
+          onClose={() => setPicker(null)}
+          onPickSms={(sms) => fillSample(`${sms.address}-${sms.date}`, `From ${sms.address}:\n${sms.body}`, "Is this message a scam?")}
+          onPickCall={(call) => fillSample(`${call.number}-${call.date}`, call.name ? `${call.number} (saved as ${call.name})` : call.number, "Who called me from this number?")}
+        />
+      ) : null}
+      {picker && !(!PREVIEW_SIMULATION && (picker === "messages" || picker === "calls")) ? (
+        <SourcePickerSheet
+          visible
+          title={SOURCE_TITLE[picker]}
+          note={SOURCE_NOTE[picker]}
+          preview={PREVIEW_SIMULATION}
+          loading={sourceLoading}
+          error={sourceError}
+          items={PREVIEW_SIMULATION ? previewRows[picker] : picker === "email"
+            ? inbox.map((m) => ({ id: m.id, primary: m.subject || "(no subject)", secondary: m.from, meta: m.snippet }))
+            : picker === "apps"
+              ? apps.map((a) => ({ id: a.packageId, primary: a.appName, secondary: a.packageId }))
+              : []}
+          emptyText={picker === "email"
+            ? "There is nothing in the last 30 days of the connected inbox."
+            : picker === "apps"
+              ? "This device reported no installed apps Apollo can list."
+              : "Nothing to choose from here."}
+          selectedId={selectedSample}
+          onSelect={(id) => pickFromSource(picker, id)}
+          onClose={() => setPicker(null)}
+          testID={`higgins-artifact-picker-${picker}`}
+        />
       ) : null}
       {screening ? (
         <ImageUploadPrep

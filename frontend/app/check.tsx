@@ -135,7 +135,6 @@ export default function CheckLink() {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
       if (picked.canceled) return;
       const asset = picked.assets[0];
-      setPageScreenshotUri(asset.uri);
       const screening = await screenImage(asset.uri, "investigation_evidence");
       setPageGateScreening(screening);
       setPendingPageScreenshot({ uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
@@ -168,7 +167,6 @@ export default function CheckLink() {
   const handlePageGateCancel = () => {
     setPageGateScreening(null);
     setPendingPageScreenshot(null);
-    setPageScreenshotUri(null);
   };
   const photoAccess = useScreenshotAccess(launchPagePicker);
 
@@ -290,7 +288,7 @@ export default function CheckLink() {
   // ── Recent links from Patrol events ──
   const recentLinkEvents = events
     .filter((e) => e.indicator_host)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
     .slice(0, 5);
 
   // ── Helper: contact initial color ──
@@ -442,7 +440,7 @@ export default function CheckLink() {
               const name = ev.headline?.replace(/\s*—.*$/, "") || domainName(host);
               const isDangerous = ev.state === "barking" || ev.state === "biting";
               const isSafe = ev.state === "resting";
-              const { datePart, timePart } = formatLinkDate(ev.created_at);
+              const { datePart, timePart } = formatLinkDate(ev.occurred_at);
               return (
                 <Pressable
                   key={ev.event_id}

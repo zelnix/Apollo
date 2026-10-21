@@ -125,7 +125,7 @@ export default function HigginsHistoryScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
               {FILTERS.map((filter) => (
-                <Pressable key={filter.key} testID={`higgins-history-filter-${filter.key || "all"}`} onPress={() => setStatus(filter.key)} style={[s.chip, status === filter.key && { backgroundColor: colors.brandLight, borderColor: colors.brandPrimary }]}>
+                <Pressable key={filter.key} testID={`higgins-history-filter-${filter.key || "all"}`} onPress={() => setStatus(filter.key)} style={[s.chip, status === filter.key && { backgroundColor: colors.brandSecondary, borderColor: colors.brandPrimary }]}>
                   <Text style={s.title}>{filter.label}</Text>
                 </Pressable>
               ))}

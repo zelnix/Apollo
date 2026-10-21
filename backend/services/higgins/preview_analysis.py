@@ -145,7 +145,9 @@ def read_indicators(text: str) -> Indicators:
             ind.brands.append((name, official))
 
     hosts = [_host(u) for u in URL_RE.findall(text)]
-    hosts += [h.lower() for h in BARE_DOMAIN_RE.findall(text) if h.lower() not in hosts]
+    # Bare domains go through the same normalisation, so "www.abc.net.au" written in the text and
+    # "https://abc.net.au/..." are recognised as one destination rather than two.
+    hosts += [_host(h) for h in BARE_DOMAIN_RE.findall(text)]
     ind.hosts = _dedupe([h for h in hosts if h])
 
     for name, official in ind.brands:
@@ -172,6 +174,50 @@ def _finding(text: str, basis: str, confidence: str, evidence_ids: list[str]) ->
 def _action(label: str, instruction: str) -> dict:
     return {"kind": "instruction", "label": label, "instruction": instruction,
             "capabilityId": None, "sourceIds": [], "desiredField": None, "desiredValue": None}
+
+
+def _article(word: str) -> str:
+    """"a" or "an" for the brand name that follows — "an ING", "a CommBank"."""
+    return "an" if word[:1].upper() in ("A", "E", "F", "H", "I", "L", "M", "N", "O", "R", "S", "X") else "a"
+
+
+def _briefing(ind: Indicators, subject: str | None, assessment: str) -> str:
+    """Why the findings matter and how they fit together.
+
+    This is the briefing, not a second copy of the result: the findings, uncertainties, scope and
+    actions are returned in their own fields and are displayed (and printed) from those fields. So
+    nothing here re-lists them — it explains the reasoning that connects them.
+    """
+    paras: list[str] = []
+    if assessment == "concern_found":
+        if ind.mismatched:
+            official = ind.mismatched[0][1]
+            paras.append(
+                "Impersonation works by borrowing a name you already trust, so the destination is never questioned. "
+                f"Here the name and the destination disagree, and that is what this conclusion rests on: a genuine "
+                f"{subject or 'organisation'} message has no reason to send you anywhere other than {official}.")
+        if ind.credentials:
+            paras.append(
+                "Credentials are the point of a request like this. Once they are typed in they can be used straight "
+                "away, which is why it matters before anything is entered rather than afterwards.")
+        if ind.amounts or ind.payments:
+            paras.append(
+                "A payment demand carries its own pressure: it is framed so that paying feels cheaper than checking. "
+                "Transfers, gift cards and cryptocurrency are chosen precisely because they are hard to reverse.")
+        if ind.urgency:
+            paras.append(
+                "The deadline exists to stop you checking. Taking the time pressure away costs you nothing — a real "
+                "debt, fine or account problem will still be there tomorrow.")
+    elif assessment == "uncertain":
+        paras.append(
+            "Nothing in the material settles intent either way. An unattributed link is not proof of a scam, but it is "
+            "not a reason to trust it either: who operates it cannot be established from the material alone, so the "
+            "sensible position is to treat it as unverified rather than as safe or as dangerous.")
+    else:
+        paras.append(
+            "There is no request, no link and no deadline to weigh up here, so nothing in the material points to a "
+            "concern. That is a statement about this material only, not about the sender or the account behind it.")
+    return "\n\n".join(paras)
 
 
 def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
@@ -260,17 +306,23 @@ def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
 
     if serious:
         assessment, attention = "concern_found", "action_needed"
+        # The overview is the conclusion and the one thing to do now. It does not enumerate the
+        # evidence — the link, the request and the amount are already stated once, in the findings.
         overview = (
-            f"This looks like a {subject} impersonation attempt." if subject and ind.mismatched
+            f"This looks like {_article(subject)} {subject} impersonation attempt." if subject and ind.mismatched
             else "This asks for information a genuine organisation would never request this way." if ind.credentials
             else "This pushes you to pay quickly, which is how scam demands work."
         )
-        if host_phrase:
-            overview += f" The link goes to {host_phrase}."
-        if ind.credentials:
-            overview += f" It asks for {ind.credentials[0]}."
-        overview += " Don't use the link or give anything out — check with the organisation yourself."
-        attention_reason = findings[0]["text"]
+        overview += (f" Don't act on it — check with {subject} yourself using contact details you already have."
+                     if subject else
+                     " Don't act on it — check with the organisation yourself using contact details you already have.")
+        # Why it needs attention: the consequence of acting on it, not a second copy of a finding.
+        attention_reason = (
+            "Entering those details would give someone else access to the account they belong to." if ind.credentials
+            else "Money sent this way is almost never recovered." if (ind.amounts or ind.payments)
+            else f"A page built to look like {subject} exists to collect whatever is typed into it." if subject
+            else "Acting on this before it has been verified is exactly what the sender is relying on."
+        )
         if host_phrase:
             actions.append(_action("Don't open the link", f"Do not open {host_phrase} and do not enter any details on it."))
         if subject:
@@ -281,11 +333,9 @@ def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
             actions.append(_action("Change it if you entered it", f"If you already gave {ind.credentials[0]}, change it now and tell your bank."))
     elif watchful:
         assessment, attention = "uncertain", "review"
-        overview = "Nothing here proves a scam, but it can't be confirmed as genuine either."
-        if host_phrase:
-            overview += f" It contains the link {host_phrase}, and who operates it isn't established by this material."
-        overview += " Treat it as unverified until you've checked with the organisation directly."
-        attention_reason = findings[0]["text"]
+        overview = ("Nothing here proves a scam, but it can't be confirmed as genuine either. "
+                    "Treat it as unverified until you've checked with the organisation directly.")
+        attention_reason = "Unverified material can still turn out to be a scam, so it is worth confirming before acting on it."
         actions.append(_action("Check before acting", "Confirm this with the organisation using contact details you already have before clicking anything or replying."))
     else:
         assessment, attention = "no_concern_found_within_scope", "none"
@@ -303,20 +353,7 @@ def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
     if not uncertainties:
         uncertainties.append("Anything outside the submitted material — earlier messages, the sender's history, the account itself — was not examined.")
 
-    detail_lines = [f"- {line}" for line in [f["text"] for f in findings]]
-    todo_lines = [f"- {a['instruction']}" for a in actions] or ["- Nothing to do."]
-    explanation = "\n".join([
-        f"**{overview}**",
-        "",
-        "**What the evidence shows**",
-        *detail_lines,
-        "",
-        "**What isn't settled**",
-        *[f"- {u}" for u in uncertainties],
-        "",
-        "**What to do**",
-        *todo_lines,
-    ])
+    explanation = _briefing(ind, subject, assessment)
 
     return {
         "overview": overview[:900],

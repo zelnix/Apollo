@@ -30,6 +30,7 @@ import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { buildHeroLines, buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
 import { STATE_LABEL } from "@/src/domain/types";
+import type { ApolloState, PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import {
   threatCaseStatus,
   STATUS_LABELS,

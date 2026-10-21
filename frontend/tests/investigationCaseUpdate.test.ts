@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
+import { bodyFrom, headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
 
 const placeholder = {
   event_id: "ev1", device_id: "d1", category: "message", state: "sniffing", status: "active",
@@ -82,4 +82,13 @@ test("severity never exceeds what the investigation concluded", () => {
 test("the headline is the first real sentence, never a category name", () => {
   assert.equal(headlineFrom("This is a Linkt toll scam. It asks for your card number."), "This is a Linkt toll scam.");
   assert.equal(headlineFrom("  A single statement with no full stop  "), "A single statement with no full stop");
+});
+
+test("the body never repeats the headline sentence", () => {
+  const overview = "This looks like an ING impersonation attempt. Don't act on it until you've checked with ING directly.";
+  assert.equal(bodyFrom(overview), "Don't act on it until you've checked with ING directly.");
+  // A one-sentence conclusion still has to say something.
+  assert.equal(bodyFrom("Nothing here needs action."), "Nothing here needs action.");
+  const patched = investigationPatch(placeholder, investigation())!;
+  assert.ok(!patched.what_happened!.startsWith(patched.headline));
 });

@@ -9,8 +9,9 @@
  * decide that fact in only one place.
  */
 
-export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
+import type { CheckResultGate } from "./checkResult";
 
+export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
 export interface GateMeta {
   id: GateId;
   /** User-facing name shown on Home, Protection, Check Result headers. */
@@ -20,7 +21,7 @@ export interface GateMeta {
   /** Category for grouping. */
   category: "enforcement" | "monitoring" | "event_driven";
   /** The gate name as it appears in CheckResultModel.gate. */
-  checkResultGate: string;
+  checkResultGate: CheckResultGate;
   /** Default check type label for Check Results. */
   defaultCheckType: string;
 }

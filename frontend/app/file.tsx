@@ -20,7 +20,9 @@ import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
 import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
 import { type PatrolEvent } from "@/src/domain/types";
-import { SimulatedPicker } from "@/src/components/SimulatedPicker";
+import { SourceHero } from "@/src/components/SourceHero";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
 import { SIMULATED_FILES } from "@/src/preview/samples";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -63,6 +65,7 @@ export default function CheckFile() {
   const [result, setResult] = useState<{ submissionId: string; a: FileAnalysis; event: PatrolEvent | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [filePicker, setFilePicker] = useState(false);
   const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string; owned: boolean } | null>(null);
   const [pending, setPending] = useState<PendingFile | null>(null);
   // The temporary handle (an app-owned picker copy, or a shared-in URI we never own) is kept alive for the whole
@@ -217,17 +220,18 @@ export default function CheckFile() {
         />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
-        <Text style={s.subtitle}>Check any file for known threats and suspicious patterns.</Text>
-        <SimulatedPicker
-          testID="file-simulated"
-          title="Simulated files"
-          note="These are NOT files from this device. Each sample is written to a real temporary file so Apollo's own inspection reads real bytes and runs the real file check. Apollo decides the outcome himself."
-          disabled={busy}
-          items={SIMULATED_FILES.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, probes: f.probes }))}
-          onSelect={(id) => { const f = SIMULATED_FILES.find((x) => x.id === id); if (f) void checkSimulatedFile(f); }}
+        <SourceHero
+          testID="file-hero"
+          title="Pick a file from this phone"
+          caption="Apollo reads the file's signature and a sample of its contents on this device. Nothing is uploaded."
+          actions={[{
+            testID: "file-pick",
+            label: busy ? "Inspecting file…" : "Choose a file",
+            disabled: busy,
+            onPress: () => { if (PREVIEW_SIMULATION) { setFilePicker(true); return; } void pick(); },
+          }]}
         />
-        <Button testID="file-pick" label={busy ? "Inspecting file\u2026" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
-        {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
+        {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => { if (PREVIEW_SIMULATION) { setFilePicker(true); return; } void pick(); }} disabled={busy} /></Card> : null}
         {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
         <Card testID="file-higgins-explanation" style={{ gap: spacing.xs }}><Body>Cloud hosting is not proof of safety — a harmful file hosted on a well-known service is still harmful. Apollo checks the file itself, not where it lives.</Body></Card>
             {pending?.needsSource && !pending.sourceAnswered ? <Card testID="file-source-followup" style={{ gap: spacing.sm }}><SectionTitle>One detail could change the advice</SectionTitle><Body>Where did this file come from? Choose “Not sure” if the source is unknown.</Body><View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id && pending.sourceAnswered }} aria-checked={source === o.id && pending.sourceAnswered} onPress={() => { setSource(o.id); setPending((current) => current ? { ...current, sourceAnswered: true } : current); }} style={[s.chip, source === o.id && pending.sourceAnswered && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
@@ -235,6 +239,17 @@ export default function CheckFile() {
             {pending ? <Button testID="file-finish-check" label={busy ? "Finishing check…" : "Finish file check"} onPress={() => void completePending()} disabled={busy || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)} /> : null}
         {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }))} disabled={!nameOnly.trim()} /></> : null}
       </KeyboardAwareScrollView>
+      <SourcePickerSheet
+        visible={filePicker}
+        title="Your files"
+        note="Each one is written to a real temporary file, so Apollo's inspection reads real bytes and runs the real file check."
+        preview
+        items={SIMULATED_FILES.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, meta: f.probes }))}
+        emptyText="There are no files to choose from here."
+        onSelect={(id) => { setFilePicker(false); const f = SIMULATED_FILES.find((x) => x.id === id); if (f) void checkSimulatedFile(f); }}
+        onClose={() => setFilePicker(false)}
+        testID="file-source-picker"
+      />
     </View>
   );
 }

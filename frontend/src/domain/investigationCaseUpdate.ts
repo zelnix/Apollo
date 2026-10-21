@@ -24,6 +24,16 @@ export function headlineFrom(overview: string): string {
   return (sentence.length > 160 ? `${sentence.slice(0, 157)}…` : sentence) || clean.slice(0, 160);
 }
 
+/** The overview with its headline sentence removed — the card already shows that sentence as the
+ *  title, so repeating it in the body says the same thing twice. Falls back to the full overview
+ *  when the conclusion is a single sentence and there is nothing else to show. */
+export function bodyFrom(overview: string): string {
+  const clean = overview.replace(/\s+/g, " ").trim();
+  const [first, ...rest] = clean.split(/(?<=[.!?])\s/);
+  const body = rest.join(" ").trim();
+  return body && first.length <= 160 ? body : clean;
+}
+
 function actionFrom(inv: DeviceInvestigation): string {
   const response = inv.response;
   const actions = response.actions ?? [];
@@ -48,10 +58,11 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
   const state = investigationState(response.assessment, response.attention);
   const whatToDo = actionFrom(inv);
   const headline = headlineFrom(overview);
+  const whatHappened = bodyFrom(overview);
 
   // Already applied — same findings and same conclusion, so nothing to write.
   const unchanged = event.headline === headline
-    && event.what_happened === overview
+    && event.what_happened === whatHappened
     && JSON.stringify(event.why ?? []) === JSON.stringify(findings)
     && event.what_to_do === whatToDo
     && event.state === state;
@@ -64,7 +75,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     status: event.status === "blocked" || event.status === "trusted" ? event.status : state === "resting" ? "resolved" : "active",
     resolved_at: state === "resting" ? event.resolved_at ?? inv.committedAt : event.resolved_at,
     headline,
-    what_happened: overview,
+    what_happened: whatHappened,
     why: findings.length ? findings : event.why,
     what_to_do: whatToDo,
     // The result is held on this device; it is this device's own record.

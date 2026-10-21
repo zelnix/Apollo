@@ -179,6 +179,20 @@ async def lifespan(_: FastAPI):
                 logger.warning("family assist maintenance failed")
             await asyncio.sleep(15)
     family_assist_task = asyncio.create_task(family_assist_loop(), name="apollo-family-assist")
+
+    # Gentle alerts raised during quiet hours are held, not dropped: this releases each one, separately,
+    # once the person's quiet window has ended.
+    async def quiet_hold_loop():
+        while True:
+            try:
+                await push.release_held_alerts()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("held alert release failed")
+            await asyncio.sleep(60)
+
+    quiet_hold_task = asyncio.create_task(quiet_hold_loop(), name="apollo-quiet-hold")
     maintenance_task = asyncio.create_task(supervise_maintenance(), name="apollo-maintenance-supervisor")
 
     # 7. learn_weekly_publish_loop — Auto-publish pending learning candidates (weekly cadence).
@@ -204,11 +218,12 @@ async def lifespan(_: FastAPI):
     yield
     learn_publish_task.cancel()
     maintenance_task.cancel()
+    quiet_hold_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(learn_publish_task, maintenance_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

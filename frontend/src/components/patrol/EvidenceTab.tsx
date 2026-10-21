@@ -165,7 +165,7 @@ function detectSourceType(event: PatrolEvent): SourceType {
     case "message": return "message";
     case "call": return "call";
     case "website": case "link": case "connection": return "website";
-    case "device": case "network": return "device";
+    case "device": return "device";
     case "file": return "file";
     case "app": return "app";
     default:
@@ -272,10 +272,6 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
   const IconEl = sourceInfo.Icon;
   const hasRefs = (event.supporting_references?.length ?? 0) > 0;
 
-  // Original evidence content — preserved unaltered
-  const originalContent = record?.scenarioContext?.originalContent as string | undefined;
-  const originalSubject = record?.scenarioContext?.originalSubject as string | undefined;
-
   return (
     <View style={s.content}>
       {/* Section header */}
@@ -300,20 +296,6 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
             ))}
           </View>
         </View>
-
-        {/* Original subject line (emails) */}
-        {originalSubject ? (
-          <View style={s.sourceContentBlock}>
-            <Text style={[s.sourceContentText, { fontFamily: fonts.textSemibold }]}>Subject: {originalSubject}</Text>
-          </View>
-        ) : null}
-
-        {/* Original content — preserved exactly as submitted */}
-        {originalContent ? (
-          <View style={s.sourceContentBlock}>
-            <Text style={s.sourceContentText} selectable testID="evidence-original-content">{originalContent}</Text>
-          </View>
-        ) : null}
 
         {/* Original URL — preserved exactly, tappable */}
         {event.local_indicator ? (

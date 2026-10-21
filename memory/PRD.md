@@ -1,3 +1,55 @@
+## Preview-only simulation of the image privacy screening (2026-06)
+
+**Why.** Apollo screens every image on the device before it is sent: on-device text recognition
+(ML Kit / Apple Vision via `expo-ocr-kit`) reads the text, credentials are blacked out on the copy
+that leaves the phone, and anything that can't be verified is withheld. No web preview can run that
+native module, so `screenImage()` returned `ocr_unavailable` and EVERY image dead-ended at
+"Image not sent" — including Apollo's own sample screenshots (owner's screenshot of the Higgins "+"
+sheet).
+
+**The external read — and only that — is replaced.** New `src/preview/simulatedScreening.ts`
+(gated on `PREVIEW_SAMPLES_ENABLED`, so it is dead in every shipped build) is consulted by
+`imagePrivacy.screenImageInner` ONLY after the real `extractTextLocally()` has already failed. What
+it returns goes through the real `classifyRegions` → real credential detection → real redaction →
+real fail-closed rules, unchanged:
+- **A preview sample screenshot** → the text those pixels actually show, with its real box.
+  `scripts/make_preview_screenshots.py` now records every text block it draws and generates
+  `src/preview/simulatedScreenshotText.ts`, so the "read" can never disagree with the picture.
+- **Any other image** (the person's own photo/gallery/file pick) → **no text at all**, because
+  nothing read it. Apollo never borrows another sample's text, and the popup says plainly that
+  nothing was checked.
+
+**The popup carries the label** (owner's choice: popup only). `ScreeningResult.previewNotice` →
+`ImageUploadPrep` → `ImageUploadWarning` renders a dashed-gold **PREVIEW ONLY** card above the
+normal warning. Two wordings: "…Apollo screened the text this sample image is known to contain;
+nothing was read from the picture itself" (sample) / "…no text was read from this image. Nothing in
+it has been checked for passwords, PINs or codes" (own image). `screeningSummary` says
+"Text recognition simulated in this preview." and reports "no text was read, so nothing in the
+image was checked" instead of "no sensitive content detected" when nothing was read.
+
+**Two new samples, two real outcomes** (owner asked for both):
+- `sim-shot-sms-code` — a six-digit sign-in code in its own bubble → detected as a credential with a
+  usable box → blacked out on the copy → **sent**, real Triage/Magnum DI ran on it.
+- `sim-shot-email-password` — a temporary password the recogniser reads but cannot place → **refused**
+  ("Image not sent", Crop offered).
+
+**Genuine production fix found on the way.** `ImageUploadPrep` blacked out credentials by drawing a
+box at the region's frame; a credential region with a zero-size/absent frame produced a zero-area
+box, so the password would have been sent plainly visible. It now fails closed on any credential
+without a usable frame.
+
+**Verified in the preview** (web, three full runs): sample-with-code → PREVIEW ONLY notice → Continue
+→ investigation completed; sample-with-unplaceable-password → "Image not sent" + the can't-place
+reason; own image uploaded through the file picker → "no text was read from this image" → sent as a
+metadata-stripped copy. `tests/previewScreening.test.ts` 5/5; `imagePrivacy.test.ts` 20/20,
+`test_anti_drift.mjs` 127/127, `test_screenshot_privacy.mjs` 30/30, `previewGating.test.ts` 4/4;
+tsc + ESLint clean.
+
+**Note (pre-existing, not changed):** the backend's `core/redaction.py` `_SECRET` regex treats any
+word following "code" as a secret, so the sample question "Is this code message real?" came back as
+"Is this code [redacted] real?". The sample's question was reworded; the regex was left alone.
+
+
 ## Remote alerts moved to Apollo's managed push relay (2026-06)
 
 **Why.** Two faults, both proven from the real delivery history. (1) `subtitle: null` made the provider reject whole
@@ -2401,3 +2453,26 @@ Three real causes found and fixed:
 2. **Pushes addressed to deleted Android channels** — `routers/push.py` sent `channelId: "threats"` / `"growling"`, but the app consolidated to `apollo_alerts` and explicitly DELETES the legacy channels. Android drops notifications addressed to a non-existent channel. `PUSH_THREAT`/`PUSH_GROWL` now use `apollo_alerts`; priority `high` follows that channel. (`tests/test_iter6_push.py` 14 pass.)
 3. **Quiet hours silenced everything** — `ApolloContext` tested `alert.channel !== "growling"`, impossible since the channel rename, so the quiet-hours check never applied correctly. Severity now comes from the event state: `barking`/`biting` always deliver, everything else respects quiet hours.
 Still true by design: notifications are OFF in Expo Go and web (`SUPPORTED` excludes `StoreClient`) — they can only be seen in an installed build.
+
+## Screenshot picker fixed, zero TypeScript errors, and the dead code behind them (Jun 2026)
+`npx tsc --noEmit` went from 40 errors to 0. Four of them were real, user-visible bugs:
+1. **`app/check.tsx` crashed on screenshot pick** — `setPageScreenshotUri(...)` was a leftover setter for state that no longer exists, so picking a screenshot threw a `ReferenceError` before the privacy screening could run. Removed (two call sites).
+2. **Recent links on Check were sorted and dated from `created_at`** — a field `PatrolEvent` does not have, so the comparator returned `NaN` and `formatLinkDate(undefined)` printed an invalid date. Now `occurred_at`.
+3. **`StyleSheet.absoluteFillObject` no longer exists in this RN version** — spreading `undefined` silently dropped `position: absolute`, so the Protection hero's background image and text overlay were laid out in flow instead of filling the card. Now `StyleSheet.absoluteFill`.
+4. **`radius.xl` and `colors.brandLight` were never defined** — bottom sheets on Email/Learning and the CheckingModal card rendered with square corners, and the selected filter chip in Higgins history had no background. Added `radius.xl: 28`; chip uses `brandSecondary`.
+Dead code paths that could never run, now corrected rather than deleted: `diagnosticCore` read `protection.state`/`network.transport`/`permission.granted`/`permission.essential` — none of which exist on those types — so "is my device protected?" always treated the service as running and ALWAYS answered "all required permissions are granted" even when they were denied. Now reads `protection.running`, `network.type` and `status === "granted"`, with `required` derived from the permission being applicable. The `privateDnsActive` branches were removed: `ProtectionHealthSnapshot.network` has never carried that field (it lives on `PrivateDnsStatus`, which this module is not given), so those warnings could never fire. Also fixed: `PriorityScamNotice` compared `australianRelevance` against `"directly_relevant"` (the real value is `"confirmed"`), so AU alerts were never preferred and never labelled "Australian Scam Alert"; `protectionAlerts` addressed the deleted `"default"` Android channel; `caseStore` built a `Failure` without `retryAfterSeconds`/`missingEvidenceIds`. `GATE_REGISTRY.checkResultGate` is now typed `CheckResultGate` instead of `string`, which is what made the seven check-result adapters type-check.
+
+## Each section of an investigation says something different (Jun 2026)
+The result repeated itself: the overview ended with "The link goes to abc.net.au", then `attentionReason` printed `findings[0].text` verbatim ("The content presents itself as ING but the link goes to abc.net.au…"), then the action said it again. The PDF was worse — `explanationMarkdown` opened with the overview in bold and then re-listed the findings, the uncertainties and the actions, each of which the PDF already prints as its own section.
+- `preview_analysis.py`: the overview is now the conclusion plus the one thing to do (no host, no credential list); `attentionReason` states the CONSEQUENCE of acting on it, never a finding; `explanationMarkdown` is `_briefing()` — the reasoning that connects the findings (why impersonation works, why credentials matter before they are typed, why a deadline exists), with no re-list of anything returned in another field. Article agreement fixed ("an ING", not "a ING"), and bare domains written in the text are normalised through `_host()` so `www.abc.net.au` and `https://abc.net.au/...` are one destination.
+- `response_schema.py` (the ONLY channel the live model sees — the coordinator sends no system prompt) carries the same contract in its field descriptions: overview = conclusion only; explanation = why they fit together, not a reprint; attentionReason = the consequence, never a copy; findings = merge anything making the same point; actions = the action only.
+- `validation.py` enforces it for live and simulated alike: `deduplicate_findings()` compares the meaning-bearing words of every finding (hostnames normalised, filler words dropped) and merges subsets or ≥0.8 overlaps, keeping the version with more cited evidence. Never empties a non-empty list.
+- Frontend `investigationCaseUpdate.bodyFrom()` strips the headline sentence from `what_happened`, so the case card no longer prints its own title again as the first line of the body.
+Tests: `backend/tests/test_finding_dedupe.py` (4), `test_preview_simulator_specifics.py` (+2 asserting no section is a copy of another), `frontend/tests/investigationCaseUpdate.test.ts` (6). Verified end-to-end through `POST /api/investigations` and in the Higgins UI.
+
+## Picking beats typing: the source picker is now the hero of every check screen (Jun 2026)
+The pickable list used to be printed inline as a long dashed "Simulated …" block in the middle of the page, and in the Higgins "+" sheet the picker buttons sat UNDER the submit button. Now, on every artifact screen, the first card is a hero: title, one line of plain English, and a full-width primary button that opens the same popup a production build opens.
+- New `src/components/SourceHero.tsx` — first action renders as the 56pt primary hero, any others as secondary beneath it.
+- `app/email.tsx` (`email-hero` → `email-source-picker`), `app/message.tsx` (`message-hero` → `message-source-picker`), `app/call-guard.tsx` (`callguard-hero` → `callguard-source-picker`), `app/file.tsx` (`file-hero` → `file-source-picker`), `app/app-check.tsx` (`app-hero` → `app-source-picker`), plus `HigginsArtifactInput` where the hero now opens the sheet.
+- The button is worded for production in every build ("Choose an email", "Choose a recent caller"); the PREVIEW ONLY tag lives inside the popup. Where a real list exists the hero opens it (connected inbox, `/message-picker`, `PhonePickerSheet`, the OS file picker, the installed-app sheet) and falls back to the sample popup only where the real source cannot be reached — on Messages that replaces a card that used to dead-end in a toast on iOS and web.
+- Removed: the inline `SimulatedPicker` blocks on file/app-check/call-guard, the hand-rolled simulated inbox on email, and the orphaned styles behind them.

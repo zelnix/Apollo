@@ -46,7 +46,6 @@ export interface GateFact {
 export interface NetworkFact {
   connected: boolean;
   transport: string | null;
-  privateDnsActive: boolean | null;
 }
 
 export interface PermissionFact {
@@ -82,7 +81,7 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
   // is "Watching" (active_verified) with enforcement, the VPN is running.
   const siteGate = health.gates.find((g) => g.id === "site");
   const vpnActive = siteGate?.resolved.coverageState === "active_verified" && siteGate?.resolved.isAutomatic;
-  const serviceRunning = !!health.protection && health.protection.state !== "off";
+  const serviceRunning = !!health.protection && health.protection.running;
 
   const issues: string[] = issueGates.map((g) => `${g.title}: ${g.limitation || g.statusLabel}`);
   if (health.ruleBundle?.current === false) issues.push(`Security rules: ${health.ruleBundle.detail}`);
@@ -100,8 +99,7 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
     checkedAt: health.checkedAt,
     network: health.network ? {
       connected: health.network.connected,
-      transport: health.network.transport ?? null,
-      privateDnsActive: health.network.privateDnsActive ?? null,
+      transport: health.network.type ?? null,
     } : null,
   };
 
@@ -163,13 +161,13 @@ export function getCurrentIssues(health: ProtectionHealthSnapshot, extra?: { eve
   }
 
   // ── Protection service not running ──
-  if (health.protection && health.protection.state === "off") {
+  if (health.protection && !health.protection.running) {
     issues.push("Apollo's protection service is not running.");
   }
 
   // ── Gate issues ──
   for (const gate of health.gates) {
-    if (gate.tone === "action" || gate.tone === "warning") {
+    if (gate.tone === "action") {
       issues.push(`${gate.title}: ${gate.currentHelp || gate.statusLabel}`);
     }
   }
@@ -177,9 +175,6 @@ export function getCurrentIssues(health: ProtectionHealthSnapshot, extra?: { eve
   // ── Network issues ──
   if (health.network && !health.network.connected) {
     issues.push("No internet connection. Some protections are limited until the connection is back.");
-  }
-  if (health.network?.privateDnsActive) {
-    issues.push("Another service on this device is handling its internet lookups, which can bypass Apollo's website protection.");
   }
 
   return {
@@ -199,8 +194,8 @@ export function getPermissionStatus(permissions: ProtectionPermission[]): Diagno
   const facts: PermissionFact[] = permissions.map((p) => ({
     id: p.id,
     label: p.title ?? p.id,
-    granted: p.granted,
-    required: p.essential ?? false,
+    granted: p.status === "granted",
+    required: p.status !== "not_applicable" && p.status !== "unavailable",
   }));
 
   const missing = facts.filter((p) => p.required && !p.granted);
@@ -242,13 +237,14 @@ export function getVpnStatus(health: ProtectionHealthSnapshot): DiagnosticResult
   }
 
   // Read Private DNS from the site gate's limitation (it's already been evaluated there).
-  if (health.network?.privateDnsActive) {
-    parts.push("Note: another service on this device is handling its internet lookups, which can bypass Apollo's website protection. (Technical detail: Private DNS is active.)");
+  const siteLimitation = siteGate?.capability.automatic?.limitation;
+  if (siteLimitation && /dns/i.test(siteLimitation)) {
+    parts.push(`Note: ${siteLimitation}`);
   }
 
   return {
     intent: "vpn_status",
-    facts: { vpnActive: !!vpnActive, siteGateRunning: !!siteRunning, privateDns: health.network?.privateDnsActive ?? null },
+    facts: { vpnActive: !!vpnActive, siteGateRunning: !!siteRunning },
     summary: parts.join(" "),
     attentionNeeded: !vpnActive,
     observedAt: health.checkedAt,
@@ -292,7 +288,7 @@ function gateToFact(gate: GateHealthRecord): GateFact {
     tone: gate.tone,
     automaticState: gate.capability?.automatic?.state ?? null,
     limitation: gate.capability?.automatic?.limitation ?? null,
-    needsAttention: gate.tone === "action" || gate.tone === "warning",
+    needsAttention: gate.tone === "action",
   };
 }
 

@@ -41,6 +41,18 @@ def test_no_null_fields_in_any_shape():
         assert not nulls, f"a null in a string field makes the provider reject the request: {nulls}"
 
 
+def test_alert_key_rides_in_the_deep_link():
+    data = _relay_data({"title": "t", "message": "b", "action_url": "/patrol/evt-1", **PUSH_THREAT}, "owner-evt-1")
+    assert data["action_url"] == "/patrol/evt-1?a=owner-evt-1"
+    withq = _relay_data({"title": "t", "message": "b", "action_url": "/family?tab=alerts", **PUSH_FAMILY}, "weekly-1")
+    assert withq["action_url"] == "/family?tab=alerts&a=weekly-1"
+
+
+def test_no_deep_link_means_no_alert_key_field():
+    data = _relay_data({"title": "t", "message": "b", **PUSH_GROWL}, "owner-evt-2")
+    assert "action_url" not in data
+
+
 def test_title_and_message_always_present():
     data = _relay_data({"title": "Apollo is biting", "message": "Blocked a known scam site.", **PUSH_THREAT})
     assert data["title"] and data["message"]

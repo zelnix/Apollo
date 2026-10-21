@@ -121,6 +121,15 @@ export interface PatrolRecord {
   reassessment?: Reassessment | null;
 }
 
+/** Retrofit reassessment metadata — how a legacy record was re-classified. */
+export interface Reassessment {
+  original_class: RecordClass | null;
+  new_class: RecordClass;
+  reassessed_at: string;
+  reason: string;
+  version: string;
+}
+
 export interface PatrolEvent {
   event_id: string;
   device_id: string;

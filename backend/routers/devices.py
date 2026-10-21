@@ -99,6 +99,22 @@ def in_quiet_hours(qh: Optional[dict[str, Any]], at: Optional[datetime] = None) 
     return start <= m < end if start <= end else (m >= start or m < end)
 
 
+def quiet_hours_end_utc(qh: Optional[dict[str, Any]], at: Optional[datetime] = None) -> Optional[datetime]:
+    """When the quiet window a person is currently inside ends, in UTC. None when they are not in one.
+    Used to hold gentle alerts until morning instead of dropping them."""
+    at = at or now_utc()
+    if not in_quiet_hours(qh, at):
+        return None
+    tz = timedelta(minutes=int((qh or {}).get("tz_offset_minutes", 0)))
+    local = at + tz
+    end = int((qh or {}).get("end_minutes", 420))
+    local_end = local.replace(hour=end // 60, minute=end % 60, second=0, microsecond=0)
+    if local_end <= local:  # the window runs past midnight, so the end is tomorrow morning
+        local_end += timedelta(days=1)
+    return local_end - tz
+
+
+
 @router.put("/devices/{device_id}/settings")
 async def put_device_settings(device_id: str, body: DeviceSettingsIn):
     await db.devices.update_one({"device_id": device_id}, {"$set": {"settings": body.model_dump(), "last_seen_at": now_utc()}}, upsert=True)
@@ -115,3 +131,9 @@ async def get_device_settings(device_id: str):
 async def device_quiet_now(device_id: str) -> bool:
     doc = await db.devices.find_one({"device_id": device_id}, {"settings": 1})
     return in_quiet_hours(((doc or {}).get("settings") or {}).get("quiet_hours"))
+
+
+async def device_quiet_until(device_id: str) -> Optional[datetime]:
+    """UTC end of the quiet window this device is currently inside, or None when it isn't in one."""
+    doc = await db.devices.find_one({"device_id": device_id}, {"settings": 1})
+    return quiet_hours_end_utc(((doc or {}).get("settings") or {}).get("quiet_hours"))

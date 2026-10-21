@@ -480,13 +480,13 @@ function OverviewContent({ area }: { area: ProtectionArea }) {
   const healthSummary = useMemo(() => {
     const caps = area.capabilities;
     const good = caps.filter(
-      (c) => c.tone === "good" || c.tone === "neutral" || c.tone === "resting"
+      (c) => c.tone === "good" || c.tone === "neutral"
     );
     const limited = caps.filter(
-      (c) => c.tone === "limited" || c.tone === "unverified" || c.tone === "ears_up"
+      (c) => c.tone === "limited" || c.tone === "unverified"
     );
     const attention = caps.filter(
-      (c) => c.tone === "action" || c.tone === "growling" || c.tone === "barking" || c.tone === "biting"
+      (c) => c.tone === "action"
     );
     const off = caps.filter(
       (c) => c.tone === "off" || c.tone === "unavailable"

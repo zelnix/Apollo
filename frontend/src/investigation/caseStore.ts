@@ -166,7 +166,7 @@ export function useInvestigation(boundOperationId?: string | null) {
       : record.phase === "submitted" || record.phase === "settled" ? ["The operation is attached to this investigation."]
       : ["Magnum DI is continuing this investigation."];
     // Propagate failure data from the job if available, or construct from error string
-    const failure = record.job?.failure ?? (record.phase === "failed" && record.error ? { code: "operation_failed", message: record.error, retryable: true } : null);
+    const failure = record.job?.failure ?? (record.phase === "failed" && record.error ? { code: "operation_failed", message: record.error, retryable: true, retryAfterSeconds: null, missingEvidenceIds: [] } : null);
     update({ operationId: record.operationId, caseData: record.caseData, job: record.job, error: record.error, failure, progress,
       phase: record.phase === "failed" ? "failed" : record.phase === "expired" ? "expired" : record.phase === "settled"
         ? record.caseData?.response?.question ? "waiting_user" : record.caseData?.response ? "answered" : "idle" : "working",

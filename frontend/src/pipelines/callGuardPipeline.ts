@@ -24,10 +24,10 @@ interface CallGuardDeps {
   lowPower: boolean;
   checkNumberRisk: (number: string) => Promise<{ decision: string; number: string }>;
   getPendingCallLookups: () => Promise<{ status: string; items: Array<{ number: string; seenAtMs: number }>; detail?: string }>;
-  acknowledgeCallLookups: (numbers: string[]) => Promise<void>;
-  retryCallLookups: (numbers: string[]) => Promise<void>;
+  acknowledgeCallLookups: (numbers: string[]) => Promise<unknown>;
+  retryCallLookups: (numbers: string[]) => Promise<unknown>;
   isTrustedCaller: (number: string) => Promise<boolean>;
-  storage: { getItem: <T>(key: string, fallback: T) => Promise<T> };
+  storage: { getItem: (key: string, fallback: string | null) => Promise<string | null> };
 }
 
 export function useCallGuardPipeline(deps: CallGuardDeps) {

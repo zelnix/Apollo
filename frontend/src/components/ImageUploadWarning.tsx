@@ -21,9 +21,16 @@ const useStyles = makeStyles((c) => ({
   title: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface },
   actions: { flexDirection: "row", gap: spacing.md, marginTop: spacing.sm },
   error: { fontFamily: fonts.textMedium, fontSize: 15, lineHeight: 21, color: c.onSurface },
+  notice: {
+    borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: c.gold,
+    backgroundColor: c.surfaceSecondary, padding: spacing.md, gap: spacing.xs,
+  },
+  tag: { alignSelf: "flex-start", paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: c.gold },
+  tagText: { fontFamily: fonts.textSemibold, fontSize: 10, letterSpacing: 0.5, color: "#1B2437" },
+  noticeText: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
 }));
 
-export function ImageUploadWarning({ visible, onContinue, onCancel, onCrop, busyLabel, error, onRetry, testID = "image-upload-warning" }: {
+export function ImageUploadWarning({ visible, onContinue, onCancel, onCrop, busyLabel, error, notice, onRetry, testID = "image-upload-warning" }: {
   visible: boolean;
   onContinue: () => void;
   onCancel: () => void;
@@ -33,6 +40,8 @@ export function ImageUploadWarning({ visible, onContinue, onCancel, onCrop, busy
   busyLabel?: string | null;
   /** Shown instead of the warning when preparing/sending failed. */
   error?: string | null;
+  /** Preview builds only: says plainly that the on-device read was simulated. */
+  notice?: string | null;
   onRetry?: () => void;
   testID?: string;
 }) {
@@ -42,6 +51,12 @@ export function ImageUploadWarning({ visible, onContinue, onCancel, onCrop, busy
       <Pressable style={s.backdrop} onPress={busyLabel ? undefined : onCancel} accessibilityLabel="Close">
         <Pressable style={s.card} testID={testID} onPress={() => undefined}>
           <Text style={s.title} accessibilityRole="header">{error ? "Image not sent" : IMAGE_UPLOAD_WARNING.title}</Text>
+          {notice ? (
+            <View style={s.notice} testID={`${testID}-notice`}>
+              <View style={s.tag}><Text style={s.tagText}>PREVIEW ONLY</Text></View>
+              <Text style={s.noticeText}>{notice}</Text>
+            </View>
+          ) : null}
           {error ? <Text style={s.error} testID={`${testID}-error`}>{error}</Text> : IMAGE_UPLOAD_WARNING.body.map((p) => <Body key={p}>{p}</Body>)}
           {busyLabel ? (
             <View style={[s.actions, { alignItems: "center" }]}><ActivityIndicator color={colors.brand} /><Body>{busyLabel}</Body></View>

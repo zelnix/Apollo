@@ -14,10 +14,11 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
@@ -25,7 +26,7 @@ from pymongo.errors import DuplicateKeyError
 from core.config import logger
 from core.db import db, now_utc
 from core.models import PatrolEvent
-from routers.devices import device_quiet_now
+from routers.devices import device_quiet_until
 
 router = APIRouter()
 
@@ -53,6 +54,13 @@ DeliveryState = Literal["queued", "submitted", "provider_accepted", "device_obse
 _client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=15.0)
 
 
+def _iso(dt: Optional[datetime]) -> Optional[str]:
+    """Mongo returns naive UTC datetimes; without the offset the app would read them as local time."""
+    if dt is None:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).isoformat()
+
+
 def push_configured() -> bool:
     return not PUSH_KEY_PLACEHOLDER
 
@@ -68,6 +76,8 @@ async def ensure_indexes() -> None:
     await db.push_deliveries.create_index([("owner_id", 1), ("event_key", 1), ("channel", 1), ("recipient_id", 1)], unique=True)
     await db.push_deliveries.create_index([("delivery_id", 1)], unique=True)
     await db.push_deliveries.create_index([("state", 1), ("updated_at", 1)])
+    await db.push_deliveries.create_index([("recipient_id", 1), ("created_at", -1)])
+    await db.held_alerts.create_index([("device_id", 1), ("send_after", 1)])
 
 
 # ------------------------------------------------------------------ registration
@@ -114,10 +124,10 @@ async def _registrations(recipients: list[str]) -> dict[str, dict]:
 # ------------------------------------------------------------------ deliveries
 def _status(row: dict) -> dict:
     return {"deliveryId": row["delivery_id"], "channel": "push", "state": row["state"], "retryable": row.get("retryable", False),
-            "failureCode": row.get("failure_code"), "updatedAt": row["updated_at"].isoformat()}
+            "failureCode": row.get("failure_code"), "updatedAt": _iso(row["updated_at"])}
 
 
-def _relay_data(data: dict) -> dict:
+def _relay_data(data: dict, event_key: Optional[str] = None) -> dict:
     """The relay's data contract. Fields it types as strings must be omitted rather than sent as null —
     a null value makes the provider reject the request outright (this is what failed every weekly
     family alert with HTTP 400 while Apollo sent `subtitle: null`)."""
@@ -126,6 +136,10 @@ def _relay_data(data: dict) -> dict:
         value = data.get(key)
         if isinstance(value, str) and value.strip():
             out[key] = value
+    # The alert key rides along in the deep link so a tap on the phone can be recorded against this
+    # exact alert — the only honest proof that it arrived.
+    if event_key and isinstance(out.get("action_url"), str):
+        out["action_url"] = f"{out['action_url']}{'&' if '?' in out['action_url'] else '?'}a={event_key}"
     return out
 
 
@@ -137,7 +151,7 @@ async def _set(delivery_id: str, state: DeliveryState, *, failure_code: Optional
 
 async def _trigger(recipients: list[str], data: dict, idempotency_key: str, attempt: int = 0) -> httpx.Response:
     """One relay trigger, retrying only the 'same key still in flight' answer (which is not a failure)."""
-    payload = {"recipients": recipients, "data": _relay_data(data), "$idempotency_key": idempotency_key}
+    payload = {"recipients": recipients, "data": _relay_data(data, idempotency_key), "$idempotency_key": idempotency_key}
     resp = await _client.post("/api/v1/push/trigger", json=payload)
     if resp.status_code == 409 and attempt < 3 and _code(resp) == "idempotency_key_in_progress":
         await asyncio.sleep(3)
@@ -175,6 +189,8 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
             continue  # unregistered destinations produce no delivery; callers that need one recipient check `recipient_unregistered`
         row = {"delivery_id": str(uuid.uuid4()), "owner_id": owner, "event_key": event_key, "channel": "push", "recipient_id": recipient,
                "payload_digest": digest, "state": "queued", "retryable": True, "failure_code": None, "attempts": [], "ticket_id": None, "receipt": None,
+               # Kept so the person can later see WHAT Apollo sent, not just that something was sent.
+               "title": data["title"], "action_url": data.get("action_url"), "opened_at": None,
                "created_at": now_utc(), "updated_at": now_utc()}
         try:
             await db.push_deliveries.insert_one(row)
@@ -246,7 +262,7 @@ async def get_registration(request: Request):
     owner = request.state.device["device_id"]
     row = await db.push_registrations.find_one({"device_id": owner}, {"_id": 0, "registration_id": 1, "registered_at": 1, "platform": 1, "provider": 1})
     return {"configured": push_configured(), "registered": bool(row), "registrationId": row["registration_id"] if row else None,
-            "registeredAt": row["registered_at"].isoformat() if row else None, "provider": row.get("provider") if row else None,
+            "registeredAt": _iso(row["registered_at"]) if row else None, "provider": row.get("provider") if row else None,
             "setupDetail": None if push_configured() else push_setup_detail()}
 
 
@@ -276,16 +292,76 @@ async def push_test(request: Request, body: Optional[PushTestIn] = None):
 
 async def push_owner_alert(event: PatrolEvent) -> None:
     """Tell the protected person the moment Apollo barks/bites while the app is closed.
-    Growling is a non-urgent nudge → default channel, silenced during the device's quiet hours."""
+    Growling is a non-urgent nudge → held until the quiet window ends rather than dropped."""
     try:
         if event.state == "growling":
-            if await device_quiet_now(event.device_id):
-                logger.info("growling push suppressed by quiet hours")
-                return
             data = {"title": "Apollo is growling", "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
+            quiet_until = await device_quiet_until(event.device_id)
+            if quiet_until:
+                await hold_until_morning(event.device_id, data, quiet_until, f"owner-{event.event_id}")
+                return
         else:
             verb = "Apollo is barking" if event.state == "barking" else "Apollo is biting"
             data = {"title": verb, "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
         await send_push(recipients=[event.device_id], data=data, idempotency_key=f"owner-{event.event_id}", owner_id=event.device_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)
+
+
+# ------------------------------------------------------------------ quiet hours: held, not dropped
+async def hold_until_morning(device_id: str, data: dict, send_after: datetime, event_key: str) -> None:
+    """A gentle alert raised during quiet hours waits for the window to end instead of being dropped.
+    Each held alert is sent separately when the window ends, in the order it was raised."""
+    await db.held_alerts.update_one(
+        {"device_id": device_id, "event_key": event_key},
+        {"$setOnInsert": {"hold_id": str(uuid.uuid4()), "device_id": device_id, "event_key": event_key, "data": data,
+                          "send_after": send_after, "created_at": now_utc(), "sent_at": None}},
+        upsert=True)
+    logger.info("growling alert held until the quiet window ends")
+
+
+async def release_held_alerts(at: Optional[datetime] = None, limit: int = 100) -> int:
+    """Send the alerts whose quiet window has now ended — one notification each, oldest first."""
+    at = at or now_utc()
+    due = [r async for r in db.held_alerts.find({"sent_at": None, "send_after": {"$lte": at}}, {"_id": 0}).sort("created_at", 1).limit(limit)]
+    sent = 0
+    for row in due:
+        try:
+            await send_push(recipients=[row["device_id"]], data=row["data"], idempotency_key=row["event_key"], owner_id=row["device_id"])
+            sent += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("held alert release failed (non-blocking): %s", type(exc).__name__)
+        # Marked either way: a held alert is released once, and a failure is recorded in the delivery
+        # ledger rather than being retried here forever.
+        await db.held_alerts.update_one({"hold_id": row["hold_id"]}, {"$set": {"sent_at": now_utc()}})
+    return sent
+
+
+# ------------------------------------------------------------------ what Apollo sent, and what became of it
+@router.get("/push/alerts")
+async def list_alerts(request: Request, limit: int = Query(default=30, ge=1, le=100)):
+    """Every alert Apollo sent to this installation and what became of it. States are the real ones:
+    queued/submitted (on its way), provider_accepted (handed to the delivery service), failed (with the
+    reason), outcome_unknown (never confirmed either way), plus alerts still held for the morning.
+    Being accepted is not proof it was seen — only `openedAt` says it was tapped on this phone."""
+    owner = request.state.device["device_id"]
+    rows = [r async for r in db.push_deliveries.find({"recipient_id": owner}, {"_id": 0}).sort("created_at", -1).limit(limit)]
+    alerts = [{"alertKey": r["event_key"], "title": r.get("title") or "Apollo alert", "state": r["state"],
+               "failureCode": r.get("failure_code"), "sentAt": _iso(r["created_at"]),
+               "updatedAt": _iso(r["updated_at"]), "openedAt": _iso(r.get("opened_at"))}
+              for r in rows]
+    held = [h async for h in db.held_alerts.find({"device_id": owner, "sent_at": None}, {"_id": 0}).sort("created_at", -1).limit(limit)]
+    alerts.extend({"alertKey": h["event_key"], "title": (h.get("data") or {}).get("title") or "Apollo alert", "state": "held",
+                   "failureCode": None, "sentAt": _iso(h["created_at"]), "updatedAt": _iso(h["created_at"]),
+                   "heldUntil": _iso(h["send_after"]), "openedAt": None} for h in held)
+    alerts.sort(key=lambda a: a["sentAt"], reverse=True)
+    return alerts[:limit]
+
+
+@router.post("/push/alerts/{alert_key}/opened")
+async def mark_alert_opened(alert_key: str, request: Request):
+    """The person tapped this alert on this phone — the only honest proof it actually arrived."""
+    owner = request.state.device["device_id"]
+    result = await db.push_deliveries.update_one({"event_key": alert_key, "recipient_id": owner, "opened_at": None},
+                                                 {"$set": {"opened_at": now_utc(), "updated_at": now_utc()}})
+    return {"recorded": result.modified_count > 0}

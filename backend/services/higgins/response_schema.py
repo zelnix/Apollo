@@ -21,7 +21,12 @@ def _enum(values: list[str], description: str) -> types.Schema:
 _FINDING = types.Schema(
     type="OBJECT",
     properties={
-        "text": types.Schema(type="STRING", description="One fact or inference."),
+        "text": types.Schema(type="STRING", description="One fact or inference, stated once. Each finding is a "
+                                                        "distinct observation: anything describing the same underlying "
+                                                        "issue is merged into one consolidated finding rather than "
+                                                        "returned as several near-identical versions. Equivalent "
+                                                        "hostnames (example.com and www.example.com) are the same "
+                                                        "destination."),
         "basis": _enum(["observation", "user_report", "inference"],
                        "observation: present in the supplied evidence (requires at least one evidenceId). "
                        "user_report: stated by the person. inference: reasoned from the evidence."),
@@ -41,7 +46,8 @@ _ACTION = types.Schema(
         "kind": _enum(["instruction", "open_settings", "request_permission", "recheck", "open_verified_source"],
                       "Use 'instruction' unless a device capabilityId or a registered sourceId is available."),
         "label": types.Schema(type="STRING", description="Short button label."),
-        "instruction": types.Schema(type="STRING", description="What the person does."),
+        "instruction": types.Schema(type="STRING", description="What the person does — the action only. It does not "
+                                                               "restate a finding or re-explain the reasoning."),
         "capabilityId": types.Schema(type="STRING", nullable=True,
                                      description="Only for kinds that act on the device; otherwise null."),
         "sourceIds": types.Schema(type="ARRAY", items=_STRING, description="Required for open_verified_source."),
@@ -66,14 +72,27 @@ _QUESTION = types.Schema(
 RESPONSE_SCHEMA = types.Schema(
     type="OBJECT",
     properties={
-        "overview": types.Schema(type="STRING", description="2-4 plain sentences: what this is, what was established, what to do now."),
-        "explanationMarkdown": types.Schema(type="STRING", description="The full briefing shown to the person, in Markdown."),
+        "overview": types.Schema(type="STRING", description="2-4 plain sentences: what this is and what to do now. "
+                                                            "The overall conclusion only — it does not enumerate the "
+                                                            "evidence, list the findings or repeat any finding's text."),
+        "explanationMarkdown": types.Schema(type="STRING", description="The briefing shown to the person, in Markdown: "
+                                                                      "why the findings matter and how they fit "
+                                                                      "together. It does not restate the overview and "
+                                                                      "does not re-list the findings, uncertainties, "
+                                                                      "scope or actions — each of those is returned in "
+                                                                      "its own field and is displayed separately."),
         "assessment": _enum(["concern_found", "no_concern_found_within_scope", "uncertain"],
                             "'concern_found' requires at least one finding."),
         "attention": _enum(["none", "review", "action_needed", "urgent"],
                            "'action_needed'/'urgent' require attentionReason and at least one action."),
-        "attentionReason": types.Schema(type="STRING", nullable=True, description="Tied to the findings; null when attention is 'none'."),
-        "findings": types.Schema(type="ARRAY", items=_FINDING),
+        "attentionReason": types.Schema(type="STRING", nullable=True, description="One sentence on why this needs the "
+                                                                                 "person's attention — the consequence "
+                                                                                 "of acting on it. Never a copy of a "
+                                                                                 "finding or of the overview. Null when "
+                                                                                 "attention is 'none'."),
+        "findings": types.Schema(type="ARRAY", items=_FINDING, description="The evidence-backed facts. Compare them "
+                                                                           "before answering and merge any that make "
+                                                                           "the same point."),
         "uncertainties": types.Schema(type="ARRAY", items=_STRING, description="What could not be established."),
         "scope": types.Schema(type="STRING", description="What this investigation did and did not cover."),
         "sourceIds": types.Schema(type="ARRAY", items=_STRING, description="Registered sourceIds relied on."),

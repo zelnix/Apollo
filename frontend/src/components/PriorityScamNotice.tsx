@@ -112,9 +112,9 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
           const sevRank = (s: string) => (s === "EXTREME" ? 4 : s === "HIGH" ? 3 : s === "MODERATE" ? 2 : 1);
           const r = sevRank(b.severity) - sevRank(a.severity);
           if (r !== 0) return r;
-          // Prefer directly relevant to AU
-          if (a.australianRelevance === "directly_relevant" && b.australianRelevance !== "directly_relevant") return -1;
-          if (b.australianRelevance === "directly_relevant" && a.australianRelevance !== "directly_relevant") return 1;
+          // Prefer alerts with confirmed Australian relevance
+          if (a.australianRelevance === "confirmed" && b.australianRelevance !== "confirmed") return -1;
+          if (b.australianRelevance === "confirmed" && a.australianRelevance !== "confirmed") return 1;
           return ((b.updatedAt ?? b.publishedAt) ?? "").localeCompare((a.updatedAt ?? a.publishedAt) ?? "");
         });
       return fallback[0] ?? null;
@@ -123,9 +123,9 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
     return priority.sort((a, b) => {
       // EXTREME before HIGH
       if (a.severity !== b.severity) return a.severity === "EXTREME" ? -1 : 1;
-      // Prefer Australian directly_relevant
-      if (a.australianRelevance === "directly_relevant" && b.australianRelevance !== "directly_relevant") return -1;
-      if (b.australianRelevance === "directly_relevant" && a.australianRelevance !== "directly_relevant") return 1;
+      // Prefer confirmed Australian relevance
+      if (a.australianRelevance === "confirmed" && b.australianRelevance !== "confirmed") return -1;
+      if (b.australianRelevance === "confirmed" && a.australianRelevance !== "confirmed") return 1;
       // Most recently updated first
       return ((b.updatedAt ?? b.publishedAt) ?? "").localeCompare((a.updatedAt ?? a.publishedAt) ?? "");
     })[0] ?? null;
@@ -138,7 +138,7 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
   /* ── Compact mode: evidence-specific card for Home "Important for you" ── */
   if (compact) {
     const severityLabel = priorityAlert.severity === "EXTREME" ? "Extreme" : "High";
-    const regionLabel = priorityAlert.australianRelevance === "directly_relevant"
+    const regionLabel = priorityAlert.australianRelevance === "confirmed"
       ? "Australian Scam Alert"
       : priorityAlert.regionLabel || "Scam Alert";
     const reason = priorityAlert.higgins?.whatHappened
