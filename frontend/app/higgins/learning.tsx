@@ -92,6 +92,10 @@ function thumbnailIconColor(category: string): string {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
+  // Header avatar — same 42pt circle Ask Higgins uses
+  headerAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  headerAvatarImg: { width: 42, height: 42 },
+
   // Hero
   heroCard: {
     marginHorizontal: spacing.lg,
@@ -590,9 +594,21 @@ export default function HigginsLearningScreen() {
   // ── Header area ──
   // Tab root: RootScreenHeader (consistent with Scam Alerts)
   // Standalone: ChildScreenHeader (back X + title)
+  // Higgins' avatar leads the title, exactly as it does on Ask Higgins.
+  const higginsAvatar = (
+    <View style={s.headerAvatar}>
+      <Image
+        source={require("@/assets/images/higgins-avatar.png")}
+        style={s.headerAvatarImg}
+        resizeMode="cover"
+        accessibilityLabel="Higgins"
+        testID="learning-header-avatar"
+      />
+    </View>
+  );
   const headerArea = isTab
-    ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Learn with Higgins" testID="learning-header" /></View>
-    : <ChildScreenHeader title="Learn with Higgins" testID="learning-header" />;
+    ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Learn with Higgins" testID="learning-header" leading={higginsAvatar} /></View>
+    : <ChildScreenHeader title="Learn with Higgins" testID="learning-header" leading={higginsAvatar} />;
 
   // ── List header (search + topics + featured) ──
   const listHeader = (

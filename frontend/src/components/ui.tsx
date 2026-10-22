@@ -83,6 +83,7 @@ const useStyles = makeStyles((c) => ({
   h1: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface, letterSpacing: -0.4 },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  headerTitleGroup: { flexDirection: "row", alignItems: "center", gap: spacing.md, flexShrink: 1 },
 }));
 
 export function Card({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
@@ -125,11 +126,14 @@ export function DevTag({ label, testID }: { label: string; testID?: string }) {
   );
 }
 
-export function ScreenHeader({ title, right, testID }: { title: string; right?: React.ReactNode; testID?: string }) {
+export function ScreenHeader({ title, right, leading, testID }: { title: string; right?: React.ReactNode; leading?: React.ReactNode; testID?: string }) {
   const s = useStyles();
   return (
     <View style={s.header} testID={testID}>
-      <Text style={[s.h1, { flexShrink: 1 }]}>{title}</Text>
+      <View style={s.headerTitleGroup}>
+        {leading}
+        <Text style={[s.h1, { flexShrink: 1 }]}>{title}</Text>
+      </View>
       {right}
     </View>
   );
