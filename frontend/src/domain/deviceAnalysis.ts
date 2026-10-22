@@ -43,6 +43,10 @@ export interface DeviceSignals {
   /** Detected native message-protection providers (Google Messages, Samsung Messages).
    *  Reports what is installed and active — does NOT include spam classifications (no verified API). */
   nativeMessageProtection?: NativeMessageProtectionSignal | null;
+  /** Android: Build.VERSION.SECURITY_PATCH (e.g. "2026-09-01"). iOS: OS version string. `null` where unreadable. */
+  securityPatchDate?: string | null;
+  /** Human-readable OS version (e.g. "Android 15", "iOS 18.2"). `null` where unreadable. */
+  osVersion?: string | null;
 }
 export interface SystemIntegritySignal { indicators: string[]; checked: string[]; protections: { name: string; enabled: boolean | null }[] }
 export interface OsThreatReportSignal {

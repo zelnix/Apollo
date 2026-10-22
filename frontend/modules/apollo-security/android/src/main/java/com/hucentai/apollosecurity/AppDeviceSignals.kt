@@ -68,6 +68,8 @@ class AppDeviceSignals(private val ctx: Context) {
       .put("screenLockSecure", lockSecure ?: JSONObject.NULL)         // KeyguardManager.isDeviceSecure() — no permission needed
       .put("systemIntegrity", systemIntegrity())
       .put("osThreatReport", playProtectReport())
+      .put("securityPatchDate", Build.VERSION.SECURITY_PATCH ?: JSONObject.NULL)
+      .put("osVersion", "Android ${Build.VERSION.RELEASE}")
       .toString()
   }
 

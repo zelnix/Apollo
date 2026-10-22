@@ -97,11 +97,30 @@ const CHECKS: CheckDef[] = [
   // --- System security ---
   { id: "os_updates", category: "system", title: "Operating-system updates", platforms: ["android", "ios", "windows", "macos"],
     settings: { android: "Settings → System → System update", ios: "Settings → General → Software Update", windows: "Settings → Windows Update", macos: "System Settings → General → Software Update" },
-    evaluate: (i) => (i.platform === "windows" || i.platform === "macos")
-      ? (i.signals.osUpdatesCurrent === true ? checked("The desktop host confirmed the operating system is up to date.")
-        : i.signals.osUpdatesCurrent === false ? review("Updates are waiting to install — they usually contain security fixes.", "Open Software Update and install the pending updates.", "The desktop host found pending operating-system updates.")
-          : manual("Install any pending updates — they usually contain security patches."))
-      : manual("Install any pending updates — they usually contain security patches.") },
+    evaluate: (i) => {
+      // Desktop: use the direct osUpdatesCurrent signal from the host.
+      if (i.platform === "windows" || i.platform === "macos") {
+        if (i.signals.osUpdatesCurrent === true) return checked("The desktop host confirmed the operating system is up to date.");
+        if (i.signals.osUpdatesCurrent === false) return review("Updates are waiting to install — they usually contain security fixes.", "Open Software Update and install the pending updates.", "The desktop host found pending operating-system updates.");
+        return manual("Install any pending updates — they usually contain security patches.");
+      }
+      // Android/iOS: compute staleness from the security patch date.
+      const patch = i.signals.securityPatchDate;
+      const osVer = i.signals.osVersion;
+      if (!patch) return manual("Install any pending updates — they usually contain security patches.");
+      try {
+        const patchDate = new Date(patch);
+        if (isNaN(patchDate.getTime())) return manual(`Security patch date reported as "${patch}" but could not be parsed. Check for updates manually.`);
+        const now = new Date();
+        const monthsOld = (now.getFullYear() - patchDate.getFullYear()) * 12 + now.getMonth() - patchDate.getMonth();
+        const versionNote = osVer ? ` Running ${osVer}.` : "";
+        if (monthsOld <= 2) return checked(`Security patch level is ${patch} (${monthsOld === 0 ? "current month" : monthsOld === 1 ? "1 month ago" : `${monthsOld} months ago`}).${versionNote}`);
+        if (monthsOld <= 5) return review(`Security patch level is ${patch} (${monthsOld} months ago).${versionNote}`, "Check for a system update — patches fix known vulnerabilities.", `Security patch is ${monthsOld} months behind the current date.`);
+        return { outcome: "action" as const, detail: `Security patch level is ${patch} (${monthsOld} months old).${versionNote} This device may be missing critical security fixes.`, recommendation: "Check for a system update immediately — your device is significantly behind on security patches.", evidence: `Security patch is ${monthsOld} months behind the current date.` };
+      } catch {
+        return manual(`Security patch date: ${patch}. Check for updates manually.`);
+      }
+    } },
   { id: "developer_mode", category: "system", title: "Developer / debugging mode", platforms: ["android", "windows", "macos"],
     settings: { android: "Settings → System → Developer options", windows: "Settings → Privacy & security → For developers", macos: "System Settings → Privacy & Security" },
     evaluate: (i) => i.platform !== "android" ? manual("Confirm developer/debugging mode is off unless you deliberately use it.")
