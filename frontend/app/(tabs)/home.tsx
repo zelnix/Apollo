@@ -43,6 +43,8 @@ import {
   formatDateTime,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { capabilityHealth, type CapabilityHealth } from "@/src/domain/deviceCapabilities";
+import { readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
 import { getBaseline } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -179,6 +181,9 @@ const useStyles = makeStyles((c) => ({
   halfCardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface, flex: 1 },
   halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
+  scoreChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 0.5 },
+  scoreDot: { width: 6, height: 6, borderRadius: 3 },
+  scoreText: { fontFamily: fonts.textSemibold, fontSize: 11 },
   halfCardBtn: {
     borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
     alignItems: "center", justifyContent: "center", marginTop: "auto",
@@ -256,6 +261,19 @@ export default function Home() {
     React.useCallback(() => {
       let active = true;
       void getBaseline().then((baseline) => { if (active) setLastHigginsCheckAt(baseline?.checkedAt ?? null); }).catch(() => undefined);
+      return () => { active = false; };
+    }, [])
+  );
+
+  // Capability health for the Device card. Read on focus so a permission granted in Settings shows
+  // up on return. A failed or absent read produces no score — never a green light.
+  const [capHealth, setCapHealth] = React.useState<CapabilityHealth | null>(null);
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      void readDeviceCapabilityState()
+        .then((state) => { if (active) setCapHealth(capabilityHealth(state.view, state.hasNativeHost)); })
+        .catch(() => { if (active) setCapHealth(null); });
       return () => { active = false; };
     }, [])
   );
@@ -479,8 +497,25 @@ export default function Home() {
                 <Smartphone size={compact ? 14 : 16} color={colors.gold} />
               </View>
               <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Device</Text>
+              {capHealth ? (() => {
+                const band = capHealth.band === "green"
+                  ? { dot: colors.resting, bg: colors.restingTint, text: colors.restingText }
+                  : capHealth.band === "amber"
+                    ? { dot: colors.growling, bg: colors.growlingTint, text: colors.growlingText }
+                    : capHealth.band === "red"
+                      ? { dot: colors.biting, bg: colors.bitingTint, text: colors.bitingText }
+                      : { dot: colors.muted, bg: colors.unknownTint, text: colors.unknownText };
+                return (
+                  <View style={[s.scoreChip, { backgroundColor: band.bg, borderColor: band.dot }]} testID="home-device-capability-score">
+                    <View style={[s.scoreDot, { backgroundColor: band.dot }]} />
+                    <Text style={[s.scoreText, { color: band.text }]} numberOfLines={1}>{capHealth.score !== null ? `${capHealth.score}%` : "Not read"}</Text>
+                  </View>
+                );
+              })() : null}
             </View>
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Device capabilities, protection and check history.</Text>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>
+              {capHealth ? `${capHealth.score !== null ? `${capHealth.label}. ` : ""}${capHealth.detail}` : "Device capabilities, protection and check history."}
+            </Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
               <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>View</Text>
             </View>

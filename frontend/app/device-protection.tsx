@@ -27,7 +27,7 @@ import { CapabilityTable, NativeProtectionTable } from "@/src/components/device/
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Pill } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
-import { getCheckHistory } from "@/src/store/checkHistoryStore";
+import { getCheckHistory, type CheckHistoryEntry } from "@/src/store/checkHistoryStore";
 import { allCapabilityRows, type CapabilityRow, type DeviceCapabilityView, type NativeRecommendation } from "@/src/domain/deviceCapabilities";
 import { capabilityPlatform, readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
 import { shareDeviceCapabilityReport } from "@/src/utils/shareDeviceCapabilityReport";
@@ -39,6 +39,13 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.xs },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface, flex: 1 },
+
+  lastCheck: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, paddingBottom: spacing.md, paddingTop: 2,
+    borderBottomWidth: 0.5, borderBottomColor: c.divider, marginBottom: spacing.lg,
+  },
+  lastCheckTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
 
   deviceCard: {
     marginHorizontal: spacing.lg, borderRadius: radius.lg, padding: spacing.lg,
@@ -95,7 +102,7 @@ export default function DeviceCapabilitiesScreen() {
   const router = useRouter();
   const { protection, showToast } = useApollo();
 
-  const [lastCheckAt, setLastCheckAt] = useState<string | null>(null);
+  const [lastCheck, setLastCheck] = useState<CheckHistoryEntry | null>(null);
   const [view, setView] = useState<DeviceCapabilityView>(EMPTY_VIEW);
   const [hasNativeHost, setHasNativeHost] = useState(Platform.OS !== "web");
   const [nativeReadFailed, setNativeReadFailed] = useState(false);
@@ -103,7 +110,7 @@ export default function DeviceCapabilitiesScreen() {
   const [sharing, setSharing] = useState(false);
   const [openRec, setOpenRec] = useState<NativeRecommendation | null>(null);
 
-  useEffect(() => { void getCheckHistory("device").then((h) => setLastCheckAt(h[0]?.at ?? null)); }, []);
+  useEffect(() => { void getCheckHistory("device").then((h) => setLastCheck(h[0] ?? null)); }, []);
 
   // One shared reader, so this screen, the shareable report and Higgins' live reading can never
   // disagree. A failed read stays a failure — it is never flattened into "nothing found".
@@ -132,13 +139,15 @@ export default function DeviceCapabilitiesScreen() {
 
   const protectionActive = protection?.operational !== false;
 
-  const lastCheckLabel = useCallback(() => {
-    if (!lastCheckAt) return "Not checked yet";
-    const days = Math.floor((Date.now() - new Date(lastCheckAt).getTime()) / 86400000);
-    if (days === 0) return "Checked today";
-    if (days === 1) return "Checked yesterday";
-    return `Checked ${days} days ago`;
-  }, [lastCheckAt]);
+  // When the last device check ran, from the real check history. No history means exactly that.
+  const lastCheckWhen = useCallback(() => {
+    if (!lastCheck) return "not run yet";
+    const days = Math.floor((Date.now() - new Date(lastCheck.at).getTime()) / 86400000);
+    const time = new Date(lastCheck.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (days === 0) return `today, ${time}`;
+    if (days === 1) return `yesterday, ${time}`;
+    return `${days} days ago`;
+  }, [lastCheck]);
 
   const openSettingsFor = useCallback((target: Parameters<typeof openDeviceSettings>[0], path: string) => {
     void openDeviceSettings(target, path, (m) => showToast(m, "neutral"));
@@ -152,7 +161,7 @@ export default function DeviceCapabilitiesScreen() {
         osLabel,
         manufacturer: manufacturer || null,
         platformLabel: platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "windows" ? "Windows" : platform === "macos" ? "macOS" : "this browser",
-        lastCheckedAt: lastCheckAt,
+        lastCheckedAt: lastCheck?.at ?? null,
         generatedAt: new Date().toISOString(),
         apolloProtection: protection ? (protection.operational ? "running" : protection.requested ? `requested but not running${protection.degradedReason ? ` (${protection.degradedReason})` : ""}` : "off") : "not read",
         hasNativeHost,
@@ -162,7 +171,7 @@ export default function DeviceCapabilitiesScreen() {
     } finally {
       setSharing(false);
     }
-  }, [view, deviceModel, osLabel, manufacturer, platform, lastCheckAt, protection, hasNativeHost, showToast]);
+  }, [view, deviceModel, osLabel, manufacturer, platform, lastCheck, protection, hasNativeHost, showToast]);
 
   return (
     <View style={s.root} testID="device-protection-screen">
@@ -173,6 +182,10 @@ export default function DeviceCapabilitiesScreen() {
           </Pressable>
           <Text style={s.headerTitle}>Device Capabilities and Status</Text>
           <AlertsButton testID="device-prot-alerts" />
+        </View>
+        <View style={s.lastCheck} testID="device-prot-last-check">
+          <Clock size={14} color={colors.muted} />
+          <Text style={s.lastCheckTitle}>Last device check — {lastCheckWhen()}</Text>
         </View>
       </View>
 
@@ -187,10 +200,6 @@ export default function DeviceCapabilitiesScreen() {
               {brand ? <Text style={s.deviceManufacturer}>{manufacturer ? `${manufacturer} ${brand}` : brand}</Text> : null}
             </View>
             <Pill tone={protectionActive ? "resting" : "growling"} label={protectionActive ? "Good" : "Review"} testID="device-prot-status" />
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-            <Clock size={12} color={colors.muted} />
-            <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.muted }} testID="device-prot-last-check">{lastCheckLabel()}</Text>
           </View>
         </View>
 

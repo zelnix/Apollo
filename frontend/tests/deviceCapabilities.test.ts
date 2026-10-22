@@ -6,6 +6,7 @@ import {
   allCapabilityRows,
   buildDeviceCapabilities,
   capabilityAdvice,
+  capabilityHealth,
   capabilitySnapshotLines,
   CAPABILITY_CLASS_LABEL,
   NATIVE_STATE_LABEL,
@@ -82,8 +83,7 @@ test("every capability can answer the three questions the details screen asks", 
   }
 });
 
-test("advice is state-driven: nothing to do when Apollo already has it, a check when the device owns it", () => {
-  const v = buildDeviceCapabilities(input());
+test("advice is state-driven: nothing to do when Apollo already has it, a check when the device owns it", () => {  const v = buildDeviceCapabilities(input());
   const usable = v.apolloCanUse.find((r) => r.id === "app_permissions")!;
   assert.equal(capabilityAdvice(usable), null);
   const perm = v.needsPermission.find((r) => r.id === "notification_access")!;
@@ -160,6 +160,42 @@ test("a provider that DOES share its classification becomes usable evidence, sti
 test("no recognised protection present means there is no classification to use", () => {
   const v = buildDeviceCapabilities(input({ native: nativeRead({ callProtection: [provider({ installed: false, isDefaultHandler: false })] }) }));
   assert.ok(v.unavailable.some((r) => r.id === "native_call_verdict"));
+});
+
+// ── Capability health score (Home's Device card) ──────────────────
+
+test("capability health scores only what the person can change, never platform facts", () => {
+  const v = buildDeviceCapabilities(input());
+  const h = capabilityHealth(v, true);
+  // 6 available, 3 awaiting permission → 9 obtainable. The 4 the OS/provider keeps are NOT counted.
+  assert.equal(h.available, 6);
+  assert.equal(h.obtainable, 9);
+  assert.equal(h.score, 67);
+  assert.equal(h.band, "amber");
+  assert.equal(h.label, "6 of 9 ready");
+  assert.match(h.detail, /3 need your permission/);
+});
+
+test("green only when Apollo has everything this phone can give it", () => {
+  const granted = buildDeviceCapabilities(input({ caps: { ...ALL, notificationAccess: "supported" }, platform: "android" }));
+  const h = capabilityHealth({ ...granted, needsPermission: [], unknown: [] }, true);
+  assert.equal(h.band, "green");
+  assert.equal(h.score, 100);
+  assert.match(h.detail, /everything this phone can give it/);
+});
+
+test("a failed read drags the score down and is named, never ignored", () => {
+  const h = capabilityHealth(buildDeviceCapabilities(input({ caps: null })), true);
+  assert.equal(h.band, "red");
+  assert.ok(h.score !== null && h.score < 60);
+  assert.match(h.detail, /couldn’t be checked/);
+});
+
+test("no score at all when Apollo is not on the phone", () => {
+  const h = capabilityHealth(buildDeviceCapabilities({ platform: "web", caps: null, native: null, hostIsDevice: false }), false);
+  assert.equal(h.band, "unknown");
+  assert.equal(h.score, null);
+  assert.match(h.detail, /Open Apollo on your phone/);
 });
 
 // ── iOS boundaries ─────────────────────────────────────────────────

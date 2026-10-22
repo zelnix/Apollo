@@ -193,12 +193,65 @@ export function allCapabilityRows(view: DeviceCapabilityView): CapabilityRow[] {
   ];
 }
 
+export type CapabilityHealthBand = "green" | "amber" | "red" | "unknown";
+
+export interface CapabilityHealth {
+  band: CapabilityHealthBand;
+  /** Share of the capabilities this phone CAN give Apollo that Apollo actually has, or null. */
+  score: number | null;
+  available: number;
+  /** Available + still to be granted + not readable. Platform facts are deliberately excluded. */
+  obtainable: number;
+  /** Short chip text for a card, e.g. "6 of 9 ready". */
+  label: string;
+  /** One honest sentence about what is holding the rest back. */
+  detail: string;
+}
+
+/**
+ * Capability health — how much of what this phone CAN give Apollo, Apollo actually has.
+ *
+ * Only capabilities the person can change count: granted, awaiting permission, or unreadable because
+ * a read failed. Capabilities the OS or a provider keeps to itself, and capabilities this phone
+ * simply does not have, are platform facts and are NEVER scored as failures — scoring them would
+ * mark an iPhone down for being an iPhone. When Apollo isn't on the phone there is no score at all.
+ */
+export function capabilityHealth(view: DeviceCapabilityView, hasNativeHost: boolean): CapabilityHealth {
+  const available = view.apolloCanUse.length;
+  const pending = view.needsPermission.length;
+  const unreadable = view.unknown.length;
+  const obtainable = available + pending + unreadable;
+
+  if (!hasNativeHost || view.notReadableHere.length) {
+    return { band: "unknown", score: null, available: 0, obtainable: 0, label: "Not read here", detail: "Open Apollo on your phone to see what it can use." };
+  }
+  if (obtainable === 0) {
+    return { band: "unknown", score: null, available: 0, obtainable: 0, label: "Nothing to score", detail: "This phone exposes none of these capabilities to any app." };
+  }
+
+  const score = Math.round((available / obtainable) * 100);
+  const band: CapabilityHealthBand = score === 100 ? "green" : score >= 60 ? "amber" : "red";
+  const parts: string[] = [];
+  if (pending) parts.push(`${pending} need${pending === 1 ? "s" : ""} your permission`);
+  if (unreadable) parts.push(`${unreadable} couldn’t be checked`);
+  return {
+    band,
+    score,
+    available,
+    obtainable,
+    label: `${available} of ${obtainable} ready`,
+    detail: parts.length
+      ? `${parts.join(", ")}. The rest is in place.`
+      : "Apollo has everything this phone can give it.",
+  };
+}
+
+
 /**
  * The one thing Higgins recommends for a capability in its current state, or null when there is
  * genuinely nothing to do. State-driven, so it can never recommend an action that contradicts the
  * read — and it never claims a provider's setting is on or off.
- */
-export function capabilityAdvice(row: CapabilityRow): string | null {
+ */export function capabilityAdvice(row: CapabilityRow): string | null {
   const ownedByPlatform = ["Android", "iOS", "Windows", "macOS", "this browser"].includes(row.attributedTo);
   switch (row.klass) {
     case "apollo_can_use":

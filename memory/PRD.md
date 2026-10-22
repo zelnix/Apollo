@@ -39,6 +39,18 @@ reads exactly as specified.
 **Shareable report** follows the screen: the per-class bullet lists became one
 `Capability | Status | What this means` table.
 
+**Follow-ups the owner asked for straight after.** The Device Capabilities screen lost the
+"Check Device" button and the "Your recent checks" card, and gained a pinned **last device check**
+strip under the title — `Last device check — today, 1:05 pm` + the outcome chip (`resultChip`) + the
+stored summary, or "not run yet" when the history is genuinely empty (the duplicate clock line in the
+device card was removed). Home's **Device card now carries a capability health score**, colour coded
+red / amber / green: new pure `capabilityHealth(view, hasNativeHost)` scores ONLY what the person can
+change — granted vs awaiting-permission vs unreadable — and deliberately excludes capabilities the OS
+or a provider keeps to itself, so an iPhone is never marked down for being an iPhone. 100% is green,
+≥60% amber, below that red, and no native host means **no score at all** ("Not read", grey) rather
+than a green light. The card line reads e.g. "6 of 9 ready. 3 need your permission. The rest is in
+place." 4 new tests cover the bands, the exclusion rule and the no-score case.
+
 **Dead-link sweep** (the owner's earlier ask, done properly this time). Checked every route literal
 in `app/` and `src/` against the route files (44 targets, all exist); every `Pressable`/
 `TouchableOpacity` opening tag for a missing `onPress` (0 found); every `visible={…}` sheet for a
