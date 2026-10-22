@@ -48,6 +48,7 @@ import type { EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
+import { cleanEmailForDisplay } from "@/src/domain/emailCleaner";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { SIMULATED_EMAILS, PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
 import { SourceHero } from "@/src/components/SourceHero";
@@ -192,13 +193,14 @@ export default function CheckEmail() {
   const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedBody = shared?.text || shared?.webUrl || params.text || "";
+  const sharedBodyRaw = useRef(sharedBody);         // original for backend
   const autoRan = useRef(false);
   const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox, isMock } = useApollo();
 
   // ── Input state ──
   const [fromState, setFrom] = useState("");
   const [subject, setSubject] = useState("");
-  const [raw, setRaw] = useState(sharedBody);
+  const [raw, setRaw] = useState(() => sharedBody ? cleanEmailForDisplay(sharedBody) : "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{
     submissionId: string;
@@ -271,8 +273,8 @@ export default function CheckEmail() {
     if (!sharedBody.trim() || !ready || !setupDone || autoRan.current) return;
     autoRan.current = true;
     setEmailTextOpen(true);
-    // The sender and subject are read from the shared text's own headers by the email engine.
-    void run({ from: "", subject: "", raw: sharedBody });
+    // Send the ORIGINAL raw content to the backend for full analysis.
+    void run({ from: "", subject: "", raw: sharedBodyRaw.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharedBody, ready, setupDone]);
 
