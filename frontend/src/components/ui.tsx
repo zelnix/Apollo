@@ -113,9 +113,11 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /** Small, muted, secondary tag for dev/QA-only signals (e.g. the mock-adapter indicator). Never a bright
- *  colour — it must not compete with Apollo or the state colours for attention. */
+ *  colour — it must not compete with Apollo or the state colours for attention.
+ *  Renders nothing in production builds so simulated/preview indicators never leak. */
 export function DevTag({ label, testID }: { label: string; testID?: string }) {
   const { colors } = useTheme();
+  if (!__DEV__) return null;
   return (
     <View testID={testID} style={{ paddingHorizontal: spacing.sm, height: 22, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center", alignSelf: "flex-start" }}>
       <Text style={{ fontFamily: fonts.textMedium, fontSize: 10, letterSpacing: 0.3, color: colors.onSurfaceSecondary, textTransform: "uppercase" }}>{label}</Text>

@@ -146,6 +146,21 @@ export function DiReport({ caseId }: { caseId: string | null }) {
       {state.records.map((record, index) => {
         const p = record.processing;
         const tokenNote = provenanceLabel(!!p.tokensAreSimulated, p.tokensAreEstimates);
+
+        // ── Production guard: simulated records show only a notice, never raw request/response data ──
+        if (record.simulated && !__DEV__) {
+          return (
+            <View key={`${record.investigationId}-${index}`} style={{ gap: spacing.md }}>
+              <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
+                <Text style={s.diNoticeText}>
+                  This record came from the preview simulator, not from Gemini. It is NOT a real investigation and
+                  must not be relied on. Report this — the app is pointing at a preview backend.
+                </Text>
+              </View>
+            </View>
+          );
+        }
+
         return (
           <View key={`${record.investigationId}-${index}`} style={{ gap: spacing.md }}>
             {record.notice ? (
@@ -154,11 +169,11 @@ export function DiReport({ caseId }: { caseId: string | null }) {
               </View>
             ) : null}
 
-            {record.simulated && !__DEV__ ? (
+            {record.simulated ? (
               <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
                 <Text style={s.diNoticeText}>
                   This record came from the preview simulator, not from Gemini. It is NOT a real investigation and
-                  must not be relied on. Report this — the app is pointing at a preview backend.
+                  must not be relied on.
                 </Text>
               </View>
             ) : null}

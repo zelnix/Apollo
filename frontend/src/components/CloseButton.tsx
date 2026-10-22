@@ -23,7 +23,7 @@ export function CloseButton({ onPress, testID, label = "Close" }: { onPress: () 
       onPress={onPress}
       style={({ pressed }) => [s.button, { opacity: pressed ? 0.75 : 1 }]}
     >
-      <X size={23} color={colors.onSurface} />
+      <X size={17} color={colors.onSurface} />
     </Pressable>
   );
 }

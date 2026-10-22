@@ -526,9 +526,9 @@ export default function Ask() {
             </View>
           </View>
           <View style={s.headerActions}>
-            <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={20} color={colors.onSurface} /></Pressable>
+            <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={15} color={colors.onSurface} /></Pressable>
             <AlertsButton testID="higgins-alerts" />
-            <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={[s.menuBtn, { alignItems: "flex-end" }]} onPress={() => setAboutOpen(true)}><Info size={23} color={colors.onSurface} /></Pressable>
+            <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={[s.menuBtn, { alignItems: "flex-end" }]} onPress={() => setAboutOpen(true)}><Info size={17} color={colors.onSurface} /></Pressable>
           </View>
         </View>
         <Text style={s.subtitle}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>

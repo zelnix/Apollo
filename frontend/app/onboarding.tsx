@@ -72,7 +72,7 @@ export default function Onboarding() {
           ))}
         </Card>
 
-        {isMock ? <Pill tone="unknown" label={`${adapterLabel} · development build`} testID="onboarding-mock-pill" /> : null}
+        {isMock && __DEV__ ? <Pill tone="unknown" label={`${adapterLabel} · development build`} testID="onboarding-mock-pill" /> : null}
       </ScrollView>
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Button testID="onboarding-start-button" label="Continue" onPress={() => router.push("/privacy-disclosure")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />

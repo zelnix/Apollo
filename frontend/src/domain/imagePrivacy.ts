@@ -43,7 +43,14 @@ export {
 } from "./imagePrivacyCore.ts";
 
 import { detectSensitiveContent, redactText, classifyRegions, hasVisuallySignificantContent, extractSenderFromText } from "./imagePrivacyCore.ts";
-import { simulatedRead } from "../preview/simulatedScreening";
+
+// Preview-only: simulatedRead is loaded lazily so the entire simulatedScreening module (and its
+// transitive dependencies) is excluded from production bundles by Metro's tree-shaker.
+type SimulatedReadFn = typeof import("../preview/simulatedScreening").simulatedRead;
+const getSimulatedRead = (): SimulatedReadFn | null => {
+  if (!__DEV__) return null;
+  return require("../preview/simulatedScreening").simulatedRead as SimulatedReadFn;
+};
 
 export type { SensitiveType, ScreeningContext } from "./privacyPolicy.ts";
 
@@ -218,7 +225,8 @@ async function screenImageInner(
   // A preview build has no native text recogniser. The EXTERNAL READ — and only that — is replaced
   // there, and what it returns goes through the same classification below as a real device read.
   if (regions === null) {
-    const simulated = simulatedRead(imageUri);
+    const simulatedRead = getSimulatedRead();
+    const simulated = simulatedRead?.(imageUri) ?? null;
     if (simulated) {
       regions = classifyRegions(simulated.blocks, context);
       previewNotice = simulated.notice;

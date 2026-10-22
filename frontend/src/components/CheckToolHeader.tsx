@@ -42,7 +42,7 @@ export function CheckToolHeader({
         onPress={handleBack}
         style={styles.backBtn}
       >
-        <ChevronLeft size={24} color={colors.onSurface} />
+        <ChevronLeft size={18} color={colors.onSurface} />
       </Pressable>
 
       {/* No line clamp: the title wraps rather than being cut off by the icons beside it. */}

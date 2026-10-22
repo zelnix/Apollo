@@ -35,7 +35,10 @@ import {
   SIMULATED_SCREENSHOTS,
   SIMULATED_TEXTS,
 } from "@/src/preview/samples";
-import { registerPreviewImage } from "@/src/preview/simulatedScreening";
+// Preview-only: loaded lazily so the simulatedScreening module is excluded from production bundles.
+const callRegisterPreviewImage = __DEV__
+  ? (uri: string, sampleId: string) => { (require("@/src/preview/simulatedScreening") as { registerPreviewImage: (u: string, s: string) => void }).registerPreviewImage(uri, sampleId); }
+  : (_uri: string, _sampleId: string) => {};
 import { ImageUploadPrep, type PreparedImage } from "./ImageUploadPrep";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Button } from "./ui";
@@ -371,7 +374,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       const uri = asset.localUri ?? asset.uri;
       // The preview has no native text recogniser; this tells the screening boundary that the text
       // of THIS sample image is known, so the real screening can run on its actual contents.
-      registerPreviewImage(uri, sample.id);
+      callRegisterPreviewImage(uri, sample.id);
       setImageUri(uri);
       setSelectedSample(sample.id);
       setQuestion((q) => q.trim() || sample.question);

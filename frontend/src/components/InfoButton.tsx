@@ -23,7 +23,7 @@ export function InfoButton({ info, testID }: { info: ScreenInfo; testID?: string
   return (
     <>
       <Pressable testID={testID ?? "screen-info-button"} accessibilityRole="button" accessibilityLabel={`About ${info.title}`} onPress={() => setOpen(true)} style={({ pressed }) => [s.button, { opacity: pressed ? 0.75 : 1 }]}>
-        <Info size={23} color={colors.onSurfaceSecondary} />
+        <Info size={17} color={colors.onSurfaceSecondary} />
       </Pressable>
       <Sheet visible={open} onClose={() => setOpen(false)} title={info.title} testID={`${testID ?? "screen-info"}-sheet`}>
         {paragraphs.map((p, i) => <Text key={i} style={s.paragraph}>{p}</Text>)}

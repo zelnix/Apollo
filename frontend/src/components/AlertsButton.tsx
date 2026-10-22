@@ -13,7 +13,7 @@ const useStyles = makeStyles((c) => ({
   // Matches InfoButton's 44pt touch target so header icons line up.
   button: { width: 44, height: 44, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   dot: {
-    position: "absolute", top: 9, right: 9, width: 10, height: 10, borderRadius: radius.pill,
+    position: "absolute", top: 10, right: 10, width: 9, height: 9, borderRadius: radius.pill,
     backgroundColor: c.warning, borderWidth: 1.5, borderColor: c.surface,
   },
 }));
@@ -44,7 +44,7 @@ export function AlertsButton({ testID }: { testID?: string }) {
       onPress={() => router.push("/(tabs)/scams")}
       style={({ pressed }) => [s.button, { opacity: pressed ? 0.75 : 1 }]}
     >
-      <Bell size={23} color={colors.onSurfaceSecondary} />
+      <Bell size={17} color={colors.onSurfaceSecondary} />
       {notificationsOff ? <View style={s.dot} testID={`${testID ?? "alerts-button"}-off-dot`} /> : null}
     </Pressable>
   );
