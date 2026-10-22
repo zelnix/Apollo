@@ -179,13 +179,19 @@ class GmailMessagesOut(BaseModel):
 
 
 @router.get("/gmail/messages", response_model=GmailMessagesOut)
-async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=20, ge=1, le=50), page_token: Optional[str] = Query(default=None)):
+async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=20, ge=1, le=50), page_token: Optional[str] = Query(default=None), email: Optional[str] = Query(default=None, max_length=320)):
     """Return lightweight inbox previews — id, from, subject, date, snippet.
+    Pass `email` to fetch from a single connected account; omit it to fetch from all.
     Does NOT return full body content (that happens on single-message fetch)."""
     import httpx
     connections = await gmail_service.get_connections(device_id)
     if not connections:
         raise HTTPException(404, "Gmail is not connected")
+    # When a specific account is requested, filter connections to that one.
+    if email:
+        connections = [r for r in connections if r.get("email", "").lower() == email.lower()]
+        if not connections:
+            raise HTTPException(404, "That email account is not connected")
     previews: list[dict] = []
     next_token: Optional[str] = None
     for row in connections:

@@ -286,6 +286,10 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [apps, setApps] = useState<InstalledAppRef[]>([]);
+  const [emailAccounts, setEmailAccounts] = useState<{ email: string }[]>([]);
+  const [selectedEmailAccount, setSelectedEmailAccount] = useState<string | null>(null);
+  const [inboxPageToken, setInboxPageToken] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const config = category ? CATEGORY_CONFIG[category] : null;
@@ -303,6 +307,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setSelectedSample(null);
       setPicker(null);
       setSourceError(null);
+      setSelectedEmailAccount(null);
+      setInboxPageToken(null);
     }
   }, [visible, category]);
 
@@ -389,26 +395,56 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   // ── Real sources ───────────────────────────────────────────────────────────
   // A failed read is reported as a failed read. It is never shown as "nothing found", and the typed
   // field always stays available so a person is never dead-ended.
-  const loadInbox = useCallback(async () => {
+  const loadInbox = useCallback(async (accountEmail?: string | null, append?: boolean) => {
     if (!deviceId) { setSourceError("Apollo hasn't finished starting up. Try again in a moment."); return; }
-    setSourceLoading(true);
+    if (append) setLoadingMore(true); else setSourceLoading(true);
     setSourceError(null);
     try {
-      const status = await apiGet<{ connected: boolean }>(`/gmail/status?device_id=${deviceId}`);
-      if (!status.connected) {
-        setInbox([]);
-        setSourceError("No email account is connected yet. Connect one in Apollo's email check, or paste the email into the box instead.");
-        return;
+      // Fetch account list (only on first load, not when paginating)
+      if (!append) {
+        const status = await apiGet<{ connected: boolean; accounts?: { email: string }[] }>(`/gmail/status?device_id=${deviceId}`);
+        if (!status.connected) {
+          setInbox([]);
+          setEmailAccounts([]);
+          setSourceError("No email account is connected yet. Connect one in Apollo's email check, or paste the email into the box instead.");
+          return;
+        }
+        setEmailAccounts(status.accounts ?? []);
       }
-      const data = await apiGet<{ messages: InboxItem[] }>(`/gmail/messages?device_id=${deviceId}&limit=10`);
-      setInbox(data.messages ?? []);
+      // Build the messages URL with optional account filter and pagination
+      const params = new URLSearchParams({ device_id: deviceId, limit: "10" });
+      const effectiveAccount = accountEmail !== undefined ? accountEmail : selectedEmailAccount;
+      if (effectiveAccount) params.set("email", effectiveAccount);
+      if (append && inboxPageToken) params.set("page_token", inboxPageToken);
+      const data = await apiGet<{ messages: InboxItem[]; next_page_token?: string | null }>(`/gmail/messages?${params}`);
+      if (append) {
+        setInbox((prev) => [...prev, ...(data.messages ?? [])]);
+      } else {
+        setInbox(data.messages ?? []);
+      }
+      setInboxPageToken(data.next_page_token ?? null);
     } catch {
-      setInbox([]);
+      if (!append) setInbox([]);
       setSourceError("Apollo couldn't read your inbox just now. You can paste the email into the box instead.");
     } finally {
       setSourceLoading(false);
+      setLoadingMore(false);
     }
-  }, [deviceId]);
+  }, [deviceId, selectedEmailAccount, inboxPageToken]);
+
+  /** Switch to a different email account and reload the inbox. */
+  const handleAccountChange = useCallback((email: string | null) => {
+    setSelectedEmailAccount(email);
+    setInboxPageToken(null);
+    setInbox([]);
+    void loadInbox(email);
+  }, [loadInbox]);
+
+  /** Load the next page of emails. */
+  const handleLoadMore = useCallback(() => {
+    if (!inboxPageToken || loadingMore) return;
+    void loadInbox(selectedEmailAccount, true);
+  }, [loadInbox, inboxPageToken, loadingMore, selectedEmailAccount]);
 
   const loadApps = useCallback(async () => {
     setSourceLoading(true);
@@ -765,6 +801,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
           onSelect={(id) => pickFromSource(picker, id)}
           onClose={() => setPicker(null)}
           testID={`higgins-artifact-picker-${picker}`}
+          /* Email-only: account chooser + pagination */
+          accounts={picker === "email" ? emailAccounts : undefined}
+          selectedAccount={picker === "email" ? selectedEmailAccount : undefined}
+          onAccountChange={picker === "email" ? handleAccountChange : undefined}
+          hasMore={picker === "email" ? !!inboxPageToken : undefined}
+          loadingMore={picker === "email" ? loadingMore : undefined}
+          onLoadMore={picker === "email" ? handleLoadMore : undefined}
         />
       ) : null}
       {screening ? (
