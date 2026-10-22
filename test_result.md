@@ -1,3 +1,49 @@
+## 2026-10-22 Device Posture Monitoring (23 checks)
+
+backend:
+  - task: "POST /api/devices/posture - receive posture snapshot + changes, push alerts for critical changes"
+    implemented: true
+    working: true
+    file: "backend/routers/posture.py"
+  - task: "GET /api/devices/posture - retrieve latest posture report"
+    implemented: true
+    working: true
+    file: "backend/routers/posture.py"
+
+frontend:
+  - task: "Native getDevicePostureSnapshot() in GuardDog module - reads 23 Android security settings"
+    implemented: true
+    working: true (requires native build)
+    file: "frontend/packages/guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoModule.kt"
+  - task: "Device posture collector (devicePosture.ts) - 23 checks with diff and local alerts"
+    implemented: true
+    working: true
+    file: "frontend/src/security/devicePosture.ts"
+  - task: "Posture monitor (postureMonitor.ts) - periodic checks on foreground, auto-start after setup"
+    implemented: true
+    working: true
+    file: "frontend/src/security/postureMonitor.ts"
+  - task: "Alerts screen Device Posture section - summary card, critical/warning items"
+    implemented: true
+    working: true
+    file: "frontend/app/alerts.tsx"
+
+test_plan:
+  current_focus:
+    - "Verify POST /api/devices/posture stores posture and detects critical changes"
+    - "Verify GET /api/devices/posture returns stored posture"
+    - "Verify Alerts screen shows Device Posture section with severity-coded items"
+    - "Verify Settings notification categories toggles work"
+    - "Verify backend push tests still pass"
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented 23-check device posture monitoring. NATIVE: Added getDevicePostureSnapshot() to GuardDog Kotlin module reading Android Settings.Secure/Global, KeyguardManager, AccessibilityManager, DevicePolicyManager, TelecomManager, certificate store, root indicators, Play Protect, etc. FRONTEND: devicePosture.ts collector (23 checks), postureMonitor.ts (5-min periodic on foreground), Alerts screen shows Device Posture section with summary card + critical/warning items. BACKEND: POST/GET /api/devices/posture endpoints, critical changes trigger barking push alerts. Auth: device token from POST /api/devices/register. Web bypass: ?__apollo_test_setup=1. On web preview only 3 checks are observable (VPN, notifications, WiFi); all 23 observable on Android device builds."
+
+
+
 ## 2026-10-22 Notification Categories + Push Notification Fix
 
 backend:

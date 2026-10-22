@@ -1,14 +1,15 @@
 /**
  * Apollo Alerts — a clean, user-facing list of notifications and patrol findings.
  * Reached via the bell icon on every screen. Shows:
- * 1. Patrol events (threats Apollo detected)
- * 2. Notification history (alerts Apollo sent)
+ * 1. Device posture (security-relevant device settings)
+ * 2. Patrol events (threats Apollo detected)
+ * 3. Notification history (alerts Apollo sent)
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ShieldAlert, Bell, ChevronRight } from "lucide-react-native";
+import { ShieldAlert, Bell, ChevronRight, ShieldCheck, ShieldX, AlertTriangle } from "lucide-react-native";
 
 import { useApollo } from "@/src/store/ApolloContext";
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
@@ -18,6 +19,8 @@ import { alertHistory, type AlertHistoryRow } from "@/src/domain/alertHistory";
 import { getAlertHistory } from "@/src/push/notifications";
 import { readAlertLog } from "@/src/push/alertLog";
 import { STATE_NAME, type ApolloState } from "@/src/domain/types";
+import type { PostureSnapshot, PostureCheckResult } from "@/src/security/devicePosture";
+import { runPostureCheck, getLastPostureSnapshot } from "@/src/security/postureMonitor";
 
 const TONE_MAP: Record<ApolloState, "resting" | "growling" | "barking" | "unknown"> = {
   sniffing: "unknown", resting: "resting", ears_up: "unknown", growling: "growling", barking: "barking", biting: "barking",
@@ -45,11 +48,38 @@ export default function AlertsScreen() {
   const { events } = useApollo();
 
   const [history, setHistory] = useState<AlertHistoryRow[]>([]);
+  const [posture, setPosture] = useState<PostureSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const [server, device] = await Promise.all([
+        getAlertHistory().catch(() => []),
+        readAlertLog().catch(() => []),
+      ]);
+      setHistory(alertHistory(server, device));
+      // Always try to load or generate a posture snapshot
+      let snap = await getLastPostureSnapshot().catch(() => null);
+      if (!snap) {
+        try {
+          const result = await runPostureCheck();
+          snap = result.snapshot;
+        } catch { /* posture check failed, ok */ }
+      }
+      setPosture(snap);
+    } catch {
+      // keep whatever we had
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshPosture = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await runPostureCheck();
+      setPosture(result.snapshot);
       const [server, device] = await Promise.all([
         getAlertHistory().catch(() => []),
         readAlertLog().catch(() => []),
@@ -64,6 +94,17 @@ export default function AlertsScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Posture checks grouped by severity
+  const postureIssues = useMemo(() => {
+    if (!posture) return { critical: [] as PostureCheckResult[], warning: [] as PostureCheckResult[], ok: [] as PostureCheckResult[] };
+    const critical = posture.checks.filter((c) => c.observable && c.severity === "critical");
+    const warning = posture.checks.filter((c) => c.observable && c.severity === "warning");
+    const ok = posture.checks.filter((c) => c.observable && c.severity === "ok");
+    return { critical, warning, ok };
+  }, [posture]);
+
+  const hasPostureIssues = postureIssues.critical.length > 0 || postureIssues.warning.length > 0;
+
   // Patrol events — active threats and recent findings
   const activeEvents = useMemo(() =>
     events
@@ -73,7 +114,7 @@ export default function AlertsScreen() {
     [events],
   );
 
-  const hasContent = activeEvents.length > 0 || history.length > 0;
+  const hasContent = activeEvents.length > 0 || history.length > 0 || posture !== null;
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -82,8 +123,72 @@ export default function AlertsScreen() {
         style={s.scroll}
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.gold} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshPosture} tintColor={colors.gold} />}
       >
+
+        {/* Device Posture */}
+        {posture ? (
+          <View>
+            <SectionTitle>Device posture</SectionTitle>
+            {/* Summary card */}
+            <Card style={[s.postureCard, hasPostureIssues ? s.postureCardWarn : s.postureCardOk]}>
+              <View style={s.postureHeader}>
+                {hasPostureIssues
+                  ? <ShieldX size={22} color={postureIssues.critical.length > 0 ? colors.barking : colors.growling} />
+                  : <ShieldCheck size={22} color={colors.resting} />}
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.postureTitle, { color: hasPostureIssues ? (postureIssues.critical.length > 0 ? colors.barking : colors.growling) : colors.resting }]}>
+                    {hasPostureIssues
+                      ? `${postureIssues.critical.length + postureIssues.warning.length} setting${(postureIssues.critical.length + postureIssues.warning.length) > 1 ? "s" : ""} need${(postureIssues.critical.length + postureIssues.warning.length) === 1 ? "s" : ""} attention`
+                      : "Device settings look good"}
+                  </Text>
+                  <Text style={s.postureSubtitle}>
+                    {posture.checks.filter((c) => c.observable).length} checks · Last scanned {relativeTime(posture.capturedAt)}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+
+            {/* Critical issues */}
+            {postureIssues.critical.map((c) => (
+              <View key={c.id} style={s.postureRow} testID={`posture-${c.id}`}>
+                <View style={[s.iconWrap, { backgroundColor: colors.barkingTint }]}>
+                  <ShieldX size={14} color={colors.barking} />
+                </View>
+                <View style={s.eventContent}>
+                  <View style={s.eventHeader}>
+                    <Pill tone="barking" label="Critical" testID={`posture-pill-${c.id}`} />
+                  </View>
+                  <Text style={s.eventTitle} numberOfLines={1}>{c.label}: {c.value}</Text>
+                  <Text style={s.eventSub} numberOfLines={2}>{c.detail}</Text>
+                </View>
+              </View>
+            ))}
+
+            {/* Warnings */}
+            {postureIssues.warning.map((c) => (
+              <View key={c.id} style={s.postureRow} testID={`posture-${c.id}`}>
+                <View style={[s.iconWrap, { backgroundColor: colors.growlingTint }]}>
+                  <AlertTriangle size={14} color={colors.growling} />
+                </View>
+                <View style={s.eventContent}>
+                  <View style={s.eventHeader}>
+                    <Pill tone="growling" label="Warning" testID={`posture-pill-${c.id}`} />
+                  </View>
+                  <Text style={s.eventTitle} numberOfLines={1}>{c.label}: {c.value}</Text>
+                  <Text style={s.eventSub} numberOfLines={2}>{c.detail}</Text>
+                </View>
+              </View>
+            ))}
+
+            {/* OK checks (collapsed) */}
+            {postureIssues.ok.length > 0 && !hasPostureIssues ? (
+              <Text style={s.postureOkSummary}>
+                All {postureIssues.ok.length} observable checks passed.
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Patrol findings */}
         {activeEvents.length > 0 ? (
@@ -162,6 +267,22 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   scroll: { flex: 1 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.lg },
+  postureCard: {
+    borderWidth: 1, borderRadius: radius.md, padding: spacing.md,
+  },
+  postureCardOk: { borderColor: c.resting, backgroundColor: c.restingTint ?? c.surfaceTertiary },
+  postureCardWarn: { borderColor: c.growling, backgroundColor: c.growlingTint ?? c.surfaceTertiary },
+  postureHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  postureTitle: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20 },
+  postureSubtitle: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary, lineHeight: 17 },
+  postureRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border,
+  },
+  postureOkSummary: {
+    fontFamily: fonts.text, fontSize: 13, color: c.resting, textAlign: "center",
+    paddingVertical: spacing.sm,
+  },
   eventRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border,

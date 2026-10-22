@@ -66,6 +66,7 @@ import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import type { HealthTrigger } from "@/src/protection/healthTypes";
 import { APP_VERSION } from "@/src/config/buildInfo";
 import { isVerifiedDesktopFlowDrop } from "@/src/security/desktopEvidence";
+import { startPostureMonitor, updatePostureInputs, stopPostureMonitor } from "@/src/security/postureMonitor";
 import { getOriginalSource, saveOriginalSource, type OriginalSourceInput } from "@/src/store/originalSource";
 import { listEvidence } from "@/src/investigation/client";
 
@@ -351,6 +352,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (generation !== probeGeneration.current) return null;
       const observed = freshObservation(status) ? status : unavailableObservation(status);
       setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
+      // Feed the posture monitor with fresh protection + network state
+      updatePostureInputs(observed, net);
       // ── Private DNS gap detection ──────────────────────────────────────────
       if (securityAdapter.getPrivateDnsStatus) {
         securityAdapter.getPrivateDnsStatus().then(setPrivateDnsStatus).catch((error) => {
@@ -602,6 +605,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           }
           if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
           if (done) {
+            // Start device posture monitoring on boot if setup was previously completed.
+            startPostureMonitor();
             // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
             let identity = await getDeviceIdentity();
             const resetWhy = identity ? null : await getIdentityResetReason();
@@ -798,6 +803,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     try { await enableNotifications(); } catch (e) { logNotifDiagnostic("permission", e, "setup-flow"); }
     // Register for remote push delivery after notification permission is granted.
     void registerRemotePush().catch((e) => logNotifDiagnostic("registration", e, "setup-push"));
+    // Start device posture monitoring
+    startPostureMonitor();
   }, [verifyNow, enableNotifications]);
 
   // Remote Patrol + trust merge — uses the extracted pure mergeLocalAndRemoteEvents function

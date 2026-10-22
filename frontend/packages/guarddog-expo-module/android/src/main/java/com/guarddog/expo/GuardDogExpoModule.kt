@@ -430,6 +430,174 @@ class GuardDogExpoModule : Module() {
                 mapOf("opened" to false, "reason" to (e.message ?: "unknown error launching $packageName"))
             }
         }
+        // ----------------------------------------------------------------
+        // Device Posture Snapshot — reads all Android-accessible security
+        // settings in one call. Each field is the OS's own answer; Apollo
+        // reports what changed, never guesses why.
+        // ----------------------------------------------------------------
+        Function("getDevicePostureSnapshot") {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+            val pm = context.packageManager
+
+            // Developer Options
+            val developerOptionsEnabled = try {
+                android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
+            } catch (_: Exception) { false }
+
+            // USB Debugging
+            val usbDebuggingEnabled = try {
+                android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.ADB_ENABLED, 0) == 1
+            } catch (_: Exception) { false }
+
+            // Unknown Sources (API 26+: per-app canRequestPackageInstalls)
+            val unknownSourcesEnabled = try {
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    pm.canRequestPackageInstalls()
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.INSTALL_NON_MARKET_APPS, 0) == 1
+                }
+            } catch (_: Exception) { false }
+
+            // Screen Lock
+            val screenLockSecure = keyguardManager.isDeviceSecure
+
+            // Biometrics
+            val biometricStatus = try {
+                val bm = androidx.biometric.BiometricManager.from(context)
+                when (bm.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK)) {
+                    androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS -> "enrolled"
+                    androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "none_enrolled"
+                    androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "no_hardware"
+                    else -> "unavailable"
+                }
+            } catch (_: Exception) { "unavailable" }
+
+            // Notifications
+            val notificationsEnabled = notificationManager.areNotificationsEnabled()
+
+            // Accessibility services
+            val accessibilityServices = try {
+                val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+                am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                    .mapNotNull { it.resolveInfo?.serviceInfo?.packageName }
+                    .filter { it != context.packageName }
+                    .distinct()
+            } catch (_: Exception) { emptyList() }
+
+            // Device admin apps
+            val deviceAdmins = try {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                dpm.activeAdmins?.map { it.packageName }?.filter { it != context.packageName }?.distinct() ?: emptyList()
+            } catch (_: Exception) { emptyList<String>() }
+
+            // Default SMS app
+            val defaultSmsApp = try {
+                if (android.os.Build.VERSION.SDK_INT >= 24) {
+                    val roleManager = context.getSystemService(android.app.role.RoleManager::class.java)
+                    // Can't query role holders without API 29 (Q) — use Telephony default
+                    android.provider.Telephony.Sms.getDefaultSmsPackage(context) ?: "unknown"
+                } else {
+                    android.provider.Telephony.Sms.getDefaultSmsPackage(context) ?: "unknown"
+                }
+            } catch (_: Exception) { "unknown" }
+
+            // Default phone/dialer app
+            val defaultDialerApp = try {
+                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+                telecom.defaultDialerPackage ?: "unknown"
+            } catch (_: Exception) { "unknown" }
+
+            // Notification listener packages
+            val notificationListeners = try {
+                val raw = android.provider.Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
+                raw.split(":").mapNotNull {
+                    try { android.content.ComponentName.unflattenFromString(it)?.packageName } catch (_: Exception) { null }
+                }.filter { it != context.packageName }.distinct()
+            } catch (_: Exception) { emptyList<String>() }
+
+            // Overlay permission apps (can draw over other apps)
+            // Cannot enumerate all — we report whether our own app has it (as a reference). Full enumeration requires PackageManager queries.
+            val canDrawOverlays = android.provider.Settings.canDrawOverlays(context)
+
+            // VPN: is another VPN active (not ours)?
+            val otherVpnActive = try {
+                val activeNet = connectivityManager.activeNetwork
+                val caps = activeNet?.let { connectivityManager.getNetworkCapabilities(it) }
+                val vpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
+                val ourVpnRunning = state.current().lifecycle.name.let { it == "Running" || it == "Starting" }
+                vpnTransport && !ourVpnRunning
+            } catch (_: Exception) { false }
+
+            // User-installed certificates
+            val userCertificateCount = try {
+                val ks = java.security.KeyStore.getInstance("AndroidCAStore")
+                ks.load(null)
+                val userCerts = ks.aliases().toList().count { alias ->
+                    try { alias.startsWith("user:") } catch (_: Exception) { false }
+                }
+                userCerts
+            } catch (_: Exception) { -1 }  // -1 = couldn't read
+
+            // Root / Jailbreak indicators
+            val rootIndicators = mutableListOf<String>()
+            try {
+                val suPaths = listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/system/su", "/data/local/xbin/su", "/data/local/bin/su")
+                for (path in suPaths) { if (java.io.File(path).exists()) { rootIndicators.add("su_binary:$path"); break } }
+                if (android.os.Build.TAGS?.contains("test-keys") == true) rootIndicators.add("test_keys_build")
+                // Check for common root management apps
+                val rootApps = listOf("com.topjohnwu.magisk", "eu.chainfire.supersu", "com.koushikdutta.superuser", "com.thirdparty.superuser")
+                for (pkg in rootApps) { try { pm.getPackageInfo(pkg, 0); rootIndicators.add("root_app:$pkg") } catch (_: Exception) { } }
+            } catch (_: Exception) { }
+
+            // OS Security patch level
+            val securityPatch = android.os.Build.VERSION.SECURITY_PATCH ?: "unknown"
+
+            // Play Protect: best-effort check via Google API availability
+            val playProtectAvailable = try {
+                val cls = Class.forName("com.google.android.gms.common.GoogleApiAvailability")
+                val instance = cls.getMethod("getInstance").invoke(null)
+                val result = cls.getMethod("isGooglePlayServicesAvailable", Context::class.java).invoke(instance, context) as Int
+                result == 0  // ConnectionResult.SUCCESS
+            } catch (_: Exception) { false }
+
+            // Screen capture / media projection active (API 29+)
+            val screenCaptureDetectable = android.os.Build.VERSION.SDK_INT >= 29
+
+            mapOf(
+                // Settings
+                "developerOptionsEnabled" to developerOptionsEnabled,
+                "usbDebuggingEnabled" to usbDebuggingEnabled,
+                "unknownSourcesEnabled" to unknownSourcesEnabled,
+                "screenLockSecure" to screenLockSecure,
+                "biometricStatus" to biometricStatus,
+                "notificationsEnabled" to notificationsEnabled,
+                // Privileged access
+                "accessibilityServices" to accessibilityServices,
+                "deviceAdmins" to deviceAdmins,
+                "notificationListeners" to notificationListeners,
+                "canDrawOverlays" to canDrawOverlays,
+                // Default app handlers
+                "defaultSmsApp" to defaultSmsApp,
+                "defaultDialerApp" to defaultDialerApp,
+                // VPN & network
+                "otherVpnActive" to otherVpnActive,
+                // Certificates
+                "userCertificateCount" to userCertificateCount,
+                // Root / compromise
+                "rootIndicators" to rootIndicators,
+                // OS security
+                "securityPatch" to securityPatch,
+                "playProtectAvailable" to playProtectAvailable,
+                "screenCaptureDetectable" to screenCaptureDetectable,
+                // Metadata
+                "capturedAtMillis" to System.currentTimeMillis(),
+                "sdkInt" to android.os.Build.VERSION.SDK_INT,
+            )
+        }
+
     }
 
     companion object {

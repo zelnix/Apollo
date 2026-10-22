@@ -29,6 +29,7 @@ dependencies {
   implementation project(':guarddog-core')
   implementation project(':guarddog-vpn')
   implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
+  implementation "androidx.biometric:biometric:1.2.0-alpha05"
   testImplementation 'junit:junit:4.13.2'
   testImplementation 'org.jetbrains.kotlin:kotlin-test-junit'
   androidTestImplementation 'androidx.test.ext:junit:1.2.1'
