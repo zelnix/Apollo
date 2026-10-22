@@ -130,19 +130,22 @@ export default function CheckFile() {
   const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false) => {
     setBusy(true);
     try {
+      // ── Hard size gate: reject oversized files BEFORE inspection ──
+      if (asset.size != null && asset.size > FILE_SIZE_LIMIT) {
+        throw new Error(`This file is ${Math.round(asset.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
+      }
       let inspected: Inspection = { headBytes: null, textSample: null };
       try {
         if (Platform.OS === "web") {
-          if (asset.size != null && (!Number.isFinite(asset.size) || asset.size <= 0 || asset.size > FILE_SIZE_LIMIT)) throw new Error("invalid file size");
           const response = await fetch(asset.uri);
           const bytes = new Uint8Array(await response.arrayBuffer());
-          if (!bytes.length || bytes.length > FILE_SIZE_LIMIT) throw new Error("invalid file size");
+          if (!bytes.length || bytes.length > FILE_SIZE_LIMIT) throw new Error(`File is empty or exceeds the ${FILE_SIZE_LIMIT / (1024 * 1024)} MB limit.`);
           inspected = inspectSample(bytes);
         } else {
           // Native: read bytes via legacy expo-file-system
           const info = await FS.getInfoAsync(asset.uri);
           const fileSize = info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
-          if (fileSize <= 0 || fileSize > FILE_SIZE_LIMIT) throw new Error("invalid file size");
+          if (fileSize <= 0 || fileSize > FILE_SIZE_LIMIT) throw new Error(`File is empty or exceeds the ${FILE_SIZE_LIMIT / (1024 * 1024)} MB limit.`);
           const readLen = Math.min(FILE_SAMPLE_BYTES, fileSize);
           const b64 = await FS.readAsStringAsync(asset.uri, { encoding: FS.EncodingType.Base64, length: readLen, position: 0 });
           const bin = atob(b64);
@@ -150,7 +153,11 @@ export default function CheckFile() {
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
           inspected = inspectSample(bytes);
         }
-      } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
+      } catch (innerErr) {
+        // Re-throw size limit errors so they surface to the user
+        if (innerErr instanceof Error && innerErr.message.includes("limit")) throw innerErr;
+        inspected.inspectionError = 'This build could not read the file contents.';
+      }
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
       // The real, still-live handle is kept (never blanked) — Higgins needs it if the person later asks for a deeper,
       // explicitly-authorised cloud check. Filenames/size/mime travel as METADATA describing the file, never as a

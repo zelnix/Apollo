@@ -8,7 +8,7 @@ import { Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseFile, type FileAnalysis } from "@/src/domain/fileAnalysis";
-import { readInspection } from "@/src/domain/fileInspection";
+import { readInspection, FILE_SIZE_LIMIT } from "@/src/domain/fileInspection";
 import { STATE_NAME } from "@/src/domain/types";
 import { putShareIntake } from "@/src/share/shareIntake";
 import type { SharedPayload } from "@/src/share/classifyShare";
@@ -48,6 +48,11 @@ export function ShareFileBatch({ files }: { files: SharedFile[] }) {
         setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, status: "checking" } : r));
         const file = files[i];
         try {
+          if (file.size != null && file.size > FILE_SIZE_LIMIT) {
+            if (!active) return;
+            setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, status: "failed" } : r));
+            continue;
+          }
           const inspected = await readInspection({ uri: file.path, size: file.size });
           const analysis = analyseFile({ name: fileName(file), size: file.size ?? undefined, mime: file.mimeType ?? null, ...inspected, source: "unknown", passwordInMessage: false });
           if (!active) return;

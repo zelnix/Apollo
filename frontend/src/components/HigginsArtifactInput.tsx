@@ -18,6 +18,7 @@ import { Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 
 import { Image } from "expo-image";
 
 import { apiGet } from "@/src/api/client";
+import { FILE_SIZE_LIMIT } from "@/src/domain/fileInspection";
 import { PhonePickerSheet } from "./PhonePickerSheet";
 import { Sheet } from "./Sheet";
 import { PREVIEW_SIMULATION } from "./SimulatedPicker";
@@ -466,7 +467,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     try {
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
       const file = !res.canceled ? res.assets?.[0] : null;
-      if (file) fillSample(file.uri, `${file.name}${file.mimeType ? ` (${file.mimeType})` : ""}`, "Is this file safe to open?");
+      if (file) {
+        if (file.size != null && file.size > FILE_SIZE_LIMIT) {
+          setPrepError(`That file is ${Math.round(file.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
+          return;
+        }
+        fillSample(file.uri, `${file.name}${file.mimeType ? ` (${file.mimeType})` : ""}`, "Is this file safe to open?");
+      }
     } catch {
       setPrepError("Apollo couldn't open the file picker. You can type the file name and type instead.");
     } finally {
@@ -481,7 +488,14 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: "image/*", copyToCacheDirectory: true, multiple: false });
       const file = !res.canceled ? res.assets?.[0] : null;
-      if (file) { setImageUri(file.uri); setSelectedSample(null); }
+      if (file) {
+        if (file.size != null && file.size > FILE_SIZE_LIMIT) {
+          setPrepError(`That image is ${Math.round(file.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller image.`);
+          return;
+        }
+        setImageUri(file.uri);
+        setSelectedSample(null);
+      }
     } catch {
       setPrepError("Apollo couldn't open the file browser. You can select an image from your photos instead.");
     } finally {
