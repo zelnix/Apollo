@@ -2,17 +2,20 @@
 // Device Checkup history, diagnostics export and support contact (spec: Support Screen Enhancement).
 // It DISPLAYS status; it never runs duplicate diagnostics — "Go to Check" sends manual diagnostics
 // (including Device Re-check) to the Check tab. Preview builds never show fabricated native data.
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
+import CircleCheck from "lucide-react-native/icons/circle-check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleX from "lucide-react-native/icons/circle-x";
 import Copy from "lucide-react-native/icons/copy";
 import FileDown from "lucide-react-native/icons/file-down";
 import Mail from "lucide-react-native/icons/mail";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +40,21 @@ import { CloseButton } from "@/src/components/CloseButton";
 const USER_EMAIL_KEY = "apollo.support.user_email.v1";
 
 interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
+interface DiagnosticCheck { check: string; passed: boolean; detail: string; backend_public_key?: string; pinned_apk_key?: string }
+interface DiagnosticResult { diagnostic: string; checks: DiagnosticCheck[] }
+const CHECK_LABELS: Record<string, string> = {
+  bundle_generation: "Bundle generation",
+  signing_enabled: "Ed25519 signing",
+  signature_valid: "Signature self-verify",
+  public_key_match: "Public key vs. APK pin",
+  schema: "Bundle schema",
+  expiry: "Bundle expiry",
+};
+async function fetchRuleDiagnostic(): Promise<DiagnosticResult> {
+  const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/guarddog/rules/diagnostic`, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 const STATUS: Record<CheckStatus, string> = { pending: "Could not check", checking: "Checking", healthy: "Working", degraded: "Needs attention", unavailable: "Could not check" };
 const RESULT_TEXT = {
   device: { working: "Protection on this phone is working.", problem: "Apollo cannot confirm protection right now." },
@@ -116,6 +134,54 @@ function recentLogLines(health: FullHealthCheck, firstCheckConcerns: string[], e
   if (evidenceSummary) lines.push(evidenceSummary);
   if (!lines.length) lines.push("No diagnostic events recorded yet. Run a check from the Check tab.");
   return lines;
+}
+
+function DiagnosticSection() {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const queryClient = useQueryClient();
+  const diag = useQuery({ queryKey: ["guarddog-rule-diagnostic"], queryFn: fetchRuleDiagnostic, staleTime: 120_000, retry: 1 });
+  const allPassed = diag.data?.checks.every((c) => c.passed) ?? false;
+
+  return (
+    <Section title="Rule Bundle Delivery" testID="support-rule-diagnostic-section" defaultOpen={true}>
+      <Body style={s.detail}>
+        End-to-end verification of the backend rule bundle signing pipeline. Every check must pass for native protection to start on a device.
+      </Body>
+      {diag.isLoading ? <Body>Running diagnostic checks…</Body> : diag.isError ? (
+        <View style={{ gap: spacing.xs }}>
+          <View style={s.statusRow}>
+            <Text style={s.rowLabel}>Backend unreachable</Text>
+            <Pill tone="barking" label="Failed" />
+          </View>
+          <Body style={s.detail}>{diag.error instanceof Error ? diag.error.message : "Could not reach the rule diagnostic endpoint."}</Body>
+        </View>
+      ) : diag.data ? (
+        <View style={{ gap: spacing.md }}>
+          <View style={s.statusRow}>
+            <Text style={s.rowLabel}>Overall</Text>
+            <Pill tone={allPassed ? "resting" : "barking"} label={allPassed ? "All checks passed" : "Issues found"} />
+          </View>
+          {diag.data.checks.map((check) => (
+            <View key={check.check} style={{ gap: 2 }} testID={`diag-check-${check.check}`}>
+              <View style={[s.row, { gap: spacing.sm }]}>
+                {check.passed
+                  ? <CircleCheck size={16} color={colors.resting ?? colors.brand} />
+                  : <CircleX size={16} color={colors.barking ?? colors.error ?? "#D32F2F"} />}
+                <Text style={[s.label, { flex: 1 }]}>{CHECK_LABELS[check.check] ?? check.check}</Text>
+                <Pill tone={check.passed ? "resting" : "barking"} label={check.passed ? "Pass" : "Fail"} />
+              </View>
+              <Body style={s.detail}>{check.detail}</Body>
+              {check.backend_public_key && !check.passed ? (
+                <Body style={s.detail}>Backend key: {check.backend_public_key}{"\n"}APK pinned:  {check.pinned_apk_key}</Body>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Button testID="support-rerun-diagnostic" variant="secondary" label={diag.isFetching ? "Running…" : "Re-run diagnostic"} icon={<RefreshCw size={16} color={colors.brand} />} disabled={diag.isFetching} onPress={() => { queryClient.invalidateQueries({ queryKey: ["guarddog-rule-diagnostic"] }); }} />
+    </Section>
+  );
 }
 
 export default function SupportScreen() {
@@ -217,6 +283,9 @@ export default function SupportScreen() {
           </View>
         ))}
       </Section>
+
+      {/* 2b. Rule Bundle Delivery Diagnostic */}
+      <DiagnosticSection />
 
       {/* 3. Current Issues & Higgins */}
       <Section title="Protection Issues & Device Checkup" testID="support-issues-section">
