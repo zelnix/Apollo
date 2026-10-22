@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
-import { useRouter, useSegments } from "expo-router";
+import { useRouter } from "expo-router";
 import Bell from "lucide-react-native/icons/bell";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileText from "lucide-react-native/icons/file-text";
 import LifeBuoy from "lucide-react-native/icons/life-buoy";
@@ -13,9 +14,7 @@ import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
-import { AlertsButton } from "@/src/components/AlertsButton";
 import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
-import { CloseButton } from "@/src/components/CloseButton";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { RetrofitModal } from "@/src/components/RetrofitModal";
 import { Sheet } from "@/src/components/Sheet";
@@ -65,7 +64,6 @@ export default function SettingsScreen() {
   const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
   const [showRetrofit, setShowRetrofit] = useState(false);
-  const isTab = (useSegments() as string[]).includes("(tabs)");
 
   // Each group carries its own colour so the list is scannable at a glance. These are navigational
   // category colours (see theme.ts) — never Apollo's security-state colours.
@@ -102,10 +100,17 @@ export default function SettingsScreen() {
 
   return <View style={s.root} testID="settings-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-      <Text style={s.title} testID="settings-title">Settings</Text>
-      {isTab
-        ? <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><AlertsButton testID="settings-alerts" /><InfoButton info={SETTINGS_INFO} testID="settings-info" /></View>
-        : <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><InfoButton info={SETTINGS_INFO} testID="settings-info" /><CloseButton testID="settings-close" label="Close Settings" onPress={() => goBackOrHome(router)} /></View>}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        testID="settings-back"
+        onPress={() => goBackOrHome(router)}
+        style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -spacing.sm }}
+      >
+        <ChevronLeft size={24} color={colors.onSurface} />
+      </Pressable>
+      <Text style={[s.title, { flex: 1 }]} testID="settings-title">Settings</Text>
+      <InfoButton info={SETTINGS_INFO} testID="settings-info" />
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="settings-scroll">
 
