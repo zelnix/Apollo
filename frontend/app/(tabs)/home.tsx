@@ -345,7 +345,7 @@ export default function Home() {
         <View style={s.headerRow}>
           <Image
             source={require("@/assets/images/apollo-scam-guard-logo.png")}
-            style={{ height: Math.max(28, Math.min(36, screenW * 0.085)), aspectRatio: 1789 / 537 }}
+            style={{ height: Math.max(35, Math.min(45, screenW * 0.10625)), aspectRatio: 1789 / 537 }}
             contentFit="contain"
             testID="home-brand-title"
           />
