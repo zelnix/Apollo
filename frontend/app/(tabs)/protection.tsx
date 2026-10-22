@@ -380,59 +380,6 @@ export default function ProtectionScreen() {
           </View>
         ) : null}
 
-        {/* ── Hero card ── */}
-        <View
-          style={[
-            styles.heroContainer,
-            { height: Math.round(cardWidth * 0.38) },
-          ]}
-          testID="protection-hero-card"
-        >
-          {/* Background image — fills container, always fully visible */}
-          <Image
-            source={heroBackground}
-            style={styles.heroBgImage}
-            resizeMode="cover"
-          />
-          {/* Text overlay at bottom-left */}
-          <View style={[styles.heroOverlay, { padding: Math.round(12 * scale) }]}>
-            <View style={styles.heroTextBlock}>
-              <Text
-                style={[
-                  styles.heroTitle,
-                  {
-                    fontSize: Math.round(17 * scale),
-                    lineHeight: Math.round(22 * scale),
-                  },
-                ]}
-                numberOfLines={2}
-              >
-                {heroTitle}
-              </Text>
-              {heroLines.map((line, i) => (
-                <Text
-                  key={i}
-                  style={[
-                    styles.heroLine,
-                    {
-                      fontSize: Math.round(13 * scale),
-                      lineHeight: Math.round(18 * scale),
-                    },
-                  ]}
-                >
-                  {line}
-                </Text>
-              ))}
-            </View>
-          </View>
-          {/* Apollo dog — bottom-right, no background */}
-          <Image
-            source={apolloDog}
-            style={styles.heroDogImage}
-            resizeMode="contain"
-          />
-        </View>
-
         {/* ── Section header ── */}
         <View style={styles.sectionHeader}>
           <Text
