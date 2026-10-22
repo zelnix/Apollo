@@ -18,8 +18,98 @@ from __future__ import annotations
 import re
 from enum import Enum
 from typing import Any
+from urllib.parse import urlparse, parse_qs, urlencode, unquote
 
 from core.redaction import redact_investigation_secrets
+
+
+# ── URL compression for token efficiency ────────────────────────────────
+# Long tracking/marketing URLs waste tokens without adding investigative value.
+# We preserve the domain, path and security-relevant query parameters while
+# stripping analytics trackers and truncating the rest.
+
+# Query parameters that are NEVER security-relevant — safe to strip unconditionally.
+_TRACKING_PARAMS = frozenset({
+    # Google / Urchin analytics
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_id",
+    "utm_source_platform", "utm_creative_format", "utm_marketing_tactic",
+    # Google Ads / click IDs
+    "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "gad_source",
+    # Meta (Facebook / Instagram)
+    "fbclid", "fb_action_ids", "fb_action_types", "fb_ref", "fb_source",
+    # Microsoft / Bing Ads
+    "msclkid",
+    # Mailchimp / email marketing
+    "mc_cid", "mc_eid", "_hsenc", "_hsmi", "hsa_cam", "hsa_grp", "hsa_mt",
+    "hsa_src", "hsa_ad", "hsa_acc", "hsa_net", "hsa_ver", "hsa_la", "hsa_ol", "hsa_kw",
+    # General analytics / session tracking
+    "ref", "referrer", "source", "medium", "campaign", "cid", "sid",
+    "_ga", "_gl", "_gid", "_gac", "_fbc", "_fbp",
+    "s_kwcid", "ef_id", "s_cid", "guccounter", "guce_referrer", "guce_referrer_sig",
+    "srsltid", "tracking_id", "trk", "trkCampaign", "trkInfo",
+    "click_id", "clickid", "clkid",
+    # Email platform tracking
+    "vero_id", "vero_conv", "oly_enc_id", "oly_anon_id",
+    "mc_tc", "sc_cid", "sc_lid",
+})
+
+# Parameters that may hold security-relevant information (redirect targets, scam pages).
+_SECURITY_PARAMS = frozenset({
+    "redirect", "redirect_uri", "redirect_url", "return", "return_url", "returnurl",
+    "next", "url", "uri", "target", "destination", "goto", "continue", "redir",
+    "callback", "callback_url", "login_hint", "state",
+})
+
+_URL_RE = re.compile(r"https?://[^\s\"'<>\]\)]+", re.ASCII)
+_MAX_URL_LEN = 200  # Truncate any URL above this after cleaning
+_MAX_PARAM_VALUE_LEN = 80  # Individual query parameter value cap
+
+
+def compress_urls(text: str) -> str:
+    """Compress long URLs in text to save tokens while preserving investigative value.
+
+    Strategy per URL:
+    1. Strip known tracking/analytics parameters unconditionally.
+    2. Truncate remaining query-parameter values over 80 chars.
+    3. If the cleaned URL is still over 200 chars, hard-truncate with a marker.
+
+    Domain + path are ALWAYS preserved (they're the primary phishing indicator).
+    Security-relevant params (redirect, callback, etc.) are kept but value-truncated.
+    """
+    if "http" not in text:
+        return text
+
+    def _compress(match: re.Match) -> str:
+        raw_url = match.group(0)
+        try:
+            parsed = urlparse(raw_url)
+            if not parsed.query:
+                # No query string — only length-cap
+                if len(raw_url) > _MAX_URL_LEN:
+                    return raw_url[:_MAX_URL_LEN] + "…"
+                return raw_url
+            qs = parse_qs(parsed.query, keep_blank_values=True)
+            # Strip tracking params and truncate long values
+            cleaned_params: list[tuple[str, str]] = []
+            for key, values in qs.items():
+                if key.lower() in _TRACKING_PARAMS:
+                    continue
+                for v in values:
+                    decoded = unquote(v)
+                    if len(decoded) > _MAX_PARAM_VALUE_LEN:
+                        cap = _MAX_PARAM_VALUE_LEN * 2 if key.lower() in _SECURITY_PARAMS else _MAX_PARAM_VALUE_LEN
+                        decoded = decoded[:cap] + "…"
+                    cleaned_params.append((key, decoded))
+            new_query = urlencode(cleaned_params) if cleaned_params else ""
+            rebuilt = parsed._replace(query=new_query, fragment="").geturl()
+            # Final length cap
+            if len(rebuilt) > _MAX_URL_LEN:
+                return rebuilt[:_MAX_URL_LEN] + "…"
+            return rebuilt
+        except Exception:
+            return raw_url[:_MAX_URL_LEN] + "…" if len(raw_url) > _MAX_URL_LEN else raw_url
+
+    return _URL_RE.sub(_compress, text)
 
 
 class Purpose(str, Enum):
@@ -112,8 +202,9 @@ def enforce_boundary(purpose: Purpose, payload: Any, *, evidence_pii: set[str] |
 
 
 def _enforce_text(purpose: Purpose, text: str, *, evidence_pii: set[str] | None = None) -> str:
-    """Strip credentials from all text. For research and advisory analysis, also minimise personal identifiers."""
+    """Strip credentials from all text, compress long URLs. For research and advisory analysis, also minimise personal identifiers."""
     cleaned = strip_credentials(text)
+    cleaned = compress_urls(cleaned)
     if purpose in (Purpose.RESEARCH, Purpose.PUBLIC_ADVISORY_ANALYSIS):
         # Research and advisory queries should contain only public identifiers, not personal data.
         # Public advisories may contain third-party PII (victim details, witness names).
