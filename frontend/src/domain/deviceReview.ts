@@ -110,6 +110,22 @@ const CHECKS: CheckDef[] = [
           : checked("The device reported Developer options are off.") },
 
   // --- Malware protection ---
+  { id: "native_call_protection", category: "malware", title: "Native call protection", platforms: ["android", "ios"],
+    settings: { android: "Settings → Phone app → Caller ID & spam", ios: "Settings → Phone → Silence Unknown Callers" },
+    evaluate: (i) => {
+      const sig = i.signals.nativeCallProtection;
+      if (!sig) return unavailable("This build couldn't detect native call-protection providers.");
+      if (sig.active) return checked(`${sig.activeProviders.join(", ")} active. ${sig.detail}`);
+      return review("No native call-spam protection was detected as the active handler.", "Check that your phone app's built-in call screening or spam filter is turned on.", sig.detail);
+    } },
+  { id: "native_message_protection", category: "malware", title: "Native message protection", platforms: ["android", "ios"],
+    settings: { android: "Settings → Messages app → Spam protection", ios: "Settings → Messages → Filter Unknown Senders" },
+    evaluate: (i) => {
+      const sig = i.signals.nativeMessageProtection;
+      if (!sig) return unavailable("This build couldn't detect native message-protection providers.");
+      if (sig.active) return checked(`${sig.activeProviders.join(", ")} active. ${sig.detail}`);
+      return review("No native message-spam protection was detected as the active handler.", "Check that your messaging app's built-in spam filter is turned on.", sig.detail);
+    } },
   { id: "apollo_protection", category: "malware", title: "Apollo background protection", platforms: ["android", "ios", "windows", "macos"],
     settings: { android: "Settings → Network & internet → VPN", ios: "Settings → Apollo", windows: "Apollo → Protection", macos: "Apollo → Protection" },
     evaluate: (i) => !i.protection ? unavailable("Apollo couldn't obtain a current protection reading. This does not mean protection is running.")

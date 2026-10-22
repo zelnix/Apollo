@@ -18,6 +18,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
 import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
+import { detectNativeProtection, summariseCallProtection, summariseMessageProtection } from "@/src/security/nativeProtectionEvidence";
 import { deviceCheckEvent } from "@/src/domain/deviceCheckCase";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
@@ -185,6 +186,14 @@ export default function CheckDevice() {
     try {
       const collectSignals = hostKind && securityAdapter.getDeviceSecuritySignals ? securityAdapter.getDeviceSecuritySignals() : AppDeviceSdk.getDeviceSecuritySignals(platform);
       const [nextSignals, recent, previousRaw] = await Promise.all([collectSignals, AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
+      // Augment signals with native OS/OEM protection detection (detection only, no classifications).
+      try {
+        const nativeCaps = await detectNativeProtection();
+        const callSummary = summariseCallProtection(nativeCaps);
+        const msgSummary = summariseMessageProtection(nativeCaps);
+        nextSignals.nativeCallProtection = { active: callSummary.hasNativeProtection, activeProviders: callSummary.activeProviders, detail: callSummary.detail };
+        nextSignals.nativeMessageProtection = { active: msgSummary.hasNativeProtection, activeProviders: msgSummary.activeProviders, detail: msgSummary.detail };
+      } catch { /* Detection failure is not a check failure. */ }
       const previous = previousRaw ? JSON.parse(previousRaw) as DeviceSignals : null;
       const observedChanges = deriveDeviceSecurityChanges(previous, nextSignals, new Date().toISOString(), protection?.running === true);
       setSignals(nextSignals);

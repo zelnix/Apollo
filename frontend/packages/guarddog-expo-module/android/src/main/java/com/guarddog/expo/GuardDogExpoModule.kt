@@ -430,6 +430,129 @@ class GuardDogExpoModule : Module() {
                 mapOf("opened" to false, "reason" to (e.message ?: "unknown error launching $packageName"))
             }
         }
+
+        // ----------------------------------------------------------------
+        // Native Protection Detection — reports which OS/OEM scam
+        // protection capabilities are present and their enabled state.
+        //
+        // This DETECTS capabilities. It does NOT read native verdicts
+        // (no verified public API has been confirmed for Google,
+        // Samsung, or carrier call/message classifications).
+        // ----------------------------------------------------------------
+        Function("getNativeProtectionCapabilities") {
+            val pm = context.packageManager
+            val telecom = context.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+
+            // --- Call protection providers ---
+            val callProtection = mutableListOf<Map<String, Any>>()
+
+            // Google Phone / Dialer — has built-in call screening and spam detection
+            val defaultDialer = try { telecom.defaultDialerPackage ?: "" } catch (_: Exception) { "" }
+            val googlePhoneInstalled = try {
+                pm.getPackageInfo("com.google.android.dialer", 0)
+                true
+            } catch (_: Exception) { false }
+            val googlePhoneIsDefault = defaultDialer == "com.google.android.dialer"
+            callProtection.add(mapOf(
+                "provider" to "Google Phone",
+                "packageName" to "com.google.android.dialer",
+                "installed" to googlePhoneInstalled,
+                "isDefaultHandler" to googlePhoneIsDefault,
+                "feature" to "Caller ID & spam protection",
+                "classificationAccessible" to false,  // No verified public API (rule 6)
+                "note" to "Google's native scam verdict is not accessible through a supported public API."
+            ))
+
+            // Samsung Smart Call (Hiya-powered)
+            val samsungSmartCallInstalled = try {
+                pm.getPackageInfo("com.samsung.android.smartcallprovider", 0)
+                true
+            } catch (_: Exception) {
+                try {
+                    pm.getPackageInfo("com.hiya.star", 0)
+                    true
+                } catch (_: Exception) { false }
+            }
+            val samsungDialerIsDefault = defaultDialer == "com.samsung.android.dialer"
+            callProtection.add(mapOf(
+                "provider" to "Samsung Smart Call",
+                "packageName" to "com.samsung.android.smartcallprovider",
+                "installed" to samsungSmartCallInstalled,
+                "isDefaultHandler" to samsungDialerIsDefault,
+                "feature" to "Caller ID & spam filtering",
+                "classificationAccessible" to false,  // No verified Samsung API (rule 7)
+                "note" to "Samsung Smart Call verdict is not accessible through a supported Samsung API."
+            ))
+
+            // Carrier visual voicemail / spam filter (T-Mobile Scam Shield, etc.)
+            val carrierSpamApps = listOf(
+                "com.tmobile.scamshield" to "T-Mobile Scam Shield",
+                "com.att.callprotect" to "AT&T Call Protect",
+                "com.verizon.callfilter" to "Verizon Call Filter",
+            )
+            for ((pkg, name) in carrierSpamApps) {
+                val installed = try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+                if (installed) {
+                    callProtection.add(mapOf(
+                        "provider" to name,
+                        "packageName" to pkg,
+                        "installed" to true,
+                        "isDefaultHandler" to false,
+                        "feature" to "Carrier-level call filtering",
+                        "classificationAccessible" to false,
+                        "note" to "Carrier classification is not accessible through a supported public API."
+                    ))
+                }
+            }
+
+            // --- Message protection providers ---
+            val messageProtection = mutableListOf<Map<String, Any>>()
+
+            // Google Messages — has built-in spam/RCS classification
+            val googleMessagesInstalled = try {
+                pm.getPackageInfo("com.google.android.apps.messaging", 0)
+                true
+            } catch (_: Exception) { false }
+            val defaultSms = try {
+                android.provider.Telephony.Sms.getDefaultSmsPackage(context) ?: ""
+            } catch (_: Exception) { "" }
+            val googleMessagesIsDefault = defaultSms == "com.google.android.apps.messaging"
+            messageProtection.add(mapOf(
+                "provider" to "Google Messages",
+                "packageName" to "com.google.android.apps.messaging",
+                "installed" to googleMessagesInstalled,
+                "isDefaultHandler" to googleMessagesIsDefault,
+                "feature" to "Spam protection & verified SMS",
+                "classificationAccessible" to false,
+                "note" to "Google Messages spam classification is not accessible through a supported public API."
+            ))
+
+            // Samsung Messages
+            val samsungMessagesInstalled = try {
+                pm.getPackageInfo("com.samsung.android.messaging", 0)
+                true
+            } catch (_: Exception) { false }
+            val samsungMessagesIsDefault = defaultSms == "com.samsung.android.messaging"
+            messageProtection.add(mapOf(
+                "provider" to "Samsung Messages",
+                "packageName" to "com.samsung.android.messaging",
+                "installed" to samsungMessagesInstalled,
+                "isDefaultHandler" to samsungMessagesIsDefault,
+                "feature" to "Spam filtering",
+                "classificationAccessible" to false,
+                "note" to "Samsung Messages classification is not accessible through a supported Samsung API."
+            ))
+
+            mapOf(
+                "callProtection" to callProtection,
+                "messageProtection" to messageProtection,
+                "defaultDialerPackage" to defaultDialer,
+                "defaultSmsPackage" to defaultSms,
+                "platform" to "android",
+                "capturedAtMillis" to System.currentTimeMillis(),
+            )
+        }
+
         // ----------------------------------------------------------------
         // Device Posture Snapshot — reads all Android-accessible security
         // settings in one call. Each field is the OS's own answer; Apollo

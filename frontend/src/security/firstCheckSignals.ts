@@ -9,6 +9,7 @@ import { EMPTY_SIGNALS, type DevicePlatform } from "@/src/domain/deviceAnalysis"
 import { erroredFirstCheck, osThreatNotAvailable, runFirstCheck, type FirstCheckInputs, type FirstCheckReport } from "@/src/domain/firstCheck";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { IS_NATIVE_HOST, securityAdapter } from "@/src/security/securityAdapter";
+import { detectNativeProtection, summariseCallProtection, summariseMessageProtection } from "@/src/security/nativeProtectionEvidence";
 
 export function currentPlatform(): DevicePlatform {
   // The Windows/macOS desktop host runs the web bundle, so Platform.OS is "web" there — trust the adapter's kind.
@@ -49,6 +50,14 @@ export async function collectFirstCheck(onProgress?: (p: FirstCheckProgress) => 
         `Higgins couldn't read this device's security signals, so no part of the check could run (${detail}).`);
     }
     const signals = { ...EMPTY_SIGNALS(platform), ...raw };
+    // Detect native OS/OEM call & message protection capabilities (detection only, no classifications).
+    try {
+      const nativeCaps = await detectNativeProtection();
+      const callSummary = summariseCallProtection(nativeCaps);
+      const msgSummary = summariseMessageProtection(nativeCaps);
+      signals.nativeCallProtection = { active: callSummary.hasNativeProtection, activeProviders: callSummary.activeProviders, detail: callSummary.detail };
+      signals.nativeMessageProtection = { active: msgSummary.hasNativeProtection, activeProviders: msgSummary.activeProviders, detail: msgSummary.detail };
+    } catch { /* Detection failure is not a check failure — leave signals.native* as null/undefined. */ }
     stage(2);
     const [facts, protection, connection] = await Promise.all([
       securityAdapter.getDeviceProfileFacts?.().catch(() => null) ?? Promise.resolve(null),

@@ -37,6 +37,12 @@ export interface DeviceSignals {
   systemIntegrity?: SystemIntegritySignal | null;
   /** Trusted, deterministic OS malware/threat report (Google Play Protect, Microsoft Defender). `null` = not supplied. */
   osThreatReport?: OsThreatReportSignal | null;
+  /** Detected native call-protection providers (Google Phone, Samsung Smart Call, carrier apps).
+   *  Reports what is installed and active — does NOT include scam classifications (no verified API). */
+  nativeCallProtection?: NativeCallProtectionSignal | null;
+  /** Detected native message-protection providers (Google Messages, Samsung Messages).
+   *  Reports what is installed and active — does NOT include spam classifications (no verified API). */
+  nativeMessageProtection?: NativeMessageProtectionSignal | null;
 }
 export interface SystemIntegritySignal { indicators: string[]; checked: string[]; protections: { name: string; enabled: boolean | null }[] }
 export interface OsThreatReportSignal {
@@ -48,6 +54,26 @@ export interface OsThreatReportSignal {
   threats: string[];
   /** The OS scanner itself is switched off (Play Protect / Defender real-time protection off). */
   protectionOff?: boolean | null;
+}
+
+/** Detected native call-protection capabilities. Detection only — no classifications. */
+export interface NativeCallProtectionSignal {
+  /** Whether at least one native call-protection provider is active as the default handler. */
+  active: boolean;
+  /** Provider names that are installed and active (e.g. ["Google Phone"]). */
+  activeProviders: string[];
+  /** Human-readable summary of what was detected. */
+  detail: string;
+}
+
+/** Detected native message-protection capabilities. Detection only — no classifications. */
+export interface NativeMessageProtectionSignal {
+  /** Whether at least one native message-protection provider is active as the default handler. */
+  active: boolean;
+  /** Provider names that are installed and active (e.g. ["Google Messages"]). */
+  activeProviders: string[];
+  /** Human-readable summary of what was detected. */
+  detail: string;
 }
 export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null, screenLockSecure: null, firewallEnabled: null, osUpdatesCurrent: null, antivirusEnabled: null, systemIntegrity: null, osThreatReport: null });
 
