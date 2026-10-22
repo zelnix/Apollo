@@ -3,19 +3,20 @@
 No prompt/response logging, hidden-reasoning display, implicit model switches or SDK retries.
 Public research must be called with an explicitly minimised query, never a private prompt.
 
+NO-FALLBACK CONTRACT:
+    In production every Gemini failure is reported exactly as-is — the error code,
+    the HTTP status, the finish reason. There is no simulation fallback, no mock
+    substitute, no "try again with fake data" path. Higgins surfaces the honest
+    failure to the person.
+
 PROVIDER MODE (APOLLO_PROVIDER_MODE):
-    simulated — Preview. The real request is built (real Magnum DI prompt, real evidence, real
-               privacy/redaction, real post-redaction attachments) and then the EXTERNAL GEMINI CALL
-               ONLY is replaced by the preview simulator, which always succeeds with the fixed V1
-               response. Magnum DI and Higgins continue through the real workflow.
-    mock     — Default in preview/dev. All generate() calls route to the deterministic
-               mock provider. Zero external Gemini calls, $0 cost. NEVER falls back to
-               the paid Gemini key.
-    live     — Production. Uses the real Gemini API key. CANNOT be set when mock safeguards
-               detect a preview environment without explicit opt-in.
-    live_test — Explicit live-AI testing mode using GEMINI_DEV_API_KEY. For validating
-                genuine Gemini behaviour with synthetic/non-sensitive test data against a
-                free-tier development project. Must be deliberately enabled.
+    live       — Production. Uses the real Gemini API key. Failures propagate honestly.
+    live_test  — Explicit live-AI testing mode using GEMINI_DEV_API_KEY.
+    simulated  — Preview only. Handled by services.higgins.preview.dispatch (NOT this file).
+    mock       — Preview/dev only. Handled by services.higgins.preview.dispatch (NOT this file).
+
+    When a real GEMINI_API_KEY is present, "simulated" and "mock" are auto-upgraded to "live"
+    so that production deployments can never produce fake results even if the env var is misconfigured.
 """
 from __future__ import annotations
 
@@ -84,6 +85,26 @@ _validate_mode_at_import()
 _gateway_log = _logging.getLogger("apollo.gateway")
 _gateway_log.info("provider_mode=%s apollo_env=%s gemini_key_configured=%s dev_key_configured=%s",
                   _PROVIDER_MODE, APOLLO_ENV, bool(GEMINI_API_KEY), bool(_GEMINI_DEV_API_KEY))
+
+# ── Preview handler slot ────────────────────────────────────────────────────
+# Filled ONLY by services.higgins.preview.dispatch.install_preview_provider()
+# at startup in non-production environments. Production leaves this None.
+# This is NOT a fallback — production failures must surface honestly as-is.
+_preview_generate = None
+
+
+def register_preview_handler(handler) -> None:
+    """Install a preview-mode generate handler. Refuses to register in production."""
+    global _preview_generate
+    if IS_PRODUCTION_ENV:
+        raise RuntimeError(
+            "FATAL: register_preview_handler() called in a production environment "
+            f"(APOLLO_ENV='{APOLLO_ENV}'). Preview handlers must never be installed in production.")
+    if _PROVIDER_MODE not in ("simulated", "mock"):
+        _gateway_log.info("preview handler offered but provider_mode='%s'; ignoring", _PROVIDER_MODE)
+        return
+    _preview_generate = handler
+    _gateway_log.info("preview handler registered for provider_mode='%s'", _PROVIDER_MODE)
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
 # input, Search grounding and structured outputs, which is everything the investigation request uses.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
@@ -309,40 +330,32 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    correlation_id: str | None = None,
                    trigger_source: str | None = None) -> GeminiResult:
     """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
-    
-    In preview (no Gemini key): routes to the simulator or mock. Zero external calls.
-    In production (real Gemini key): the auto-upgrade at import time ensures _PROVIDER_MODE='live',
-    so the simulated/mock branches are structurally unreachable.
-    """
-    # ── Preview-only simulator (unreachable when GEMINI_API_KEY is present) ──
-    if _PROVIDER_MODE == "simulated":
-        from services.higgins import di_record as _di
-        from services.higgins.preview.preview_simulator import simulate_generate
-        _audit = _audit_payload(system, contents, tools)
-        _t0 = time.monotonic()
-        _result = await simulate_generate(
-            system, contents, model=model, capability=capability, json_output=json_output,
-            tools=tools, timeout=timeout, response_schema=response_schema, purpose=purpose,
-            correlation_id=correlation_id, trigger_source=trigger_source, payload_audit=_audit)
-        await _di.save_di_record(
-            correlation_id=correlation_id, owner=_owner_for(correlation_id),
-            investigation_id=(correlation_id or "").removeprefix("case-") or None,
-            model=model, purpose=purpose.value if hasattr(purpose, "value") else str(purpose),
-            simulated=True, environment="Preview", status="success",
-            request=_di.describe_request(system, contents, tools),
-            response_text=_result.text, finish_reason=_result.finish_reason,
-            usage=_result.usage, duration_ms=int((time.monotonic() - _t0) * 1000),
-            retries=0, calls=0)
-        return _result
 
-    # ── Preview-only mock (unreachable when GEMINI_API_KEY is present) ──
-    if _PROVIDER_MODE == "mock":
-        from services.higgins.preview.mock_provider import mock_generate
-        return await mock_generate(
-            system, contents, model=model, capability=capability,
-            json_output=json_output, tools=tools, timeout=timeout,
-            response_schema=response_schema, purpose=purpose,
-            correlation_id=correlation_id, trigger_source=trigger_source)
+    NO-FALLBACK CONTRACT: In production (_PROVIDER_MODE='live'), every Gemini failure is
+    reported exactly as-is — the error code, the HTTP status, the finish reason. There is
+    no simulation fallback, no mock substitute, no "try again with fake data" path.
+    Higgins surfaces the honest failure to the person.
+
+    Production: the auto-upgrade at import time ensures _PROVIDER_MODE='live' whenever
+    GEMINI_API_KEY is present. The preview handler branch below is structurally unreachable.
+    Preview/dev: a preview handler is installed at startup by services.higgins.preview.dispatch
+    — this file contains zero imports or references to preview/simulation modules.
+    """
+    # ── Preview-only handler (structurally unreachable in production) ──────
+    # _PROVIDER_MODE is auto-upgraded to 'live' at import time when GEMINI_API_KEY
+    # is present, and _validate_mode_at_import() raises if a production env tries
+    # to use simulated/mock. This branch serves ONLY dev/preview environments.
+    if _PROVIDER_MODE in ("simulated", "mock"):
+        if _preview_generate is not None:
+            return await _preview_generate(
+                system, contents, model=model, capability=capability,
+                json_output=json_output, tools=tools, timeout=timeout,
+                response_schema=response_schema, purpose=purpose,
+                correlation_id=correlation_id, trigger_source=trigger_source)
+        raise ProviderFailure(
+            "provider_configuration",
+            original_message=f"Provider mode is '{_PROVIDER_MODE}' but no preview handler is registered. "
+                             "Call services.higgins.preview.dispatch.install_preview_provider() at startup.")
 
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")

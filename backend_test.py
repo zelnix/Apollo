@@ -1,52 +1,17 @@
-#!/usr/bin/env python3
+"""Backend test for Provider.py Production Isolation and Sniffing/Growling Notifications.
+
+Tests two P0 changes:
+1. Provider.py production isolation - verify no preview imports and callback mechanism
+2. Sniffing & Growling notifications - verify push notifications for sniffing events
 """
-Backend API Tests for Double Investigation Bug Fix in Call Guard Manual Flow
+import asyncio
+import httpx
+import os
+import sys
 
-Tests verify that:
-1. POST /api/call/risk-check returns reputation data WITHOUT creating investigation
-2. POST /api/call/investigate creates investigation independently
-3. POST /api/investigations works for general investigation creation
-4. Regression: Other gate investigations (link, message) still work
-"""
-
-import requests
-import json
-import time
-from datetime import datetime
-
-# Backend URL from frontend/.env
-BASE_URL = "https://uat-loop-fix.preview.emergentagent.com/api"
-
-# Test phone number (known high-risk test number from review request)
-TEST_PHONE = "+18007132618"
-
-# Colors for output
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-RESET = '\033[0m'
-
-def log_test(name):
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}TEST: {name}{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}")
-
-def log_success(message):
-    print(f"{GREEN}✓ {message}{RESET}")
-
-def log_error(message):
-    print(f"{RED}✗ {message}{RESET}")
-
-def log_info(message):
-    print(f"{YELLOW}ℹ {message}{RESET}")
-
-def log_response(response):
-    print(f"\nStatus: {response.status_code}")
-    try:
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-    except:
-        print(f"Response: {response.text}")
+# Backend URL from environment
+BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "http://localhost:8001")
+API_BASE = f"{BACKEND_URL}/api"
 
 class TestResults:
     def __init__(self):
@@ -54,304 +19,344 @@ class TestResults:
         self.failed = []
         self.warnings = []
     
-    def add_pass(self, test_name):
-        self.passed.append(test_name)
-        log_success(f"PASSED: {test_name}")
+    def add_pass(self, test_name: str, details: str = ""):
+        self.passed.append((test_name, details))
+        print(f"✅ PASS: {test_name}")
+        if details:
+            print(f"   {details}")
     
-    def add_fail(self, test_name, reason):
-        self.failed.append((test_name, reason))
-        log_error(f"FAILED: {test_name} - {reason}")
+    def add_fail(self, test_name: str, details: str):
+        self.failed.append((test_name, details))
+        print(f"❌ FAIL: {test_name}")
+        print(f"   {details}")
     
-    def add_warning(self, test_name, reason):
-        self.warnings.append((test_name, reason))
-        log_info(f"WARNING: {test_name} - {reason}")
+    def add_warning(self, test_name: str, details: str):
+        self.warnings.append((test_name, details))
+        print(f"⚠️  WARNING: {test_name}")
+        print(f"   {details}")
     
     def summary(self):
-        print(f"\n{BLUE}{'='*80}{RESET}")
-        print(f"{BLUE}TEST SUMMARY{RESET}")
-        print(f"{BLUE}{'='*80}{RESET}")
-        print(f"{GREEN}Passed: {len(self.passed)}{RESET}")
-        print(f"{RED}Failed: {len(self.failed)}{RESET}")
-        print(f"{YELLOW}Warnings: {len(self.warnings)}{RESET}")
+        print("\n" + "="*80)
+        print("TEST SUMMARY")
+        print("="*80)
+        print(f"✅ Passed: {len(self.passed)}")
+        print(f"❌ Failed: {len(self.failed)}")
+        print(f"⚠️  Warnings: {len(self.warnings)}")
         
         if self.failed:
-            print(f"\n{RED}Failed Tests:{RESET}")
-            for test_name, reason in self.failed:
-                print(f"  - {test_name}: {reason}")
-        
-        if self.warnings:
-            print(f"\n{YELLOW}Warnings:{RESET}")
-            for test_name, reason in self.warnings:
-                print(f"  - {test_name}: {reason}")
+            print("\nFailed Tests:")
+            for name, details in self.failed:
+                print(f"  - {name}: {details}")
         
         return len(self.failed) == 0
 
-def register_device():
-    """Register a device and return device_id and device_token"""
-    log_test("Device Registration")
-    
-    url = f"{BASE_URL}/devices/register"
-    payload = {
-        "platform": "web",
-        "adapter_mode": "preview",
-        "app_version": "1.0.0"
-    }
-    
-    response = requests.post(url, json=payload)
-    log_response(response)
-    
-    if response.status_code != 201:
-        raise Exception(f"Device registration failed: {response.status_code}")
-    
-    data = response.json()
-    device_id = data.get("device_id")
-    device_token = data.get("device_token")
-    
-    if not device_id or not device_token:
-        raise Exception("Device registration did not return device_id or device_token")
-    
-    log_success(f"Device registered: {device_id}")
-    return device_id, device_token
 
-def test_call_risk_check(device_id, device_token, results):
-    """Test POST /api/call/risk-check - should return reputation WITHOUT creating investigation"""
-    log_test("POST /api/call/risk-check - Reputation Check Without Investigation")
-    
-    url = f"{BASE_URL}/call/risk-check"
-    headers = {
-        "Authorization": f"Bearer {device_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "device_id": device_id,
-        "number": TEST_PHONE
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    log_response(response)
-    
-    if response.status_code != 200:
-        results.add_fail("call/risk-check status code", f"Expected 200, got {response.status_code}")
-        return
-    
+async def register_device(client: httpx.AsyncClient) -> str:
+    """Register a test device and return the auth token."""
+    response = await client.post(
+        f"{API_BASE}/devices/register",
+        json={
+            "platform": "android", 
+            "adapter_mode": "guarddog",
+            "app_version": "1.0.0",
+            "tz_offset_minutes": 0,
+            "locale": "en-AU"
+        }
+    )
+    if response.status_code != 201:
+        raise Exception(f"Device registration failed: {response.status_code} {response.text}")
     data = response.json()
+    return data["device_token"]
+
+
+async def test_provider_isolation(results: TestResults):
+    """Test 1: Provider.py Production Isolation (P0)"""
+    print("\n" + "="*80)
+    print("TEST 1: Provider.py Production Isolation (P0)")
+    print("="*80)
     
-    # Verify response contains reputation data
-    required_fields = ["decision", "fraud_score", "number"]
-    missing_fields = [f for f in required_fields if f not in data]
+    # Test 1.1: Verify provider.py has NO imports from services.higgins.preview
+    print("\n1.1: Checking provider.py for preview imports...")
+    provider_path = "/app/backend/services/higgins/provider.py"
     
-    if missing_fields:
-        results.add_fail("call/risk-check response fields", f"Missing fields: {missing_fields}")
-        return
+    with open(provider_path, 'r') as f:
+        content = f.read()
+        lines = content.split('\n')
     
-    # Verify NO investigation_case_id in response (this is server-side, shouldn't create investigations)
-    if "investigation_case_id" in data:
-        results.add_warning("call/risk-check investigation_case_id", 
-                          "Response contains investigation_case_id - this endpoint should not create investigations")
+    # Check for any import statements containing services.higgins.preview
+    preview_imports = []
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith('import ') or stripped.startswith('from '):
+            if 'services.higgins.preview' in line and not line.strip().startswith('#'):
+                preview_imports.append((i, line))
     
-    # Check if IPQS is configured
-    if data.get("source") == "not_configured":
-        results.add_warning("call/risk-check IPQS", "IPQS_API_KEY not configured - acceptable per review request")
+    if preview_imports:
+        details = f"Found {len(preview_imports)} preview imports:\n"
+        for line_num, line in preview_imports:
+            details += f"  Line {line_num}: {line}\n"
+        results.add_fail("provider.py contains NO preview imports", details)
     else:
-        log_success(f"IPQS source: {data.get('source')}")
-        log_success(f"Decision: {data.get('decision')}")
-        log_success(f"Fraud score: {data.get('fraud_score')}")
+        results.add_pass("provider.py contains NO preview imports", 
+                        "Verified: No 'import' or 'from' statements reference services.higgins.preview")
     
-    results.add_pass("call/risk-check returns reputation data")
+    # Test 1.2: Verify generate() function has no simulate_generate or mock_generate references
+    print("\n1.2: Checking generate() function for simulate/mock references...")
+    
+    # Find the generate function
+    generate_start = None
+    for i, line in enumerate(lines):
+        if 'async def generate(' in line or 'def generate(' in line:
+            generate_start = i
+            break
+    
+    if generate_start is None:
+        results.add_fail("generate() function exists", "Could not find generate() function")
+    else:
+        # Find the end of the function (next function definition or end of file)
+        generate_end = len(lines)
+        for i in range(generate_start + 1, len(lines)):
+            if lines[i].startswith('async def ') or lines[i].startswith('def '):
+                generate_end = i
+                break
+        
+        generate_code = '\n'.join(lines[generate_start:generate_end])
+        
+        # Check for simulate_generate or mock_generate (excluding comments)
+        code_lines = [l for l in generate_code.split('\n') if not l.strip().startswith('#')]
+        code_text = '\n'.join(code_lines)
+        
+        if 'simulate_generate' in code_text or 'mock_generate' in code_text:
+            results.add_fail("generate() has no simulate/mock references",
+                           "Found simulate_generate or mock_generate in generate() function")
+        else:
+            results.add_pass("generate() has no simulate/mock references",
+                           "Verified: No direct calls to simulate_generate or mock_generate")
+    
+    # Test 1.3: Verify callback mechanism exists
+    print("\n1.3: Checking callback mechanism (_preview_generate)...")
+    
+    if '_preview_generate = None' in content:
+        results.add_pass("Callback mechanism exists", 
+                        "Found _preview_generate = None declaration")
+    else:
+        results.add_fail("Callback mechanism exists",
+                        "_preview_generate variable not found")
+    
+    if 'def register_preview_handler(' in content:
+        results.add_pass("register_preview_handler() exists",
+                        "Found register_preview_handler() function")
+    else:
+        results.add_fail("register_preview_handler() exists",
+                        "register_preview_handler() function not found")
+    
+    # Test 1.4: Verify dispatch.py exists and has install_preview_provider
+    print("\n1.4: Checking dispatch.py...")
+    dispatch_path = "/app/backend/services/higgins/preview/dispatch.py"
+    
+    try:
+        with open(dispatch_path, 'r') as f:
+            dispatch_content = f.read()
+        
+        if 'def install_preview_provider()' in dispatch_content:
+            results.add_pass("dispatch.py has install_preview_provider()",
+                           f"Found at {dispatch_path}")
+        else:
+            results.add_fail("dispatch.py has install_preview_provider()",
+                           "install_preview_provider() function not found")
+    except FileNotFoundError:
+        results.add_fail("dispatch.py exists", f"File not found: {dispatch_path}")
+    
+    # Test 1.5: Check backend is running and get capabilities
+    print("\n1.5: Checking backend health and AI capabilities...")
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # Check backend health
+            health_response = await client.get(f"{API_BASE}/health")
+            if health_response.status_code == 200:
+                results.add_pass("Backend is running", f"Health check returned 200")
+            else:
+                results.add_fail("Backend is running", 
+                               f"Health check returned {health_response.status_code}")
+            
+            # Register a device to get auth token for capabilities endpoint
+            try:
+                token = await register_device(client)
+                headers = {"Authorization": f"Bearer {token}"}
+            except Exception as e:
+                results.add_fail("Device registration for capabilities test", f"Error: {str(e)}")
+                return
+            
+            # Check AI capabilities endpoint (requires auth)
+            cap_response = await client.get(f"{API_BASE}/ai/capabilities", headers=headers)
+            if cap_response.status_code == 200:
+                cap_data = cap_response.json()
+                provider_mode = cap_data.get("provider", "")
+                
+                # Check if provider mode indicates live (not mock)
+                # In preview environment with APOLLO_PROVIDER_MODE=simulated, 
+                # the provider will show "Gemini" but mode will be handled via callback
+                if "MOCK" in provider_mode.upper():
+                    results.add_warning("Provider mode check",
+                                      f"Provider shows as MOCK: {provider_mode}")
+                else:
+                    results.add_pass("Provider mode is not mock",
+                                   f"Provider: {provider_mode}")
+                
+                # Check models are configured
+                models = cap_data.get("models", {})
+                results.add_pass("AI capabilities endpoint works",
+                               f"Models configured: {', '.join(models.keys())}")
+            else:
+                results.add_fail("AI capabilities endpoint",
+                               f"Returned {cap_response.status_code}")
+        
+        except Exception as e:
+            results.add_fail("Backend connectivity", f"Error: {str(e)}")
 
-def test_call_investigate(device_id, device_token, results):
-    """Test POST /api/call/investigate - should create investigation independently"""
-    log_test("POST /api/call/investigate - Create Investigation")
-    
-    url = f"{BASE_URL}/call/investigate"
-    headers = {
-        "Authorization": f"Bearer {device_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "device_id": device_id,
-        "number": TEST_PHONE
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    log_response(response)
-    
-    if response.status_code != 200:
-        results.add_fail("call/investigate status code", f"Expected 200, got {response.status_code}")
-        return
-    
-    data = response.json()
-    
-    # Verify response contains investigation_case_id
-    if "investigation_case_id" not in data:
-        results.add_fail("call/investigate investigation_case_id", "Response missing investigation_case_id")
-        return
-    
-    case_id = data.get("investigation_case_id")
-    if not case_id:
-        results.add_fail("call/investigate case_id value", "investigation_case_id is null or empty")
-        return
-    
-    log_success(f"Investigation created: {case_id}")
-    
-    # Verify reputation data is also included
-    if "reputation" in data:
-        log_success("Reputation data included in response")
-    
-    results.add_pass("call/investigate creates investigation")
-    return case_id
 
-def test_investigations_endpoint(device_id, device_token, results):
-    """Test POST /api/investigations - general investigation creation"""
-    log_test("POST /api/investigations - General Investigation Creation")
+async def test_sniffing_notifications(results: TestResults):
+    """Test 2: Sniffing & Growling Notifications"""
+    print("\n" + "="*80)
+    print("TEST 2: Sniffing & Growling Notifications")
+    print("="*80)
     
-    url = f"{BASE_URL}/investigations"
-    headers = {
-        "Authorization": f"Bearer {device_token}",
-        "Content-Type": "application/json",
-        "Idempotency-Key": f"test-{int(time.time())}-{device_id[:8]}"
-    }
-    payload = {
-        "gate": "call",
-        "question": "Test investigation for call gate",
-        "submissions": [
-            {
-                "client_item_id": "test-call-1",
-                "kind": "text",
-                "value": TEST_PHONE,
-                "label": "Test phone number"
-            }
-        ],
-        "initial_findings": []
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    log_response(response)
-    
-    if response.status_code != 201:
-        results.add_fail("investigations status code", f"Expected 201, got {response.status_code}")
-        return
-    
-    data = response.json()
-    
-    # Verify response contains case
-    if "case" not in data:
-        results.add_fail("investigations response", "Response missing 'case' field")
-        return
-    
-    case = data.get("case", {})
-    case_id = case.get("id")
-    
-    if not case_id:
-        results.add_fail("investigations case_id", "Case ID is null or empty")
-        return
-    
-    log_success(f"Investigation created: {case_id}")
-    
-    # Verify job details if present
-    if "job" in data and data["job"]:
-        log_success(f"Job created: {data['job'].get('id')}")
-    
-    results.add_pass("investigations endpoint works")
-    return case_id
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Register device and get auth token
+        print("\n2.1: Registering test device...")
+        try:
+            token = await register_device(client)
+            headers = {"Authorization": f"Bearer {token}"}
+            results.add_pass("Device registration", "Successfully registered test device")
+        except Exception as e:
+            results.add_fail("Device registration", f"Error: {str(e)}")
+            return
+        
+        # Test 2.2: Check notification preferences endpoint
+        print("\n2.2: Checking notification preferences endpoint...")
+        try:
+            prefs_response = await client.get(
+                f"{API_BASE}/push/preferences",
+                headers=headers
+            )
+            
+            if prefs_response.status_code == 200:
+                prefs_data = prefs_response.json()
+                categories = prefs_data.get("categories", [])
+                
+                # Check for sniffing_growling category
+                sniffing_category = None
+                for cat in categories:
+                    if cat.get("id") == "sniffing_growling":
+                        sniffing_category = cat
+                        break
+                
+                if sniffing_category:
+                    results.add_pass("sniffing_growling category exists",
+                                   f"Label: {sniffing_category.get('label')}, "
+                                   f"Always on: {sniffing_category.get('always_on')}")
+                else:
+                    results.add_fail("sniffing_growling category exists",
+                                   "Category not found in preferences")
+                
+                # Verify all 5 categories exist
+                category_ids = [c.get("id") for c in categories]
+                expected = ["barking", "biting", "sniffing_growling", "scam_alerts", "learn_with_higgins"]
+                
+                if set(category_ids) == set(expected):
+                    results.add_pass("All 5 notification categories present",
+                                   f"Categories: {', '.join(category_ids)}")
+                else:
+                    missing = set(expected) - set(category_ids)
+                    extra = set(category_ids) - set(expected)
+                    details = ""
+                    if missing:
+                        details += f"Missing: {missing}. "
+                    if extra:
+                        details += f"Extra: {extra}."
+                    results.add_fail("All 5 notification categories present", details)
+            else:
+                results.add_fail("GET /api/push/preferences",
+                               f"Returned {prefs_response.status_code}: {prefs_response.text}")
+        
+        except Exception as e:
+            results.add_fail("Notification preferences check", f"Error: {str(e)}")
+        
+        # Test 2.3: Verify push.py code maps sniffing correctly
+        print("\n2.3: Verifying push.py code for sniffing event mapping...")
+        
+        push_path = "/app/backend/routers/push.py"
+        try:
+            with open(push_path, 'r') as f:
+                push_content = f.read()
+            
+            # Check for sniffing title in push_owner_alert
+            if '"Apollo is sniffing"' in push_content:
+                results.add_pass("Sniffing events get correct title",
+                               'Found "Apollo is sniffing" in push.py')
+            else:
+                results.add_fail("Sniffing events get correct title",
+                               '"Apollo is sniffing" not found in push.py')
+            
+            # Check for sniffing_growling category mapping
+            if 'category = "sniffing_growling"' in push_content or "'sniffing_growling'" in push_content:
+                results.add_pass("Sniffing maps to sniffing_growling category",
+                               "Found sniffing_growling category mapping")
+            else:
+                results.add_fail("Sniffing maps to sniffing_growling category",
+                               "sniffing_growling category mapping not found")
+        
+        except Exception as e:
+            results.add_fail("push.py code verification", f"Error: {str(e)}")
+        
+        # Test 2.4: Verify patrol.py triggers push for sniffing events
+        print("\n2.4: Verifying patrol.py triggers push for sniffing events...")
+        
+        patrol_path = "/app/backend/routers/patrol.py"
+        try:
+            with open(patrol_path, 'r') as f:
+                patrol_content = f.read()
+                patrol_lines = patrol_content.split('\n')
+            
+            # Find the section that handles sniffing/growling events
+            found_sniffing_push = False
+            for i, line in enumerate(patrol_lines):
+                # Look for the condition that checks for sniffing/growling
+                if 'sniffing' in line.lower() and 'growling' in line.lower():
+                    # Check if push_owner_alert is called nearby
+                    context = '\n'.join(patrol_lines[max(0, i-2):min(len(patrol_lines), i+5)])
+                    if 'push_owner_alert' in context:
+                        found_sniffing_push = True
+                        break
+            
+            if found_sniffing_push:
+                results.add_pass("Patrol triggers push for sniffing events",
+                               "Found push_owner_alert call for sniffing/growling events")
+            else:
+                results.add_fail("Patrol triggers push for sniffing events",
+                               "Could not verify push_owner_alert is called for sniffing events")
+        
+        except Exception as e:
+            results.add_fail("patrol.py code verification", f"Error: {str(e)}")
 
-def test_link_investigate_regression(device_id, device_token, results):
-    """Regression test: POST /api/link/investigate should still work"""
-    log_test("REGRESSION: POST /api/link/investigate")
-    
-    url = f"{BASE_URL}/link/investigate"
-    headers = {
-        "Authorization": f"Bearer {device_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "device_id": device_id,
-        "url": "https://example.com",
-        "local_state": "resting"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    log_response(response)
-    
-    if response.status_code != 200:
-        results.add_fail("link/investigate status code", f"Expected 200, got {response.status_code}")
-        return
-    
-    data = response.json()
-    
-    # Verify response contains investigation_case_id
-    if "investigation_case_id" not in data:
-        results.add_fail("link/investigate investigation_case_id", "Response missing investigation_case_id")
-        return
-    
-    case_id = data.get("investigation_case_id")
-    if not case_id:
-        results.add_fail("link/investigate case_id value", "investigation_case_id is null or empty")
-        return
-    
-    log_success(f"Link investigation created: {case_id}")
-    results.add_pass("link/investigate regression test")
 
-def test_message_analyse_regression(device_id, device_token, results):
-    """Regression test: POST /api/message/analyse should still work"""
-    log_test("REGRESSION: POST /api/message/analyse")
-    
-    url = f"{BASE_URL}/message/analyse"
-    headers = {
-        "Authorization": f"Bearer {device_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "device_id": device_id,
-        "text": "Test message with link https://example.com",
-        "sender": "unknown",
-        "local_state": "resting"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    log_response(response)
-    
-    if response.status_code != 200:
-        results.add_fail("message/analyse status code", f"Expected 200, got {response.status_code}")
-        return
-    
-    data = response.json()
-    
-    # Verify response structure (message/analyse returns analysis, not necessarily investigation_case_id)
-    # It may or may not create an investigation depending on the content
-    log_success("Message analysis completed")
-    results.add_pass("message/analyse regression test")
-
-def main():
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}Backend API Tests - Double Investigation Bug Fix{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}")
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Test Phone: {TEST_PHONE}")
-    print(f"Timestamp: {datetime.now().isoformat()}")
+async def main():
+    """Run all tests."""
+    print("="*80)
+    print("APOLLO BACKEND TESTING")
+    print("Provider.py Production Isolation + Sniffing/Growling Notifications")
+    print("="*80)
+    print(f"Backend URL: {BACKEND_URL}")
+    print(f"API Base: {API_BASE}")
     
     results = TestResults()
     
     try:
-        # Step 1: Register device
-        device_id, device_token = register_device()
-        log_success(f"Using device: {device_id}")
-        
-        # Step 2: Test call/risk-check (should NOT create investigation)
-        test_call_risk_check(device_id, device_token, results)
-        
-        # Step 3: Test call/investigate (should create investigation)
-        test_call_investigate(device_id, device_token, results)
-        
-        # Step 4: Test general investigations endpoint
-        test_investigations_endpoint(device_id, device_token, results)
-        
-        # Step 5: Regression tests for other gates
-        test_link_investigate_regression(device_id, device_token, results)
-        test_message_analyse_regression(device_id, device_token, results)
-        
+        await test_provider_isolation(results)
+        await test_sniffing_notifications(results)
     except Exception as e:
-        log_error(f"Test execution failed: {str(e)}")
+        print(f"\n❌ CRITICAL ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         results.add_fail("Test execution", str(e))
@@ -359,16 +364,9 @@ def main():
     # Print summary
     success = results.summary()
     
-    if success:
-        print(f"\n{GREEN}{'='*80}{RESET}")
-        print(f"{GREEN}ALL TESTS PASSED ✓{RESET}")
-        print(f"{GREEN}{'='*80}{RESET}")
-        return 0
-    else:
-        print(f"\n{RED}{'='*80}{RESET}")
-        print(f"{RED}SOME TESTS FAILED ✗{RESET}")
-        print(f"{RED}{'='*80}{RESET}")
-        return 1
+    # Exit with appropriate code
+    sys.exit(0 if success else 1)
+
 
 if __name__ == "__main__":
-    exit(main())
+    asyncio.run(main())

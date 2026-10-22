@@ -307,8 +307,9 @@ async def push_owner_alert(event: PatrolEvent) -> None:
             logger.info("push suppressed by preference: device=%s category=%s", event.device_id[:8], category)
             return
 
-        if event.state == "growling" or event.state in ("sniffing", "ears_up"):
-            data = {"title": "Apollo is growling", "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
+        if event.state in ("growling", "sniffing", "ears_up"):
+            verb = "Apollo is sniffing" if event.state == "sniffing" else "Apollo is growling"
+            data = {"title": verb, "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
             quiet_until = await device_quiet_until(event.device_id)
             if quiet_until:
                 await hold_until_morning(event.device_id, data, quiet_until, f"owner-{event.event_id}")

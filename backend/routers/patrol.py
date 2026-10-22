@@ -189,8 +189,8 @@ async def upsert_event(body: PatrolEventIn):
         # (e.g. a manual email check that produced high-risk results still warrants notification)
         if event.background or event.investigation_case_id:
             asyncio.create_task(push_owner_alert(event))
-    elif event.state == "growling" and (event.background or event.investigation_case_id):
-        asyncio.create_task(push_owner_alert(event))  # respects quiet hours
+    elif event.state in ("growling", "sniffing") and (event.background or event.investigation_case_id):
+        asyncio.create_task(push_owner_alert(event))  # respects quiet hours + user preference
     return event
 
 

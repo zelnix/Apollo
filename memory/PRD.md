@@ -2613,3 +2613,19 @@ The pickable list used to be printed inline as a long dashed "Simulated …" blo
 - `app/email.tsx` (`email-hero` → `email-source-picker`), `app/message.tsx` (`message-hero` → `message-source-picker`), `app/call-guard.tsx` (`callguard-hero` → `callguard-source-picker`), `app/file.tsx` (`file-hero` → `file-source-picker`), `app/app-check.tsx` (`app-hero` → `app-source-picker`), plus `HigginsArtifactInput` where the hero now opens the sheet.
 - The button is worded for production in every build ("Choose an email", "Choose a recent caller"); the PREVIEW ONLY tag lives inside the popup. Where a real list exists the hero opens it (connected inbox, `/message-picker`, `PhonePickerSheet`, the OS file picker, the installed-app sheet) and falls back to the sample popup only where the real source cannot be reached — on Messages that replaces a card that used to dead-end in a toast on iOS and web.
 - Removed: the inline `SimulatedPicker` blocks on file/app-check/call-guard, the hand-rolled simulated inbox on email, and the orphaned styles behind them.
+
+
+## STANDING RULES — do not remove
+
+### No testing agent without explicit owner approval
+Never call the testing subagent unless the owner explicitly says to. Manual verification or lint/restart is fine; the automated testing agent requires a direct "run tests" instruction.
+
+### No-fallback contract (production Gemini)
+Simulation is NOT a fallback for production. When the provider mode is `live`, every Gemini failure must be reported exactly as failed — the error code, HTTP status, finish reason — so Higgins can surface the honest failure to the person. There is no "try again with fake data" path, no silent substitution, no graceful degradation to mock responses. A production failure is a production failure.
+
+## Provider cleanup: zero preview imports in production provider.py (Jun 2026)
+`services/higgins/provider.py` no longer contains any `from services.higgins.preview` imports or inline branches for `simulate_generate` / `mock_generate`. The mock and simulated code paths were moved to `services/higgins/preview/dispatch.py`, which is loaded at startup ONLY in non-production environments via `server.py` lifespan. The registration uses `provider.register_preview_handler()` which hard-refuses in production (`IS_PRODUCTION_ENV`). The auto-upgrade logic (GEMINI_API_KEY present → mode forced to `live`) and `_validate_mode_at_import()` (production env + non-live mode → RuntimeError) remain as belt-and-braces.
+
+## Sniffing & Growling push notifications (Jun 2026)
+- `routers/patrol.py`: sniffing events now trigger `push_owner_alert()` alongside growling — was `event.state == "growling"`, now `event.state in ("growling", "sniffing")`.
+- `routers/push.py` `push_owner_alert()`: notification title differentiates state — "Apollo is sniffing" for sniffing, "Apollo is growling" for growling (was always "Apollo is growling" for both). Both respect the `sniffing_growling` category preference and quiet hours.
