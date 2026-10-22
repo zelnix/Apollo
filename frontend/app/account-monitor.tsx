@@ -43,7 +43,6 @@ export default function CheckMyAccounts() {
   const { ready, setupDone, deviceId, showToast } = useApollo();
   const [emails, setEmails] = useState<MonitoredEmail[]>([]);
   const [scan, setScan] = useState<AccountScan | null>(null);
-  const [previousScan, setPreviousScan] = useState<AccountScan | null>(null);
   const [handled, setHandled] = useState<HandledMap>({});
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
@@ -54,7 +53,7 @@ export default function CheckMyAccounts() {
   const reload = async () => {
     const [e, hist, hdl, ca] = await Promise.all([getMonitoredEmails(), getScanHistory(), getHandled(), getLastCheckedAt()]);
     const sc = hist[0] ?? (await getLastScan());
-    setEmails(e); setScan(sc); setPreviousScan(hist[1] ?? null); setHandled(hdl); setLastCheckedAt(ca);
+    setEmails(e); setScan(sc); setHandled(hdl); setLastCheckedAt(ca);
     setReport(sc ? buildWeeklyReport(sc, hist[1] ?? null, hdl) : null);
   };
   useEffect(() => { void reload(); }, []);

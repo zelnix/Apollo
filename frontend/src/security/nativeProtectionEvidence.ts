@@ -137,7 +137,7 @@ export async function detectNativeProtection(): Promise<NativeProtectionCapabili
           isDefaultHandler: true,
           feature: "Silence Unknown Callers & carrier-level STIR/SHAKEN",
           classificationAccessible: false,
-          note: "Apple's native scam classification is not accessible through a supported public API (rule 8).",
+          note: "Apple does not share its scam-call classification with any app, so Apollo cannot use it as evidence.",
         },
       ],
       messageProtection: [
@@ -148,7 +148,7 @@ export async function detectNativeProtection(): Promise<NativeProtectionCapabili
           isDefaultHandler: true,
           feature: "Junk message filtering",
           classificationAccessible: false,
-          note: "Apple's native message classification is not accessible through a supported public API (rule 8).",
+          note: "Apple does not share its junk-message classification with any app, so Apollo cannot use it as evidence.",
         },
       ],
       defaultDialerPackage: "com.apple.mobilephone",

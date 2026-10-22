@@ -28,6 +28,7 @@ import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/pr
 import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
 import { resolveNavLinks } from "@/src/higgins/appMap";
 import { buildDeviceSnapshot, loadSnapshotExtras, type SnapshotExtras } from "@/src/higgins/deviceSnapshot";
+import { readDeviceCapabilityState, type DeviceCapabilityReading } from "@/src/security/deviceCapabilityState";
 import { useCallScreener } from "@/src/hooks/useCallScreener";
 import { clearLocalChat, loadLocalChat, saveLocalChat } from "@/src/higgins/chatMemory";
 import { clearStarterMemory, loadStarterMemory, recordStarter, topStarters } from "@/src/higgins/starterMemory";
@@ -113,6 +114,7 @@ export default function Ask() {
   const [starters, setStarters] = useState<string[]>([]);
   const [rotation, setRotation] = useState(0);
   const [snapshotExtras, setSnapshotExtras] = useState<SnapshotExtras | null>(null);
+  const [capabilityReading, setCapabilityReading] = useState<DeviceCapabilityReading | null>(null);
   // Higgins check flow state
   const [checkSheetOpen, setCheckSheetOpen] = useState(false);
   const [artifactCategory, setArtifactCategory] = useState<HigginsCheckCategory | null>(null);
@@ -128,6 +130,7 @@ export default function Ask() {
     void loadLocalChat().then(setChatMessages).catch(() => undefined);
     void loadStarterMemory().then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
     void loadSnapshotExtras().then(setSnapshotExtras).catch(() => undefined);
+    void readDeviceCapabilityState().then(setCapabilityReading).catch(() => undefined);
     void higginsHistory(deviceId).catch(() => undefined); // server keeps only five-minute content and non-content receipts
   }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
@@ -259,8 +262,8 @@ export default function Ask() {
   const snapshot = useMemo(() => buildDeviceSnapshot({
     health, events, trustCount: trust.length, notificationStatus, quietHours, quietNow, lowPower,
     adapterLabel, network, callScreener: callScreener.state === "checking" ? null : `${callScreener.summary} — ${callScreener.detail}`,
-    isMock, extras: snapshotExtras ?? undefined,
-  }), [health, events, trust.length, notificationStatus, quietHours, quietNow, lowPower, adapterLabel, network, callScreener.state, callScreener.summary, callScreener.detail, isMock, snapshotExtras]);
+    isMock, extras: snapshotExtras ?? undefined, capabilities: capabilityReading,
+  }), [health, events, trust.length, notificationStatus, quietHours, quietNow, lowPower, adapterLabel, network, callScreener.state, callScreener.summary, callScreener.detail, isMock, snapshotExtras, capabilityReading]);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
 

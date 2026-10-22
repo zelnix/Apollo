@@ -152,6 +152,12 @@ class DeviceSnapshot(Wire):
     personal_data: Optional[str] = Field(default=None, max_length=160)
     call_screener: Optional[str] = Field(default=None, max_length=240)
     email_accounts: Optional[str] = Field(default=None, max_length=160)
+    # Device Capabilities — what this device protects by itself, what Apollo is allowed to use, and
+    # which native settings Apollo cannot read. Attribution is carried in the strings themselves.
+    capability_summary: Optional[str] = Field(default=None, max_length=300)
+    device_protections: list[str] = Field(default_factory=list, max_length=8)
+    capabilities: list[str] = Field(default_factory=list, max_length=16)
+    recommended_settings: list[str] = Field(default_factory=list, max_length=8)
     notes: list[str] = Field(default_factory=list, max_length=10)
 
 
@@ -180,6 +186,28 @@ def _render_snapshot(snap: DeviceSnapshot) -> str:
         lines.append(f"Internet connection: {snap.network}")
     if snap.call_screener:
         lines.append(f"Call screening: {snap.call_screener}")
+    if snap.capability_summary:
+        lines.append(f"Device capability coverage: {snap.capability_summary}")
+    if snap.device_protections:
+        lines.append(
+            "Protection built into this device (belongs to the named provider, NOT to Apollo — "
+            "never describe these as Apollo detections):"
+        )
+        lines.extend(f"  - {item}" for item in snap.device_protections)
+    if snap.capabilities:
+        lines.append(
+            "What Apollo is allowed to use on this device (exact state per capability; "
+            "'Managed by your device' means the OS or the named provider keeps it to itself and "
+            "Apollo must not infer it, 'Apollo couldn't check' means a read failed and is NOT an "
+            "all-clear, 'Can't be read in this preview' means Apollo is not on the phone itself):"
+        )
+        lines.extend(f"  - {item}" for item in snap.capabilities)
+    if snap.recommended_settings:
+        lines.append(
+            "Native settings Apollo cannot read or switch on (recommend the person checks these "
+            "themselves; never state whether they are currently on or off):"
+        )
+        lines.extend(f"  - {item}" for item in snap.recommended_settings)
     if snap.threat_counts:
         lines.append("Threats recorded: " + "; ".join(snap.threat_counts))
     if snap.open_threats:

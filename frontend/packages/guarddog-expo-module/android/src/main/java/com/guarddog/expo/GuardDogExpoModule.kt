@@ -460,7 +460,7 @@ class GuardDogExpoModule : Module() {
                 "isDefaultHandler" to googlePhoneIsDefault,
                 "feature" to "Caller ID & spam protection",
                 "classificationAccessible" to false,  // No verified public API (rule 6)
-                "note" to "Google's native scam verdict is not accessible through a supported public API."
+                "note" to "Google does not share its scam-call classification with other apps, so Apollo cannot use it as evidence."
             ))
 
             // Samsung Smart Call (Hiya-powered)
@@ -481,7 +481,7 @@ class GuardDogExpoModule : Module() {
                 "isDefaultHandler" to samsungDialerIsDefault,
                 "feature" to "Caller ID & spam filtering",
                 "classificationAccessible" to false,  // No verified Samsung API (rule 7)
-                "note" to "Samsung Smart Call verdict is not accessible through a supported Samsung API."
+                "note" to "Samsung does not share Smart Call's scam classification with other apps, so Apollo cannot use it as evidence."
             ))
 
             // Carrier visual voicemail / spam filter (T-Mobile Scam Shield, etc.)
@@ -500,7 +500,7 @@ class GuardDogExpoModule : Module() {
                         "isDefaultHandler" to false,
                         "feature" to "Carrier-level call filtering",
                         "classificationAccessible" to false,
-                        "note" to "Carrier classification is not accessible through a supported public API."
+                        "note" to "Your carrier does not share its call-filtering classification with other apps, so Apollo cannot use it as evidence."
                     ))
                 }
             }
@@ -524,7 +524,7 @@ class GuardDogExpoModule : Module() {
                 "isDefaultHandler" to googleMessagesIsDefault,
                 "feature" to "Spam protection & verified SMS",
                 "classificationAccessible" to false,
-                "note" to "Google Messages spam classification is not accessible through a supported public API."
+                "note" to "Google Messages does not share its spam classification with other apps, so Apollo cannot use it as evidence."
             ))
 
             // Samsung Messages
@@ -540,7 +540,7 @@ class GuardDogExpoModule : Module() {
                 "isDefaultHandler" to samsungMessagesIsDefault,
                 "feature" to "Spam filtering",
                 "classificationAccessible" to false,
-                "note" to "Samsung Messages classification is not accessible through a supported Samsung API."
+                "note" to "Samsung Messages does not share its spam classification with other apps, so Apollo cannot use it as evidence."
             ))
 
             mapOf(

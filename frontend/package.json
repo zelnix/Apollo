@@ -62,7 +62,8 @@
     "test:truth": "node --test tests/protectionTruth.test.ts",
     "test:failure": "node --test tests/failureModes.test.ts",
     "test:higgins-checks": "node --test tests/higginsChecks.test.ts",
-    "test:device-capabilities": "node --test tests/deviceCapabilities.test.ts"
+    "test:device-capabilities": "node --test tests/deviceCapabilities.test.ts",
+    "test:device-capabilities-report": "node --test tests/deviceCapabilityReport.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",

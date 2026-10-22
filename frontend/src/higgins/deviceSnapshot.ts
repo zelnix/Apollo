@@ -12,6 +12,8 @@
 import { Platform } from "react-native";
 
 import type { GateItem } from "@/src/domain/gates";
+import { capabilitySnapshotLines } from "@/src/domain/deviceCapabilities";
+import type { DeviceCapabilityReading } from "@/src/security/deviceCapabilityState";
 import type { PatrolEvent } from "@/src/domain/types";
 import type { ProtectionHealthSnapshot } from "@/src/protection/healthTypes";
 import type { NetworkStatus } from "@/src/security/SecurityPlatformAdapter";
@@ -46,6 +48,14 @@ export interface DeviceSnapshot {
   personalData?: string;
   callScreener?: string;
   emailAccounts?: string;
+  /** One honest line about how much of this device Apollo can actually use. */
+  capabilitySummary?: string;
+  /** Protection built into the device, attributed to its provider — never to Apollo. */
+  deviceProtections: string[];
+  /** Every capability Apollo looks for on this device, with the state it is actually in. */
+  capabilities: string[];
+  /** Native settings Apollo cannot read and recommends the person checks themselves. */
+  recommendedSettings: string[];
   notes: string[];
 }
 
@@ -68,6 +78,8 @@ export interface SnapshotInput {
   callScreener?: string | null;
   isMock?: boolean;
   extras?: SnapshotExtras;
+  /** Device Capabilities reading, so Higgins answers from the same map the Device screen shows. */
+  capabilities?: DeviceCapabilityReading | null;
 }
 
 const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
@@ -121,9 +133,28 @@ export async function loadSnapshotExtras(): Promise<SnapshotExtras> {
   };
 }
 
+/** Device Capabilities, flattened into the short state lines Higgins reads. Attribution survives:
+ *  a native protection is named with its provider, never as something Apollo does. */
+function capabilityLines(reading: DeviceCapabilityReading | null | undefined): {
+  summary?: string;
+  protections: string[];
+  capabilities: string[];
+  recommended: string[];
+} {
+  if (!reading) return { protections: [], capabilities: [], recommended: [] };
+  const lines = capabilitySnapshotLines(reading);
+  return {
+    summary: clip(lines.summary, 300),
+    protections: lines.protections.slice(0, 8).map((line) => clip(line, 200)),
+    capabilities: lines.capabilities.slice(0, 16).map((line) => clip(line, 160)),
+    recommended: lines.recommended.slice(0, 8).map((line) => clip(line, 240)),
+  };
+}
+
 export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
   const { health, events, extras } = input;
   const { counts, open } = threatLines(events);
+  const caps = capabilityLines(input.capabilities);
   const notes: string[] = [];
   if (input.isMock) notes.push("This phone is running Apollo's preview adapter, so protection readings are simulated, not real.");
   if (health.checking) notes.push("A protection status read is in progress right now.");
@@ -153,6 +184,10 @@ export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
     emailAccounts: extras?.emailAccounts
       ? `${extras.emailAccounts.total} added, ${extras.emailAccounts.connected} connected`
       : undefined,
+    capabilitySummary: caps.summary,
+    deviceProtections: caps.protections,
+    capabilities: caps.capabilities,
+    recommendedSettings: caps.recommended,
     notes: notes.map((note) => clip(note, 200)),
   };
 }

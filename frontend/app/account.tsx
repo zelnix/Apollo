@@ -80,12 +80,9 @@ export default function CheckAccount() {
   const [evidence, setEvidence] = useState<AccountEvidence | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
-  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
-  const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
   const [result, setResult] = useState<{ submissionId: string; a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null } | null>(null);
   const [identifier, setIdentifier] = useState("");
   const [breach, setBreach] = useState<Breach | null>(null);
-  const [tech, setTech] = useState(false);
   const [showSender, setShowSender] = useState(false);
 
   const openAccount = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");

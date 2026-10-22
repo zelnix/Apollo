@@ -88,9 +88,7 @@ export default function CheckApp() {
   const [ctx, setCtx] = useState({ promptedByCaller: false, promptedByMessageOrSite: false, intentional: false, accessGrantedNow: false });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ submissionId: string; a: AppAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> | null } | null>(null);
-  const [tech, setTech] = useState(false);
   const [permSheet, setPermSheet] = useState<AppPermission | null>(null);
-  const [sdkVisible, setSdkVisible] = useState(false);
   // Pick-from-installed-apps (Android): list launchable apps so the person doesn't have to type the name.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [installedApps, setInstalledApps] = useState<InstalledAppRef[] | null>(null);
@@ -101,8 +99,6 @@ export default function CheckApp() {
   const [autoRun, setAutoRun] = useState<string | null>(null);
   const [appQuery, setAppQuery] = useState("");
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
-  const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
-  const [showFull, setShowFull] = useState(false);
   const [showMoreFields, setShowMoreFields] = useState(false);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
   const [savedState, setSavedState] = useState<"idle" | "saved">("idle");
@@ -113,8 +109,6 @@ export default function CheckApp() {
     if (Platform.OS === "web") setActionGuidance(`${label}: ${path}`);
     else void openDeviceSettings(label, path, (message) => showToast(message, "neutral"));
   };
-  // A failed capability read means Apollo cannot show observed permissions — it never implies the app is fine.
-  useEffect(() => { void AppDeviceSdk.getAppDeviceCapabilities().then((c) => setSdkVisible(c.appPermissions === "supported")).catch(() => setSdkVisible(false)); }, []);
   const canPickApps = Platform.OS === "android";
   const openPicker = async () => {
     setPickerOpen(true);
@@ -237,7 +231,7 @@ export default function CheckApp() {
       appActions.push({ testID: "app-keep", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); } });
     }
     appActions.push({ testID: "app-save-report", variant: "ghost", label: savedState === "saved" ? "Saved \u2713 \u2014 View saved checks" : "Save this check", onPress: () => { if (savedState === "saved") { router.push("/saved-checks"); return; } void saveAppReport({ id: Crypto.randomUUID(), appLabel, state: a.state, stateName: STATE_NAME[a.state], title: a.title, verdict: a.verdict, recommendation: a.recommendation, scenario: a.scenario, riskScore: a.riskScore, identity: [], permissions: findings.map((f) => `${f.label}: ${f.statusLabel}`), why: a.why, network: [], reputation: result.remote?.reputation.note ?? null, evidence: [], coverage: [] }).then(() => { setSavedState("saved"); showToast("Saved. Find it under Saved checks.", "neutral"); }); } });
-    appActions.push({ testID: "app-again", variant: "ghost", label: "Check another app", onPress: () => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); setShowFull(false); setVerifyNote(null); setSavedState("idle"); } });
+    appActions.push({ testID: "app-again", variant: "ghost", label: "Check another app", onPress: () => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setActionGuidance(null); setVerifyNote(null); setSavedState("idle"); } });
 
     return (
       <>
@@ -258,10 +252,6 @@ export default function CheckApp() {
         {verifyNote ? <Card testID="app-verify-note"><Body>{verifyNote}</Body></Card> : null}
         <Card testID="app-capability-evidence-note" style={{ gap: spacing.xs }}><Body>An inactive or dormant app keeps those capabilities until you revoke them. Only uninstalling or disabling the app fully removes its access.</Body></Card>
         {actionGuidance ? <Card testID="app-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>Next step in Settings</SectionTitle><Body>{actionGuidance}</Body><Button testID="app-action-guidance-close" variant="ghost" label="Hide" onPress={() => setActionGuidance(null)} /></Card> : null}
-        <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="app-tech-sheet">
-          {a.technical.map((t, i) => <Body key={i} testID={`app-tech-${i}`}>{t}</Body>)}
-          <Button testID="app-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
-        </Sheet>
         <Sheet visible={!!permSheet} onClose={() => setPermSheet(null)} title={permSheet ? PERMISSION_INFO[permSheet].label : ""} testID="app-perm-sheet">
           {permSheet ? <Body testID="app-perm-plain">{PERMISSION_INFO[permSheet].plain}</Body> : null}
           <Button testID="app-perm-close" variant="ghost" label="Done" onPress={() => setPermSheet(null)} />

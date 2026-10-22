@@ -4,7 +4,6 @@ import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
-import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, ActivityIndicator, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,7 +16,6 @@ import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/compone
 import { Sheet } from "@/src/components/Sheet";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
-import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
 import { detectNativeProtection, summariseCallProtection, summariseMessageProtection } from "@/src/security/nativeProtectionEvidence";
 import { deviceCheckEvent } from "@/src/domain/deviceCheckCase";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -29,8 +27,6 @@ import { openDesktopSettings } from "@/src/security/DesktopSecurityAdapter";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
-import { goBackOrHome } from "@/src/utils/navigation";
-import { InfoButton } from "@/src/components/InfoButton";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { storage } from "@/src/utils/storage";
 
@@ -44,7 +40,6 @@ const desktopReviewTarget = (checkId: string): string => checkId === "firewall" 
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
 const DEVICE_CHANGELOG_KEY = "apollo.device.changelog.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
-interface DeviceSubmission { submissionId: string; result: ReturnType<typeof assessDevice>; observedAt: string; source: "device_check" | "user_report" }
 
 /** Short "should be" recommendation for each check. Shown prominently so the user knows
  *  what the setting SHOULD look like before they open it. */
@@ -337,10 +332,6 @@ export default function CheckDevice() {
     else void openDeviceSettings(REVIEW_TARGET[r.id] ?? "security", r.settings, (m) => showToast(m, "neutral"));
   };
   const anySelf = Object.values(self).some(Boolean);
-  // Each completed device check is a fresh timestamped observation. InvestigationFlow uses a continuity key, so a
-  // new submission appends to the SAME case rather than replacing its accepted history.
-  const [submission, setSubmission] = useState<DeviceSubmission | null>(null);
-  useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Guided "Fix it" flow ──
   const [fixingCheck, setFixingCheck] = useState<CheckResult | null>(null);
@@ -557,8 +548,7 @@ export default function CheckDevice() {
           {SELF_REPORT.filter((o) => !(platform === "ios" && o.id === "unknownSourcesOn")).map((o) => (
             <View key={o.id} style={s.row}><Text style={[s.why, { flex: 1 }]}>{o.label}</Text><Switch testID={`device-self-${o.id}`} value={!!self[o.id]} onValueChange={(v) => setSelf((c) => ({ ...c, [o.id]: v }))} trackColor={{ true: o.id === "managementExpected" ? colors.resting : colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
           ))}
-          <Button testID="device-submit-self-report" variant="secondary" label="Add my report to Higgins" disabled={!anySelf}
-            onPress={() => setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "user_report" })} />
+          <Body testID="device-self-report-applied">{anySelf ? "What you've told Higgins is already included in the review above." : "Switch anything on and it goes straight into the review above — there is nothing else to submit."}</Body>
         </Card>
 
         <Card style={{ gap: spacing.xs }} testID="device-cannot-see">

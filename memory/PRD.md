@@ -1,3 +1,69 @@
+## Device Capabilities as a table + Capability Details screen + dead-link sweep (2026-06)
+
+**Owner's three corrections, all implemented.**
+
+**1. Plain-English statuses.** `CAPABILITY_CLASS_LABEL` is now exactly: `Available to Apollo` /
+`Permission needed` / `Managed by your device` / `Not available to Apollo` / `Apollo couldn't check`,
+plus a sixth honest state `Can't be read in this preview`. "Not on this device" is gone from every
+capability status (a unit test asserts it can never come back). A new `hostIsDevice: false` input
+makes every row `not_readable_here` when Apollo isn't on the phone — the browser preview used to
+claim all 13 capabilities were "Not on this device", which read as nonsense; an unread capability is
+now stated as unread, never as absent.
+
+**2. No "verdict" anywhere user-facing.** The two rows are now `Your phone's own scam-call warning`
+and `Your phone's own spam-text warning`; details, evidence lines and Higgins' snapshot lines say
+"classification" or "finding". The provider notes that surface in the UI were rewritten from API
+jargon into plain English in `GuardDogExpoModule.kt` (5 notes) and `nativeProtectionEvidence.ts`
+(2 iOS notes) — e.g. "Samsung does not share Smart Call's scam classification with other apps, so
+Apollo cannot use it as evidence."
+
+**3. Table + Capability Details.** `src/components/device/CapabilityTable.tsx` renders two tables:
+`NativeProtectionTable` (provider | status, opens in place — the provider owns everything on the row)
+and `CapabilityTable` (capability | status, every row a LINK). A status legend under the table
+explains only the statuses actually present. `app/device-protection.tsx` lost its five separate
+class sections in favour of the one table, ordered usable → permission → device-managed → couldn't
+check → unreadable here → absent (`allCapabilityRows`).
+
+New screen `app/capability/[id].tsx` answers the three questions the owner asked for:
+**What it does** → **How it helps protect you** → **Current status** (the exact class label + the
+honest sentence + "Reported by <provider>") → **What you should do** → primary action
+("Check Samsung Smart Call settings", "Open notification access", …) → "Ask Higgins about this"
+(opens Higgins pre-filled with the capability and its status). Content comes from two new catalogue
+fields, `what` and `benefit`, written for all 13 capabilities, and from the pure state-driven
+`capabilityAdvice(row)`: nothing to do when Apollo already has it; "Allowing <x> helps Apollo …" when
+permission is needed; "Keep <provider> switched on …" when a provider manages it; "Nothing to do,
+<OS> keeps this private …" when the OS withholds it; "Apollo simply could not read this" after a
+failed read. A provider-managed scam warning now also carries a settings action, so the Samsung case
+reads exactly as specified.
+
+**Shareable report** follows the screen: the per-class bullet lists became one
+`Capability | Status | What this means` table.
+
+**Dead-link sweep** (the owner's earlier ask, done properly this time). Checked every route literal
+in `app/` and `src/` against the route files (44 targets, all exist); every `Pressable`/
+`TouchableOpacity` opening tag for a missing `onPress` (0 found); every `visible={…}` sheet for a
+setter that never opens it; every empty handler; every `Linking.openURL` target. Found and removed:
+- `app/app-check.tsx` — a "Technical details" Sheet that nothing could open (`setTech(true)` never
+  existed after the CheckResultScreen migration), plus dead `sdkVisible` state and the capability
+  read effect that only fed it, and dead `reportState` / `showFull`.
+- `app/account.tsx` — dead `actionGuidance`, `reportState`, `tech`.
+- `app/account-monitor.tsx` — `previousScan`, written on every reload and read by nothing.
+The two remaining `onPress={() => undefined}` are deliberate backdrop/tap-swallowers.
+
+**Verification.** `tests/deviceCapabilities.test.ts` 26/26 (new: plain-English labels with
+"Not on this device" banned and "verdict" banned, preview reports unreadable-not-absent, every
+capability can answer the three questions, advice is state-driven) and
+`deviceCapabilityReport.test.ts` 8/8. Full frontend suite 757 tests / 732 pass / **the same 25
+legacy failures** as the baseline (was 742/717/25, so +15 new passing, zero regressions).
+`backend/tests/test_higgins_device_snapshot.py` 3/3 after updating the prompt wording. `tsc --noEmit`
+clean, ESLint clean on every file touched. Verified in the preview: the preview state ("Can't be read
+in this preview" on all 13), the Android branch by temporarily pinning the view inputs (Samsung Smart
+Call "Active on your device", Google Messages "Installed, not active", 6 available / 3 permission /
+4 device-managed), the Samsung Smart Call details screen (exactly the owner's example wording), and
+"Ask Higgins about this" landing in Higgins with the question pre-filled. **Real-device confirmation
+still needs an Android/iOS build.**
+
+
 ## Device Capabilities — real reads, five honest states, native evidence wired in (2026-06)
 
 **Objective.** Apollo must understand (1) what protection the device already provides, (2) what Apollo

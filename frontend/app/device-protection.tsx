@@ -16,27 +16,22 @@ import * as Device from "expo-device";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Smartphone from "lucide-react-native/icons/smartphone";
+import Share2 from "lucide-react-native/icons/share-2";
 import Clock from "lucide-react-native/icons/clock";
-import Check from "lucide-react-native/icons/check";
-import Lock from "lucide-react-native/icons/lock";
-import KeyRound from "lucide-react-native/icons/key-round";
-import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
-import CircleSlash from "lucide-react-native/icons/circle-slash";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { AlertsButton } from "@/src/components/AlertsButton";
+import { CapabilityTable, NativeProtectionTable } from "@/src/components/device/CapabilityTable";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Pill } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
 import { getCheckHistory } from "@/src/store/checkHistoryStore";
-import { buildDeviceCapabilities, type CapabilityPlatform, type CapabilityRow, type NativeProtectionRead, type NativeProtectionRow, type NativeRecommendation } from "@/src/domain/deviceCapabilities";
-import { AppDeviceSdk, type AppDeviceCapabilities } from "@/src/security/appDeviceSdk";
-import { detectNativeProtection } from "@/src/security/nativeProtectionEvidence";
-import { getNativeModule } from "@/src/security/nativeBridge";
+import { allCapabilityRows, type CapabilityRow, type DeviceCapabilityView, type NativeRecommendation } from "@/src/domain/deviceCapabilities";
+import { capabilityPlatform, readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
+import { shareDeviceCapabilityReport } from "@/src/utils/shareDeviceCapabilityReport";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
@@ -59,17 +54,15 @@ const useStyles = makeStyles((c) => ({
 
   checkBtn: { marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: "center", justifyContent: "center" },
   checkBtnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
+  shareBtn: { marginHorizontal: spacing.lg, marginTop: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  shareBtnText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary },
 
   section: { marginTop: spacing.xl, paddingHorizontal: spacing.lg },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
   sectionIntro: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary, marginTop: 2, marginBottom: spacing.sm },
 
-  row: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 0.5, borderBottomColor: c.divider },
-  iconWell: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  rowTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
-  rowDetail: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary, marginTop: 2 },
   rowAttribution: { fontFamily: fonts.text, fontSize: 11, color: c.muted, marginTop: 4 },
-  rowAction: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brandPrimary, marginTop: spacing.xs },
+  tableNote: { fontFamily: fonts.text, fontSize: 11, lineHeight: 16, color: c.muted, marginTop: spacing.sm },
 
   recCard: { borderRadius: radius.md, borderWidth: 0.5, borderColor: c.goldBorder, backgroundColor: c.surfaceSecondary, padding: spacing.md, gap: spacing.xs, marginBottom: spacing.sm },
   recTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
@@ -86,8 +79,7 @@ const useStyles = makeStyles((c) => ({
   historyWrap: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
 }));
 
-const platformFor = (): CapabilityPlatform =>
-  Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "web";
+const EMPTY_VIEW: DeviceCapabilityView = { deviceProtects: [], apolloCanUse: [], needsPermission: [], notAccessible: [], unavailable: [], unknown: [], notReadableHere: [], recommendations: [], summary: "Reading this device…" };
 
 /** Section heading with a one-line explanation of what the person is looking at. */
 function SectionHead({ title, intro, testID }: { title: string; intro: string; testID: string }) {
@@ -100,49 +92,6 @@ function SectionHead({ title, intro, testID }: { title: string; intro: string; t
   );
 }
 
-/** One Apollo capability — what it is, what state it's in, and what the person can do about it. */
-function CapabilityRowView({ row, tone, onAction, testID }: { row: CapabilityRow; tone: { bg: string; fg: string; Icon: typeof Check }; onAction?: () => void; testID: string }) {
-  const s = useStyles();
-  const Icon = tone.Icon;
-  return (
-    <View style={s.row} testID={testID}>
-      <View style={[s.iconWell, { backgroundColor: tone.bg }]}><Icon size={16} color={tone.fg} /></View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle}>{row.title}</Text>
-        <Text style={s.rowDetail}>{row.detail}</Text>
-        {row.attributedTo !== "Apollo" ? <Text style={s.rowAttribution}>Reported by {row.attributedTo}</Text> : null}
-        {row.action && onAction ? (
-          <Pressable accessibilityRole="button" onPress={onAction} hitSlop={6} testID={`${testID}-action`}>
-            <Text style={s.rowAction}>{row.action.label} →</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-/** One native protection the device itself provides. The provider owns this row. */
-function NativeRowView({ row, testID }: { row: NativeProtectionRow; testID: string }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const active = row.state === "active";
-  return (
-    <View style={s.row} testID={testID}>
-      <View style={[s.iconWell, { backgroundColor: active ? colors.restingTint : colors.surfaceTertiary }]}>
-        <ShieldCheck size={16} color={active ? colors.resting : colors.muted} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text style={[s.rowTitle, { flex: 1 }]}>{row.provider}</Text>
-          <Pill tone={active ? "resting" : "unknown"} label={row.stateLabel} compact testID={`${testID}-state`} />
-        </View>
-        <Text style={s.rowDetail}>{row.detail}</Text>
-        {row.evidenceLine ? <Text style={s.rowAttribution}>{row.evidenceLine}</Text> : null}
-      </View>
-    </View>
-  );
-}
-
 export default function DeviceCapabilitiesScreen() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -151,37 +100,34 @@ export default function DeviceCapabilitiesScreen() {
   const { protection, showToast } = useApollo();
 
   const [lastCheckAt, setLastCheckAt] = useState<string | null>(null);
-  const [caps, setCaps] = useState<AppDeviceCapabilities | null>(null);
-  const [native, setNative] = useState<NativeProtectionRead | null>(null);
+  const [view, setView] = useState<DeviceCapabilityView>(EMPTY_VIEW);
   const [hasNativeHost, setHasNativeHost] = useState(Platform.OS !== "web");
+  const [nativeReadFailed, setNativeReadFailed] = useState(false);
   const [reading, setReading] = useState(true);
+  const [sharing, setSharing] = useState(false);
   const [openRec, setOpenRec] = useState<NativeRecommendation | null>(null);
 
   useEffect(() => { void getCheckHistory("device").then((h) => setLastCheckAt(h[0]?.at ?? null)); }, []);
 
-  // Real reads only. A failed read stays null so the view reports "Apollo couldn't tell" instead of
-  // flattening a broken read into "nothing found".
+  // One shared reader, so this screen, the shareable report and Higgins' live reading can never
+  // disagree. A failed read stays a failure — it is never flattened into "nothing found".
   useEffect(() => {
     let cancelled = false;
-    const read = async () => {
-      const nativeHost = Platform.OS !== "web" && !!getNativeModule();
-      if (!cancelled) setHasNativeHost(nativeHost);
-      if (!nativeHost) { if (!cancelled) { setCaps(null); setNative(null); setReading(false); } return; }
-      const [capsResult, nativeResult] = await Promise.allSettled([
-        AppDeviceSdk.getAppDeviceCapabilities(),
-        detectNativeProtection(),
-      ]);
+    void readDeviceCapabilityState().then((reading_) => {
       if (cancelled) return;
-      setCaps(capsResult.status === "fulfilled" ? capsResult.value : null);
-      setNative(nativeResult.status === "fulfilled" ? nativeResult.value : null);
+      setView(reading_.view);
+      setHasNativeHost(reading_.hasNativeHost);
+      setNativeReadFailed(reading_.nativeReadFailed);
       setReading(false);
-    };
-    void read();
+    }).catch(() => { if (!cancelled) setReading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  const platform = platformFor();
-  const view = useMemo(() => buildDeviceCapabilities({ platform, caps, native }), [platform, caps, native]);
+  const platform = capabilityPlatform();
+
+  // One table, in the order the person reads it: usable → needs permission → device-managed →
+  // couldn't check → not readable here → absent. The classes stay exactly as the engine resolved them.
+  const allCapabilities = useMemo<CapabilityRow[]>(() => allCapabilityRows(view), [view]);
 
   const deviceModel = Device.modelName || Device.deviceName || "Unknown device";
   const osLabel = Platform.OS === "android" ? `Android ${Device.osVersion || ""}`.trim() : Platform.OS === "ios" ? `iOS ${Device.osVersion || ""}`.trim() : "Web";
@@ -201,6 +147,26 @@ export default function DeviceCapabilitiesScreen() {
   const openSettingsFor = useCallback((target: Parameters<typeof openDeviceSettings>[0], path: string) => {
     void openDeviceSettings(target, path, (m) => showToast(m, "neutral"));
   }, [showToast]);
+
+  const shareReport = useCallback(async () => {
+    setSharing(true);
+    try {
+      await shareDeviceCapabilityReport(view, {
+        deviceLabel: deviceModel,
+        osLabel,
+        manufacturer: manufacturer || null,
+        platformLabel: platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "windows" ? "Windows" : platform === "macos" ? "macOS" : "this browser",
+        lastCheckedAt: lastCheckAt,
+        generatedAt: new Date().toISOString(),
+        apolloProtection: protection ? (protection.operational ? "running" : protection.requested ? `requested but not running${protection.degradedReason ? ` (${protection.degradedReason})` : ""}` : "off") : "not read",
+        hasNativeHost,
+      });
+    } catch (error) {
+      showToast(`Apollo couldn't prepare the report (${error instanceof Error ? error.message : "reason could not be determined"}).`, "growling");
+    } finally {
+      setSharing(false);
+    }
+  }, [view, deviceModel, osLabel, manufacturer, platform, lastCheckAt, protection, hasNativeHost, showToast]);
 
   return (
     <View style={s.root} testID="device-protection-screen">
@@ -242,6 +208,19 @@ export default function DeviceCapabilitiesScreen() {
           <Text style={[s.checkBtnText, { color: colors.onBrand }]}>Check Device</Text>
         </Pressable>
 
+        <Pressable
+          testID="device-prot-share-btn"
+          accessibilityRole="button"
+          accessibilityLabel="Share this report"
+          accessibilityHint="Creates a PDF of everything on this screen and opens your share options"
+          disabled={reading || sharing}
+          onPress={() => void shareReport()}
+          style={({ pressed }) => [s.shareBtn, { opacity: pressed || reading || sharing ? 0.6 : 1 }]}
+        >
+          <Share2 size={16} color={colors.brandPrimary} />
+          <Text style={s.shareBtnText}>{sharing ? "Preparing report…" : "Share this report"}</Text>
+        </Pressable>
+
         {/* ── 1. What your device protects ── */}
         <View style={s.section}>
           <SectionHead
@@ -250,84 +229,34 @@ export default function DeviceCapabilitiesScreen() {
             testID="device-prot-native-head"
           />
           {view.deviceProtects.length ? (
-            view.deviceProtects.map((row, i) => <NativeRowView key={row.id} row={row} testID={`device-prot-native-${i}`} />)
+            <NativeProtectionTable rows={view.deviceProtects} testID="device-prot-native" />
           ) : (
             <Body testID="device-prot-native-empty">
               {!hasNativeHost
                 ? "Apollo is open in a browser preview here, so it cannot see this phone’s built-in protection. Open Apollo on your phone to see what your device already protects."
-                : native === null
+                : nativeReadFailed
                   ? "Apollo asked this device which built-in protections it has and the read failed. That is unknown, not none."
                   : "Apollo did not recognise any built-in call or message protection on this device. The settings below are still worth checking."}
             </Body>
           )}
         </View>
 
-        {/* ── 2. What Apollo can use ── */}
+        {/* ── 2–4. Every capability Apollo looks for, with its real status ── */}
         <View style={s.section}>
           <SectionHead
-            title="What Apollo can use"
+            title="Apollo’s capabilities on this device"
             intro={reading ? "Reading this device…" : view.summary}
-            testID="device-prot-canuse-head"
+            testID="device-prot-table-head"
           />
-          {view.apolloCanUse.map((row, i) => (
-            <CapabilityRowView
-              key={row.id}
-              row={row}
-              tone={{ bg: colors.restingTint, fg: colors.resting, Icon: Check }}
-              onAction={row.action ? () => openSettingsFor(row.action!.target, row.action!.path) : undefined}
-              testID={`device-prot-canuse-${i}`}
-            />
-          ))}
-          {!view.apolloCanUse.length && !reading ? <Body testID="device-prot-canuse-empty">Apollo has no device capabilities available here.</Body> : null}
+          {allCapabilities.length ? (
+            <CapabilityTable rows={allCapabilities} testID="device-prot-table" />
+          ) : !reading ? (
+            <Body testID="device-prot-table-empty">Apollo could not read any capability state here.</Body>
+          ) : null}
+          <Text style={s.tableNote} testID="device-prot-table-note">
+            Tap any row to see what it is, how it helps protect you, and whether you need to do anything.
+          </Text>
         </View>
-
-        {/* ── 3. Needs your permission ── */}
-        {view.needsPermission.length ? (
-          <View style={s.section}>
-            <SectionHead
-              title="Needs your permission"
-              intro="Apollo asks for each of these at the moment it needs them — never up front, and never for more than the one thing you picked."
-              testID="device-prot-perm-head"
-            />
-            {view.needsPermission.map((row, i) => (
-              <CapabilityRowView
-                key={row.id}
-                row={row}
-                tone={{ bg: colors.goldTint, fg: colors.gold, Icon: KeyRound }}
-                onAction={row.action ? () => openSettingsFor(row.action!.target, row.action!.path) : undefined}
-                testID={`device-prot-perm-${i}`}
-              />
-            ))}
-          </View>
-        ) : null}
-
-        {/* ── 4. What Apollo cannot access ── */}
-        {view.notAccessible.length ? (
-          <View style={s.section}>
-            <SectionHead
-              title="What Apollo cannot access"
-              intro="These exist on this device, but the operating system keeps them private from apps like Apollo. Apollo will not guess at them."
-              testID="device-prot-blocked-head"
-            />
-            {view.notAccessible.map((row, i) => (
-              <CapabilityRowView key={row.id} row={row} tone={{ bg: colors.surfaceTertiary, fg: colors.muted, Icon: Lock }} testID={`device-prot-blocked-${i}`} />
-            ))}
-          </View>
-        ) : null}
-
-        {/* ── Couldn't tell — only shown when a read genuinely failed ── */}
-        {view.unknown.length ? (
-          <View style={s.section}>
-            <SectionHead
-              title="Apollo couldn’t tell"
-              intro="Apollo asked this device and the read failed. These are unknown — not clear. Running a device check again may settle them."
-              testID="device-prot-unknown-head"
-            />
-            {view.unknown.map((row, i) => (
-              <CapabilityRowView key={row.id} row={row} tone={{ bg: colors.growlingTint, fg: colors.growling, Icon: CircleQuestionMark }} testID={`device-prot-unknown-${i}`} />
-            ))}
-          </View>
-        ) : null}
 
         {/* ── 5. More protection you can turn on ── */}
         {view.recommendations.length ? (
@@ -355,20 +284,6 @@ export default function DeviceCapabilitiesScreen() {
                 </Pressable>
               </View>
             ))}
-          </View>
-        ) : null}
-
-        {/* ── Not on this device ── */}
-        {view.unavailable.length ? (
-          <View style={s.section}>
-            <SectionHead title="Not on this device" intro="Capabilities Apollo looks for that this device does not have at all." testID="device-prot-na-head" />
-            <View style={s.row} testID="device-prot-na-list">
-              <View style={[s.iconWell, { backgroundColor: colors.surfaceTertiary }]}><CircleSlash size={16} color={colors.muted} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.rowDetail}>{view.unavailable.map((r) => r.title).join(" · ")}</Text>
-                <Text style={s.rowAttribution}>{view.unavailable[0].detail}</Text>
-              </View>
-            </View>
           </View>
         ) : null}
 

@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  allCapabilityRows,
   buildDeviceCapabilities,
+  capabilityAdvice,
+  capabilitySnapshotLines,
   CAPABILITY_CLASS_LABEL,
   NATIVE_STATE_LABEL,
   type DeviceCapabilityInput,
@@ -46,12 +49,52 @@ const input = (over: Partial<DeviceCapabilityInput> = {}): DeviceCapabilityInput
 
 // ── The five declared classes ──────────────────────────────────────
 
-test("the capability classes are exactly the five declared states plus an honest unknown", () => {
+test("the capability classes are exactly the declared states, in plain English", () => {
   assert.deepEqual(Object.keys(CAPABILITY_CLASS_LABEL), [
-    "apollo_can_use", "permission_required", "not_exposed", "unavailable", "unknown",
+    "apollo_can_use", "permission_required", "not_exposed", "unavailable", "unknown", "not_readable_here",
   ]);
-  assert.equal(CAPABILITY_CLASS_LABEL.unknown, "Apollo couldn’t tell");
+  assert.deepEqual(Object.values(CAPABILITY_CLASS_LABEL), [
+    "Available to Apollo", "Permission needed", "Managed by your device",
+    "Not available to Apollo", "Apollo couldn’t check", "Can’t be read in this preview",
+  ]);
+  // "Not on this device" must never be shown as a capability status — it was read as nonsense.
+  assert.ok(!Object.values(CAPABILITY_CLASS_LABEL).includes("Not on this device"));
+  // Nothing user-facing calls a provider's classification a "verdict".
+  for (const label of Object.values(CAPABILITY_CLASS_LABEL)) assert.doesNotMatch(label, /verdict/i);
   assert.equal(NATIVE_STATE_LABEL.active, "Active on your device");
+});
+
+test("a browser preview reports every capability as unreadable, never as absent", () => {
+  const v = buildDeviceCapabilities({ platform: "web", caps: null, native: null, hostIsDevice: false });
+  assert.equal(v.notReadableHere.length, 13);
+  assert.equal(v.unavailable.length, 0);
+  assert.equal(v.apolloCanUse.length, 0);
+  assert.match(v.summary, /not running on your phone here/);
+  for (const row of v.notReadableHere) assert.match(row.detail, /Open Apollo on your phone/);
+});
+
+test("every capability can answer the three questions the details screen asks", () => {
+  for (const row of allCapabilityRows(buildDeviceCapabilities(input()))) {
+    assert.ok(row.what.length > 20, `${row.id} must say what it is`);
+    assert.ok(row.benefit.length > 20, `${row.id} must say how it helps`);
+    assert.doesNotMatch(row.title, /verdict/i);
+    assert.doesNotMatch(row.detail, /verdict/i);
+  }
+});
+
+test("advice is state-driven: nothing to do when Apollo already has it, a check when the device owns it", () => {
+  const v = buildDeviceCapabilities(input());
+  const usable = v.apolloCanUse.find((r) => r.id === "app_permissions")!;
+  assert.equal(capabilityAdvice(usable), null);
+  const perm = v.needsPermission.find((r) => r.id === "notification_access")!;
+  assert.match(capabilityAdvice(perm)!, /Allowing notification access/);
+  const managedByProvider = v.notAccessible.find((r) => r.id === "native_call_verdict")!;
+  assert.match(capabilityAdvice(managedByProvider)!, /Keep Samsung Smart Call switched on/);
+  assert.match(managedByProvider.action!.label, /Check Samsung Smart Call settings/);
+  const managedByOs = v.notAccessible.find((r) => r.id === "overlay_apps")!;
+  assert.match(capabilityAdvice(managedByOs)!, /Nothing to do. Android keeps this private/);
+  const failed = buildDeviceCapabilities(input({ caps: null })).unknown[0];
+  assert.match(capabilityAdvice(failed)!, /could not read this/);
 });
 
 test("a supported read becomes Apollo-can-use; permission_required stays its own class", () => {
@@ -79,7 +122,7 @@ test("a failed capability read stays unknown and is never upgraded", () => {
   assert.match(v.summary, /could not be read/i);
 });
 
-test("a failed native protection read leaves the verdict unknown and shows no device protections", () => {
+test("a failed native protection read leaves the classification unknown and shows no device protections", () => {
   const v = buildDeviceCapabilities(input({ native: null }));
   assert.deepEqual(v.deviceProtects, []);
   assert.ok(v.unknown.some((r) => r.id === "native_call_verdict"));
@@ -97,24 +140,24 @@ test("an active native protection is attributed to its provider, not to Apollo",
   assert.match(row!.detail, /not Apollo’s/);
 });
 
-test("a provider that does not share its verdict is not exposed — Apollo never infers it", () => {
+test("a provider that does not share its classification is not exposed — Apollo never infers it", () => {
   const v = buildDeviceCapabilities(input());
-  const verdict = v.notAccessible.find((r) => r.id === "native_call_verdict");
-  assert.ok(verdict);
-  assert.equal(verdict!.attributedTo, "Samsung Smart Call");
-  assert.match(verdict!.detail, /will not guess it from blocked calls or unknown numbers/i);
+  const classification = v.notAccessible.find((r) => r.id === "native_call_verdict");
+  assert.ok(classification);
+  assert.equal(classification!.attributedTo, "Samsung Smart Call");
+  assert.match(classification!.detail, /will not guess it from blocked calls or unknown numbers/i);
 });
 
-test("a provider that DOES share its verdict becomes usable evidence, still attributed to them", () => {
+test("a provider that DOES share its classification becomes usable evidence, still attributed to them", () => {
   const sharing = provider({ provider: "Google Phone", packageName: "com.google.android.dialer", classificationAccessible: true, note: "" });
   const v = buildDeviceCapabilities(input({ native: nativeRead({ callProtection: [sharing] }) }));
-  const verdict = v.apolloCanUse.find((r) => r.id === "native_call_verdict");
-  assert.ok(verdict);
-  assert.equal(verdict!.attributedTo, "Google Phone");
-  assert.match(verdict!.detail, /opens its own investigation/i);
+  const classification = v.apolloCanUse.find((r) => r.id === "native_call_verdict");
+  assert.ok(classification);
+  assert.equal(classification!.attributedTo, "Google Phone");
+  assert.match(classification!.detail, /opens its own investigation/i);
 });
 
-test("no recognised protection present means there is no verdict to use", () => {
+test("no recognised protection present means there is no classification to use", () => {
   const v = buildDeviceCapabilities(input({ native: nativeRead({ callProtection: [provider({ installed: false, isDefaultHandler: false })] }) }));
   assert.ok(v.unavailable.some((r) => r.id === "native_call_verdict"));
 });
@@ -206,4 +249,33 @@ test("attribution and provenance keep the provider on the record", () => {
 test("a permitted native classification always triggers Apollo's existing investigation", () => {
   assert.equal(triggersInvestigation(fact), true);
   assert.equal(triggersInvestigation(null), false);
+});
+
+// ── What Higgins receives ──────────────────────────────────────────
+
+test("Higgins receives every capability with its exact state", () => {
+  const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
+  assert.equal(lines.capabilities.length, 13, "Higgins must see all 13 capabilities, not a subset");
+  assert.ok(lines.capabilities.includes("App permissions: Available to Apollo"));
+  assert.ok(lines.capabilities.includes("Notification access: Permission needed"));
+  assert.ok(lines.capabilities.some((l) => l === "Your phone’s own scam-call warning: Managed by your device (per Samsung Smart Call)"));
+});
+
+test("Higgins is told who owns each native protection", () => {
+  const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
+  assert.deepEqual(lines.protections, [
+    "Samsung Smart Call — Caller ID & spam filtering — Active on your device — does not share its classification with Apollo",
+  ]);
+});
+
+test("Higgins is told which settings Apollo cannot read", () => {
+  const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
+  assert.ok(lines.recommended.some((l) => l.startsWith("Google Play Protect — Recommended protection — Apollo cannot read whether this is on.")));
+});
+
+test("Higgins is told plainly when a read failed, and when Apollo is not on the device", () => {
+  const failed = capabilitySnapshotLines({ view: buildDeviceCapabilities(input({ caps: null })), hasNativeHost: true, capsReadFailed: true, nativeReadFailed: false });
+  assert.match(failed.summary, /Some reads failed, so those are unknown rather than clear/);
+  const offDevice = capabilitySnapshotLines({ view: buildDeviceCapabilities({ platform: "web", caps: null, native: null }), hasNativeHost: false, capsReadFailed: false, nativeReadFailed: false });
+  assert.match(offDevice.summary, /not running on the device itself/);
 });
