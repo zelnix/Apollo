@@ -70,8 +70,13 @@ export const PROTECTION_AREA_LABEL: Record<ProtectionArea, string> = {
 
 export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["calls_messages", "apps", "web", "access", "updates", "recovery"];
 
-/** Rows grouped by category, in reading order. Empty categories are dropped. */
-export function protectionsByArea(rows: DeviceProtectionRow[]): { area: ProtectionArea; label: string; rows: DeviceProtectionRow[] }[] {
+/**
+ * Rows grouped by category, in reading order. Empty categories are dropped.
+ *
+ * Both kinds of row carry an `area`, so a device protection and an Apollo capability covering the
+ * same ground (calls, apps, the network…) sit in the same category for the person.
+ */
+export function protectionsByArea<T extends { area: ProtectionArea }>(rows: T[]): { area: ProtectionArea; label: string; rows: T[] }[] {
   return PROTECTION_AREA_ORDER
     .map((area) => ({ area, label: PROTECTION_AREA_LABEL[area], rows: rows.filter((r) => r.area === area) }))
     .filter((group) => group.rows.length > 0);

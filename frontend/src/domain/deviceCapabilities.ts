@@ -20,7 +20,7 @@
 import {
   PROTECTION_STATE_LABEL, protectionsNeedingAttention,
   type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow, type DeviceProtectionState,
-  type ProtectionGuidance,
+  type ProtectionArea, type ProtectionGuidance,
 } from "./deviceProtectionTypes.ts";
 import { EMPTY_SECURITY_READ, previewProtectionRows, securityProtectionRows, type SecurityStateRead } from "./deviceSecurityCatalogue.ts";
 
@@ -121,6 +121,8 @@ export interface DeviceCapabilityInput {
 export interface CapabilityRow {
   id: string;
   title: string;
+  /** The category this capability sits in — the same categories the device's own protections use. */
+  area: ProtectionArea;
   /** What this capability actually is, in plain words. */
   what: string;
   /** Why it matters to the person — the benefit of Apollo having it. */
@@ -245,6 +247,8 @@ export function capabilityHealth(view: DeviceCapabilityView, hasNativeHost: bool
 interface CapabilityDef {
   id: string;
   title: string;
+  /** Which category this belongs to on the Device screen, alongside the device's own protections. */
+  area: ProtectionArea;
   /** What this capability is, in plain words. */
   what: string;
   /** Why it matters to the person. */
@@ -265,6 +269,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "app_permissions",
     title: "App permissions",
+    area: "apps",
     what: "The list of things an app has been allowed to use on this phone — camera, microphone, location, messages, or control of the screen.",
     benefit: "Scammers who talk someone through an install nearly always need one of these switched on. Seeing what an app holds is how you catch that, and how you know exactly what to turn off.",
     purpose: "See which apps hold camera, microphone, location, SMS or accessibility access.",
@@ -277,6 +282,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "accessibility_services",
     title: "Accessibility services",
+    area: "apps",
     what: "A powerful Android setting that lets one app read and control what happens on your screen. It is built for people who need it, and abused by remote-access scams.",
     benefit: "This is the single most common thing a phone scammer asks someone to turn on. If something holds it and shouldn’t, that is worth knowing today.",
     purpose: "Spot a remote-control or screen-reading service a caller talked you into enabling.",
@@ -288,6 +294,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "notification_access",
     title: "Notification access",
+    area: "calls_messages",
     what: "Permission for Apollo to see the notifications your messaging apps post — the banner text, not your message history.",
     benefit: "It lets Apollo check a scam text the moment it arrives, without ever opening your messages.",
     purpose: "Let Text Guard check scam texts from your messaging app’s notifications — without ever reading your SMS database.",
@@ -298,6 +305,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "overlay_apps",
     title: "Apps drawing over others",
+    area: "apps",
     what: "The permission that lets one app draw on top of another — the trick behind a fake banking screen sitting over the real one.",
     benefit: "If a hidden app can paint a fake login over your bank, everything you type goes to whoever put it there. Knowing which apps can do this is how you stop it.",
     purpose: "Catch an app covering your banking screen with a fake one.",
@@ -309,6 +317,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "vpn_state",
     title: "VPN status",
+    area: "web",
     what: "Whether a VPN is active on this phone. Apollo’s own protection runs as one.",
     benefit: "It confirms Apollo’s protection is really running, and shows up a VPN you didn’t set up — which can quietly route everything you do through someone else.",
     purpose: "Confirm Apollo’s own protection is running and notice a VPN you didn’t set up.",
@@ -320,6 +329,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "profile_state",
     title: "Management profile",
+    area: "apps",
     what: "A configuration or device-admin profile, which hands another party control over parts of this phone.",
     benefit: "Work phones have these for good reasons. One you don’t recognise can mean someone else can install apps, wipe the phone or watch what you do.",
     purpose: "Notice a configuration profile that gives someone else control of this device.",
@@ -330,6 +340,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "install_events",
     title: "New app installs",
+    area: "apps",
     what: "An app appearing on this phone, and when it arrived.",
     benefit: "An app that turned up during or just after a suspicious call is the strongest sign a remote-access scam got somewhere.",
     purpose: "Notice an app that appeared during or just after a suspicious call.",
@@ -343,6 +354,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "app_network",
     title: "App network activity",
+    area: "web",
     what: "Which app made a connection that Apollo’s protection saw or blocked.",
     benefit: "A blocked connection is only half the story. Tying it to the app that made it tells you what to remove.",
     purpose: "Tie a blocked connection back to the app that made it.",
@@ -353,6 +365,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "call_history",
     title: "Recent callers",
+    area: "calls_messages",
     what: "The numbers that have called this phone recently.",
     benefit: "You can tap the caller you’re worried about instead of typing a number you might mistype — and Apollo reads only the one you pick.",
     purpose: "Let you pick a recent caller to check instead of typing the number.",
@@ -363,6 +376,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "message_inbox",
     title: "Messages",
+    area: "calls_messages",
     what: "The text messages on this phone.",
     benefit: "You can pick the message you’re worried about instead of copying it across — and Apollo reads only the one you pick.",
     purpose: "Let you pick a message to check instead of copying it across.",
@@ -373,6 +387,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "installed_apps",
     title: "Installed apps",
+    area: "apps",
     what: "The apps on this phone that Apollo is allowed to see.",
     benefit: "You can choose the app you want checked from a list, instead of having to spell its name exactly.",
     purpose: "Offer a pick-from-list when you want an app checked.",
@@ -383,6 +398,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "native_call_verdict",
     title: "Your phone’s own scam-call warning",
+    area: "calls_messages",
     what: "The spam or scam label your phone itself puts on an incoming call — from Samsung, Google or your carrier, never from Apollo.",
     benefit: "When your phone shares that label, Apollo can record it as their finding and start its own investigation from it, instead of waiting for you to report the call.",
     purpose: "Use your phone’s own spam warning as evidence and start an Apollo investigation from it.",
@@ -391,6 +407,7 @@ const CATALOGUE: CapabilityDef[] = [
   {
     id: "native_message_verdict",
     title: "Your phone’s own spam-text warning",
+    area: "calls_messages",
     what: "The spam label your messaging app itself puts on a text — from Google Messages, Samsung or your carrier, never from Apollo.",
     benefit: "When your messaging app shares that label, Apollo can record it as their finding and investigate from there, instead of waiting for you to notice.",
     purpose: "Use your messaging app’s own spam warning as evidence and start an Apollo investigation from it.",
@@ -474,7 +491,7 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
 /** Resolve one capability definition against the real reads. */
 function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRow {
   const { platform, caps, native } = input;
-  const base = { id: def.id, title: def.title, what: def.what, benefit: def.benefit, purpose: def.purpose, attributedTo: "Apollo" };
+  const base = { id: def.id, title: def.title, area: def.area, what: def.what, benefit: def.benefit, purpose: def.purpose, attributedTo: "Apollo" };
 
   // Apollo isn't on the phone at all here, so nothing was read. That is not "absent".
   if (input.hostIsDevice === false) {
@@ -514,7 +531,7 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
   return { ...base, klass: "apollo_can_use", detail: def.scope ?? def.purpose, action: def.action };
 }
 
-type RowBase = { id: string; title: string; what: string; benefit: string; purpose: string; attributedTo: string };
+type RowBase = { id: string; title: string; area: ProtectionArea; what: string; benefit: string; purpose: string; attributedTo: string };
 
 function notExposedRow(def: CapabilityDef, base: RowBase, platform: CapabilityPlatform): CapabilityRow {
   const reason = def.notExposed?.[platform];

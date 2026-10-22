@@ -9,6 +9,8 @@ import {
   capabilityHealth,
   capabilitySnapshotLines,
   CAPABILITY_CLASS_LABEL,
+  PROTECTION_AREA_ORDER,
+  protectionsByArea,
   PROTECTION_STATE_LABEL,
   type DeviceCapabilityInput,
   type NativeCapabilityReads,
@@ -74,6 +76,22 @@ test("a browser preview reports every capability as unreadable, never as absent"
   assert.equal(v.apolloCanUse.length, 0);
   assert.match(v.summary, /not running on your phone here/);
   for (const row of v.notReadableHere) assert.match(row.detail, /Open Apollo on your phone/);
+});
+
+test("every capability sits in one of the declared categories, with the device's own protections", () => {
+  const v = buildDeviceCapabilities(input());
+  for (const row of allCapabilityRows(v)) {
+    assert.ok(PROTECTION_AREA_ORDER.includes(row.area), `${row.id} must belong to a declared category`);
+  }
+  // The capability and the device protection that cover the same ground share a category, so the
+  // screen can show them in one list per category.
+  assert.equal(allCapabilityRows(v).find((r) => r.id === "call_history")!.area, "calls_messages");
+  assert.equal(allCapabilityRows(v).find((r) => r.id === "app_permissions")!.area, "apps");
+  assert.equal(allCapabilityRows(v).find((r) => r.id === "vpn_state")!.area, "web");
+  assert.equal(v.deviceProtects.find((r) => r.id === "caller_id_spam")!.area, "calls_messages");
+  // Grouping never loses or duplicates a row.
+  const grouped = protectionsByArea(allCapabilityRows(v)).flatMap((g) => g.rows.map((r) => r.id));
+  assert.deepEqual([...grouped].sort(), allCapabilityRows(v).map((r) => r.id).sort());
 });
 
 test("every capability can answer the three questions the details screen asks", () => {

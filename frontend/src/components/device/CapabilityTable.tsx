@@ -1,15 +1,15 @@
 /**
- * Device Capabilities, as a table.
+ * Device Capabilities, as tables grouped by category.
  *
- * Two tables, both read-only views of real reads:
- *   • `NativeProtectionTable` — the protection this device provides itself. The provider owns the
- *     row, so the provider's name is the row name and its state label is printed verbatim.
- *   • `CapabilityTable` — every capability Apollo looks for, with the one status a real read
- *     produced. A failed read stays "Apollo couldn't check"; it is never shown as clear.
+ * One table per category — Calls and messages, Apps on this device, Web and network, Who can get in,
+ * Updates and system, If it is lost or stolen — each holding everything that covers that ground:
+ *   • the protections this device runs itself (the provider owns the row, so its name and its state
+ *     label are printed verbatim), then
+ *   • the capabilities Apollo looks for there, with the one status a real read produced. A failed
+ *     read stays "Apollo couldn't check"; it is never shown as clear.
  *
- * A capability row is a link: tapping it opens Capability Details, which answers what it is, how it
- * helps, and whether anything needs doing. Native protection rows open in place, because everything
- * their provider reports is already on the row.
+ * Every row is a link into Capability Details, which answers what it is, how it helps, and whether
+ * anything needs doing.
  */
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -17,7 +17,7 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 
 import {
-  CAPABILITY_CLASS_LABEL, protectionsByArea,
+  CAPABILITY_CLASS_LABEL, PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER,
   type CapabilityClass,
   type CapabilityRow,
   type DeviceProtectionRow,
@@ -127,80 +127,86 @@ function RowShell({
   );
 }
 
+interface AreaItem {
+  id: string;
+  name: string;
+  sub?: string;
+  statusLabel: string;
+  tone: Tone;
+  hint: string;
+}
+
 /**
- * Every protection built into this device — a provider's, the OS's or the OEM's. Each row keeps its
- * owner's name and opens the same Capability Details screen, where the state, the recommended
- * configuration and the steps for checking it live.
+ * One table per category, each holding everything in that category: the protections the device runs
+ * itself, then the capabilities Apollo looks for there. A protection keeps its owner's state label,
+ * a capability keeps its class — the two vocabularies stay distinct inside one list.
  */
-export function NativeProtectionTable({ rows, testID }: { rows: DeviceProtectionRow[]; testID: string }) {
+export function DeviceAreaTables({
+  protections, capabilities, testID,
+}: { protections: DeviceProtectionRow[]; capabilities: CapabilityRow[]; testID: string }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
-  const groups = protectionsByArea(rows);
+
+  const groups = PROTECTION_AREA_ORDER.map((area) => ({
+    area,
+    label: PROTECTION_AREA_LABEL[area],
+    items: [
+      ...protections.filter((p) => p.area === area).map<AreaItem>((p) => ({
+        id: p.id, name: p.title, sub: p.subtitle, statusLabel: p.stateLabel,
+        tone: protectionTone(p.state, colors),
+        hint: "Opens what this is, how it helps you, and how to check it",
+      })),
+      ...capabilities.filter((c) => c.area === area).map<AreaItem>((c) => ({
+        id: c.id, name: c.title, statusLabel: CAPABILITY_CLASS_LABEL[c.klass],
+        tone: capabilityTone(c.klass, colors),
+        hint: "Opens what this is, how it helps you, and anything you need to do",
+      })),
+    ],
+  })).filter((group) => group.items.length > 0);
+
+  const classes = CLASS_ORDER.filter((k) => capabilities.some((c) => c.klass === k));
   let index = 0;
+
   return (
     <View style={{ gap: spacing.lg }}>
       {groups.map((group) => (
         <Table key={group.area} nameHeading={group.label} testID={`${testID}-${group.area}`}>
-          {group.rows.map((row) => {
+          {group.items.map((item) => {
             const i = index++;
             return (
               <RowShell
-                key={row.id}
-                name={row.title}
-                sub={row.subtitle}
-                statusLabel={row.stateLabel}
-                tone={protectionTone(row.state, colors)}
-                onPress={() => router.push({ pathname: "/capability/[id]", params: { id: row.id } })}
+                key={`${group.area}:${item.id}`}
+                name={item.name}
+                sub={item.sub}
+                statusLabel={item.statusLabel}
+                tone={item.tone}
+                onPress={() => router.push({ pathname: "/capability/[id]", params: { id: item.id } })}
                 trailing={<ChevronRight size={16} color={colors.muted} style={{ marginTop: 2 }} />}
-                accessibilityHint="Opens what this is, how it helps you, and how to check it"
+                accessibilityHint={item.hint}
                 testID={`${testID}-${i}`}
               />
             );
           })}
         </Table>
       ))}
-      {!groups.length ? <Text style={s.legendText} testID={`${testID}-none`}>Apollo did not recognise any built-in protection on this device.</Text> : null}
-    </View>
-  );
-}
 
-/** Every capability Apollo looks for, with the status a real read produced. Each row is a link. */
-export function CapabilityTable({ rows, testID }: { rows: CapabilityRow[]; testID: string }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const router = useRouter();
-  const present = CLASS_ORDER.filter((k) => rows.some((r) => r.klass === k));
-  return (
-    <>
-      <Table nameHeading="Device capability" testID={testID}>
-        {rows.map((row, i) => (
-          <RowShell
-            key={row.id}
-            name={row.title}
-            statusLabel={CAPABILITY_CLASS_LABEL[row.klass]}
-            tone={capabilityTone(row.klass, colors)}
-            onPress={() => router.push({ pathname: "/capability/[id]", params: { id: row.id } })}
-            trailing={<ChevronRight size={16} color={colors.muted} style={{ marginTop: 2 }} />}
-            accessibilityHint="Opens what this is, how it helps you, and anything you need to do"
-            testID={`${testID}-${i}`}
-          />
-        ))}
-      </Table>
-      <View style={s.legend} testID={`${testID}-legend`}>
-        {present.map((klass) => {
-          const tone = capabilityTone(klass, colors);
-          return (
-            <View key={klass} style={s.legendRow}>
-              <View style={[s.dot, { backgroundColor: tone.dot, marginTop: 5 }]} />
-              <Text style={s.legendText}>
-                <Text style={[s.legendLabel, { color: tone.text }]}>{CAPABILITY_CLASS_LABEL[klass]} — </Text>
-                {LEGEND[klass]}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </>
+      {classes.length ? (
+        <View style={s.legend} testID={`${testID}-legend`}>
+          {classes.map((klass) => {
+            const tone = capabilityTone(klass, colors);
+            return (
+              <View key={klass} style={s.legendRow}>
+                <View style={[s.dot, { backgroundColor: tone.dot, marginTop: 5 }]} />
+                <Text style={s.legendText}>
+                  <Text style={[s.legendLabel, { color: tone.text }]}>{CAPABILITY_CLASS_LABEL[klass]} — </Text>
+                  {LEGEND[klass]}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
   );
 }

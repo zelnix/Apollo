@@ -23,7 +23,7 @@ import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertsButton } from "@/src/components/AlertsButton";
-import { CapabilityTable, NativeProtectionTable } from "@/src/components/device/CapabilityTable";
+import { DeviceAreaTables } from "@/src/components/device/CapabilityTable";
 import { Body, Pill } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
 import { getCheckHistory, type CheckHistoryEntry } from "@/src/store/checkHistoryStore";
@@ -206,32 +206,23 @@ export default function DeviceCapabilitiesScreen() {
           <Text style={s.shareBtnText}>{sharing ? "Preparing report…" : "Share this report"}</Text>
         </Pressable>
 
-        {/* ── 1. What your device protects ── */}
+        {/* ── Everything on this device, grouped by what it covers ── */}
         <View style={s.section}>
           <SectionHead
-            title="What your device protects"
-            intro="Protection built into this phone by Android, Apple, its maker or your carrier. It runs whether Apollo is here or not, and anything it finds stays their finding. Tap any row for what it does and how to check it."
+            title="What protects this device"
+            intro="Grouped by what each one covers: the protection built into this device by Android, Apple, its maker or your carrier — which runs whether Apollo is here or not, and whose findings stay theirs — and the capabilities Apollo itself can use here. Tap any row for what it does and how to check it."
             testID="device-prot-native-head"
           />
-          {view.deviceProtects.length ? (
-            <NativeProtectionTable rows={view.deviceProtects} testID="device-prot-native" />
-          ) : (
-            <Body testID="device-prot-native-empty">
-              {!hasNativeHost
-                ? "Apollo is open in a browser preview here, so it cannot see this phone’s built-in protection. Open Apollo on your phone to see what your device already protects."
-                : nativeReadFailed
-                  ? "Apollo asked this device which built-in protections it has and the read failed. That is unknown, not none."
-                  : "Apollo did not recognise any built-in protection on this device."}
-            </Body>
-          )}
-        </View>
-
-        {/* ── 2–4. Every device capability, with its real status ── */}
-        <View style={s.section}>
-          {allCapabilities.length ? (
-            <CapabilityTable rows={allCapabilities} testID="device-prot-table" />
+          {view.deviceProtects.length || allCapabilities.length ? (
+            <DeviceAreaTables protections={view.deviceProtects} capabilities={allCapabilities} testID="device-prot-table" />
           ) : !reading ? (
-            <Body testID="device-prot-table-empty">Apollo could not read any capability state here.</Body>
+            <Body testID="device-prot-table-empty">
+              {!hasNativeHost
+                ? "Apollo is open in a browser preview here, so it cannot see this phone’s protection. Open Apollo on your phone to see the real state."
+                : nativeReadFailed
+                  ? "Apollo asked this device which protections it has and the read failed. That is unknown, not none."
+                  : "Apollo could not read any protection or capability state here."}
+            </Body>
           ) : null}
           <Text style={s.tableNote} testID="device-prot-table-note">
             Tap any row to see what it is, how it helps protect you, and whether you need to do anything.

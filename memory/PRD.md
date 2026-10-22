@@ -18,9 +18,15 @@ catalogue with every row `not_readable_here` ("Can’t be read in this preview")
 the categories can be reviewed without a build.
 
 **Owner's follow-ups.** The "Apollo’s capabilities on this device" heading and its summary line were
-removed from `app/device-protection.tsx` (the capability table now follows straight on from the
-protection tables), and the capability table's column heading changed from "What Apollo looks for"
-to "Device capability".
+removed, and the separate capability table went with them: every capability now carries an `area` and
+sits inside the SAME category table as the device's own protections covering that ground
+(`DeviceAreaTables`, one table per category, protections first then capabilities, every row a link
+into Capability Details). `protectionsByArea` is generic over anything carrying an `area`, so one
+grouping serves both. Category mapping: call history, messages, notification access and both
+phone-own scam warnings → Calls and messages; app permissions, accessibility services, overlays,
+installs, installed apps, management profile → Apps on this device; VPN status and app network
+activity → Web and network. A new test asserts every capability belongs to a declared category and
+that grouping neither loses nor duplicates a row.
 
 **Verification.** `tests/deviceCapabilities.test.ts` 31/31, `tests/deviceSecurityCatalogue.test.ts`
 19/19, `tests/deviceCapabilityReport.test.ts` 8/8, `tsc --noEmit` clean, ESLint clean, preview
