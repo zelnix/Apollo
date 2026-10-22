@@ -16,7 +16,6 @@ import * as Device from "expo-device";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Smartphone from "lucide-react-native/icons/smartphone";
-import Share2 from "lucide-react-native/icons/share-2";
 import Clock from "lucide-react-native/icons/clock";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
@@ -28,8 +27,7 @@ import { Body, Pill } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
 import { getCheckHistory, type CheckHistoryEntry } from "@/src/store/checkHistoryStore";
 import { allCapabilityRows, type CapabilityRow, type DeviceCapabilityView } from "@/src/domain/deviceCapabilities";
-import { capabilityPlatform, readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
-import { shareDeviceCapabilityReport } from "@/src/utils/shareDeviceCapabilityReport";
+import { readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -56,8 +54,7 @@ const useStyles = makeStyles((c) => ({
   deviceOs: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
   deviceManufacturer: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
 
-  shareBtn: { marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radius.md, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
-  shareBtnText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary },
+
 
   section: { marginTop: spacing.xl, paddingHorizontal: spacing.lg },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
@@ -95,18 +92,17 @@ export default function DeviceCapabilitiesScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { protection, showToast } = useApollo();
+  const { protection } = useApollo();
 
   const [lastCheck, setLastCheck] = useState<CheckHistoryEntry | null>(null);
   const [view, setView] = useState<DeviceCapabilityView>(EMPTY_VIEW);
   const [hasNativeHost, setHasNativeHost] = useState(Platform.OS !== "web");
   const [nativeReadFailed, setNativeReadFailed] = useState(false);
   const [reading, setReading] = useState(true);
-  const [sharing, setSharing] = useState(false);
 
   useEffect(() => { void getCheckHistory("device").then((h) => setLastCheck(h[0] ?? null)); }, []);
 
-  // One shared reader, so this screen, the shareable report and Higgins' live reading can never
+  // One shared reader, so this screen, Capability Details and Higgins' live reading can never
   // disagree. A failed read stays a failure — it is never flattened into "nothing found".
   useEffect(() => {
     let cancelled = false;
@@ -120,10 +116,7 @@ export default function DeviceCapabilitiesScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  const platform = capabilityPlatform();
-
-  // One table, in the order the person reads it: usable → needs permission → device-managed →
-  // couldn't check → not readable here → absent. The classes stay exactly as the engine resolved them.
+  // Every row the person can read here, grouped by category in the table below.
   const allCapabilities = useMemo<CapabilityRow[]>(() => allCapabilityRows(view), [view]);
 
   const deviceModel = Device.modelName || Device.deviceName || "Unknown device";
@@ -142,26 +135,6 @@ export default function DeviceCapabilitiesScreen() {
     if (days === 1) return `yesterday, ${time}`;
     return `${days} days ago`;
   }, [lastCheck]);
-
-  const shareReport = useCallback(async () => {
-    setSharing(true);
-    try {
-      await shareDeviceCapabilityReport(view, {
-        deviceLabel: deviceModel,
-        osLabel,
-        manufacturer: manufacturer || null,
-        platformLabel: platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "windows" ? "Windows" : platform === "macos" ? "macOS" : "this browser",
-        lastCheckedAt: lastCheck?.at ?? null,
-        generatedAt: new Date().toISOString(),
-        apolloProtection: protection ? (protection.operational ? "running" : protection.requested ? `requested but not running${protection.degradedReason ? ` (${protection.degradedReason})` : ""}` : "off") : "not read",
-        hasNativeHost,
-      });
-    } catch (error) {
-      showToast(`Apollo couldn't prepare the report (${error instanceof Error ? error.message : "reason could not be determined"}).`, "growling");
-    } finally {
-      setSharing(false);
-    }
-  }, [view, deviceModel, osLabel, manufacturer, platform, lastCheck, protection, hasNativeHost, showToast]);
 
   return (
     <View style={s.root} testID="device-protection-screen">
@@ -192,19 +165,6 @@ export default function DeviceCapabilitiesScreen() {
             <Pill tone={protectionActive ? "resting" : "growling"} label={protectionActive ? "Good" : "Review"} testID="device-prot-status" />
           </View>
         </View>
-
-        <Pressable
-          testID="device-prot-share-btn"
-          accessibilityRole="button"
-          accessibilityLabel="Share this report"
-          accessibilityHint="Creates a PDF of everything on this screen and opens your share options"
-          disabled={reading || sharing}
-          onPress={() => void shareReport()}
-          style={({ pressed }) => [s.shareBtn, { opacity: pressed || reading || sharing ? 0.6 : 1 }]}
-        >
-          <Share2 size={16} color={colors.brandPrimary} />
-          <Text style={s.shareBtnText}>{sharing ? "Preparing report…" : "Share this report"}</Text>
-        </Pressable>
 
         {/* ── Everything on this device, grouped by what it covers ── */}
         <View style={s.section}>

@@ -28,8 +28,13 @@ installs, installed apps, management profile → Apps on this device; VPN status
 activity → Web and network. A new test asserts every capability belongs to a declared category and
 that grouping neither loses nor duplicates a row.
 
-**Verification.** `tests/deviceCapabilities.test.ts` 31/31, `tests/deviceSecurityCatalogue.test.ts`
-19/19, `tests/deviceCapabilityReport.test.ts` 8/8, `tsc --noEmit` clean, ESLint clean, preview
+**Share removed.** "Share this report" is gone from the Device Capabilities screen at the owner's
+request, and with it the only caller of the PDF chain — `src/utils/shareDeviceCapabilityReport.ts`,
+`src/domain/deviceCapabilityReport.ts` and `tests/deviceCapabilityReport.test.ts` were deleted rather
+than left as unreachable code (recoverable from git if a share entry is wanted elsewhere).
+
+**Verification.** `tests/deviceCapabilities.test.ts` 32/32, `tests/deviceSecurityCatalogue.test.ts`
+19/19, `tsc --noEmit` clean, ESLint clean, preview
 screenshotted through every category. Real states still need an Android/iOS (or desktop) build.
 
 
