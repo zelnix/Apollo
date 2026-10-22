@@ -304,7 +304,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 // ── Topic Tile Component ────────────────────────────────────────────────────
-function TopicTileCard({ tile, onPress }: { tile: TopicTile; onPress: () => void }) {
+function TopicTileCard({ tile, onPress, active }: { tile: TopicTile; onPress: () => void; active?: boolean }) {
   const s = useStyles();
   const Icon = tile.icon;
   return (
@@ -314,7 +314,7 @@ function TopicTileCard({ tile, onPress }: { tile: TopicTile; onPress: () => void
       onPress={onPress}
       style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
     >
-      <View style={[s.topicTile, { backgroundColor: tile.bg }]}>
+      <View style={[s.topicTile, { backgroundColor: tile.bg }, active && { borderWidth: 2, borderColor: tile.iconColor }]}>
         <View style={[s.topicIcon, { backgroundColor: "rgba(255,255,255,0.7)" }]}>
           <Icon size={24} color={tile.iconColor} />
         </View>
@@ -579,7 +579,10 @@ export default function HigginsLearningScreen() {
 
   const applyTopicFilter = useCallback(
     (category: string) => {
-      setAppliedFilters((prev) => ({ ...prev, category }));
+      setAppliedFilters((prev) => ({
+        ...prev,
+        category: prev.category === category ? "" : category,
+      }));
     },
     [],
   );
@@ -640,7 +643,7 @@ export default function HigginsLearningScreen() {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.topicScroll}>
         {TOPIC_TILES.map((tile) => (
-          <TopicTileCard key={tile.label} tile={tile} onPress={() => applyTopicFilter(tile.category)} />
+          <TopicTileCard key={tile.label} tile={tile} active={appliedFilters.category === tile.category} onPress={() => applyTopicFilter(tile.category)} />
         ))}
       </ScrollView>
 
