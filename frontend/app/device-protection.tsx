@@ -22,7 +22,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { CapabilityTable, NativeProtectionTable } from "@/src/components/device/CapabilityTable";
 import { Sheet } from "@/src/components/Sheet";
@@ -52,9 +51,7 @@ const useStyles = makeStyles((c) => ({
   deviceOs: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
   deviceManufacturer: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
 
-  checkBtn: { marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: "center", justifyContent: "center" },
-  checkBtnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
-  shareBtn: { marginHorizontal: spacing.lg, marginTop: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
+  shareBtn: { marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radius.md, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
   shareBtnText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brandPrimary },
 
   section: { marginTop: spacing.xl, paddingHorizontal: spacing.lg },
@@ -76,7 +73,6 @@ const useStyles = makeStyles((c) => ({
   stepNum: { fontFamily: fonts.displayBold, fontSize: 14, color: c.brandPrimary, width: 18 },
   stepText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface, flex: 1 },
 
-  historyWrap: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
 }));
 
 const EMPTY_VIEW: DeviceCapabilityView = { deviceProtects: [], apolloCanUse: [], needsPermission: [], notAccessible: [], unavailable: [], unknown: [], notReadableHere: [], recommendations: [], summary: "Reading this device…" };
@@ -199,16 +195,6 @@ export default function DeviceCapabilitiesScreen() {
         </View>
 
         <Pressable
-          testID="device-prot-check-btn"
-          accessibilityRole="button"
-          accessibilityLabel="Check Device"
-          onPress={() => router.push("/device")}
-          style={({ pressed }) => [s.checkBtn, { backgroundColor: colors.brand, opacity: pressed ? 0.85 : 1 }]}
-        >
-          <Text style={[s.checkBtnText, { color: colors.onBrand }]}>Check Device</Text>
-        </Pressable>
-
-        <Pressable
           testID="device-prot-share-btn"
           accessibilityRole="button"
           accessibilityLabel="Share this report"
@@ -286,11 +272,6 @@ export default function DeviceCapabilitiesScreen() {
             ))}
           </View>
         ) : null}
-
-        {/* ── Previous device checks ── */}
-        <View style={s.historyWrap}>
-          <CheckHistoryCard gate="device" testID="device-prot-history" />
-        </View>
       </ScrollView>
 
       {/* ── Higgins' guide for one native setting ── */}
