@@ -164,6 +164,19 @@ def compact_evidence_for_magnum_di(provider_evidence: dict) -> str:
             abuse = "; RECENT ABUSE" if info.get("recent_abuse") else ""
             carrier = info.get("carrier", "unknown")
             lines.append(f"  • Phone {phone}: IPQS fraud score {score}/100, carrier: {carrier}{abuse} ({info.get('queried_at', '?')})")
+    for url, info in pe.get("ipqs", {}).get("urls", {}).items():
+        if info.get("status") == "ok":
+            score = info.get("risk_score", "?")
+            decision = info.get("decision", "unknown")
+            flags = []
+            if info.get("phishing"): flags.append("PHISHING")
+            if info.get("malware"): flags.append("MALWARE")
+            if info.get("suspicious"): flags.append("SUSPICIOUS")
+            if info.get("parking"): flags.append("PARKED DOMAIN")
+            flag_str = f" — {', '.join(flags)}" if flags else ""
+            lines.append(f"  • URL {url[:120]}: IPQS risk score {score}/100, decision: {decision}{flag_str} ({info.get('queried_at', '?')})")
+    for item in pe.get("download_links", {}).get("items", []):
+        lines.append(f"  • DOWNLOAD LINK DETECTED: {item.get('url', '?')[:120]} → file: {item.get('filename', '?')} [{item.get('category', 'unknown')}] — direct file download links in unsolicited messages are a common malware delivery method")
     for email, info in pe.get("hibp", {}).get("emails", {}).items():
         if info.get("status") == "found":
             count = len(info.get("breaches", []))
@@ -621,6 +634,41 @@ async def gather_provider_evidence(evidence: dict) -> dict:
             pe["ipqs"] = {"phones": {sender_phone: {"status": "unavailable", "detail": type(exc).__name__, "queried_at": ts}}}
             _log.debug("ipqs_lookup_failed phone=%s error=%s", sender_phone[:6], type(exc).__name__)
 
+    # ── 3b. IPQS URL reputation scoring ──
+    if link_urls:
+        try:
+            from services.urlrisk import check_url_risk
+            from core.config import IPQS_API_KEY
+            if IPQS_API_KEY:
+                ipqs_url_results = {}
+                # Check up to 5 unique URLs (most suspicious first — shorteners get priority)
+                from services.urlrisk import is_shortener
+                sorted_urls = sorted(dict.fromkeys(link_urls), key=lambda u: (0 if is_shortener(u) else 1))[:5]
+                for url in sorted_urls:
+                    try:
+                        url_result = await asyncio.wait_for(check_url_risk(url), timeout=10.0)
+                        if url_result and url_result.get("status") != "error":
+                            ipqs_url_results[url] = url_result
+                            providers_used.append("ipqs_url")
+                    except Exception as url_exc:
+                        ipqs_url_results[url] = {"status": "unavailable", "detail": type(url_exc).__name__, "queried_at": ts}
+                        _log.debug("ipqs_url_check_failed url=%s error=%s", url[:60], type(url_exc).__name__)
+                if ipqs_url_results:
+                    pe.setdefault("ipqs", {})["urls"] = ipqs_url_results
+        except Exception as exc:
+            _log.debug("ipqs_url_section_failed error=%s", type(exc).__name__)
+
+    # ── 3c. Download-link detection (static, no network call) ──
+    if link_urls:
+        try:
+            from services.urlrisk import detect_download_links
+            download_links = detect_download_links(link_urls)
+            if download_links:
+                pe["download_links"] = {"items": download_links, "count": len(download_links), "queried_at": ts}
+                providers_used.append("download_link_detection")
+        except Exception as exc:
+            _log.debug("download_link_detection_failed error=%s", type(exc).__name__)
+
     # ── 4. Scam intel feed cross-reference ──
     try:
         scam_matches = await _match_scam_intel(evidence)
@@ -642,7 +690,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
     # Providers that return public threat intelligence about indicators
     # (domains, URLs, phone reputation, breach lists) are shareable.
     # Results that incorporate user content are device_private.
-    _SHAREABLE_SECTIONS = {"rdap", "safe_browsing", "redirects", "ipqs", "scam_intel"}
+    _SHAREABLE_SECTIONS = {"rdap", "safe_browsing", "redirects", "ipqs", "scam_intel", "download_links"}
     for section_name, section in pe.items():
         if section_name.startswith("_") or not isinstance(section, dict):
             continue

@@ -149,3 +149,127 @@ async def delete_higgins_history(history_id: str, request: Request):
 @router.get("/higgins/scams")
 async def government_scam_feed(limit: int = Query(default=50, ge=1, le=100)):
     return JSONResponse(jsonable_encoder(await government_alerts.snapshot(limit)), headers=NO_STORE)
+
+
+@router.get("/higgins/scams/diagnostics")
+async def scam_alerts_diagnostics():
+    """Transparent diagnostics view showing every filter stage for scam alerts.
+    Returns counts at each step so the user can see exactly why N alerts appear."""
+    from datetime import datetime, timezone
+    from services import scam_analysis
+
+    now = datetime.now(timezone.utc)
+    recency_cutoff = government_alerts.RECENCY_CUTOFF
+
+    # 1. Raw item count
+    total_items = await db.learning_feed_items.count_documents({})
+
+    # 2. Items with and without analysis
+    with_analysis = await db.learning_feed_items.count_documents({"scam_analysis": {"$exists": True, "$ne": None}})
+    without_analysis = total_items - with_analysis
+
+    # 3. Items matching current analysis version
+    current_version = scam_analysis.ANALYSIS_VERSION
+    matching_version = await db.learning_feed_items.count_documents({"scam_analysis.analysisVersion": current_version})
+    wrong_version = with_analysis - matching_version
+
+    # 4. Walk the items that pass version filter and classify
+    rows = await db.learning_feed_items.find(
+        {"scam_analysis.analysisVersion": current_version},
+        {"_id": 0, "title": 1, "url": 1, "source_id": 1, "published_at": 1, "scam_analysis": 1, "trust_status": 1}
+    ).sort("published_at", -1).to_list(500)
+
+    specific_scam = []
+    emerging_pattern = []
+    general_education = []
+    stale_items = []
+    unknown_tier = []
+
+    for row in rows:
+        analysis = row.get("scam_analysis", {})
+        tier = analysis.get("tier", "unknown")
+        published = row.get("published_at")
+        reported = analysis.get("reportedDate")
+        # Parse effective date
+        effective = None
+        if published:
+            effective = published if published.tzinfo else published.replace(tzinfo=timezone.utc)
+        elif reported:
+            for fmt in ("%Y-%m-%d", "%Y-%m"):
+                try:
+                    effective = datetime.strptime(reported.strip(), fmt).replace(tzinfo=timezone.utc)
+                    break
+                except (ValueError, AttributeError):
+                    pass
+
+        age_days = (now - effective).days if effective else None
+        is_stale = effective and (now - effective) > recency_cutoff
+
+        item_info = {
+            "title": row.get("title", "")[:100],
+            "url": row.get("url", "")[:120],
+            "source_id": row.get("source_id", ""),
+            "tier": tier,
+            "severity": analysis.get("severity", ""),
+            "region": analysis.get("australianRelevance", ""),
+            "published_at": published.isoformat() if published else None,
+            "reported_date": reported,
+            "effective_date": effective.isoformat() if effective else None,
+            "age_days": age_days,
+            "is_stale": bool(is_stale),
+        }
+
+        if is_stale:
+            stale_items.append(item_info)
+        elif tier == "specific_scam":
+            specific_scam.append(item_info)
+        elif tier == "emerging_pattern":
+            emerging_pattern.append(item_info)
+        elif tier == "general_education":
+            general_education.append(item_info)
+        else:
+            unknown_tier.append(item_info)
+
+    # 5. Feed source status
+    feeds = await db.learning_feeds.find({"enabled": True}, {"_id": 0}).to_list(100)
+    states = {r["feed_id"]: r for r in await db.learning_feed_state.find({}, {"_id": 0}).to_list(100)}
+    feed_diagnostics = []
+    for feed in feeds:
+        state = states.get(feed["feed_id"], {})
+        feed_diagnostics.append({
+            "feed_id": feed["feed_id"],
+            "source_id": feed.get("source_id", ""),
+            "content_type": feed.get("content_type", ""),
+            "status": state.get("status", "never_run"),
+            "last_success": state.get("last_success_at"),
+            "last_checked": state.get("last_checked_at"),
+            "error": state.get("error"),
+            "items_ingested": state.get("items_ingested", 0),
+        })
+
+    diagnostics = {
+        "generated_at": now.isoformat(),
+        "recency_cutoff_days": recency_cutoff.days,
+        "analysis_version": current_version,
+        "pipeline": {
+            "1_total_feed_items": total_items,
+            "2_with_analysis": with_analysis,
+            "3_without_analysis_pending": without_analysis,
+            "4_matching_current_version": matching_version,
+            "5_wrong_version_needs_reanalysis": wrong_version,
+            "6_after_filters": {
+                "specific_scam_shown": len(specific_scam),
+                "emerging_pattern_shown": len(emerging_pattern),
+                "general_education_excluded": len(general_education),
+                "stale_excluded": len(stale_items),
+                "unknown_tier": len(unknown_tier),
+            },
+        },
+        "shown_alerts": specific_scam,
+        "shown_emerging": emerging_pattern,
+        "excluded_stale": stale_items[:20],
+        "excluded_education": general_education[:10],
+        "feeds": feed_diagnostics,
+    }
+
+    return JSONResponse(jsonable_encoder(diagnostics), headers=NO_STORE)

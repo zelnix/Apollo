@@ -48,6 +48,7 @@ GMAIL_TOKEN_ENCRYPTION_KEY = os.environ.get("GMAIL_TOKEN_ENCRYPTION_KEY", "")
 # /api/call/risk-check reports source="not_configured", never a crash or a fabricated score.
 IPQS_API_KEY = os.environ.get("IPQS_API_KEY", "")
 IPQS_ENDPOINT = "https://www.ipqualityscore.com/api/json/phone"
+IPQS_URL_ENDPOINT = "https://www.ipqualityscore.com/api/json/url"
 
 HIGGINS_VOICE = (
     "You are Higgins — Apollo's trusted adviser, interpreter and guide. "
