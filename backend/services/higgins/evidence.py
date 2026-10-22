@@ -20,7 +20,7 @@ from services.higgins import repository as repo
 from services.higgins.contracts import Coverage, EvidenceItem, OmittedRange, Range, Transformation
 from services.higgins.repository import http
 
-MAX_FILE_BYTES = 32 * 1024 * 1024
+MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_CASE_BYTES = 64 * 1024 * 1024
 MAX_PAGES = 200
 MAX_IMAGE_PIXELS = 40_000_000

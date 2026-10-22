@@ -575,11 +575,20 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       body = detail.body || msg.snippet;
       // Build a human-readable attachment summary for the investigation
       if (detail.attachments?.length) {
+        const totalBytes = detail.attachments.reduce((sum, a) => sum + (a.size ?? 0), 0);
+        const totalMB = totalBytes / (1024 * 1024);
+        const limitMB = FILE_SIZE_LIMIT / (1024 * 1024);
         const lines = detail.attachments.map((a) => {
           const sizeStr = a.size ? ` (${a.size > 1024 * 1024 ? `${(a.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(a.size / 1024)} KB`})` : "";
           return `  - ${a.filename}${a.mime_type ? ` [${a.mime_type}]` : ""}${sizeStr}`;
         });
-        attachmentNote = `\n\nAttachments (${detail.attachments.length}):\n${lines.join("\n")}`;
+
+        if (totalBytes > FILE_SIZE_LIMIT) {
+          // Exceeds the 10 MB combined limit — include metadata for Gemini but flag the overage
+          attachmentNote = `\n\nAttachments (${detail.attachments.length}, total ${totalMB.toFixed(1)} MB — exceeds ${limitMB} MB limit, not downloaded):\n${lines.join("\n")}\n\n⚠ These attachments exceed Apollo's ${limitMB} MB combined limit and were not downloaded for deep inspection. Recommend the person download each attachment individually and check them one at a time using Apollo's file check.`;
+        } else {
+          attachmentNote = `\n\nAttachments (${detail.attachments.length}, total ${totalMB.toFixed(1)} MB):\n${lines.join("\n")}`;
+        }
       }
     } catch {
       // Keep the preview line rather than nothing, and say what was used.
