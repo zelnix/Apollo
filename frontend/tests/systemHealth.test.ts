@@ -35,7 +35,8 @@ test("a partial or privacy-cleanup failure cannot be shown as healthy", () => {
 test("health fixture uses the normal saved-report renderer and escapes model text", () => {
   assert.equal(validReport(fixture), true);
   const html = reportHtml(fixture);
-  assert.match(html, /Higgins system health check/);
+  assert.match(html, /Apollo Investigation Report/);
+  assert.match(html, /Synthetic health check/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
   assert.equal(validReport({ ...fixture, actions: [{}] }), false);

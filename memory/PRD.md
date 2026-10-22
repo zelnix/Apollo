@@ -2883,3 +2883,70 @@ real prompt and a 2 KB response), and the owner confirmed the "Sent to Gemini" c
 neither — so their absence from the production artifact proved nothing. Replaced with content strings
 that only the simulation source contains (`commbank-cancel.co`, `civic-plumbing-invoices.com`), both
 proven present in a preview export. Now: production 0/9 markers, preview 9/9.
+
+## Both test suites are green again, and the tests that were testing nothing are gone (Jun 2026)
+Baseline was 23 failing frontend tests (5 whole files that could not even load) and 19 failing backend
+tests. Every failure was triaged as "the product changed and the test was never updated" or "the thing
+under test no longer exists" — no production bug was found behind any of them, with two exceptions that
+needed a decision (below). Now: **frontend 861 pass / 0 fail**, **backend 922 pass / 0 fail**,
+`tsc --noEmit` clean, ESLint clean.
+
+**Deleted — nothing left to test**
+- `frontend/tests/protectionTimeline.test.ts`, `frontend/tests/gate3page.test.ts`: `src/domain/protectionTimeline.ts`
+  and `src/domain/pageAnalysis.ts` were removed in the Stage 14 consolidation and have no successor
+  (page analysis is server-side now). `package.json`'s `test:gate3page` script went with them.
+- The `buildProtectionFindings` / `countDistinctFindings` sections of `architecturalRegression.test.ts`
+  (describes 4–6) and section 1 of `phase2Corrections.test.ts`: same deleted module, `protectionDetails.ts`.
+  Home derives attention from `buildHomeAttention`, which those files still cover.
+- `backend/tests/test_mock_provider.py` (376 lines) **and `backend/services/higgins/preview/mock_provider.py`
+  (285 lines)**: nothing imported the mock provider. The preview path runs `preview_simulator` through
+  `preview/dispatch.py`; the mock provider and its `APOLLO_PROVIDER_MODE=mock` contract were dead code.
+- `frontend/tests/e2e/test_iter19_share_and_incident.py` and `tests/contrast_sweep_iter39.py`: one- and
+  two-line placeholders that ran nothing.
+
+**Rewritten to the contract that actually exists**
+- `backend/tests/test_provider_environment_guard.py`: the `APOLLO_ENV` / `APOLLO_PROVIDER_MODE` guard it
+  tested no longer exists. It now pins the structural guard: no preview handler → `get_provider_mode()`
+  is "live"; installing the dispatch is the only thing that makes it "preview", and `client()` then
+  raises; `provider.py` names no preview module and no env switch; `server.py` installs the dispatch
+  through an optional import.
+- `phase2Corrections.test.ts`: the two limited-coverage navigation tests asserted different routes for
+  "genuinely affected" vs not. Visibility loss no longer escalates, so both produce the same voice —
+  collapsed into one test over both capability mixes, and `/protection-details` (a deleted screen) is
+  no longer expected.
+- `frontend/tests/test_guarddog_production_source.py`: `test_no_signing_infrastructure_in_core_sdk`
+  asserted "no Ed25519 anywhere", but the production runtime pins a public key
+  (`PINNED_SIGNING_PUBLIC_KEY`) and the SDK verifies with the platform's own Ed25519 — the old
+  multi-key trust-manifest infrastructure is what was removed, not signature verification. The test now
+  pins that model. `test_repository_contains_no_private_key_material` was tripping on a PEM label inside
+  a vendored `cryptography` package; `.venv`/`site-packages`/`dist` are now skipped with node_modules.
+- `homeStatusSeparation.test.mjs` (14 failures): its gate fixtures predated `gate.resolved`, so
+  `deriveCoverage` read `undefined.coverageState`. The fixture now resolves state through the one real
+  resolver (`resolveProtectionState`) instead of hand-writing a second interpretation.
+
+**Stale wording and fixtures corrected** (the app's own copy/shape is the source of truth): "Gate"
+vocabulary → plain English in `higginsChecks`, `higginsGreeting`, `homeAttention`, `higginsBehavioural`;
+Android channel `threats`/`growling` → the single `apollo_alerts` in `localAlerts`; tab parity → Home /
+Threats / Alerts / Ask Higgins / Learn in `iosSourceReadiness`; `protectionAnswer`'s snapshot used
+`protection.state` where `ProtectionStatus` carries `running`; the email screen's inline preview
+disclaimer moved into the picker popup (`fileDeviceGateUi`); the report renderer's heading and the
+legacy `expo-file-system` calls in `reportHealth` / `systemHealth`; `patrol.py`'s push branch is now
+`event.state in ("growling", "sniffing")` (`test_iter7_quiet_and_phone`); `_PROVIDER_MODE` monkeypatches
+replaced with `_preview_generate` in `test_privacy_simplification`, `test_privacy_screening_enforcement`
+and `test_recovery_fencing`.
+
+**Two that needed a judgement, not a rename**
+1. `p0TruthPrivacyFile` expected visibility loss / stale verification to leave "resting".
+   `resolveApolloState` deliberately keeps the state resting and carries the truth in `visibilityLost`
+   + the reason + the route ("a protection status issue, not a security threat"). The test now asserts
+   that flag, reason and route — the all-clear is still never claimed when Apollo cannot see.
+2. The same file expected a caller's phone number and "password abc" to be redacted from the Ask
+   Higgins context. The canonical policy (`privacyPolicy.ts`) redacts credentials with a connector
+   ("password is …", "code: 884213") and only the OWNER's own personal data — a third party's number is
+   the SUBJECT of the check and must survive or Call Guard cannot check it, and broadening the regex to
+   bare "password <word>" would redact "password reset email". Test now pins that: the code is
+   redacted, the number under investigation is not.
+
+**Still skipped on purpose** (not failures): credentialed integration tests (`APOLLO_RUN_CREDENTIALED_INTEGRATION=1`),
+`ImagePrivacyGate.tsx` checks for a gate handled differently now, checkpoint/ledger replay removed with
+the single-pass coordinator, and server-side report retention which is disabled.

@@ -42,7 +42,7 @@ test("message and Ask Higgins redact submitted login secrets before egress", () 
   const message = enforceEgress("message_check", { device_id: "device-123", sender: "Unknown", text: raw, urls: [], local_state: "barking", scenario: "M01", signals: ["Code request"], claimed_brand: null, second_opinion: true });
   assert.doesNotMatch(message.text, /Winter!42|4488|113355/);
   const ask = enforceEgress("ask_apollo", { device_id: "device-123", message: "My PIN is 4488", context: null });
-  assert.equal(ask.message, "My PIN is [redacted]");
+  assert.equal(ask.message, "My [credential redacted]");
   assert.equal(ask.conversation_id, "general");
   assert.equal(redactUserSecrets("I received a password reset link"), "I received a password reset link");
 });

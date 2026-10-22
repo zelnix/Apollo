@@ -34,7 +34,7 @@ test("an active barking event becomes an attention item naming the gate and the 
   const items = buildHomeAttention({ gates: [], events: [event({})] });
   assert.equal(items.length, 1);
   assert.equal(items[0].kind, "event");
-  assert.equal(items[0].gate, "App Gate");
+  assert.equal(items[0].gate, "App checking");
   assert.equal(items[0].problem, "An app can control your screen.");
   assert.equal(items[0].higgins, "Remove the app in Settings.");
   assert.match(items[0].route, /^\/patrol\//);

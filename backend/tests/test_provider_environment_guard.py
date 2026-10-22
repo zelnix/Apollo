@@ -1,37 +1,50 @@
-"""The preview-only provider modes must never be able to run in production."""
-import subprocess
-import sys
+"""The preview simulator can never run in production — the guard is structural, not a flag.
 
-CHECK = (
-    "import services.higgins.provider as p; print('IMPORTED', p.get_provider_mode())"
-)
+Production does not deploy `services/higgins/preview/`, so nothing can install a preview handler:
+`get_provider_mode()` answers "live" and `generate()` reaches live Gemini only. A preview deployment
+ships the directory, `server.py` installs the dispatch at startup, and from then on `client()` refuses
+to be reached at all. No environment variable takes part in this decision.
 
+Run: cd /app/backend && python -m pytest tests/test_provider_environment_guard.py -q
+"""
+from __future__ import annotations
 
-def _run(env_overrides: dict[str, str]) -> subprocess.CompletedProcess:
-    import os
-    env = {**os.environ, **env_overrides}
-    return subprocess.run([sys.executable, "-c", CHECK], cwd="/app/backend", env=env,
-                          capture_output=True, text=True, timeout=120)
+import pathlib
 
+import pytest
 
-def test_simulated_mode_is_refused_in_production():
-    for mode in ("simulated", "mock"):
-        result = _run({"APOLLO_ENV": "production", "APOLLO_PROVIDER_MODE": mode})
-        assert result.returncode != 0, f"{mode} started in production: {result.stdout}"
-        assert "preview-only mode" in result.stderr, result.stderr
+from services.higgins import provider
+from services.higgins.provider import ProviderFailure
 
-
-def test_unset_environment_is_treated_as_production():
-    result = _run({"APOLLO_ENV": "", "APOLLO_PROVIDER_MODE": "simulated"})
-    assert result.returncode != 0, result.stdout
-    assert "preview-only mode" in result.stderr, result.stderr
+SOURCE = pathlib.Path(provider.__file__).read_text()
+SERVER = (pathlib.Path(__file__).resolve().parents[1] / "server.py").read_text()
 
 
-def test_preview_environment_still_allows_the_simulator():
-    result = _run({"APOLLO_ENV": "preview", "APOLLO_PROVIDER_MODE": "simulated"})
-    assert "IMPORTED simulated" in result.stdout, result.stderr
+def test_production_has_no_preview_handler_and_reports_live(monkeypatch):
+    monkeypatch.setattr(provider, "_preview_generate", None)
+    assert provider.get_provider_mode() == "live"
 
 
-def test_live_mode_runs_in_production():
-    result = _run({"APOLLO_ENV": "production", "APOLLO_PROVIDER_MODE": "live"})
-    assert "IMPORTED live" in result.stdout, result.stderr
+def test_installing_the_dispatch_is_the_only_thing_that_makes_it_preview(monkeypatch):
+    monkeypatch.setattr(provider, "_preview_generate", None)
+
+    async def handler(*_args, **_kwargs):
+        raise AssertionError("the handler itself is not exercised here")
+
+    provider.register_preview_handler(handler)  # monkeypatch restores the real value afterwards
+    assert provider.get_provider_mode() == "preview"
+    # With the simulator answering, the live client must be unreachable — not merely unused.
+    with pytest.raises(ProviderFailure):
+        provider.client()
+
+
+def test_the_production_gateway_names_no_preview_module_and_no_switch():
+    for forbidden in ("preview_simulator", "mock_provider", "from services.higgins.preview"):
+        assert forbidden not in SOURCE, f"provider.py must not reference {forbidden}"
+    for env_var in ("APOLLO_ENV", "APOLLO_PROVIDER_MODE"):
+        assert env_var not in SOURCE, f"{env_var} must not decide the provider"
+
+
+def test_startup_installs_the_dispatch_only_when_the_directory_is_deployed():
+    assert "from services.higgins.preview.dispatch import install_preview_provider" in SERVER
+    assert "except ImportError" in SERVER, "a production deployment must simply not find the module"

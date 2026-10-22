@@ -8,9 +8,9 @@ const file = read("../app/file.tsx");
 const device = read("../app/device.tsx");
 const app = read("../app/app-check.tsx");
 
-test("Email Gate discloses preview and attachment-transfer limits before File Gate handoff", () => {
-  assert.match(email, /email-preview-disclaimer/);
-  assert.match(email, /cannot read or retrieve a message from another app/);
+test("Email Gate discloses the attachment-transfer limit before File Gate handoff", () => {
+  // The old inline "preview disclaimer" card is gone: the screen now leads with the source hero, and
+  // the preview marking lives inside the picker popup it opens (see SourceHero / simulation.tag).
   assert.match(email, /email-attachment-limitation/);
   assert.match(email, /file itself was not transferred/);
   assert.match(email, /pathname: "\/file", params: \{ source: "email" \}/);

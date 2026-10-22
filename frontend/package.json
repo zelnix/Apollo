@@ -41,7 +41,6 @@
     "test:evidence-sync": "node --test tests/enforcementEvidenceSync.test.ts",
     "test:gate2": "node --test tests/messageAnalysis.test.ts",
     "test:gate3": "node --test tests/gate3.test.ts",
-    "test:gate3page": "node --test tests/gate3page.test.ts",
     "test:gate4": "node --test tests/gate4.test.ts",
     "test:gate5": "node --test tests/gate5.test.ts",
     "test:gate6": "node --test tests/gate6.test.ts",

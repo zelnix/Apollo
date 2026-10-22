@@ -4,6 +4,7 @@ ingestion here are purely local (regex/text), never routed through the provider.
 import asyncio
 import io
 import json
+import os
 import uuid
 from datetime import timedelta
 from starlette.requests import Request
@@ -1102,15 +1103,13 @@ async def _upload_control_fences_publication():
 
 
 async def _provider_call_guard():
+    """A bounded test can never reach live Gemini: no preview handler is installed in the test
+    process, and the live path refuses while APOLLO_FORBID_PROVIDER_CALLS=1 (set by conftest)."""
     from services.higgins import provider
-    # Temporarily bypass mock mode to verify the env-var prohibition gate
-    original_mode = provider._PROVIDER_MODE
-    provider._PROVIDER_MODE = "live"
-    try:
-        with pytest.raises(AssertionError, match="prohibited"):
-            await provider.generate("system", "prompt", purpose="investigation")
-    finally:
-        provider._PROVIDER_MODE = original_mode
+    assert provider.get_provider_mode() == "live", "the test process installs no preview handler"
+    assert os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1"
+    with pytest.raises(AssertionError, match="prohibited"):
+        await provider.generate("system", "prompt", purpose="investigation")
 
 
 async def _ordinary_chat_has_no_case_side_effect(_inv):

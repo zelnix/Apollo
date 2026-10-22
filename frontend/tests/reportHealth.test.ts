@@ -16,7 +16,8 @@ test("synthetic fixture uses the strict shared Higgins report renderer", () => {
   assert.equal(validReport({ ...fixture, sources: [{ url: "x", title: "y" }] }), false);
   assert.equal(validReport({ ...fixture, historical: "false" }), false);
   const html = reportHtml(fixture);
-  assert.match(html, /Higgins system health check/);
+  assert.match(html, /Apollo Investigation Report/);
+  assert.match(html, /Synthetic health only\./);
   assert.match(html, /&amp; &lt;sample&gt;/);
   assert.doesNotMatch(html, /<sample>/);
 });
@@ -29,6 +30,7 @@ test("normal saved-report export and health check share one temporary-file prepa
   assert.match(health, /prepareReportPdf\(check\.report\.fixture\)/);
   assert.match(health, /finally\s*\{[\s\S]*prepared\?\.dispose\(\)/);
   assert.match(shared, /printToFileAsync/);
-  assert.match(shared, /file\.bytes\(\)/);
-  assert.match(shared, /file\.delete\(\)/);
+  // The prepared file is verified, not assumed — and always cleaned up on both paths.
+  assert.match(shared, /%PDF-/);
+  assert.match(shared, /deleteAsync\(uri, \{ idempotent: true \}\)/);
 });

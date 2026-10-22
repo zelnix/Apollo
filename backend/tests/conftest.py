@@ -121,9 +121,9 @@ def _install_auth_shim():
 @pytest.fixture(autouse=True)
 def _forbid_live_gemini(monkeypatch):
     """Fail inside the test process before a broken fixture can call Gemini.
-    
-    In mock mode: allow provider.generate() through (it routes to mock_provider internally).
-    In live/live_test mode: block all calls to prevent accidental billing.
+
+    Preview deployment: the preview dispatch answers generate(), so let it through — tests need to
+    verify the full preview path. Otherwise block every call to prevent accidental billing.
     """
     from services.higgins import provider
 

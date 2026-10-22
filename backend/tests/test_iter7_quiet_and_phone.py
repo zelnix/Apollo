@@ -188,10 +188,12 @@ class TestPatrolPushSuppression:
         assert r.status_code == 200, r.text
         assert r.json()["background"] is False
         # Global supervisor logs contain concurrent xdist workers, so a negative log-tail assertion
-        # cannot identify this event. Verify the exact production branch instead: growling reaches
-        # owner push only when this event's persisted background flag is true.
+        # cannot identify this event. Verify the exact production branch instead: a growling (or
+        # sniffing) event reaches owner push only when it was observed in the background, or it
+        # carries an investigation of its own.
         patrol_source = (Path(__file__).resolve().parents[1] / "routers" / "patrol.py").read_text()
-        assert 'event.state == "growling" and' in patrol_source and 'event.background' in patrol_source
+        assert 'event.state in ("growling", "sniffing")' in patrol_source
+        assert "(event.background or event.investigation_case_id)" in patrol_source
 
 
 # --------------------------------------------------------------------- Family pair phone validation

@@ -5,18 +5,18 @@
  * 1. Original findings survive sync (via mergeLocalAndRemoteEvents).
  * 2. Handled findings stay handled; new evidence reopens with reason.
  * 3. Repeated blocks retain enforcement evidence without duplicates.
- * 4. Single threat through multiple Gates correlated; independents separate.
- * 5. Home warning counts = distinct findings requiring attention.
- * 6. Every finding: accurate status, date/time, evidence, actions.
- * 7. Higgins explanations: specific, evidence-backed, no generic fallbacks.
- * 8. Missing/stale/contradictory evidence can't create false claims.
- * 9. Privacy restrictions and enforcement truth gates intact.
+ * 4. Higgins explanations: specific, evidence-backed, no generic fallbacks.
+ * 5. Missing/stale/contradictory evidence can't create false claims.
+ * 6. Privacy restrictions and enforcement truth gates intact.
+ *
+ * The finding-correlation criteria that used to sit here (distinct-finding counts and the
+ * Protection Details finding builder) were removed with src/domain/protectionDetails.ts: Home now
+ * derives its attention items from buildHomeAttention, which this file covers below.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { hasLocalEvidence, narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
-import { buildProtectionFindings, countDistinctFindings } from "../src/domain/protectionDetails.ts";
 import { normalizeHistoricalEvent } from "../src/domain/packetEvidence.ts";
 import { mergeLocalAndRemoteEvents } from "../src/domain/eventMerge.ts";
 import { isActive, STATE_RANK, resolveApolloState } from "../src/domain/stateMachine.ts";
@@ -170,24 +170,6 @@ describe("2. Handled findings remain handled; new evidence can reopen (productio
 
 // ── Test 3: Repeated blocks don't create misleading duplicates ──────────────
 describe("3. Repeated blocks retain enforcement evidence without duplicate threats", () => {
-  it("events for the same indicator_host within 24h are correlated", () => {
-    const now = Date.now();
-    const events = [
-      makeBlockEvent({ event_id: "b1", indicator_host: "verified-threat.example.net", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
-      makeBlockEvent({ event_id: "b2", indicator_host: "verified-threat.example.net", scent_id: undefined, occurred_at: new Date(now - 3600_000).toISOString() }),
-    ];
-    assert.equal(countDistinctFindings(events), 0, "Verified blocks are not counted as findings requiring attention");
-  });
-
-  it("events for the same host but >24h apart are separate findings", () => {
-    const now = Date.now();
-    const events = [
-      makeEvent({ event_id: "e1", indicator_host: "evil.com", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
-      makeEvent({ event_id: "e2", indicator_host: "evil.com", scent_id: undefined, occurred_at: new Date(now - 25 * 3600_000).toISOString() }),
-    ];
-    assert.equal(countDistinctFindings(events), 2, "Same host but >24h apart = separate findings");
-  });
-
   it("normalizeHistoricalEvent preserves verified block with valid packet proof", () => {
     const now = new Date().toISOString();
     const blockWithProof = makeBlockEvent({
@@ -213,111 +195,8 @@ describe("3. Repeated blocks retain enforcement evidence without duplicate threa
   });
 });
 
-// ── Test 4: Correlated vs independent findings ──────────────────────────────
-describe("4. Single threat through multiple Gates correlated; independents separate", () => {
-  it("events with the same scent_id are grouped as one finding", () => {
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: "scent-abc", category: "website" }),
-      makeEvent({ event_id: "e2", scent_id: "scent-abc", category: "email" }),
-    ];
-    assert.equal(countDistinctFindings(events), 1);
-  });
-
-  it("events with the same indicator_host but no scent_id are correlated", () => {
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: undefined, indicator_host: "evil.com" }),
-      makeEvent({ event_id: "e2", scent_id: undefined, indicator_host: "evil.com" }),
-    ];
-    assert.equal(countDistinctFindings(events), 1, "Same host = correlated");
-  });
-
-  it("events with different hosts and no scent are separate", () => {
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: undefined, indicator_host: "evil.com" }),
-      makeEvent({ event_id: "e2", scent_id: undefined, indicator_host: "other-evil.com" }),
-    ];
-    assert.equal(countDistinctFindings(events), 2);
-  });
-
-  it("resolved events are excluded from finding count", () => {
-    const events = [
-      makeEvent({ event_id: "e1", status: "resolved", resolved_at: new Date().toISOString() }),
-      makeEvent({ event_id: "e2", status: "active" }),
-    ];
-    assert.equal(countDistinctFindings(events), 1);
-  });
-});
-
-// ── Test 5: Home and Protection Details use the same count ──────────────────
-describe("5. Home warning counts include only distinct findings genuinely requiring attention", () => {
-  it("countDistinctFindings excludes verified blocks (protection activity, not unresolved concerns)", () => {
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
-      makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
-      makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
-      makeBlockEvent({ event_id: "e4b" }), // verified block — protection activity
-      makeEvent({ event_id: "e4", status: "resolved", resolved_at: new Date().toISOString() }),
-    ];
-    assert.equal(countDistinctFindings(events), 2, "s1 group + other.com = 2 findings; block and resolved excluded");
-  });
-
-  it("buildProtectionFindings separates concerns from protection activity", () => {
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
-      makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
-      makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
-      makeBlockEvent({ event_id: "e4b" }),
-    ];
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const concerns = findings.filter((f) => f.findingType === "threat");
-    const blocks = findings.filter((f) => f.findingType === "protection_activity");
-    assert.equal(concerns.length, 2, "2 concern-type findings");
-    assert.equal(blocks.length, 1, "1 protection activity");
-    assert.equal(countDistinctFindings(events), concerns.length, "Count matches concern findings only");
-  });
-});
-
-// ── Test 6: Every finding has accurate status, date/time, evidence, actions ──
-describe("6. Every finding displays accurate status, date/time, evidence, actions", () => {
-  it("findings include firstDetected, latestActivity, and correct eventCount", () => {
-    const earlier = new Date(Date.now() - 3600_000).toISOString();
-    const later = new Date().toISOString();
-    const events = [
-      makeEvent({ event_id: "e1", scent_id: "s1", occurred_at: earlier }),
-      makeEvent({ event_id: "e2", scent_id: "s1", occurred_at: later }),
-    ];
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const f = findings.find((f) => f.findingType === "threat")!;
-    assert.ok(f.firstDetected);
-    assert.ok(f.latestActivity);
-    assert.equal(f.eventCount, 2);
-  });
-
-  it("biting events with verified_block get 'Blocked' status and findingType 'protection_activity'", () => {
-    const events = [makeBlockEvent()];
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const f = findings.find((f) => f.findingType === "protection_activity")!;
-    assert.ok(f, "Verified block is protection_activity, not threat");
-    assert.equal(f.statusLabel, "Blocked");
-  });
-
-  it("ears_up events get 'Worth checking', not 'threat'", () => {
-    const events = [makeEvent({ state: "ears_up" })];
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const f = findings.find((f) => f.findingType === "threat")!;
-    assert.equal(f.statusLabel, "Worth checking");
-  });
-
-  it("manual gate events are labelled 'Manual check'", () => {
-    const events = [makeEvent({ category: "link" })]; // Link Gate is manual
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const f = findings.find((f) => f.findingType === "threat")!;
-    assert.equal(f.kindLabel, "Manual check");
-  });
-});
-
-// ── Test 7: Higgins explanations are evidence-backed, no generic fallbacks ──
-describe("7. Higgins explanations are specific, evidence-backed, no generic fallback narratives", () => {
+// ── Test 4: Higgins explanations are evidence-backed, no generic fallbacks ──
+describe("4. Higgins explanations are specific, evidence-backed, no generic fallback narratives", () => {
   it("narrateEvent with local evidence produces specific narration", () => {
     const event = makeEvent({ evidence_provenance: "local_device" });
     const chunks = narrateEvent(event);
@@ -353,8 +232,8 @@ describe("7. Higgins explanations are specific, evidence-backed, no generic fall
   });
 });
 
-// ── Test 8: Missing/stale/contradictory evidence can't create false claims ──
-describe("8. Missing, stale or contradictory evidence cannot create false threat or protection claims", () => {
+// ── Test 5: Missing/stale/contradictory evidence can't create false claims ──
+describe("5. Missing, stale or contradictory evidence cannot create false threat or protection claims", () => {
   it("normalizeHistoricalEvent prevents false biting claim without packet proof", () => {
     const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
     const n = normalizeHistoricalEvent(fake);
@@ -419,8 +298,8 @@ describe("8. Missing, stale or contradictory evidence cannot create false threat
   });
 });
 
-// ── Test 9: Privacy restrictions and enforcement truth gates intact ──────────
-describe("9. Privacy restrictions and native enforcement truth gates remain intact", () => {
+// ── Test 6: Privacy restrictions and enforcement truth gates intact ──────────
+describe("6. Privacy restrictions and native enforcement truth gates remain intact", () => {
   it("projectedEventVoice produces privacy-safe text with no detail leak", () => {
     const voice = projectedEventVoice("website", "barking", false);
     assert.ok(!voice.whatHappened.includes("fake-bank"), "No domain leaked");

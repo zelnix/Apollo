@@ -30,8 +30,10 @@ test("Apollo is biting local alert requires correlated, verified packet-drop evi
 });
 
 test("automatic device detections can alert without inventing an enforcement block", () => {
-  assert.equal(eventLocalAlert({ ...event, state: "barking", status: "active", verified_block: false, enforcement_evidence: null })?.channel, "threats");
-  assert.equal(eventLocalAlert({ ...event, state: "growling", status: "active", verified_block: false, enforcement_evidence: null })?.channel, "growling");
+  // One Android channel ("apollo_alerts"); the separate "threats"/"growling" channels were deleted,
+  // and a notification addressed to a channel that no longer exists is dropped by Android.
+  assert.equal(eventLocalAlert({ ...event, state: "barking", status: "active", verified_block: false, enforcement_evidence: null })?.channel, "apollo_alerts");
+  assert.equal(eventLocalAlert({ ...event, state: "growling", status: "active", verified_block: false, enforcement_evidence: null })?.channel, "apollo_alerts");
   assert.equal(eventLocalAlert({ ...event, category: "link", background: false, state: "barking" }), null);
   assert.equal(eventLocalAlert({ ...event, status: "resolved" }), null);
 });

@@ -133,13 +133,17 @@ test("freshness checks: stale/missing/future or visibility none never healthy", 
     false,
   );
 
+  // Visibility loss is a PROTECTION STATUS fact, not a threat: Apollo stays resting rather than
+  // inventing an alarm, and the truth is carried by `visibilityLost` + the reason every surface shows.
   const hidden = resolveApolloState({
     events: [],
     visibility: "none",
     lastVerifiedAt: new Date(now).toISOString(),
     now,
   });
-  assert.notEqual(hidden.state, "resting");
+  assert.equal(hidden.visibilityLost, true);
+  assert.match(hidden.reason, /unavailable or unverified/);
+  assert.equal(hidden.reasonRoute, "/(tabs)/protection");
 });
 
 test("recent valid packet evidence allows biting; call/manual variants do not", () => {
@@ -203,12 +207,16 @@ test("explicit message payload preserves assessment context but redacts secret U
     handoff_id: "handoff-privacy-1",
     conversation_id: "handoff-privacy-1",
     context: { gate: "call", issue_summary: "Suspicious caller", assessment_state: "growling",
-      findings: [{ summary: "Caller supplied phone +61400000000 and password abc", provenance: "user_reported", status: "uncertain" }],
+      findings: [{ summary: "Caller asked for the code: 884213 to confirm +61400000000", provenance: "user_reported", status: "uncertain" }],
       uncertainty: ["Caller identity is unknown"], confirmed_protective_actions: [], user_reported_actions: [] },
   });
   assert.equal((ask as any).context.gate, "call");
   assert.equal((ask as any).context.findings[0].provenance, "user_reported");
-  assert.doesNotMatch(JSON.stringify((ask as any).context), /\+6140|password abc/i);
+  // Credentials are redacted inside the context, exactly as in a message body.
+  assert.doesNotMatch(JSON.stringify((ask as any).context), /884213/);
+  // The number being checked is the SUBJECT of the investigation, not the owner's secret: it stays,
+  // or Apollo could not check the caller at all. Only the owner's own personal data is removed.
+  assert.match(JSON.stringify((ask as any).context), /\+61400000000/);
 
   const family = enforceEgress("family", {
     device_id: "dev-123",
@@ -309,5 +317,9 @@ test("tick/time dependency remains explicit (no physical device claim)", () => {
     now,
   });
   assert.equal(near.state, "resting");
-  assert.notEqual(far.state, "resting");
+  assert.equal(near.visibilityLost, false);
+  // A stale verification never invents a threat — it stops Apollo claiming a verified all-clear.
+  assert.equal(far.state, "resting");
+  assert.equal(far.visibilityLost, true);
+  assert.match(far.reason, /observation has expired/);
 });

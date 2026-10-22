@@ -172,15 +172,19 @@ class TestGeminiApiClaims:
     def test_provider_retention_does_not_claim_independent_verification(self, monkeypatch):
         """Live mode (data reaches Google): the claim must be limited to Google's published terms."""
         from services.higgins import provider
-        monkeypatch.setattr(provider, "_PROVIDER_MODE", "live")
+        monkeypatch.setattr(provider, "_preview_generate", None)
         retention = provider.configuration().get("providerRetention", "")
         assert "does not control or independently verify" in retention
         assert "published" in retention.lower()
 
-    def test_mock_mode_retention_claim_is_truthful(self, monkeypatch):
-        """Mock mode makes no external call, so the disclosure must say nothing leaves the server."""
+    def test_preview_mode_retention_claim_is_truthful(self, monkeypatch):
+        """The preview simulator makes no external call, so the disclosure must say nothing leaves."""
         from services.higgins import provider
-        monkeypatch.setattr(provider, "_PROVIDER_MODE", "mock")
+
+        async def handler(*_args, **_kwargs):
+            raise AssertionError("not exercised")
+
+        monkeypatch.setattr(provider, "_preview_generate", handler)
         assert "no data leaves" in provider.configuration().get("providerRetention", "").lower()
 
     def test_frontend_privacy_disclosure_is_factual(self):

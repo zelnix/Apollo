@@ -73,7 +73,7 @@ def test_gemini_boundary_screens_a_copy_and_leaves_caller_parts_untouched(monkey
             models = _Models()
 
     monkeypatch.setattr(provider, "client", lambda: _Client())
-    monkeypatch.setattr(provider, "_PROVIDER_MODE", "live")
+    monkeypatch.setattr(provider, "_preview_generate", None)  # the live path is what this test captures
 
     async def _no_usage(*_a, **_k):  # keep the shared DB client off this test's private event loop
         return None

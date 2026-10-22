@@ -35,8 +35,8 @@ test("completion before the ask does not count", () => {
   assert.equal(pendingFollowUps([{ messageId: "a", askedAt: yesterday, checks: ["link"] }], { link: twoDays }, now).length, 1);
 });
 test("gentle wording", () => {
-  assert.equal(followUpLine(["device"], yesterday, now), "Yesterday I suggested Device Gate. No rush at all — it's still waiting whenever you have a quiet moment.");
-  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Device Gate, Account Gate and Check a link\. .*they're/);
+  assert.equal(followUpLine(["device"], yesterday, now), "Yesterday I suggested Check my device. No rush at all — it's still waiting whenever you have a quiet moment.");
+  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Check my device, Check an account alert and Check a link\. .*they're/);
 });
 
 // --- "Run a check" always names the checks -----------------------------------------------------------------------
@@ -57,8 +57,8 @@ test("post-incident cooldown lists checks that fit the resolved event's category
 test("spoken form names every direct check action without breadcrumb directions", () => {
   const spoken = checksSpoken(["device", "account"]);
   assert.match(spoken, /2 checks I need you to run, most important first/);
-  assert.match(spoken, /first, Open Device Gate/);
-  assert.match(spoken, /second, Open Account Gate\./);
+  assert.match(spoken, /first, Check my device/);
+  assert.match(spoken, /second, Check an account alert\./);
   assert.doesNotMatch(spoken, /under|→|go to/i);
   assert.equal(checksSpoken(["link"]), "The check I need you to run is Check a link.");
   assert.equal(checksSpoken([]), "");
@@ -69,11 +69,11 @@ import { higginsPermissionNote } from "../src/domain/higginsChecks.ts";
 test("permission note: null when nothing is gated, first-person and named when it is", () => {
   assert.equal(higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "active", detail: "" }]), null);
   const one = higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" }]);
-  assert.match(one!, /^Apollo needs your permission for Site Gate/);
-  assert.match(one!, /Open that Gate/);
+  assert.match(one!, /^Apollo needs your permission for Site/);
+  assert.match(one!, /Open it and choose the setup action/);
   const two = higginsPermissionNote([
     { id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" },
     { id: "connection_guard", title: "Network Guard", status: "permission_required", detail: "" },
   ]);
-  assert.match(two!, /Other items will remain listed in Gates/);
+  assert.match(two!, /Other items are available in Protection/);
 });

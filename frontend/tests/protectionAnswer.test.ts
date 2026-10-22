@@ -26,7 +26,9 @@ const unsupportedGate = (id: string, title: string) =>
 
 const snapshot = (over: Record<string, unknown> = {}) => ({
   revision: 1, checkedAt: "2026-10-20T02:43:00Z", trigger: "user_action", checking: false,
-  capabilities: [], protection: { state: "on", requested: true, operational: true },
+  // ProtectionStatus reports `running` — there is no `state` field, so a fixture that sets one
+  // reads as "not running" and every answer below would start with "No —".
+  capabilities: [], protection: { running: true, requested: true, operational: true },
   permissions: [], network: null, ruleBundle: null, lastCheckFailure: null, gates: [gate()],
   ...over,
 } as never);
@@ -65,7 +67,7 @@ test("never claims nothing needs attention while protections are off", () => {
 });
 
 test("protection service down: answers no and gives the single step", () => {
-  const out = getProtectionStatus(snapshot({ protection: { state: "off", requested: false, operational: false } }));
+  const out = getProtectionStatus(snapshot({ protection: { running: false, requested: false, operational: false } }));
   assert.match(out.summary, /^No — Apollo's protection isn't running/);
   assert.match(out.summary, /turn Apollo's protection back on/);
   assert.ok(!/No issues need attention/.test(out.summary));

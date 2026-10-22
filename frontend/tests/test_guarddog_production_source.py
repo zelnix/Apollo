@@ -53,19 +53,27 @@ def test_production_trust_is_manifest_metadata_only():
     assert "TrustedKeyRegistry" not in lifecycle
 
 
-def test_no_signing_infrastructure_in_core_sdk():
-    """guarddog-core must not contain signing keys, BouncyCastle, TrustedKeyRegistry,
-    or SignedRuleBundle. Validation uses RuleBundleValidator (schema + version + expiry only)."""
+def test_rule_bundle_validation_is_schema_version_expiry_plus_pinned_signature():
+    """Trust is HTTPS + a single PINNED public key — never the old multi-key trust-manifest
+    infrastructure (TrustedKeyRegistry, SignedRuleBundle) and never a bundled crypto provider.
+    Ed25519 verification is the platform's own (java.security), optional in the SDK and supplied
+    by Apollo's production runtime; on API 26–32, where the platform lacks it, the HTTPS connection
+    is the authentication and the bundle is accepted without a signature."""
     build_gradle = text("packages/guarddog-android-sdk/guarddog-core/build.gradle.kts")
     assert "bouncycastle" not in build_gradle.lower()
     assert "bcprov" not in build_gradle
     validator = text("packages/guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt")
     assert "class RuleBundleValidator" in validator
-    assert "Ed25519" not in validator
     assert "TrustedKeyRegistry" not in validator
     assert "SignedRuleBundle" not in validator
     assert "ValidationResult" in validator
     assert "RejectionReason" in validator
+    # The signing key is an optional constructor argument, so the SDK alone enforces nothing.
+    assert "signingPublicKeyB64: String? = null" in validator
+    # Apollo's production runtime is what pins the key — and it pins a PUBLIC key only.
+    runtime = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogProductionRuntime.kt")
+    assert "const val PINNED_SIGNING_PUBLIC_KEY" in runtime
+    assert "SystemClock, PINNED_SIGNING_PUBLIC_KEY)" in runtime
 
 
 def test_runtime_stages_updates_and_enforces_expiry():
@@ -108,8 +116,11 @@ def test_preflight_rejects_competing_bridges():
 
 def test_repository_contains_no_private_key_material():
     forbidden = ("BEGIN" + " PRIVATE KEY", "BEGIN" + " ED25519 PRIVATE KEY", "BEGIN" + " OPENSSH PRIVATE KEY")
+    # Third-party trees are not Apollo's key custody: node_modules and Python virtualenvs ship PEM
+    # label constants inside crypto libraries, which says nothing about what this repository commits.
+    skip_parts = {"node_modules", ".git", ".expo", "offline-keys", ".venv", "site-packages", "dist"}
     for path in ROOT.parent.rglob("*"):
-        if not path.is_file() or any(part in {"node_modules", ".git", ".expo", "offline-keys"} for part in path.parts):
+        if not path.is_file() or any(part in skip_parts for part in path.parts):
             continue
         try:
             content = path.read_text(encoding="utf-8")

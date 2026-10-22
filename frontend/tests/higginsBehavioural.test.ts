@@ -18,7 +18,6 @@ import assert from "node:assert/strict";
 
 import { narrateEvent, narrateIncident, hasLocalEvidence } from "../src/domain/higginsNarration.ts";
 import { buildHomeVoice, affectedCapabilities, joinNames } from "../src/domain/higginsHomeVoice.ts";
-import { buildProtectionFindings, countDistinctFindings } from "../src/domain/protectionDetails.ts";
 import { projectedEventVoice, humanizeReason } from "../src/domain/messageVoice.ts";
 import { normalizeHistoricalEvent } from "../src/domain/packetEvidence.ts";
 import type { PatrolEvent, ApolloState, Capability } from "../src/domain/types.ts";
@@ -251,14 +250,14 @@ describe("6. Uncertainty does not produce vague or misleading instructions", () 
 
 // ── Test 7: Benign observations do not generate unnecessary warnings ──
 describe("7. Benign observations do not generate unnecessary warnings", () => {
-  it("resting state says 'no action needed' clearly", () => {
+  it("resting state states the all-clear in the approved wording", () => {
     const voice = buildHomeVoice({
       resolution: { state: "resting" } as any,
       attention: [] as any,
       gates: [], capabilities: [],
     });
-    assert.match(voice.text, /all is clear/, "States all clear");
-    assert.match(voice.text, /No action needed/, "Explicitly says no action needed");
+    assert.match(voice.text, /No security threats currently detected/, "States the all-clear");
+    assert.doesNotMatch(voice.text, /needs your decision|isn't confirmed yet/i, "Asks for nothing");
     assertNoPassiveLanguage(voice.text, "resting state");
   });
 

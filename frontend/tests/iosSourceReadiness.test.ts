@@ -100,9 +100,9 @@ test("Support build details read installed native metadata", () => {
   assert.match(support, /testID="support-build"/);
 });
 
-test("root navigation parity remains Home Protection Check Patrol Higgins", () => {
+test("root navigation parity remains Home Threats Alerts Ask Higgins Learn", () => {
   const source = read("../app/(tabs)/_layout.tsx");
-  const expected = ["Home", "Protection", "Check", "Patrol", "Higgins"];
+  const expected = ["Home", "Threats", "Alerts", "Ask Higgins", "Learn"];
   let nativeCursor = 0; let standardCursor = source.indexOf("<Tabs");
   for (const label of expected) { nativeCursor = source.indexOf(`>${label}</NativeTabs.Trigger.Label>`, nativeCursor); assert.ok(nativeCursor >= 0, `Native tab '${label}' not found in order`); standardCursor = source.indexOf(`title: "${label}"`, standardCursor); assert.ok(standardCursor >= 0, `Standard tab '${label}' not found in order`); }
 });

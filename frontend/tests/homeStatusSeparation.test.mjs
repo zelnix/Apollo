@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { resolveApolloState } from "../src/domain/stateMachine.ts";
 import { resolveHomeStatus } from "../src/domain/homeStatusResolver.ts";
+import { resolveProtectionState } from "../src/domain/protectionStateResolver.ts";
 
 // ── Test helpers ───────────────────────────────────────────────────────────
 
@@ -45,6 +46,13 @@ function makeGate(id, autoState = "running") {
         : null,
       onDemand: !autoState ? { state: "ready" } : null,
     },
+    // Gates carry their state resolved ONCE, by the one resolver both Home and Protection read.
+    // The fixture resolves it the same way rather than hand-writing a second interpretation.
+    resolved: resolveProtectionState({
+      automaticState: autoState ?? undefined,
+      manualOnly: false,
+      onDemandState: autoState ? undefined : "ready",
+    }),
   };
 }
 
