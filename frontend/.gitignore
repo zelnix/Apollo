@@ -46,6 +46,4 @@ yarn-error.*
 
 app-example
 
-# scripts/verify-no-simulation.mjs exports a real bundle here to inspect it
-.verify-export-production
-.verify-export-preview
+# scripts/verify-no-simulation.mjs exports to the OS temp directory, never into the project

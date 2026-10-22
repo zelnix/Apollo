@@ -22,7 +22,7 @@ adb0b4ca0b8514c2a20a50671a79a4f10a701e5e196d48bd81d6557abcf86e88  ./guarddog-and
 6d0e593ce4f2ecaded155ea80b8e88bc4d75dffc55646884e55916eec8da68fb  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/UrlSanitizerParityTest.kt
 aca2502d35a9e65f0264949d2c14bed840335287bb4fc90492d560eb2511adc7  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/BundleVersionStoreTest.kt
 8c5c6f27fe9467e5061acaa6589f67793cbe903f8b8f2cfd39b15184971df0e6  ./guarddog-android-sdk/guarddog-vpn/build.gradle.kts
-f16146a2fed8c80d7ae7745163268e03028206ee4d633bd09ec983447c51e209  ./guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml
+ff2fb7b3c264571d680e642e0a8d0ee4f5370d47e7fa3989ef944b64ffa4f743  ./guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml
 43fd87e5ec75bd3a4a30bb7cb388aa8cfaeca1dac4f77d62890fc68e0995798d  ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/BlockedFlowDeduper.kt
 d9ddc4e879f81b4075f55b63b1e77ecd916b9bbfb3274794b825985ca5f24091  ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ControlledEndpointResolver.kt
 653c3967100d07d6e18a0cf68383e6cbdeab835d1f721a60b51ab9278afe9b25  ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsGatewayPacketHandler.kt
@@ -69,9 +69,9 @@ cf6d43d42f50cb85738b4bd5ce5084ab86cec4cdb9166e13828505a83a1048fc  ./guarddog-and
 0f9c4640fcca0627e0b05793ea1e7383a4f607f36bafd367418a991170aa2faf  ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGateOverrideStoreTest.kt
 88d4ab7ed4d3d691478d10bdb9faff80088bf7102baddb65cb3843b379011ab4  ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGatePacketAuthorizerTest.kt
 fb7b06bb1628424a716a6e6a7c36faddbedc44f787ba59b7a0653b37c22a4dca  ./guarddog-android-sdk/settings.gradle.kts
-2cf322fcb1123e767a3fe266a1f2cdebe92e3b16a3819750e7751bbcf24c9c5b  ./guarddog-expo-module/android/build.gradle
+17ffc31fdbc77cfde8ff6200828c5c21e7b832b36aa0d08a6f1f6e48be88edab  ./guarddog-expo-module/android/build.gradle
 e982bdd84d5eedca51850e2c99552b7e5935e2c07922e0ce2bb4794699d656a2  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoAdapters.kt
-901b3191ce5992317b1d6aca308b929ea4bf1a1fb10b246ece5bc7d82b960a8f  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoModule.kt
+04cfde546768b39d1de057312f47e9ec5c5b5adbeb473996826b89e42b011517  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoModule.kt
 d5e265a21014c1ca9fd2f0586bd942fe381ec5c6d623496961b2d0f1744b9627  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeCapabilityRecord.kt
 382ebbe31d78d031c436cee4200774dd2f9e42603c830b40ce1641a00bb0f11f  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeRuleBundleRecord.kt
 384f655cf584f906453f64236926e061dacd2c4cfd1dc511c4faa40312c5b669  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeSecurityEventRecord.kt

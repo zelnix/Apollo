@@ -123,9 +123,11 @@ for (const file of appSources) {
   const assertionOnly = rel.startsWith("tests/") || rel.startsWith("scripts/") || rel.startsWith("../tests/");
   // Only `@/src/simulation` may be imported. Reaching into a file inside the folder would survive the
   // production alias and pull simulation source into the artifact. src/simulationAbsent.ts re-exports
-  // its TYPES from there (erased at compile time), so it is the one exemption.
+  // its TYPES from there (erased at compile time), and src/simulationContract.ts defines the shared
+  // type surface using only `import type` (also erased). Both are exempt.
   const reachesIntoSimulation = /(?:from|require\()\s*["'][^"']*\/simulation\/[^"']+["']/.test(text);
-  if (!assertionOnly && reachesIntoSimulation && !rel.startsWith("src/simulation/") && rel !== "src/simulationAbsent.ts") {
+  const typeOnlyExemptions = ["src/simulationAbsent.ts", "src/simulationContract.ts"];
+  if (!assertionOnly && reachesIntoSimulation && !rel.startsWith("src/simulation/") && !typeOnlyExemptions.includes(rel)) {
     errors.push(`${rel} reaches into src/simulation/ directly; application code must import "@/src/simulation" only.`);
   }
   if (text.includes(RETIRED_SECURITY_MODE) || text.includes(RETIRED_RUNTIME_MOCK) || RETIRED_SELECTORS.some((selector) => text.includes(selector)) || text.toLowerCase().includes(RETIRED_SECURITY_NAME.toLowerCase())) errors.push(`${rel} references a retired security boundary.`);

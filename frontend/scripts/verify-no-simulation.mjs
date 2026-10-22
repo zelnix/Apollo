@@ -13,12 +13,15 @@
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const preview = process.argv.includes("--preview");
-const outDir = path.join(root, preview ? ".verify-export-preview" : ".verify-export-production");
+// The export lands in the OS temp directory, never inside the project: a 20 MB artifact left in the
+// repo is uploaded with the source on every deploy and can even be scanned as if it were app code.
+const outDir = path.join(os.tmpdir(), preview ? "apollo-verify-export-preview" : "apollo-verify-export-production");
 
 // Every marker is a string that a PREVIEW artifact provably contains (run with --preview), so its
 // absence from a production artifact means something. Module paths and file names are not usable:

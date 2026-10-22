@@ -16,3 +16,10 @@ ios/build/
 # GuardDog SDK Gradle build outputs — broken symlinks or stale dirs here cause
 # "Failed to create parent directory" errors during EAS cloud builds.
 packages/**/build/
+# Generated web exports — `expo export` output and the artifact that
+# scripts/verify-no-simulation.mjs inspects. Tens of MB of bundled JS that a native build has no use
+# for, and shipping a stale copy of the app inside the app is worse than useless.
+/dist
+/web-build
+.verify-export-production/
+.verify-export-preview/

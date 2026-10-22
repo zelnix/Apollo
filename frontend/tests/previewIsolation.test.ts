@@ -83,6 +83,10 @@ test("one build-level mechanism decides, and it is not __DEV__", () => {
   // The preview is the build that includes it; every EAS profile excludes it.
   assert.match(read(".env"), /EXPO_PUBLIC_PREVIEW_BUILD=included/);
   assert.match(read("eas.json"), /"EXPO_PUBLIC_PREVIEW_BUILD": "excluded"/);
+  // The deploy pipeline copies the sandbox .env (PREVIEW_BUILD=included) into the EAS job and selects
+  // its own profile, so the flag alone cannot be trusted: a store build must settle it structurally.
+  assert.match(code, /EAS_BUILD/, "an EAS build must be production whatever the flag says");
+  assert.match(code, /!STORE_BUILD && process\.env\.EXPO_PUBLIC_PREVIEW_BUILD === "included"/);
 });
 
 test("there is no configuration where only part of the simulation system is present", () => {
