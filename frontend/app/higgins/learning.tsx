@@ -220,25 +220,25 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row",
     gap: spacing.sm,
     marginHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: c.border,
     alignItems: "center",
   },
   articleThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: radius.md,
+    width: 52,
+    height: 52,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  articleContent: { flex: 1, gap: 3 },
-  articleBadgeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  badgeText: { fontFamily: fonts.textSemibold, fontSize: 11 },
-  articleTitle: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface },
-  articleDesc: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  articleContent: { flex: 1, gap: 1 },
+  articleBadgeRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 3 },
+  badgeText: { fontFamily: fonts.textSemibold, fontSize: 10 },
+  articleTitle: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 18, color: c.onSurface },
+  articleDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.onSurfaceSecondary },
 
   // Sort button
   sortBtn: {
@@ -406,19 +406,19 @@ function ArticleRow({ article, onPress }: { article: LearningArticleSummary; onP
       style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
     >
       <View style={s.articleRow}>
-        <ArticleThumb category={article.category} size={80} thumbnailPath={article.thumbnailPath} />
+        <ArticleThumb category={article.category} size={52} thumbnailPath={article.thumbnailPath} />
         <View style={s.articleContent}>
           <View style={s.articleBadgeRow}>
             <View style={[s.badge, { backgroundColor: badge.bg }]}>
               <Text style={[s.badgeText, { color: badge.color }]}>{badge.label}</Text>
             </View>
-            <Clock size={12} color={colors.muted} />
+            <Clock size={11} color={colors.muted} />
             <Text style={s.metaText}>{estimateReadingTime(article)}</Text>
           </View>
           <Text style={s.articleTitle} numberOfLines={2}>{article.title}</Text>
-          <Text style={s.articleDesc} numberOfLines={2}>{article.summary}</Text>
+          <Text style={s.articleDesc} numberOfLines={1}>{article.summary}</Text>
         </View>
-        <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+        <ChevronRight size={16} color={colors.onSurfaceSecondary} />
       </View>
     </Pressable>
   );
@@ -633,19 +633,6 @@ export default function HigginsLearningScreen() {
           ) : null}
         </Pressable>
       </View>
-
-      {/* Explore Topics */}
-      <View style={s.sectionRow}>
-        <Text style={s.sectionTitle}>Explore topics</Text>
-        <Pressable onPress={() => {}} hitSlop={8}>
-          <Text style={s.seeAll}>See all</Text>
-        </Pressable>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.topicScroll}>
-        {TOPIC_TILES.map((tile) => (
-          <TopicTileCard key={tile.label} tile={tile} active={appliedFilters.category === tile.category} onPress={() => applyTopicFilter(tile.category)} />
-        ))}
-      </ScrollView>
 
       {/* Featured Learning */}
       {featured ? (
