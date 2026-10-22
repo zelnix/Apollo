@@ -41,7 +41,7 @@ export function AlertsButton({ testID }: { testID?: string }) {
       accessibilityRole="button"
       accessibilityLabel={notificationsOff ? "Alerts — notifications are off" : "Alerts"}
       hitSlop={8}
-      onPress={() => router.push("/(tabs)/scams")}
+      onPress={() => router.push("/notification-check")}
       style={({ pressed }) => [s.button, { opacity: pressed ? 0.75 : 1 }]}
     >
       <Bell size={17} color={colors.onSurfaceSecondary} />
