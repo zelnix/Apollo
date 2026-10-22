@@ -9,7 +9,7 @@ import {
   capabilityHealth,
   capabilitySnapshotLines,
   CAPABILITY_CLASS_LABEL,
-  NATIVE_STATE_LABEL,
+  PROTECTION_STATE_LABEL,
   type DeviceCapabilityInput,
   type NativeCapabilityReads,
   type NativeProtectionRead,
@@ -62,7 +62,9 @@ test("the capability classes are exactly the declared states, in plain English",
   assert.ok(!Object.values(CAPABILITY_CLASS_LABEL).includes("Not on this device"));
   // Nothing user-facing calls a provider's classification a "verdict".
   for (const label of Object.values(CAPABILITY_CLASS_LABEL)) assert.doesNotMatch(label, /verdict/i);
-  assert.equal(NATIVE_STATE_LABEL.active, "Active on your device");
+  assert.equal(PROTECTION_STATE_LABEL.active, "Active on your device");
+  assert.equal(PROTECTION_STATE_LABEL.as_recommended, "Set as recommended");
+  assert.equal(PROTECTION_STATE_LABEL.not_verifiable, "Apollo can’t verify this");
 });
 
 test("a browser preview reports every capability as unreadable, never as absent", () => {
@@ -122,9 +124,9 @@ test("a failed capability read stays unknown and is never upgraded", () => {
   assert.match(v.summary, /could not be read/i);
 });
 
-test("a failed native protection read leaves the classification unknown and shows no device protections", () => {
+test("a failed native protection read leaves the classification unknown and shows no provider protections", () => {
   const v = buildDeviceCapabilities(input({ native: null }));
-  assert.deepEqual(v.deviceProtects, []);
+  assert.deepEqual(v.deviceProtects.filter((r) => r.kind !== "device"), []);
   assert.ok(v.unknown.some((r) => r.id === "native_call_verdict"));
   assert.ok(!v.apolloCanUse.some((r) => r.id === "native_call_verdict"));
 });
@@ -133,7 +135,7 @@ test("a failed native protection read leaves the classification unknown and show
 
 test("an active native protection is attributed to its provider, not to Apollo", () => {
   const v = buildDeviceCapabilities(input());
-  const row = v.deviceProtects.find((r) => r.provider === "Samsung Smart Call");
+  const row = v.deviceProtects.find((r) => r.title === "Samsung Smart Call");
   assert.ok(row);
   assert.equal(row!.state, "active");
   assert.match(row!.detail, /Samsung Smart Call’s protection/);
@@ -217,42 +219,54 @@ test("web claims nothing as usable", () => {
 
 // ── Recommendations: never claim a setting is on ───────────────────
 
-test("every recommendation admits Apollo cannot verify it and says exactly what to check", () => {
+test("an unreadable protection says so plainly and still carries full guidance", () => {
   const v = buildDeviceCapabilities(input());
-  const playProtect = v.recommendations.find((r) => r.id === "play_protect");
-  assert.ok(playProtect);
-  assert.equal(playProtect!.badge, "Recommended protection");
-  assert.equal(playProtect!.unverified, "Apollo can’t verify whether this is currently enabled.");
-  assert.equal(playProtect!.recommendation, "Higgins recommends checking that Play Protect is turned on.");
-  assert.equal(playProtect!.actionLabel, "Check Play Protect");
-  for (const rec of v.recommendations) {
-    assert.ok(rec.steps.length > 0, `${rec.id} must tell the person exactly which setting to enable`);
-    assert.ok(rec.why.length > 0, `${rec.id} must say why it matters`);
-    assert.doesNotMatch(rec.badge, /\benabled\b|\bactive\b|\bon\b/i);
+  const scanner = v.deviceProtects.find((r) => r.id === "app_scanner");
+  assert.ok(scanner);
+  assert.equal(scanner!.state, "not_verifiable");
+  assert.match(scanner!.detail, /cannot read whether app scanning is currently switched on/i);
+  assert.ok(scanner!.guidance);
+  assert.equal(scanner!.guidance!.selfCheck, true);
+  assert.ok(scanner!.guidance!.steps.length > 0);
+  for (const row of v.deviceProtects) {
+    assert.ok(row.what.length > 20, `${row.id} must say what it does`);
+    assert.ok(row.benefit.length > 20, `${row.id} must say how it helps`);
+    // Nothing unreadable may be described as on or off.
+    if (row.state === "not_verifiable") assert.match(row.detail, /cannot read|does not let Apollo read|could not read|could not inspect|cannot tell/i);
   }
 });
 
-test("Samsung handlers get Samsung steps, Google handlers get Google steps", () => {
+test("everything worth checking is an index into the same rows, never a second list", () => {
+  const v = buildDeviceCapabilities(input());
+  assert.ok(v.recommendations.length >= 5);
+  for (const rec of v.recommendations) {
+    assert.ok(v.deviceProtects.some((r) => r.id === rec.id), `${rec.id} must be one of the protection rows`);
+    assert.ok(rec.guidance, `${rec.id} must carry guidance`);
+    assert.notEqual(rec.state, "active");
+  }
+});
+
+test("Samsung handlers get Samsung wording, Google handlers get Google wording", () => {
   const samsung = buildDeviceCapabilities(input());
-  assert.match(samsung.recommendations.find((r) => r.id === "caller_id_spam")!.steps.join(" "), /Smart Call/);
+  assert.match(samsung.deviceProtects.find((r) => r.id === "caller_id_spam")!.guidance!.steps.join(" "), /Samsung Phone app/);
   const google = buildDeviceCapabilities(input({ native: nativeRead({ defaultDialerPackage: "com.google.android.dialer", defaultSmsPackage: "com.google.android.apps.messaging" }) }));
-  assert.match(google.recommendations.find((r) => r.id === "caller_id_spam")!.steps.join(" "), /See caller and spam ID/);
+  assert.match(google.deviceProtects.find((r) => r.id === "caller_id_spam")!.guidance!.steps.join(" "), /Google Phone app/);
+  assert.match(google.deviceProtects.find((r) => r.id === "message_spam")!.guidance!.steps.join(" "), /Google Messages/);
 });
 
 test("a protection that is installed but not active is offered as something to turn on", () => {
   const v = buildDeviceCapabilities(input({ native: nativeRead({ callProtection: [provider({ isDefaultHandler: false })] }) }));
-  const row = v.deviceProtects.find((r) => r.provider === "Samsung Smart Call");
+  const row = v.deviceProtects.find((r) => r.title === "Samsung Smart Call");
   assert.equal(row!.state, "installed_not_default");
-  const rec = v.recommendations.find((r) => r.id.startsWith("default_call_"));
-  assert.ok(rec);
-  assert.match(rec!.recommendation, /Samsung Smart Call/);
+  assert.match(row!.guidance!.recommended, /Samsung Smart Call/);
+  assert.ok(v.recommendations.some((r) => r.id === row!.id));
 });
 
-test("Lockdown Mode is offered as optional, never recommended to everyone", () => {
+test("Lockdown Mode is offered as a choice, never recommended to everyone", () => {
   const v = buildDeviceCapabilities(input({ platform: "ios" }));
-  const lockdown = v.recommendations.find((r) => r.id === "lockdown_mode");
-  assert.equal(lockdown!.badge, "Optional protection");
-  assert.match(lockdown!.recommendation, /only recommends this if/i);
+  const lockdown = v.deviceProtects.find((r) => r.id === "lockdown_mode");
+  assert.ok(lockdown);
+  assert.match(lockdown!.guidance!.recommended, /leaving this off unless you believe you are being personally targeted/i);
 });
 
 // ── Native classification → evidence + trigger ─────────────────────
@@ -297,16 +311,22 @@ test("Higgins receives every capability with its exact state", () => {
   assert.ok(lines.capabilities.some((l) => l === "Your phone’s own scam-call warning: Managed by your device (per Samsung Smart Call)"));
 });
 
-test("Higgins is told who owns each native protection", () => {
+test("Higgins is told who owns each protection on the device", () => {
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
-  assert.deepEqual(lines.protections, [
-    "Samsung Smart Call — Caller ID & spam filtering — Active on your device — does not share its classification with Apollo",
-  ]);
+  assert.equal(lines.protections[0], "Samsung Smart Call — Caller ID & spam filtering — Active on your device (per Samsung Smart Call) — does not share its classification with Apollo");
+  // Every OS/OEM protection reaches Higgins too, each with its owner and its exact state.
+  assert.ok(lines.protections.length >= 13);
+  assert.ok(lines.protections.some((l) => l.startsWith("Screen lock —") && l.includes("(per your device)")));
+  assert.ok(lines.protections.some((l) => l.startsWith("App scanning —") && l.includes("(per Google Play Protect)")));
+  for (const line of lines.protections) assert.match(line, /\(per .+\)/);
 });
 
-test("Higgins is told which settings Apollo cannot read", () => {
+test("Higgins is told which settings Apollo cannot read, with the recommended configuration", () => {
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
-  assert.ok(lines.recommended.some((l) => l.startsWith("Google Play Protect — Recommended protection — Apollo cannot read whether this is on.")));
+  const scanner = lines.recommended.find((l) => l.startsWith("App scanning"));
+  assert.ok(scanner, "Higgins must be told app scanning is unverifiable");
+  assert.match(scanner!, /Apollo can’t verify this/);
+  assert.match(scanner!, /Higgins recommends leaving app scanning switched on/);
 });
 
 test("Higgins is told plainly when a read failed, and when Apollo is not on the device", () => {

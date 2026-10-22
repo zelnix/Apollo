@@ -12,18 +12,16 @@
  * their provider reports is already on the row.
  */
 import { useRouter } from "expo-router";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import React, { useCallback, useState } from "react";
+import React from "react";
 import { Pressable, Text, View } from "react-native";
 
 import {
-  CAPABILITY_CLASS_LABEL,
+  CAPABILITY_CLASS_LABEL, protectionsByArea,
   type CapabilityClass,
   type CapabilityRow,
-  type NativeProtectionRow,
-  type NativeProtectionState,
+  type DeviceProtectionRow,
+  type DeviceProtectionState,
 } from "@/src/domain/deviceCapabilities";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 
@@ -40,9 +38,6 @@ const useStyles = makeStyles((c) => ({
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
   statusText: { fontFamily: fonts.textMedium, fontSize: 11, lineHeight: 15, flex: 1 },
 
-  detailWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: 2, gap: spacing.xs, backgroundColor: c.surface },
-  detail: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
-  attr: { fontFamily: fonts.text, fontSize: 11, lineHeight: 16, color: c.muted },
 
   legend: { marginTop: spacing.sm, gap: 6 },
   legendRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
@@ -61,10 +56,14 @@ function capabilityTone(klass: CapabilityClass, c: ThemeColors): Tone {
   }
 }
 
-function nativeTone(state: NativeProtectionState, c: ThemeColors): Tone {
+function protectionTone(state: DeviceProtectionState, c: ThemeColors): Tone {
   switch (state) {
     case "active": return { dot: c.resting, text: c.restingText };
+    case "as_recommended": return { dot: c.resting, text: c.restingText };
     case "installed_not_default": return { dot: c.gold, text: c.onSurface };
+    case "off": return { dot: c.biting, text: c.bitingText };
+    case "not_readable_here": return { dot: c.muted, text: c.unknownText };
+    case "out_of_date": return { dot: c.growling, text: c.growlingText };
     case "unknown": return { dot: c.growling, text: c.growlingText };
     default: return { dot: c.muted, text: c.unknownText };
   }
@@ -128,40 +127,41 @@ function RowShell({
   );
 }
 
-/** The protection built into this device. Every row stays attributed to its provider. */
-export function NativeProtectionTable({ rows, testID }: { rows: NativeProtectionRow[]; testID: string }) {
+/**
+ * Every protection built into this device — a provider's, the OS's or the OEM's. Each row keeps its
+ * owner's name and opens the same Capability Details screen, where the state, the recommended
+ * configuration and the steps for checking it live.
+ */
+export function NativeProtectionTable({ rows, testID }: { rows: DeviceProtectionRow[]; testID: string }) {
   const s = useStyles();
   const { colors } = useTheme();
-  const [open, setOpen] = useState<string | null>(null);
-  const toggle = useCallback((id: string) => setOpen((cur) => (cur === id ? null : id)), []);
+  const router = useRouter();
+  const groups = protectionsByArea(rows);
+  let index = 0;
   return (
-    <Table nameHeading="Built into this device" testID={testID}>
-      {rows.map((row, i) => {
-        const isOpen = open === row.id;
-        const Chevron = isOpen ? ChevronUp : ChevronDown;
-        return (
-          <View key={row.id} testID={`${testID}-${i}`}>
-            <RowShell
-              name={row.provider}
-              sub={row.feature}
-              statusLabel={row.stateLabel}
-              tone={nativeTone(row.state, colors)}
-              onPress={() => toggle(row.id)}
-              trailing={<Chevron size={16} color={colors.muted} style={{ marginTop: 2 }} />}
-              accessibilityHint={isOpen ? "Hides the detail" : "Shows what this protection does"}
-              accessibilityState={{ expanded: isOpen }}
-              testID={`${testID}-${i}-toggle`}
-            />
-            {isOpen ? (
-              <View style={s.detailWrap} testID={`${testID}-${i}-detail`}>
-                <Text style={s.detail}>{row.detail}</Text>
-                {row.evidenceLine ? <Text style={s.attr}>{row.evidenceLine}</Text> : null}
-              </View>
-            ) : null}
-          </View>
-        );
-      })}
-    </Table>
+    <View style={{ gap: spacing.lg }}>
+      {groups.map((group) => (
+        <Table key={group.area} nameHeading={group.label} testID={`${testID}-${group.area}`}>
+          {group.rows.map((row) => {
+            const i = index++;
+            return (
+              <RowShell
+                key={row.id}
+                name={row.title}
+                sub={row.subtitle}
+                statusLabel={row.stateLabel}
+                tone={protectionTone(row.state, colors)}
+                onPress={() => router.push({ pathname: "/capability/[id]", params: { id: row.id } })}
+                trailing={<ChevronRight size={16} color={colors.muted} style={{ marginTop: 2 }} />}
+                accessibilityHint="Opens what this is, how it helps you, and how to check it"
+                testID={`${testID}-${i}`}
+              />
+            );
+          })}
+        </Table>
+      ))}
+      {!groups.length ? <Text style={s.legendText} testID={`${testID}-none`}>Apollo did not recognise any built-in protection on this device.</Text> : null}
+    </View>
   );
 }
 
@@ -173,7 +173,7 @@ export function CapabilityTable({ rows, testID }: { rows: CapabilityRow[]; testI
   const present = CLASS_ORDER.filter((k) => rows.some((r) => r.klass === k));
   return (
     <>
-      <Table nameHeading="What Apollo looks for" testID={testID}>
+      <Table nameHeading="Device capability" testID={testID}>
         {rows.map((row, i) => (
           <RowShell
             key={row.id}

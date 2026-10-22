@@ -12,7 +12,7 @@
 // Pure: no printing, no files, no React (tests/deviceCapabilityReport.test.ts).
 
 import { esc } from "./evidencePackHtml.ts";
-import { allCapabilityRows, CAPABILITY_CLASS_LABEL, type DeviceCapabilityView, type CapabilityRow } from "./deviceCapabilities.ts";
+import { allCapabilityRows, CAPABILITY_CLASS_LABEL, protectionsByArea, type DeviceCapabilityView, type CapabilityRow } from "./deviceCapabilities.ts";
 
 export interface DeviceReportMeta {
   deviceLabel: string;
@@ -56,30 +56,32 @@ export function deviceCapabilityReportTitle(meta: DeviceReportMeta): string {
 export function buildDeviceCapabilityReportHtml(view: DeviceCapabilityView, meta: DeviceReportMeta): string {
   const protections = view.deviceProtects.length
     ? `<h2>What this device protects</h2>
-       <p class="intro">Protection built into this device by its maker or carrier. It runs whether Apollo is present or not, and each finding belongs to the provider named, not to Apollo.</p>
+       <p class="intro">Protection built into this device by its operating system, its maker or your carrier, grouped the way the Device screen groups it. It runs whether Apollo is present or not, and each finding belongs to the owner named, not to Apollo. Anything Apollo could not read is stated as such — it is never reported as on or off.</p>
+       ${protectionsByArea(view.deviceProtects).map((group) => `<h3>${esc(group.label)}</h3>
        <table class="grid">
-         <tr><th>Provider</th><th>Protection</th><th>State</th><th>Classification shared with Apollo?</th></tr>
-         ${view.deviceProtects.map((p) => `<tr>
-           <td>${esc(p.provider)}</td>
-           <td>${esc(p.feature)}</td>
+         <tr><th>Protection</th><th>What it covers</th><th>State</th><th>Owned by</th><th>What that means</th></tr>
+         ${group.rows.map((p) => `<tr>
+           <td>${esc(p.title)}</td>
+           <td>${esc(p.subtitle)}</td>
            <td>${esc(p.stateLabel)}</td>
-           <td>${p.classificationAccessible ? "Yes — Apollo may use it as that provider's evidence" : "No — the provider does not share its classification with Apollo"}</td>
+           <td>${esc(p.attributedTo)}</td>
+           <td>${esc(p.detail)}${p.evidenceLine ? ` ${esc(p.evidenceLine)}` : ""}</td>
          </tr>`).join("")}
-       </table>`
+       </table>`).join("")}`
     : `<h2>What this device protects</h2><p class="intro">${esc(meta.hasNativeHost
-        ? "Apollo did not recognise any built-in call or message protection on this device."
+        ? "Apollo did not recognise any built-in protection on this device."
         : "Apollo was not running on the device itself when this report was made, so it could not read the device's built-in protection.")}</p>`;
 
   const recommendations = view.recommendations.length
-    ? `<h2>Protection recommended but not verifiable</h2>
-       <p class="intro">Apollo cannot switch these on, and on this platform it cannot read whether they are on. Each one below is a setting Higgins recommends the person checks themselves.</p>
+    ? `<h2>Protection worth checking</h2>
+       <p class="intro">Apollo cannot switch these on, and several of them it cannot even read. Each one below is a protection Higgins recommends checking, with the exact steps for this device.</p>
        ${view.recommendations.map((r) => `<div class="rec">
          <div class="rectitle">${esc(r.title)}</div>
-         <div class="recbadge">${esc(r.badge)}</div>
-         <p>${esc(r.unverified)}</p>
-         <p><strong>${esc(r.recommendation)}</strong></p>
-         <p class="why">${esc(r.why)}</p>
-         <ol>${r.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+         <div class="recbadge">${esc(r.stateLabel)} — ${esc(r.attributedTo)}</div>
+         <p>${esc(r.detail)}</p>
+         <p><strong>${esc(r.guidance?.recommended ?? "")}</strong></p>
+         <p class="why">${esc(r.benefit)}</p>
+         <ol>${(r.guidance?.steps ?? []).map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
        </div>`).join("")}`
     : "";
 
@@ -87,6 +89,7 @@ export function buildDeviceCapabilityReportHtml(view: DeviceCapabilityView, meta
     body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #0B1220; padding: 24px; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     h2 { font-size: 14px; margin: 20px 0 6px; }
+    h3 { font-size: 12px; margin: 12px 0 2px; color: #2D3748; }
     p { font-size: 12px; line-height: 1.55; margin: 0 0 6px; }
     .meta { color: #4A5568; font-size: 12px; margin-bottom: 14px; }
     .intro { color: #4A5568; }

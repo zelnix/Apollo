@@ -92,6 +92,17 @@ async function readNativePosture(): Promise<NativePostureSnapshot | null> {
   }
 }
 
+/**
+ * The raw device-settings read, for callers that interpret it themselves (the Device Security
+ * Catalogue). `null` means no answer — never "nothing found". Same native call the posture monitor
+ * uses, so there is one source of truth for what this phone reports.
+ */
+export async function readDeviceSettingsSnapshot(): Promise<NativePostureSnapshot | null> {
+  return readNativePosture();
+}
+
+export type DeviceSettingsSnapshot = NativePostureSnapshot;
+
 // ────────────────────────────────────────────────────────────────────
 // Check builders
 // ────────────────────────────────────────────────────────────────────

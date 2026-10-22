@@ -36,12 +36,21 @@ test("the report is titled for the device it describes", () => {
   assert.equal(deviceCapabilityReportTitle(META), "Apollo device capabilities — Galaxy S25");
 });
 
-test("native protection appears under its provider's name with its sharing status", () => {
+test("native protection appears under its provider's name, with the provider's own note", () => {
   const html = buildDeviceCapabilityReportHtml(androidView(), META);
   assert.match(html, /What this device protects/);
-  assert.match(html, /Samsung Smart Call/);
-  assert.match(html, /does not share its classification with Apollo/);
+  assert.match(html, /<td>Samsung Smart Call<\/td>/);
+  assert.match(html, /<td>Active on your device<\/td>/);
   assert.match(html, /the named provider’s, not Apollo’s/);
+});
+
+test("every OS and OEM protection reaches the report, with its owner and honest state", () => {
+  const html = buildDeviceCapabilityReportHtml(androidView(), META);
+  for (const title of ["Screen lock", "Security updates", "App scanning", "Dangerous-site warnings", "Find My Device", "Private DNS", "Developer options and USB debugging"]) {
+    assert.ok(html.includes(`<td>${title}</td>`), `missing protection: ${title}`);
+  }
+  assert.match(html, /<td>Apollo can’t verify this<\/td>/);
+  assert.match(html, /never reported as on or off/);
 });
 
 test("every capability reaches the report as a table row with its status", () => {
@@ -57,9 +66,8 @@ test("every capability reaches the report as a table row with its status", () =>
   }
   assert.match(html, /<td>Available to Apollo<\/td>/);
   assert.match(html, /<td>Permission needed<\/td>/);
-  assert.ok(html.includes("Protection recommended but not verifiable"));
+  assert.ok(html.includes("Protection worth checking"));
   assert.match(html, /Google Play Protect/);
-  assert.match(html, /Apollo can’t verify whether this is currently enabled/);
   assert.match(html, /Turn on ‘Scan apps with Play Protect’/);
 });
 

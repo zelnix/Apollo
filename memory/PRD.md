@@ -1,3 +1,32 @@
+## Device Capabilities: desktop protections, grouped by category (2026-06)
+
+**Catalogue wired to the engine.** `src/domain/deviceSecurityCatalogue.ts` (18 protections) +
+`deviceProtectionTypes.ts` are resolved by `buildDeviceCapabilities` and read through
+`deviceCapabilityState.toSecurityRead()` — Android posture snapshot, cross-platform device signals,
+Private DNS status, and the desktop host's audit (`securityAdapter.getDeviceSecuritySignals()` when
+`desktopHostKind()` answers). Desktop entries: Firewall, Antivirus (real-time protection), Disk
+encryption (BitLocker / FileVault), System protection (SIP / Gatekeeper / tamper protection),
+Windows & macOS screen lock, OS updates, Find My Device. Nothing is inferred: a read that doesn't
+answer becomes `not_verifiable` ("Apollo can’t verify this") and still carries the recommended
+configuration, the steps and a deep link; `protectionChecklistStore.ts` records the person's own
+"I’ve checked this myself" with the date, always labelled as their statement, never Apollo's.
+
+**Grouped by category.** `protectionsByArea()` orders rows into Calls and messages → Apps on this
+device → Web and network → Who can get in → Updates and system → If it is lost or stolen;
+`NativeProtectionTable` renders one table per category. The browser preview shows the WHOLE
+catalogue with every row `not_readable_here` ("Can’t be read in this preview"), so the wording and
+the categories can be reviewed without a build.
+
+**Owner's follow-ups.** The "Apollo’s capabilities on this device" heading and its summary line were
+removed from `app/device-protection.tsx` (the capability table now follows straight on from the
+protection tables), and the capability table's column heading changed from "What Apollo looks for"
+to "Device capability".
+
+**Verification.** `tests/deviceCapabilities.test.ts` 31/31, `tests/deviceSecurityCatalogue.test.ts`
+19/19, `tests/deviceCapabilityReport.test.ts` 8/8, `tsc --noEmit` clean, ESLint clean, preview
+screenshotted through every category. Real states still need an Android/iOS (or desktop) build.
+
+
 ## Device Capabilities as a table + Capability Details screen + dead-link sweep (2026-06)
 
 **Owner's three corrections, all implemented.**

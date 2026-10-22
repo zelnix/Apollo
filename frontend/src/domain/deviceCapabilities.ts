@@ -17,7 +17,19 @@
 //
 // Pure and unit-tested (tests/deviceCapabilities.test.ts). No React, no native imports.
 
-import type { SettingsTarget } from "../utils/deviceSettings";
+import {
+  PROTECTION_STATE_LABEL, protectionsNeedingAttention,
+  type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow, type DeviceProtectionState,
+  type ProtectionGuidance,
+} from "./deviceProtectionTypes.ts";
+import { EMPTY_SECURITY_READ, previewProtectionRows, securityProtectionRows, type SecurityStateRead } from "./deviceSecurityCatalogue.ts";
+
+export {
+  PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER, PROTECTION_STATE_LABEL,
+  protectionsByArea, protectionsNeedingAttention,
+  type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow,
+  type DeviceProtectionState, type ProtectionArea, type ProtectionGuidance,
+} from "./deviceProtectionTypes.ts";
 
 // ────────────────────────────────────────────────────────────────────
 // The five declared classes (+ one honest "couldn't tell")
@@ -46,18 +58,6 @@ export const CAPABILITY_CLASS_LABEL: Record<CapabilityClass, string> = {
   not_readable_here: "Can’t be read in this preview",
 };
 
-/** Native protection managed by the device — the second class in the Device Capabilities objective.
- *  It is tracked separately from Apollo's own capabilities because the provider, not Apollo, owns it. */
-export type NativeProtectionState = "active" | "installed_not_default" | "absent" | "unknown";
-
-export const NATIVE_STATE_LABEL: Record<NativeProtectionState, string> = {
-  active: "Active on your device",
-  installed_not_default: "Installed, not active",
-  absent: "Not on this device",
-  unknown: "Apollo couldn’t tell",
-};
-
-export type CapabilityPlatform = "android" | "ios" | "web" | "windows" | "macos";
 
 // ────────────────────────────────────────────────────────────────────
 // Inputs — structural copies of the real runtime contracts, so this
@@ -108,17 +108,15 @@ export interface DeviceCapabilityInput {
    * device".
    */
   hostIsDevice?: boolean;
+  /** The existing device-posture / device-signal reads, interpreted by the security catalogue. */
+  security?: SecurityStateRead | null;
+  /** Clock, injected so patch-age stays testable. */
+  now?: number;
 }
 
 // ────────────────────────────────────────────────────────────────────
 // Outputs
 // ────────────────────────────────────────────────────────────────────
-
-export interface CapabilityAction {
-  target: SettingsTarget;
-  path: string;
-  label: string;
-}
 
 export interface CapabilityRow {
   id: string;
@@ -137,42 +135,10 @@ export interface CapabilityRow {
   action?: CapabilityAction;
 }
 
-export interface NativeProtectionRow {
-  id: string;
-  /** Always the provider's own name. Apollo never substitutes its own. */
-  provider: string;
-  feature: string;
-  kind: "call" | "message";
-  state: NativeProtectionState;
-  stateLabel: string;
-  detail: string;
-  /** Can Apollo read this provider's classification through a permitted interface? */
-  classificationAccessible: boolean;
-  /** Plain statement of whether that classification can become Apollo evidence. */
-  evidenceLine: string;
-}
-
-export interface NativeRecommendation {
-  id: string;
-  title: string;
-  /** "Recommended protection" / "Optional protection" — never "Enabled". */
-  badge: string;
-  /** Apollo's honest admission that it cannot read this setting. */
-  unverified: string;
-  /** What Higgins recommends the person check. */
-  recommendation: string;
-  /** Button text, e.g. "Check Play Protect". */
-  actionLabel: string;
-  /** Why this setting matters, in plain words. */
-  why: string;
-  /** Exactly which setting should be enabled and where. */
-  steps: string[];
-  settingsTarget: SettingsTarget;
-  settingsPath: string;
-}
 
 export interface DeviceCapabilityView {
-  deviceProtects: NativeProtectionRow[];
+  /** Every protection on this device: provider-owned, OS-owned and OEM-owned. */
+  deviceProtects: DeviceProtectionRow[];
   apolloCanUse: CapabilityRow[];
   needsPermission: CapabilityRow[];
   notAccessible: CapabilityRow[];
@@ -180,7 +146,8 @@ export interface DeviceCapabilityView {
   unknown: CapabilityRow[];
   /** Apollo isn't on the phone here, so nothing could be read. Never "absent". */
   notReadableHere: CapabilityRow[];
-  recommendations: NativeRecommendation[];
+  /** The subset of deviceProtects worth acting on — a short index, not a second list. */
+  recommendations: DeviceProtectionRow[];
   /** One honest sentence about coverage — counts only, no grading. */
   summary: string;
 }
@@ -432,162 +399,43 @@ const CATALOGUE: CapabilityDef[] = [
 ];
 
 // ────────────────────────────────────────────────────────────────────
-// Native protection recommendations — "what else can I turn on?"
+// Provider rows — the call/message protection this device itself runs
 // ────────────────────────────────────────────────────────────────────
 
-const RECOMMENDED = "Recommended protection";
-const CANNOT_VERIFY = "Apollo can’t verify whether this is currently enabled.";
+const PROVIDER_WHAT: Record<"call" | "message", string> = {
+  call: "Your phone’s own check on an incoming call, run by the app that handles your calls.",
+  message: "Your messaging app’s own check on an incoming text, run by the app that handles your messages.",
+};
+const PROVIDER_BENEFIT: Record<"call" | "message", string> = {
+  call: "It can label a suspected scam call before you answer, which buys you the one thing these calls try to take: a moment to think.",
+  message: "It can move a scam text out of your inbox so it never sits next to a real message from your bank.",
+};
 
-const GOOGLE_CALL_STEPS = [
-  "Open the Phone app",
-  "Tap the three dots (top right) → Settings",
-  "Tap ‘Caller ID & spam’",
-  "Turn on ‘See caller and spam ID’",
-  "Turn on ‘Filter spam calls’ if you want suspected spam silenced",
-];
-const SAMSUNG_CALL_STEPS = [
-  "Open the Phone app",
-  "Tap the three dots (top right) → Settings",
-  "Tap ‘Caller ID and spam protection’ (or ‘Smart Call’)",
-  "Turn it on",
-];
-const GOOGLE_MESSAGE_STEPS = [
-  "Open the Messages app",
-  "Tap your profile picture → ‘Messages settings’",
-  "Tap ‘Spam protection’",
-  "Turn on ‘Enable spam protection’",
-];
-const SAMSUNG_MESSAGE_STEPS = [
-  "Open the Messages app",
-  "Tap the three dots (top right) → Settings",
-  "Tap ‘Block numbers and spam’ → ‘Caller ID and spam protection’",
-  "Turn it on",
-];
-
-function androidRecommendations(native: NativeProtectionRead | null): NativeRecommendation[] {
-  const dialer = native?.defaultDialerPackage ?? "";
-  const sms = native?.defaultSmsPackage ?? "";
-  const samsungDialer = dialer.includes("samsung");
-  const samsungSms = sms.includes("samsung");
-  return [
-    {
-      id: "play_protect",
-      title: "Google Play Protect",
-      badge: RECOMMENDED,
-      unverified: CANNOT_VERIFY,
-      recommendation: "Higgins recommends checking that Play Protect is turned on.",
-      actionLabel: "Check Play Protect",
-      why: "Play Protect is Google’s own scan of the apps on your phone, before and after you install them. It covers ground Apollo cannot reach, and anything it finds stays Google’s finding — not Apollo’s.",
-      steps: [
-        "Open the Play Store",
-        "Tap your profile picture (top right)",
-        "Tap ‘Play Protect’, then the settings cog",
-        "Turn on ‘Scan apps with Play Protect’",
-        "Tap ‘Scan’ to check your apps now",
-      ],
-      settingsTarget: "security",
-      settingsPath: "Play Store → Profile → Play Protect → Settings",
+/** A provider that is installed but isn’t the active handler can be switched on by the person. */
+function defaultHandlerGuidance(p: ProviderRead, kind: "call" | "message"): ProtectionGuidance {
+  const app = kind === "call" ? "phone app" : "messaging app";
+  return {
+    recommended: `Higgins recommends choosing ${p.provider} as your ${app} if you want its protection: ${p.feature}.`,
+    steps: [
+      "Open Settings → Apps → Default apps",
+      `Tap ‘${kind === "call" ? "Phone app" : "SMS app"}’`,
+      `Choose ${p.provider}`,
+    ],
+    action: {
+      target: "apps",
+      path: `Settings → Apps → Default apps → ${kind === "call" ? "Phone app" : "SMS app"}`,
+      label: `Choose your ${app}`,
     },
-    {
-      id: "caller_id_spam",
-      title: samsungDialer ? "Samsung caller ID and spam protection" : "Caller ID & spam protection",
-      badge: RECOMMENDED,
-      unverified: CANNOT_VERIFY,
-      recommendation: `Higgins recommends checking that caller ID and spam protection is turned on in your ${samsungDialer ? "Samsung " : ""}Phone app.`,
-      actionLabel: "Check caller ID & spam",
-      why: "Your phone app can label a suspected spam or scam call before you answer it. That label belongs to Google or Samsung, not to Apollo — Apollo still checks a call separately whenever you ask it to.",
-      steps: samsungDialer ? SAMSUNG_CALL_STEPS : GOOGLE_CALL_STEPS,
-      settingsTarget: "apps",
-      settingsPath: "Phone app → Settings → Caller ID & spam",
-    },
-    {
-      id: "message_spam",
-      title: samsungSms ? "Samsung Messages spam protection" : "Messages spam protection",
-      badge: RECOMMENDED,
-      unverified: CANNOT_VERIFY,
-      recommendation: "Higgins recommends checking that spam protection is turned on in your messaging app.",
-      actionLabel: "Check message spam protection",
-      why: "Your messaging app can move suspected spam out of your inbox and warn you about dangerous links. That decision belongs to your messaging app, not to Apollo.",
-      steps: samsungSms ? SAMSUNG_MESSAGE_STEPS : GOOGLE_MESSAGE_STEPS,
-      settingsTarget: "apps",
-      settingsPath: "Messages app → Settings → Spam protection",
-    },
-  ];
-}
-
-function iosRecommendations(): NativeRecommendation[] {
-  return [
-    {
-      id: "silence_unknown_callers",
-      title: "Silence Unknown Callers",
-      badge: RECOMMENDED,
-      unverified: CANNOT_VERIFY,
-      recommendation: "Higgins recommends checking that Silence Unknown Callers is turned on.",
-      actionLabel: "Check Silence Unknown Callers",
-      why: "Calls from numbers that aren’t in your contacts go straight to voicemail instead of ringing. Most scam calls come from numbers you’ve never saved, so this removes the pressure of answering one.",
-      steps: ["Open Settings → Apps → Phone", "Tap ‘Silence Unknown Callers’", "Turn it on"],
-      settingsTarget: "apps",
-      settingsPath: "Settings → Apps → Phone → Silence Unknown Callers",
-    },
-    {
-      id: "filter_unknown_senders",
-      title: "Filter Unknown Senders",
-      badge: RECOMMENDED,
-      unverified: CANNOT_VERIFY,
-      recommendation: "Higgins recommends checking that Filter Unknown Senders is turned on in Messages.",
-      actionLabel: "Check message filtering",
-      why: "Messages from people who aren’t in your contacts are sorted into a separate list and stop appearing in your main inbox, so a scam text can’t sit next to a message from your bank.",
-      steps: ["Open Settings → Apps → Messages", "Tap ‘Unknown & Spam’", "Turn on ‘Filter Unknown Senders’"],
-      settingsTarget: "apps",
-      settingsPath: "Settings → Apps → Messages → Unknown & Spam",
-    },
-    {
-      id: "lockdown_mode",
-      title: "Lockdown Mode",
-      badge: "Optional protection",
-      unverified: CANNOT_VERIFY,
-      recommendation: "Higgins only recommends this if you believe you are being personally targeted — it switches off features you may rely on every day.",
-      actionLabel: "Read about Lockdown Mode",
-      why: "Lockdown Mode is Apple’s extreme protection for people at risk of targeted attack. It blocks most message attachments, some web technologies and unknown FaceTime calls. It is not needed for everyday scam protection.",
-      steps: ["Open Settings → Privacy & Security", "Scroll to ‘Lockdown Mode’", "Read what it switches off before you turn it on"],
-      settingsTarget: "security",
-      settingsPath: "Settings → Privacy & Security → Lockdown Mode",
-    },
-  ];
-}
-
-/** A provider that is installed but isn't the active handler can be switched on by the person. */
-function defaultHandlerRecommendations(native: NativeProtectionRead | null): NativeRecommendation[] {
-  if (!native) return [];
-  const rows: NativeRecommendation[] = [];
-  const offer = (p: ProviderRead, kind: "call" | "message") => {
-    if (!p.installed || p.isDefaultHandler) return;
-    const app = kind === "call" ? "phone app" : "messaging app";
-    const subject = kind === "call" ? "calls" : "messages";
-    rows.push({
-      id: `default_${kind}_${p.packageName}`,
-      title: `${p.provider} is installed but not active`,
-      badge: "Available protection",
-      unverified: `Apollo can see ${p.provider} on this device, but it is not the app handling your ${subject}, so its protection isn’t being applied.`,
-      recommendation: `Higgins recommends choosing ${p.provider} as your ${app} if you want its protection: ${p.feature}.`,
-      actionLabel: `Choose your ${app}`,
-      why: `${p.provider} only filters ${subject} while it is the app handling them. Whichever app you choose, the filtering belongs to that provider — Apollo checks ${subject} separately when you ask.`,
-      steps: ["Open Settings → Apps → Default apps", `Tap ‘${kind === "call" ? "Phone app" : "SMS app"}’`, `Choose ${p.provider}`],
-      settingsTarget: "apps",
-      settingsPath: `Settings → Apps → Default apps → ${kind === "call" ? "Phone app" : "SMS app"}`,
-    });
+    selfCheck: false,
   };
-  for (const p of native.callProtection) offer(p, "call");
-  for (const p of native.messageProtection) offer(p, "message");
-  return rows;
 }
 
 // ────────────────────────────────────────────────────────────────────
 // Builder
 // ────────────────────────────────────────────────────────────────────
 
-function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: boolean): NativeProtectionRow {
-  const state: NativeProtectionState = !nativeReadOk
+function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: boolean): DeviceProtectionRow {
+  const state: DeviceProtectionState = !nativeReadOk
     ? "unknown"
     : p.installed && p.isDefaultHandler
       ? "active"
@@ -607,14 +455,19 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
     : p.note;
   return {
     id: `${kind}:${p.packageName}`,
-    provider: p.provider,
-    feature: p.feature,
+    title: p.provider,
+    subtitle: p.feature,
     kind,
+    area: "calls_messages",
     state,
-    stateLabel: NATIVE_STATE_LABEL[state],
+    stateLabel: PROTECTION_STATE_LABEL[state],
     detail,
+    attributedTo: p.provider,
+    what: PROVIDER_WHAT[kind],
+    benefit: PROVIDER_BENEFIT[kind],
     classificationAccessible: p.classificationAccessible,
     evidenceLine,
+    guidance: state === "installed_not_default" ? defaultHandlerGuidance(p, kind) : undefined,
   };
 }
 
@@ -723,20 +576,28 @@ export function platformName(platform: CapabilityPlatform): string {
   }
 }
 
-export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCapabilityView {  const rows = CATALOGUE.map((def) => resolve(def, input));
+export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCapabilityView {
+  const rows = CATALOGUE.map((def) => resolve(def, input));
   const nativeReadOk = input.native !== null;
-  const deviceProtects = input.native
+  const providerRows = input.native
     ? [
         ...input.native.callProtection.map((p) => nativeRow(p, "call", nativeReadOk)),
         ...input.native.messageProtection.map((p) => nativeRow(p, "message", nativeReadOk)),
       ].filter((r) => r.state === "active" || r.state === "installed_not_default")
     : [];
 
-  const recommendations = [
-    ...(input.platform === "android" ? androidRecommendations(input.native) : []),
-    ...(input.platform === "ios" ? iosRecommendations() : []),
-    ...defaultHandlerRecommendations(input.native),
-  ];
+  // Every OS/OEM protection this platform has, resolved from the existing device reads. Apollo isn't
+  // on the phone → no protection picture at all, rather than a list of things it claims are missing.
+  const securityRows = input.hostIsDevice === false
+    ? previewProtectionRows()
+    : securityProtectionRows(
+        input.platform,
+        { ...EMPTY_SECURITY_READ, ...(input.security ?? {}), defaultDialerPackage: input.native?.defaultDialerPackage ?? null, defaultSmsPackage: input.native?.defaultSmsPackage ?? null },
+        input.now ?? Date.now(),
+      );
+
+  const deviceProtects = [...providerRows, ...securityRows];
+  const recommendations = protectionsNeedingAttention(deviceProtects);
 
   const apolloCanUse = rows.filter((r) => r.klass === "apollo_can_use");
   const needsPermission = rows.filter((r) => r.klass === "permission_required");
@@ -781,12 +642,16 @@ export interface CapabilitySnapshotLines {
  */
 export function capabilitySnapshotLines(reading: CapabilityReadingLike): CapabilitySnapshotLines {
   const { view } = reading;
-  const protections = view.deviceProtects.map((p) =>
-    `${p.provider} — ${p.feature} — ${p.stateLabel} — ${p.classificationAccessible ? "shares its classification with Apollo" : "does not share its classification with Apollo"}`);
+  const protections = view.deviceProtects.map((p) => {
+    const evidence = p.kind === "device"
+      ? ""
+      : ` — ${p.classificationAccessible ? "shares its classification with Apollo" : "does not share its classification with Apollo"}`;
+    return `${p.title} — ${p.subtitle} — ${p.stateLabel} (per ${p.attributedTo})${evidence}`;
+  });
   const capabilities = allCapabilityRows(view)
     .map((row) => `${row.title}: ${CAPABILITY_CLASS_LABEL[row.klass]}${row.attributedTo !== "Apollo" ? ` (per ${row.attributedTo})` : ""}`);
   const recommended = view.recommendations.map((r) =>
-    `${r.title} — ${r.badge} — Apollo cannot read whether this is on. ${r.recommendation}`);
+    `${r.title} — ${r.stateLabel} — ${r.guidance?.recommended ?? ""}`.trim());
   const summary = !reading.hasNativeHost
     ? "Apollo is not running on the device itself right now, so it cannot read this device's capabilities or its built-in protection."
     : reading.capsReadFailed || reading.nativeReadFailed

@@ -24,16 +24,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { CapabilityTable, NativeProtectionTable } from "@/src/components/device/CapabilityTable";
-import { Sheet } from "@/src/components/Sheet";
-import { Body, Button, Pill } from "@/src/components/ui";
+import { Body, Pill } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
 import { getCheckHistory, type CheckHistoryEntry } from "@/src/store/checkHistoryStore";
-import { allCapabilityRows, type CapabilityRow, type DeviceCapabilityView, type NativeRecommendation } from "@/src/domain/deviceCapabilities";
+import { allCapabilityRows, type CapabilityRow, type DeviceCapabilityView } from "@/src/domain/deviceCapabilities";
 import { capabilityPlatform, readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
 import { shareDeviceCapabilityReport } from "@/src/utils/shareDeviceCapabilityReport";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { openDeviceSettings } from "@/src/utils/deviceSettings";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -68,17 +66,14 @@ const useStyles = makeStyles((c) => ({
   rowAttribution: { fontFamily: fonts.text, fontSize: 11, color: c.muted, marginTop: 4 },
   tableNote: { fontFamily: fonts.text, fontSize: 11, lineHeight: 16, color: c.muted, marginTop: spacing.sm },
 
-  recCard: { borderRadius: radius.md, borderWidth: 0.5, borderColor: c.goldBorder, backgroundColor: c.surfaceSecondary, padding: spacing.md, gap: spacing.xs, marginBottom: spacing.sm },
-  recTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
-  recBadge: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.3, textTransform: "uppercase", color: c.gold },
-  recLine: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
-  recRecommend: { fontFamily: fonts.textMedium, fontSize: 13, lineHeight: 19, color: c.onSurface },
-  recAction: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs },
-  recActionText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary },
-
-  step: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xs },
-  stepNum: { fontFamily: fonts.displayBold, fontSize: 14, color: c.brandPrimary, width: 18 },
-  stepText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface, flex: 1 },
+  recRow: {
+    flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: spacing.md,
+    borderBottomWidth: 0.5, borderBottomColor: c.divider,
+  },
+  recTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  recLine: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 2 },
+  recState: { width: 110, flexDirection: "row", alignItems: "flex-start", justifyContent: "flex-end", gap: 4 },
+  recStateText: { fontFamily: fonts.textMedium, fontSize: 11, lineHeight: 15, color: c.onSurfaceSecondary, textAlign: "right", flexShrink: 1 },
 
 }));
 
@@ -108,7 +103,6 @@ export default function DeviceCapabilitiesScreen() {
   const [nativeReadFailed, setNativeReadFailed] = useState(false);
   const [reading, setReading] = useState(true);
   const [sharing, setSharing] = useState(false);
-  const [openRec, setOpenRec] = useState<NativeRecommendation | null>(null);
 
   useEffect(() => { void getCheckHistory("device").then((h) => setLastCheck(h[0] ?? null)); }, []);
 
@@ -149,10 +143,6 @@ export default function DeviceCapabilitiesScreen() {
     return `${days} days ago`;
   }, [lastCheck]);
 
-  const openSettingsFor = useCallback((target: Parameters<typeof openDeviceSettings>[0], path: string) => {
-    void openDeviceSettings(target, path, (m) => showToast(m, "neutral"));
-  }, [showToast]);
-
   const shareReport = useCallback(async () => {
     setSharing(true);
     try {
@@ -180,7 +170,7 @@ export default function DeviceCapabilitiesScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Back" testID="device-prot-back" onPress={() => goBackOrHome(router)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle}>Device Capabilities and Status</Text>
+          <Text style={s.headerTitle}>Device Capabilities</Text>
           <AlertsButton testID="device-prot-alerts" />
         </View>
         <View style={s.lastCheck} testID="device-prot-last-check">
@@ -220,7 +210,7 @@ export default function DeviceCapabilitiesScreen() {
         <View style={s.section}>
           <SectionHead
             title="What your device protects"
-            intro="Protection built into this phone by its maker or your carrier. It runs whether Apollo is here or not, and anything it finds stays their finding."
+            intro="Protection built into this phone by Android, Apple, its maker or your carrier. It runs whether Apollo is here or not, and anything it finds stays their finding. Tap any row for what it does and how to check it."
             testID="device-prot-native-head"
           />
           {view.deviceProtects.length ? (
@@ -231,18 +221,13 @@ export default function DeviceCapabilitiesScreen() {
                 ? "Apollo is open in a browser preview here, so it cannot see this phone’s built-in protection. Open Apollo on your phone to see what your device already protects."
                 : nativeReadFailed
                   ? "Apollo asked this device which built-in protections it has and the read failed. That is unknown, not none."
-                  : "Apollo did not recognise any built-in call or message protection on this device. The settings below are still worth checking."}
+                  : "Apollo did not recognise any built-in protection on this device."}
             </Body>
           )}
         </View>
 
-        {/* ── 2–4. Every capability Apollo looks for, with its real status ── */}
+        {/* ── 2–4. Every device capability, with its real status ── */}
         <View style={s.section}>
-          <SectionHead
-            title="Apollo’s capabilities on this device"
-            intro={reading ? "Reading this device…" : view.summary}
-            testID="device-prot-table-head"
-          />
           {allCapabilities.length ? (
             <CapabilityTable rows={allCapabilities} testID="device-prot-table" />
           ) : !reading ? (
@@ -253,63 +238,38 @@ export default function DeviceCapabilitiesScreen() {
           </Text>
         </View>
 
-        {/* ── 5. More protection you can turn on ── */}
+        {/* ── 5. Protection worth checking ── */}
         {view.recommendations.length ? (
           <View style={s.section}>
             <SectionHead
-              title="More protection you can turn on"
-              intro="Protection your device offers that Apollo cannot switch on for you — or even read. Higgins will show you exactly which setting to enable and why."
+              title="Worth checking"
+              intro={`${view.recommendations.length} of these Apollo cannot switch on for you, and some it cannot even read. Each one opens Higgins' instructions for this device.`}
               testID="device-prot-rec-head"
             />
             {view.recommendations.map((rec, i) => (
-              <View key={rec.id} style={s.recCard} testID={`device-prot-rec-${i}`}>
-                <Text style={s.recTitle}>{rec.title}</Text>
-                <Text style={s.recBadge}>{rec.badge}</Text>
-                <Text style={s.recLine}>{rec.unverified}</Text>
-                <Text style={s.recRecommend}>{rec.recommendation}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={rec.actionLabel}
-                  testID={`device-prot-rec-${i}-open`}
-                  onPress={() => setOpenRec(rec)}
-                  style={({ pressed }) => [s.recAction, { opacity: pressed ? 0.6 : 1 }]}
-                >
-                  <Text style={s.recActionText}>{rec.actionLabel}</Text>
-                  <ChevronRight size={16} color={colors.brandPrimary} />
-                </Pressable>
-              </View>
+              <Pressable
+                key={rec.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${rec.title}. ${rec.stateLabel}.`}
+                accessibilityHint="Opens what this is, how it helps you, and how to check it"
+                testID={`device-prot-rec-${i}`}
+                onPress={() => router.push({ pathname: "/capability/[id]", params: { id: rec.id } })}
+                style={({ pressed }) => [s.recRow, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={s.recTitle}>{rec.title}</Text>
+                  <Text style={s.recLine} numberOfLines={2}>{rec.guidance?.recommended ?? rec.detail}</Text>
+                </View>
+                <View style={s.recState}>
+                  <Text style={s.recStateText} numberOfLines={2}>{rec.stateLabel}</Text>
+                  <ChevronRight size={16} color={colors.muted} />
+                </View>
+              </Pressable>
             ))}
           </View>
         ) : null}
       </ScrollView>
 
-      {/* ── Higgins' guide for one native setting ── */}
-      <Sheet visible={!!openRec} onClose={() => setOpenRec(null)} title={openRec?.title ?? ""} testID="device-prot-rec-sheet">
-        {openRec ? (
-          <>
-            <Text style={[s.recLine, { marginBottom: spacing.sm }]}>{openRec.why}</Text>
-            <Text style={[s.sectionTitle, { marginBottom: spacing.sm }]}>What to turn on</Text>
-            {openRec.steps.map((step, i) => (
-              <View key={i} style={s.step}>
-                <Text style={s.stepNum}>{i + 1}</Text>
-                <Text style={s.stepText}>{step}</Text>
-              </View>
-            ))}
-            <Text style={[s.rowAttribution, { marginBottom: spacing.sm }]}>{openRec.unverified} Once you have turned it on, your device handles it — Apollo will not report it as an Apollo protection.</Text>
-            <Button
-              testID="device-prot-rec-open-settings"
-              label={Platform.OS === "web" ? "Show me where" : "Open Settings"}
-              onPress={() => { openSettingsFor(openRec.settingsTarget, openRec.settingsPath); setOpenRec(null); }}
-            />
-            <Button
-              testID="device-prot-rec-ask"
-              variant="ghost"
-              label="Ask Higgins about this"
-              onPress={() => { const rec = openRec; setOpenRec(null); router.push({ pathname: "/(tabs)/ask", params: { prompt: `Can you explain ${rec.title} on my ${osLabel} device and whether I should turn it on?` } }); }}
-            />
-          </>
-        ) : null}
-      </Sheet>
     </View>
   );
 }
