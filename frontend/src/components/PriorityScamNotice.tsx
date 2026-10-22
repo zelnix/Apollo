@@ -165,15 +165,16 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
             <Text style={s.compactSub} numberOfLines={1}>
               {severityLabel} · {regionLabel}
             </Text>
+            <Text style={[s.compactSub, { marginTop: 1 }]} numberOfLines={1} testID="home-priority-scam-date">
+              {priorityAlert.dateLabel || priorityAlert.reportedDate || ""}
+              {priorityAlert.source ? ` · ${priorityAlert.source}` : ""}
+            </Text>
             {reason ? <Text style={[s.compactSub, { marginTop: 2, lineHeight: 17 }]} numberOfLines={2}>{reason}</Text> : null}
           </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.sm }}>
-          <Text style={s.compactSub} numberOfLines={1} testID="home-priority-scam-freshness">{freshness.label}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={s.compactLink}>View scam alert</Text>
-            <ChevronRight size={14} color={colors.brand} />
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
+          <Text style={s.compactLink}>View scam alert</Text>
+          <ChevronRight size={14} color={colors.brand} />
         </View>
       </Pressable>
     );
