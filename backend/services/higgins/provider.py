@@ -41,27 +41,25 @@ from services.gemini_usage import record_usage as _record_usage
 
 load_dotenv()
 
+# ── Environment ──────────────────────────────────────────────────────────────
+APOLLO_ENV = os.getenv("APOLLO_ENV", "").strip().lower() or "production"
+IS_PRODUCTION_ENV = APOLLO_ENV not in ("preview", "development", "staging", "test")
+
 # ── Provider mode ────────────────────────────────────────────────────────────
-# "live" (production) | "live_test" (dev key) | "simulated" (preview only) | "mock" (no external calls)
-# When a real GEMINI_API_KEY is present, "simulated" and "mock" are auto-upgraded to "live"
-# so that production deployments can never produce fake results even if the env var is misconfigured.
+# Determined by APOLLO_ENV, NOT by whether a Gemini key happens to be present.
+# The key decides whether live calls succeed; the environment decides whether
+# preview code is loaded. Production always runs "live" — enforced at import.
+#
+#   live       — Production. Gemini calls go out; failures propagate honestly.
+#   live_test  — Dev key testing. Non-production only.
+#   simulated  — Preview only. Real workflow, simulated Gemini response.
+#   mock       — Preview/dev only. Deterministic, zero external calls.
 _PROVIDER_MODE = os.getenv("APOLLO_PROVIDER_MODE", "").strip().lower()
 if not _PROVIDER_MODE:
-    _PROVIDER_MODE = "live" if GEMINI_API_KEY else "mock"
-elif _PROVIDER_MODE in ("simulated", "mock") and GEMINI_API_KEY:
-    _log = _logging.getLogger(__name__)
-    _log.warning(
-        "APOLLO_PROVIDER_MODE='%s' auto-upgraded to 'live' because GEMINI_API_KEY is present. "
-        "A backend with a live Gemini key must never produce simulated/mock results.",
-        _PROVIDER_MODE,
-    )
-    _PROVIDER_MODE = "live"
+    _PROVIDER_MODE = "live" if IS_PRODUCTION_ENV else "mock"
 
 # Separate dev key for live_test mode (never the production key)
 _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
-
-APOLLO_ENV = os.getenv("APOLLO_ENV", "").strip().lower() or "production"
-IS_PRODUCTION_ENV = APOLLO_ENV not in ("preview", "development", "staging", "test")
 
 def get_provider_mode() -> str:
     """Return the current provider mode."""
@@ -69,16 +67,22 @@ def get_provider_mode() -> str:
 
 def _validate_mode_at_import() -> None:
     """Fail-fast safety checks run at import time."""
+    if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
+        raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
+    # Production may only run "live" — the environment decides, not the key.
+    if IS_PRODUCTION_ENV and _PROVIDER_MODE != "live":
+        raise RuntimeError(
+            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' cannot run with APOLLO_ENV='{APOLLO_ENV}'. "
+            "Production environments must use APOLLO_PROVIDER_MODE=live.")
+    # live requires the key; live_test requires its own key.
+    if _PROVIDER_MODE == "live" and not GEMINI_API_KEY:
+        _logging.getLogger(__name__).warning(
+            "APOLLO_PROVIDER_MODE=live but GEMINI_API_KEY is not set. "
+            "Every generate() call will fail with provider_configuration.")
     if _PROVIDER_MODE == "live_test" and not _GEMINI_DEV_API_KEY:
         raise RuntimeError(
             "APOLLO_PROVIDER_MODE=live_test requires GEMINI_DEV_API_KEY to be set. "
             "Use a free-tier Google AI Studio development project key.")
-    if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
-        raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
-    if IS_PRODUCTION_ENV and _PROVIDER_MODE in ("simulated", "mock", "live_test"):
-        raise RuntimeError(
-            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' cannot run with APOLLO_ENV='{APOLLO_ENV}'. "
-            "Set APOLLO_PROVIDER_MODE=live for production.")
 
 _validate_mode_at_import()
 
@@ -160,16 +164,18 @@ def _sanitise_diagnostic(text: str) -> str:
 def client() -> genai.Client:
     """Return the appropriate Gemini SDK client for the current provider mode.
     
-    SAFETY: In mock mode, this function is NEVER called (generate() routes to mock_provider).
-    If somehow called in mock mode, it raises immediately — never falls back to production.
+    SAFETY: In mock/simulated mode, this function is NEVER called — the preview
+    dispatch handles those modes entirely. If somehow called in a preview mode,
+    it raises immediately rather than making an unintended external call.
     """
     global _client, _dev_client
 
-    if _PROVIDER_MODE == "mock":
+    if _PROVIDER_MODE in ("mock", "simulated"):
         raise ProviderFailure(
             "provider_configuration",
-            original_message="FATAL: client() called in mock mode. The mock provider should handle "
-                             "all generate() calls. This indicates a code path bypassing the mock gate.")
+            original_message=f"FATAL: client() called in {_PROVIDER_MODE} mode. The preview dispatch "
+                             "should handle all generate() calls. This indicates a code path bypassing "
+                             "the preview handler.")
 
     if _PROVIDER_MODE == "live_test":
         if not _GEMINI_DEV_API_KEY:
