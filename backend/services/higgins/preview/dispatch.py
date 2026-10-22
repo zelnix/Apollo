@@ -1,6 +1,6 @@
 """Preview provider dispatch — the simulator handler for preview environments.
 
-Called once from server.py lifespan when APOLLO_ENV is preview. This module is
+Called once from server.py lifespan if this module exists in the deployment. This module is
 the ONLY place that imports preview_simulator. The production provider.py file
 contains zero references to any preview module.
 

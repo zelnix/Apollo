@@ -7,8 +7,8 @@ may warrant caution" statement and tells the person nothing.
 
 This is deterministic, rule-based and quotes only what is present in the evidence. It never claims a
 source was contacted, never invents a verdict the text does not support, and marks every finding it
-reasons (rather than reads) as an inference. Production uses the real model; nothing here runs when
-APOLLO_ENV is production.
+reasons (rather than reads) as an inference. Production uses the real model; nothing here runs in
+a production deployment (the preview/ directory is not shipped).
 """
 from __future__ import annotations
 

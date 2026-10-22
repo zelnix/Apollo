@@ -53,12 +53,14 @@ from services.seed_learning_images import router as seed_images_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # ── Preview provider dispatch ─────────────────────────────────────────
-    # Preview → simulators run. Production → preview code is not deployed.
-    from services.higgins.provider import IS_PREVIEW
-    if IS_PREVIEW:
+    # ── Preview provider ──────────────────────────────────────────────────
+    # If the preview/ directory exists in this deployment, install the
+    # simulator. In production it's not shipped — ImportError, nothing to do.
+    try:
         from services.higgins.preview.dispatch import install_preview_provider
         install_preview_provider()
+    except ImportError:
+        pass
 
     await migrate_and_index()
     await investigation_repository.ensure_indexes()

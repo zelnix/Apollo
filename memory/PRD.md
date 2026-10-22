@@ -2624,9 +2624,15 @@ Never call the testing subagent unless the owner explicitly says to. Manual veri
 Simulation is NOT a fallback for production. When the provider mode is `live`, every Gemini failure must be reported exactly as failed — the error code, HTTP status, finish reason — so Higgins can surface the honest failure to the person. There is no "try again with fake data" path, no silent substitution, no graceful degradation to mock responses. A production failure is a production failure.
 
 ## Provider cleanup: zero preview imports in production provider.py (Jun 2026)
-`services/higgins/provider.py` no longer contains any `from services.higgins.preview` imports or inline branches for `simulate_generate` / `mock_generate`. The mock and simulated code paths were moved to `services/higgins/preview/dispatch.py`, which is loaded at startup ONLY in preview environments via `server.py` lifespan. The registration uses `provider.register_preview_handler()` which hard-refuses in production (`IS_PRODUCTION_ENV`).
-
-**Single variable: `APOLLO_ENV`.** Preview → simulators run. Production → preview code is not deployed. `APOLLO_PROVIDER_MODE` has been removed entirely — there is no runtime mode selection. The environment IS the mode. The Gemini key decides whether live calls succeed, not what code runs.
+`services/higgins/provider.py` contains zero imports or references to preview modules. The preview code lives in `services/higgins/preview/` and is installed at startup via try-import in `server.py`:
+```python
+try:
+    from services.higgins.preview.dispatch import install_preview_provider
+    install_preview_provider()
+except ImportError:
+    pass  # Production: preview/ not deployed
+```
+No environment variables (`APOLLO_ENV`, `APOLLO_PROVIDER_MODE`) are needed. The physical presence of the `preview/` directory IS the signal. In production, it's not shipped — `ImportError`, nothing to configure. In preview, it exists and installs the simulator handler on `provider._preview_generate`.
 
 ## Sniffing & Growling push notifications (Jun 2026)
 - `routers/patrol.py`: sniffing events now trigger `push_owner_alert()` alongside growling — was `event.state == "growling"`, now `event.state in ("growling", "sniffing")`.
