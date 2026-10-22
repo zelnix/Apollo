@@ -507,11 +507,7 @@ export default function Ask() {
     return [...own, ...pickQuickQuestions(4 - own.length, own)];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [starters, rotation]);
-  useEffect(() => {
-    if (!showWelcome) return;
-    const timer = setInterval(() => setRotation((n) => n + 1), 7000);
-    return () => clearInterval(timer);
-  }, [showWelcome]);
+  // Pills only change on screen mount — no auto-rotation interval.
   const showRepeatRow = !investigationMode && chatMessages.length > 0 && !text.trim() && starters.length > 0;
 
   return <View style={s.root} testID="higgins-screen">
