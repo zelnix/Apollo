@@ -825,6 +825,7 @@ export default function CheckEmail() {
               textAlignVertical="top"
               autoCapitalize="none"
               autoCorrect={false}
+              dataDetectorTypes="none"
             />
           </View>
         ) : null}

@@ -27,6 +27,15 @@ function stripHtml(html: string): string {
   return text;
 }
 
+/** Defang URLs so the OS/TextInput cannot auto-link them. */
+function defangUrls(text: string): string {
+  return text
+    // http:// → hxxp://  https:// → hxxps://
+    .replace(/https?:\/\//g, (m) => m.replace("http", "hxxp").replace("://", "[://]"))
+    // Defang remaining bare domains that look tappable (e.g. www.example.com)
+    .replace(/\bwww\./g, "www[.]");
+}
+
 /** Shorten or remove long tracking/encoded URLs. */
 function cleanUrls(text: string): string {
   return text.replace(
@@ -98,6 +107,7 @@ export function cleanEmailForDisplay(raw: string): string {
   text = cleanUrls(text);
   text = removeBoilerplate(text);
   text = normalizeWhitespace(text);
+  text = defangUrls(text);
 
   return text;
 }

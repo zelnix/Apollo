@@ -427,6 +427,7 @@ export default function CheckMessage() {
               placeholderTextColor={colors.muted}
               multiline
               autoCorrect={false}
+              dataDetectorTypes="none"
             />
           </View>
         ) : null}
