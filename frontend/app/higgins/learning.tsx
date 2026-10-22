@@ -634,16 +634,6 @@ export default function HigginsLearningScreen() {
         </Pressable>
       </View>
 
-      {/* Featured Learning */}
-      {featured ? (
-        <>
-          <View style={s.sectionRow}>
-            <Text style={s.sectionTitle}>Featured learning</Text>
-          </View>
-          <FeaturedCard article={featured} onPress={() => openArticle(featured.slug)} />
-        </>
-      ) : null}
-
       {/* All Articles heading */}
       <View style={s.sectionRow}>
         <Text style={s.sectionTitle}>All articles</Text>
