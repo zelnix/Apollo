@@ -60,7 +60,7 @@ const useStyles = makeStyles((c) => ({
   avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: 42, height: 42 },
   aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
-  aboutAvatarImg: { width: "100%", height: 150, borderRadius: 16, marginBottom: spacing.sm },
+  aboutAvatarImg: { width: "100%", aspectRatio: 0.833, borderRadius: 16, marginBottom: spacing.sm },
   headerText: { flex: 1 },
   name: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
   subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
@@ -608,7 +608,7 @@ export default function Ask() {
     <HigginsArtifactInput visible={artifactSheetOpen} category={artifactCategory} initialQuestion={artifactQuestion || text} onClose={() => { setArtifactSheetOpen(false); setArtifactCategory(null); setArtifactQuestion(""); }} onSubmit={handleArtifactSubmit} />
 
     <Sheet visible={aboutOpen} onClose={() => setAboutOpen(false)} title="About Higgins" testID="higgins-about-sheet">
-      <Image source={require("../../assets/images/higgins-apollo-portrait.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins with Apollo" />
+      <Image source={require("../../assets/images/higgins-apollo-portrait.png")} style={s.aboutAvatarImg} contentFit="contain" accessibilityLabel="Higgins with Apollo" />
       <Text style={s.sheetBody}>{WELCOME}{"\n\n"}{ABOUT}</Text>
     </Sheet>
 
