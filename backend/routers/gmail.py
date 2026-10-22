@@ -162,6 +162,12 @@ async def gmail_scan(body: GmailScanIn):
 
 
 
+class AttachmentInfo(BaseModel):
+    filename: str
+    mime_type: str = ""
+    size: int = 0
+
+
 class GmailMessagePreview(BaseModel):
     id: str
     account: str = ""
@@ -169,6 +175,8 @@ class GmailMessagePreview(BaseModel):
     subject: str = ""
     date: str = ""
     snippet: str = ""
+    attachment_count: int = 0
+    attachment_names: list[str] = []
 
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
@@ -217,6 +225,8 @@ async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), li
                     continue
                 msg = got.json()
                 headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                # Extract attachment info from payload parts (metadata format includes part structure but not body data)
+                att_names = gmail_service._extract_attachment_names(msg.get("payload", {}))
                 previews.append({
                     "id": msg.get("id", ""),
                     "account": account_email,
@@ -224,6 +234,8 @@ async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), li
                     "subject": headers.get("subject", "(no subject)"),
                     "date": headers.get("date", ""),
                     "snippet": msg.get("snippet", ""),
+                    "attachment_count": len(att_names),
+                    "attachment_names": att_names[:10],  # cap at 10 to keep response lean
                 })
     return GmailMessagesOut(messages=previews, next_page_token=next_token)
 
@@ -235,6 +247,7 @@ class GmailMessageDetail(BaseModel):
     subject: str = ""
     date: str = ""
     body: str = ""
+    attachments: list[AttachmentInfo] = []
 
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
@@ -253,6 +266,9 @@ async def gmail_message_detail(message_id: str, device_id: str = Query(min_lengt
         msg = got.json()
         h = gmail_service._headers_of(msg)
         text, _ = gmail_service._extract_content(msg)
+        # Extract full attachment metadata for the UI and investigation
+        raw_attachments = gmail_service.get_attachment_ids(msg.get("payload", {}))
+        attachments = [AttachmentInfo(filename=a["filename"], mime_type=a.get("mimeType", ""), size=a.get("size", 0)) for a in raw_attachments]
         return GmailMessageDetail(
             id=msg.get("id", ""),
             account=email or "",
@@ -260,4 +276,5 @@ async def gmail_message_detail(message_id: str, device_id: str = Query(min_lengt
             subject=h.get("subject", ""),
             date=h.get("date", ""),
             body=text,
+            attachments=attachments,
         )

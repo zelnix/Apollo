@@ -246,7 +246,7 @@ const HERO_CAPTION: Record<HigginsCheckCategory, string> = {
   device_internet: "Apollo starts from what you have noticed on this device.",
 };
 
-interface InboxItem { id: string; account?: string; from: string; subject: string; snippet: string }
+interface InboxItem { id: string; account?: string; from: string; subject: string; snippet: string; attachment_count?: number; attachment_names?: string[] }
 
 export interface ArtifactResult {
   category: HigginsCheckCategory;
@@ -567,18 +567,31 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     if (!msg) return;
     setSourceLoading(true);
     let body = msg.snippet;
+    let attachmentNote = "";
     try {
-      const detail = await apiGet<{ from: string; subject: string; body: string }>(
+      const detail = await apiGet<{ from: string; subject: string; body: string; attachments?: { filename: string; mime_type?: string; size?: number }[] }>(
         `/gmail/message/${id}?device_id=${deviceId}${msg.account ? `&email=${encodeURIComponent(msg.account)}` : ""}`,
       );
       body = detail.body || msg.snippet;
+      // Build a human-readable attachment summary for the investigation
+      if (detail.attachments?.length) {
+        const lines = detail.attachments.map((a) => {
+          const sizeStr = a.size ? ` (${a.size > 1024 * 1024 ? `${(a.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(a.size / 1024)} KB`})` : "";
+          return `  - ${a.filename}${a.mime_type ? ` [${a.mime_type}]` : ""}${sizeStr}`;
+        });
+        attachmentNote = `\n\nAttachments (${detail.attachments.length}):\n${lines.join("\n")}`;
+      }
     } catch {
       // Keep the preview line rather than nothing, and say what was used.
       setPrepError("Apollo could only read the preview line of that email, not the full message.");
     } finally {
       setSourceLoading(false);
     }
-    fillSample(id, `From: ${msg.from}\nSubject: ${msg.subject}\n\n${body}`, "Is this email legitimate?");
+    // Fallback: if detail API didn't return attachments, use the listing's attachment_names
+    if (!attachmentNote && msg.attachment_count && msg.attachment_names?.length) {
+      attachmentNote = `\n\nAttachments (${msg.attachment_count}):\n${msg.attachment_names.map((n) => `  - ${n}`).join("\n")}`;
+    }
+    fillSample(id, `From: ${msg.from}\nSubject: ${msg.subject}${attachmentNote}\n\n${body}`, "Is this email legitimate?");
   }, [deviceId, fillSample, inbox]);
 
   const pickFromSource = useCallback((key: SourceKey, id: string) => {
@@ -802,7 +815,10 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
           loading={sourceLoading}
           error={sourceError}
           items={PREVIEW_SIMULATION ? previewRows[picker] : picker === "email"
-            ? inbox.map((m) => ({ id: m.id, primary: m.subject || "(no subject)", secondary: m.from, meta: m.snippet }))
+            ? inbox.map((m) => {
+                const attLabel = m.attachment_count ? `📎 ${m.attachment_count} attachment${m.attachment_count > 1 ? "s" : ""}${m.attachment_names?.length ? ": " + m.attachment_names.slice(0, 3).join(", ") : ""}` : "";
+                return { id: m.id, primary: m.subject || "(no subject)", secondary: m.from, meta: attLabel ? `${attLabel}\n${m.snippet}` : m.snippet };
+              })
             : picker === "apps"
               ? apps.map((a) => ({ id: a.packageId, primary: a.appName, secondary: a.packageId }))
               : []}

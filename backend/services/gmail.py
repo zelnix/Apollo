@@ -337,4 +337,6 @@ def _collect_attachments(part: dict, out: list[dict]) -> None:
     filename = part.get("filename", "")
     attachment_id = part.get("body", {}).get("attachmentId")
     if filename and attachment_id:
-        out.append({"filename": filename, "attachmentId": attachment_id, "mimeType": part.get("mimeType", "")})
+        out.append({"filename": filename, "attachmentId": attachment_id,
+                     "mimeType": part.get("mimeType", ""),
+                     "size": part.get("body", {}).get("size", 0)})
