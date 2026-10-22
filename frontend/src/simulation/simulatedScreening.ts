@@ -13,10 +13,12 @@
 //     read the image, and the popup says so, so a screened-looking result can never be claimed
 //     for a picture nobody looked at.
 //
-// Gated on PREVIEW_SAMPLES_ENABLED, so in every shipped build this returns null and the image
-// path stays fail-closed exactly as before.
-import { PREVIEW_SAMPLES_ENABLED } from "./samples";
+// This module only exists in a preview build: `src/simulation/` is excluded from the dependency
+// graph of a production build (see babel.config.js), so there is no runtime gate here and nothing
+// to switch off. In production the image path stays fail-closed exactly as before, because
+// `registerSimulatedRead` is never called.
 import type { SimulatedTextBlock } from "./simulatedScreenshotText";
+import { SIMULATED_SCREENSHOT_TEXT } from "./simulatedScreenshotText";
 
 export interface SimulatedRead {
   /** Text blocks in the shape the native recogniser returns. A null frame becomes a zero-size
@@ -43,20 +45,15 @@ const registered = new Map<string, string>();
 
 /** Remember that this URI is a preview sample image, so its declared text can be replayed. */
 export function registerPreviewImage(uri: string, sampleId: string): void {
-  if (!PREVIEW_SAMPLES_ENABLED) return;
   registered.set(uri, sampleId);
 }
 
 function declaredBlocks(sampleId: string): SimulatedTextBlock[] | null {
-  const data = require("./simulatedScreenshotText") as {
-    SIMULATED_SCREENSHOT_TEXT: Record<string, SimulatedTextBlock[]>;
-  };
-  return data.SIMULATED_SCREENSHOT_TEXT[sampleId] ?? null;
+  return SIMULATED_SCREENSHOT_TEXT[sampleId] ?? null;
 }
 
-/** The simulated read. Null in every shipped build, and whenever samples are switched off. */
+/** The simulated read. Only ever reachable in a preview build. */
 export function simulatedRead(uri: string): SimulatedRead | null {
-  if (!PREVIEW_SAMPLES_ENABLED) return null;
   const sampleId = registered.get(uri);
   const blocks = sampleId ? declaredBlocks(sampleId) : null;
   if (!blocks) return { blocks: [], fromSample: false, notice: UNREAD_NOTICE };

@@ -189,7 +189,7 @@ export default function SupportScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { adapterLabel, isMock, protection, showToast } = useApollo();
+  const { adapterLabel, protection, showToast } = useApollo();
   const health = useSystemHealth();
 
   const [moreDetails, setMoreDetails] = useState(false);
@@ -209,8 +209,7 @@ export default function SupportScreen() {
   const protectionRows = useMemo<SupportProtectionRow[]>(() => buildProtectionRows(
     protection, net.data ?? null, evidence.data ?? [],
     { safeBrowsing: (intel.data?.safe_browsing.status as "ok" | "not_configured" | "unavailable" | undefined) ?? null, blocklistEntries: intel.data?.blocklist.entries ?? null },
-    isMock,
-  ), [protection, net.data, evidence.data, intel.data, isMock]);
+  ), [protection, net.data, evidence.data, intel.data]);
 
   const higgins = useMemo(() => buildHigginsInfo(health.checkedAt ? health : null, firstCheck.data ?? null), [health, firstCheck.data]);
   const missingPerms = (perms.data ?? []).filter((p) => p.status === "denied" || p.status === "blocked");

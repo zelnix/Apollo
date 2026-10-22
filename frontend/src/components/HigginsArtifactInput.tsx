@@ -21,25 +21,11 @@ import { apiGet } from "@/src/api/client";
 import { FILE_SIZE_LIMIT } from "@/src/domain/fileInspection";
 import { PhonePickerSheet } from "./PhonePickerSheet";
 import { Sheet } from "./Sheet";
-const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
 import { SourcePickerSheet, type SourceChoice } from "./SourcePickerSheet";
 import { AppDeviceSdk, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { useApollo } from "@/src/store/ApolloContext";
-import {
-  SIMULATED_APPS,
-  SIMULATED_CALLS,
-  SIMULATED_DEVICE_CONCERNS,
-  SIMULATED_EMAILS,
-  SIMULATED_FILES,
-  SIMULATED_LINKS,
-  SIMULATED_SCREENSHOTS,
-  SIMULATED_TEXTS,
-} from "@/src/preview/samples";
-// Preview-only: loaded lazily so the simulatedScreening module is excluded from production bundles.
-const callRegisterPreviewImage = __DEV__
-  ? (uri: string, sampleId: string) => { (require("@/src/preview/simulatedScreening") as { registerPreviewImage: (u: string, s: string) => void }).registerPreviewImage(uri, sampleId); }
-  : (_uri: string, _sampleId: string) => {};
+import { simulation } from "@/src/simulation";
 import { ImageUploadPrep, type PreparedImage } from "./ImageUploadPrep";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Button } from "./ui";
@@ -372,7 +358,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   }, []);
 
   const fillSampleScreenshot = useCallback(async (id: string) => {
-    const sample = SIMULATED_SCREENSHOTS.find((x) => x.id === id);
+    const sample = simulation.screenshots.find((x) => x.id === id);
     if (!sample) return;
     setPicking(true);
     try {
@@ -381,7 +367,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       const uri = asset.localUri ?? asset.uri;
       // The preview has no native text recogniser; this tells the screening boundary that the text
       // of THIS sample image is known, so the real screening can run on its actual contents.
-      callRegisterPreviewImage(uri, sample.id);
+      simulation.registerImage(uri, sample.id);
       setImageUri(uri);
       setSelectedSample(sample.id);
       setQuestion((q) => q.trim() || sample.question);
@@ -505,59 +491,59 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
   const openSource = useCallback((key: SourceKey) => {
     // The OS file picker is its own screen — no list of Apollo's to show in front of it.
-    if (key === "files" && !PREVIEW_SIMULATION) { void pickFile(); return; }
+    if (key === "files" && !simulation.included) { void pickFile(); return; }
     setSourceError(null);
     setPicker(key);
-    if (PREVIEW_SIMULATION) return;  // sample rows need no loading
+    if (simulation.included) return;  // sample rows need no loading
     if (key === "email") void loadInbox();
     if (key === "apps") void loadApps();
   }, [loadApps, loadInbox, pickFile]);
 
   // Preview rows, shaped exactly like the real ones so the picker behaves identically either way.
   const previewRows = useMemo<Record<SourceKey, SourceChoice[]>>(() => ({
-    email: SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes })),
-    messages: SIMULATED_TEXTS.map((x) => ({ id: x.id, primary: x.sender, secondary: x.text, meta: x.probes })),
-    calls: SIMULATED_CALLS.map((x) => ({ id: x.id, primary: x.number, secondary: x.name ?? undefined, meta: x.probes })),
-    apps: SIMULATED_APPS.map((x) => ({ id: x.id, primary: x.appName, secondary: x.packageId, meta: x.probes })),
-    files: SIMULATED_FILES.map((x) => ({ id: x.id, primary: x.name, secondary: x.mime, meta: x.probes })),
-    screenshots: SIMULATED_SCREENSHOTS.map((x) => ({ id: x.id, primary: x.label, meta: x.probes })),
-    links: SIMULATED_LINKS.map((x) => ({ id: x.id, primary: x.url, meta: x.probes })),
-    concerns: SIMULATED_DEVICE_CONCERNS.map((x) => ({ id: x.id, primary: x.concern, meta: x.probes })),
+    email: simulation.emails.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes })),
+    messages: simulation.texts.map((x) => ({ id: x.id, primary: x.sender, secondary: x.text, meta: x.probes })),
+    calls: simulation.calls.map((x) => ({ id: x.id, primary: x.number, secondary: x.name ?? undefined, meta: x.probes })),
+    apps: simulation.apps.map((x) => ({ id: x.id, primary: x.appName, secondary: x.packageId, meta: x.probes })),
+    files: simulation.files.map((x) => ({ id: x.id, primary: x.name, secondary: x.mime, meta: x.probes })),
+    screenshots: simulation.screenshots.map((x) => ({ id: x.id, primary: x.label, meta: x.probes })),
+    links: simulation.links.map((x) => ({ id: x.id, primary: x.url, meta: x.probes })),
+    concerns: simulation.deviceConcerns.map((x) => ({ id: x.id, primary: x.concern, meta: x.probes })),
   }), []);
 
   const pickPreview = useCallback((key: SourceKey, id: string) => {
     if (key === "screenshots") { void fillSampleScreenshot(id); return; }
     if (key === "email") {
-      const x = SIMULATED_EMAILS.find((e) => e.id === id);
+      const x = simulation.emails.find((e) => e.id === id);
       if (x) fillSample(x.id, `From: ${x.from}\nSubject: ${x.subject}\n\n${x.body}`, "Is this email legitimate?");
       return;
     }
     if (key === "messages") {
-      const x = SIMULATED_TEXTS.find((t) => t.id === id);
+      const x = simulation.texts.find((t) => t.id === id);
       if (x) fillSample(x.id, `${x.app ? `Source app: ${x.app}\n` : ""}From ${x.sender}:\n${x.text}`, "Is this message a scam?");
       return;
     }
     if (key === "calls") {
-      const x = SIMULATED_CALLS.find((c) => c.id === id);
+      const x = simulation.calls.find((c) => c.id === id);
       if (x) fillSample(x.id, x.name ? `${x.number} (saved as ${x.name})` : x.number, "Who called me from this number?");
       return;
     }
     if (key === "apps") {
-      const x = SIMULATED_APPS.find((a) => a.id === id);
+      const x = simulation.apps.find((a) => a.id === id);
       if (x) fillSample(x.id, `${x.appName} (${x.packageId}) by ${x.developer}`, "Is this app safe to use?");
       return;
     }
     if (key === "files") {
-      const x = SIMULATED_FILES.find((f) => f.id === id);
+      const x = simulation.files.find((f) => f.id === id);
       if (x) fillSample(x.id, `${x.name} (${x.mime})`, "Is this file safe to open?");
       return;
     }
     if (key === "links") {
-      const x = SIMULATED_LINKS.find((l) => l.id === id);
+      const x = simulation.links.find((l) => l.id === id);
       if (x) fillSample(x.id, x.url, "Is this website safe?");
       return;
     }
-    const concern = SIMULATED_DEVICE_CONCERNS.find((c) => c.id === id);
+    const concern = simulation.deviceConcerns.find((c) => c.id === id);
     if (concern) fillSample(concern.id, concern.concern);
   }, [fillSample, fillSampleScreenshot]);
 
@@ -604,7 +590,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   }, [deviceId, fillSample, inbox]);
 
   const pickFromSource = useCallback((key: SourceKey, id: string) => {
-    if (PREVIEW_SIMULATION) { pickPreview(key, id); return; }
+    if (simulation.included) { pickPreview(key, id); return; }
     if (key === "email") { void pickInboxEmail(id); return; }
     if (key === "apps") {
       const app = apps.find((a) => a.packageId === id);
@@ -646,8 +632,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   // preview build; sources that need a native list are hidden where the platform cannot provide one,
   // so a button is never offered that can only dead-end.
   const sources = CATEGORY_SOURCES[category].filter((key) => {
-    if (PREVIEW_ONLY_SOURCES.includes(key)) return PREVIEW_SIMULATION;
-    if (PREVIEW_SIMULATION) return true;
+    if (PREVIEW_ONLY_SOURCES.includes(key)) return simulation.included;
+    if (simulation.included) return true;
     if (key === "messages" || key === "calls") return PhonePickers.isSupported();
     if (key === "apps") return Platform.OS === "android";
     return true;  // email (asks the server) and files (the OS picker) work everywhere
@@ -806,7 +792,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
       {/* The real message/caller lists carry their own permission flow, so they use the shared picker
           that already handles explain → ask → Open Settings. */}
-      {!PREVIEW_SIMULATION && (picker === "messages" || picker === "calls") ? (
+      {!simulation.included && (picker === "messages" || picker === "calls") ? (
         <PhonePickerSheet
           visible
           mode={picker === "messages" ? "sms" : "calls"}
@@ -815,15 +801,15 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
           onPickCall={(call) => fillSample(`${call.number}-${call.date}`, call.name ? `${call.number} (saved as ${call.name})` : call.number, "Who called me from this number?")}
         />
       ) : null}
-      {picker && !(!PREVIEW_SIMULATION && (picker === "messages" || picker === "calls")) ? (
+      {picker && !(!simulation.included && (picker === "messages" || picker === "calls")) ? (
         <SourcePickerSheet
           visible
           title={SOURCE_TITLE[picker]}
           note={SOURCE_NOTE[picker]}
-          preview={PREVIEW_SIMULATION}
+          preview={simulation.included}
           loading={sourceLoading}
           error={sourceError}
-          items={PREVIEW_SIMULATION ? previewRows[picker] : picker === "email"
+          items={simulation.included ? previewRows[picker] : picker === "email"
             ? inbox.map((m) => {
                 const attLabel = m.attachment_count ? `📎 ${m.attachment_count} attachment${m.attachment_count > 1 ? "s" : ""}${m.attachment_names?.length ? ": " + m.attachment_names.slice(0, 3).join(", ") : ""}` : "";
                 return { id: m.id, primary: m.subject || "(no subject)", secondary: m.from, meta: attLabel ? `${attLabel}\n${m.snippet}` : m.snippet };

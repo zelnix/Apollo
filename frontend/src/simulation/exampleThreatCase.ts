@@ -13,7 +13,7 @@ const investigatedAt = new Date(Date.now() - 5 * 24 * 60 * 60_000 + 35 * 60_000)
 const completedAt = new Date(Date.now() - 5 * 24 * 60 * 60_000 + 75 * 60_000).toISOString(); // 75 min later
 const resolvedAt = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();    // 2 days ago
 
-export const MOCK_THREAT_EVENT: PatrolEvent = {
+export const EXAMPLE_THREAT_EVENT: PatrolEvent = {
   event_id: "preview-mock-threat-001",
   device_id: "preview-device",
   category: "device",

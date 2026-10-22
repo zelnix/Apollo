@@ -45,3 +45,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# scripts/verify-no-simulation.mjs exports a real bundle here to inspect it
+.verify-export-production
+.verify-export-preview

@@ -34,7 +34,7 @@ export default function Onboarding() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isMock, adapterLabel } = useApollo();
+  const { adapterLabel } = useApollo();
 
   return (
     <View style={s.root} testID="initial-onboarding-root">
@@ -72,7 +72,6 @@ export default function Onboarding() {
           ))}
         </Card>
 
-        {isMock && __DEV__ ? <Pill tone="unknown" label={`${adapterLabel} · development build`} testID="onboarding-mock-pill" /> : null}
       </ScrollView>
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Button testID="onboarding-start-button" label="Continue" onPress={() => router.push("/privacy-disclosure")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />

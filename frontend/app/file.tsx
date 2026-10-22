@@ -22,8 +22,7 @@ import { FILE_SIZE_LIMIT, FILE_SAMPLE_BYTES, inspectSample, type Inspection } fr
 import { type PatrolEvent } from "@/src/domain/types";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
-const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
-const SIMULATED_FILES: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_FILES : [];
+import { simulation } from "@/src/simulation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -242,10 +241,10 @@ export default function CheckFile() {
             testID: "file-pick",
             label: busy ? "Inspecting file…" : "Choose a file",
             disabled: busy,
-            onPress: () => { if (PREVIEW_SIMULATION) { setFilePicker(true); return; } void pick(); },
+            onPress: () => { if (simulation.included) { setFilePicker(true); return; } void pick(); },
           }]}
         />
-        {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => { if (PREVIEW_SIMULATION) { setFilePicker(true); return; } void pick(); }} disabled={busy} /></Card> : null}
+        {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => { if (simulation.included) { setFilePicker(true); return; } void pick(); }} disabled={busy} /></Card> : null}
         {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
         <Card testID="file-higgins-explanation" style={{ gap: spacing.xs }}><Body>Cloud hosting is not proof of safety — a harmful file hosted on a well-known service is still harmful. Apollo checks the file itself, not where it lives.</Body></Card>
             {pending?.needsSource && !pending.sourceAnswered ? <Card testID="file-source-followup" style={{ gap: spacing.sm }}><SectionTitle>One detail could change the advice</SectionTitle><Body>Where did this file come from? Choose “Not sure” if the source is unknown.</Body><View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id && pending.sourceAnswered }} aria-checked={source === o.id && pending.sourceAnswered} onPress={() => { setSource(o.id); setPending((current) => current ? { ...current, sourceAnswered: true } : current); }} style={[s.chip, source === o.id && pending.sourceAnswered && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
@@ -258,9 +257,9 @@ export default function CheckFile() {
         title="Your files"
         note="Each one is written to a real temporary file, so Apollo's inspection reads real bytes and runs the real file check."
         preview
-        items={SIMULATED_FILES.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, meta: f.probes }))}
+        items={simulation.files.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, meta: f.probes }))}
         emptyText="There are no files to choose from here."
-        onSelect={(id) => { setFilePicker(false); const f = SIMULATED_FILES.find((x) => x.id === id); if (f) void checkSimulatedFile(f); }}
+        onSelect={(id) => { setFilePicker(false); const f = simulation.files.find((x) => x.id === id); if (f) void checkSimulatedFile(f); }}
         onClose={() => setFilePicker(false)}
         testID="file-source-picker"
       />

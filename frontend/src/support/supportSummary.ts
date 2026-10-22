@@ -30,13 +30,12 @@ const RECTANGLE = "────────────────────"
 // --- Protection & Services (spec §4) -----------------------------------------------------------------
 
 export function buildProtectionRows(
-  p: ProtectionStatus | null, net: NetworkStatus | null, evidence: EnforcementEvidence[], intel: SupportIntel, isMock: boolean,
+  p: ProtectionStatus | null, net: NetworkStatus | null, evidence: EnforcementEvidence[], intel: SupportIntel,
 ): SupportProtectionRow[] {
   const rows: SupportProtectionRow[] = [];
 
   // Apollo Protection Service. A reachable/enabled service is never reported as verified enforcement.
   if (!p) rows.push({ label: "Apollo Protection", state: "Status unavailable", detail: "Apollo could not read protection state." });
-  else if (isMock) rows.push({ label: "Apollo Protection", state: "Available", detail: "Preview build: protection state is simulated, not real packet enforcement." });
   else if (p.enforcementMethod === "none") rows.push({ label: "Apollo Protection", state: "Unsupported on this device", detail: p.coverage });
   else if (!p.requested) rows.push({ label: "Apollo Protection", state: "Not running", detail: "Protection is turned off." });
   else if (p.requested && !p.operational) rows.push({ label: "Apollo Protection", state: "Warning", detail: p.degradedReason ?? "Protection is on but not currently enforcing." });

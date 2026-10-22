@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { Body, Button } from "./ui";
 import { Sheet } from "./Sheet";
+import { simulation } from "@/src/simulation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export interface SourceChoice {
@@ -75,7 +76,7 @@ export function SourcePickerSheet({
   const showAccounts = !preview && accounts && accounts.length > 1 && onAccountChange;
   return (
     <Sheet visible={visible} onClose={onClose} title={title} testID={testID}>
-      {preview ? <View style={s.tag}><Text style={s.tagText}>PREVIEW ONLY</Text></View> : null}
+      {preview ? <View style={s.tag}><Text style={s.tagText}>{simulation.tag}</Text></View> : null}
       <Text style={s.note}>{note}</Text>
 
       {/* Account filter chips — only when multiple accounts are connected */}

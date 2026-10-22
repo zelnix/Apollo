@@ -17,7 +17,7 @@ function gateState(gate: GatePresentation, online: boolean | null): { state: Reg
 
 export function publishCapabilitySnapshot(input: { platform: string; adapter: string; online: boolean | null; gates: GatePresentation[]; capabilities: Capability[]; protection: ProtectionStatus | null }) {
   return apiPost<{ accepted: true }>("/product/capabilities/snapshot", "capability_snapshot", {
-    platform: input.platform === "preview_harness" ? "mock" : input.platform, adapter: input.adapter, online: input.online,
+    platform: input.platform, adapter: input.adapter, online: input.online,
     gates: input.gates.map((gate) => ({ id: gate.id, ...gateState(gate, input.online) })),
     capabilities: input.capabilities.map((capability) => ({ id: capability.id, state: capability.status === "active" ? "running" : capability.status === "permission_required" ? "permission_required" : capability.status === "available" ? "ready" : capability.status === "inactive" ? "ready" : "unavailable", reason: capability.detail ?? null })),
     protection: input.protection ? { requested: input.protection.requested, operational: input.protection.operational, enforcementMethod: input.protection.enforcementMethod, degradedReason: input.protection.degradedReason } : null,

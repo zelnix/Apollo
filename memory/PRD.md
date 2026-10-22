@@ -2858,3 +2858,28 @@ No environment variables (`APOLLO_ENV`, `APOLLO_PROVIDER_MODE`) are needed. The 
 ## Sniffing & Growling push notifications (Jun 2026)
 - `routers/patrol.py`: sniffing events now trigger `push_owner_alert()` alongside growling — was `event.state == "growling"`, now `event.state in ("growling", "sniffing")`.
 - `routers/push.py` `push_owner_alert()`: notification title differentiates state — "Apollo is sniffing" for sniffing, "Apollo is growling" for growling (was always "Apollo is growling" for both). Both respect the `sniffing_growling` category preference and quiet hours.
+
+## The DI tab went blank in preview — the simulated transaction was being withheld (Jun 2026)
+The owner reported "simulated Gemini is not running in preview": every investigation finished, but its
+DI tab said "No transaction recorded". The simulator WAS running (1,229 simulated records in
+`di_transactions`, each with the real request, the response and the processing statistics) — two guards
+added by the earlier isolation commit (e0f3e61) hid them:
+- `routers/investigations.py` `GET /investigations/{case_id}/di` dropped EVERY record with
+  `simulated: true`, in every environment. Now the filter applies only when
+  `get_provider_mode() != "preview"` — i.e. in production, where `services/higgins/preview/` is not
+  deployed, nothing simulated can be produced, and any older record is still withheld.
+- `src/components/DiReport.tsx` filtered on `__DEV__` and, for a simulated record, rendered the dashed
+  warning ALONE — no request, no response, no processing. It now gates on `simulation.included` (the one
+  build decision; `simulationAbsent` reports `false`, so a production build renders nothing simulated)
+  and shows the full record behind a notice that says plainly the response did not come from Gemini.
+Verified end-to-end against the running preview: a real `POST /api/investigations` →
+`GET /investigations/{id}/di` returns one record (`Simulated`, `Preview`, `gemini-3.1-flash-lite`, the
+real prompt and a 2 KB response), and the owner confirmed the "Sent to Gemini" card is back.
+`backend/tests/test_di_simulated_visibility.py` (2) pins both directions.
+
+## Preview artifact check was passing on markers that can never exist (Jun 2026)
+`scripts/verify-no-simulation.mjs --preview` failed 7/9: `src/simulation/` and
+`simulatedScreenshotText` are a module path and a file name, and a production-mode export carries
+neither — so their absence from the production artifact proved nothing. Replaced with content strings
+that only the simulation source contains (`commbank-cancel.co`, `civic-plumbing-invoices.com`), both
+proven present in a preview export. Now: production 0/9 markers, preview 9/9.

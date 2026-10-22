@@ -36,7 +36,6 @@ const ANDROID_KT = "modules/apollo-security/android/src/main/java/com/hucentai/a
 const IOS_SWIFT = "modules/apollo-security/ios/ApolloSecurityModule.swift";
 const NATIVE_ADAPTERS_TS = "src/security/NativeSecurityAdapters.ts";
 const WEB_ADAPTER_TS = "src/security/WebSecurityAdapter.ts";
-const PREVIEW_HARNESS_TS = "tools/preview-device-harness/PreviewDeviceAdapter.ts";
 
 // Derive the required method list DIRECTLY from the interface source, so this test can never
 // silently drift out of sync with SecurityPlatformAdapter.ts the way a hand-maintained copy could.
@@ -101,14 +100,14 @@ test("Android and iOS JS bridge (NativeSecurityAdapters.ts) forwards every requi
   assert.match(src, /IOSSecurityAdapter[^=]*=\s*new NativeAdapterBase\("ios"/);
 });
 
-test("real browser adapter and the development-only preview harness both implement the full contract", () => {
-  for (const [name, file] of [["WebSecurityAdapter", WEB_ADAPTER_TS], ["PreviewDeviceAdapter", PREVIEW_HARNESS_TS]] as const) {
-    const src = read(file);
-    for (const method of REQUIRED_METHODS) assert.match(src, new RegExp(`\\b${method}\\s*\\(`), `${name} must implement ${method}()`);
-  }
+test("the real browser adapter implements the full contract, and there is no simulated adapter", () => {
+  const src = read(WEB_ADAPTER_TS);
+  for (const method of REQUIRED_METHODS) assert.match(src, new RegExp(`\\b${method}\\s*\\(`), `WebSecurityAdapter must implement ${method}()`);
+  assert.equal(existsSync(join(root, "tools/preview-device-harness")), false,
+    "the simulated device adapter was removed: an unavailable device read is reported, never substituted");
 });
 
-test("no runtime mock exists in application source; the preview harness is reachable only from the web host selector", () => {
+test("no runtime mock exists in application source, and no simulated device host can be selected", () => {
   const retiredName = ["Secure", "Core"].join("");
   const retiredMock = ["Mock", "Security", "Adapter"].join("");
   const retiredMode = ["EXPO", "PUBLIC", "SECURITY", "MODE"].join("_");
@@ -119,10 +118,10 @@ test("no runtime mock exists in application source; the preview harness is reach
     assert.equal(src.includes(retiredMode), false, `${file} references a removed runtime mode`);
     assert.equal(src.includes(retiredMock), false, `${file} references a removed runtime mock`);
     assert.equal(src.toLowerCase().includes(retiredName.toLowerCase()), false, `${file} references the retired security boundary`);
-    if (file !== "src/security/hostAdapter.web.ts") assert.doesNotMatch(src, /tools\/preview-device-harness/, `${file} must not import the preview harness`);
+    assert.doesNotMatch(src, /preview-device-harness|PreviewDeviceAdapter/, `${file} must not reference a simulated device adapter`);
   }
-  // Native bundles resolve hostAdapter.ts, which must not know about the web adapter or the harness at all.
-  assert.doesNotMatch(read("src/security/hostAdapter.ts"), /WebSecurityAdapter|preview-device-harness/);
+  // Native bundles resolve hostAdapter.ts, which must not know about the web adapter at all.
+  assert.doesNotMatch(read("src/security/hostAdapter.ts"), /WebSecurityAdapter/);
   assert.ok(existsSync(join(root, "src/security/hostAdapter.web.ts")));
 });
 
@@ -139,7 +138,7 @@ test("Windows and macOS use the explicit Tauri desktop adapter", () => {
 });
 
 test("capability scope tags, where present, describe deployed reach — never implied enforcement", () => {
-  // The browser (and the preview harness that reuses its baseline) enforces nothing anywhere: scope must be empty.
+  // The browser enforces nothing anywhere: scope must be empty.
   assert.deepEqual(PLATFORM_CAPABILITY_BASELINES.web.scope, []);
   for (const platform of ["android", "ios", "windows", "macos"] as const) {
     const scope = PLATFORM_CAPABILITY_BASELINES[platform].scope;

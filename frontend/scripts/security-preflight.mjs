@@ -26,7 +26,7 @@ const RETIRED_SECURITY_MODE = ["EXPO", "PUBLIC", "SECURITY", "MODE"].join("_");
 const PRODUCTION_KEYS = [
   "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
   "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL", "EXPO_PUBLIC_GUARDDOG_RULESET_ID"];
-const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE", ...PRODUCTION_KEYS];
+const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_PREVIEW_BUILD", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE", ...PRODUCTION_KEYS];
 
 function walk(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -50,7 +50,7 @@ function readDotenv(file) {
 const profile = process.env.EAS_BUILD_PROFILE;
 const profileDefaults = profile ? {
   EXPO_PUBLIC_APP_ENV: profile === "staging" ? "staging" : "production",
-  EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS: "off",
+  EXPO_PUBLIC_PREVIEW_BUILD: "excluded",
   EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: "guarddog_production",
 } : {};
 const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || profileDefaults.EXPO_PUBLIC_APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
@@ -90,10 +90,12 @@ if (fs.existsSync(gradlePath)) {
   }
 }
 if (!["development", "staging", "production"].includes(cfg.EXPO_PUBLIC_APP_ENV)) errors.push(`EXPO_PUBLIC_APP_ENV is missing or invalid (got "${cfg.EXPO_PUBLIC_APP_ENV}").`);
-const harness = cfg.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS;
-if (harness !== undefined && harness !== "" && harness !== "off" && harness !== "enabled") errors.push(`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS="${harness}" is invalid.`);
-if (harness === "enabled" && cfg.EXPO_PUBLIC_APP_ENV !== "development") errors.push("The device-preview harness (simulated device inputs) is only permitted in development builds.");
-if (harness === "enabled" && profile) errors.push("The device-preview harness is web-only and can never be part of an EAS native build profile.");
+// ONE build decision governs preview simulation (babel.config.js). A shipped build must never carry it.
+const previewBuild = cfg.EXPO_PUBLIC_PREVIEW_BUILD;
+if (previewBuild !== undefined && previewBuild !== "" && previewBuild !== "excluded" && previewBuild !== "included") {
+  errors.push(`EXPO_PUBLIC_PREVIEW_BUILD="${previewBuild}" is invalid. Use "included" for the preview build only.`);
+}
+if (previewBuild === "included" && profile) errors.push("EXPO_PUBLIC_PREVIEW_BUILD=included would bundle the preview simulation source; it can never be part of an EAS build profile.");
 const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? (cfg.EXPO_PUBLIC_APP_ENV === "production" ? "guarddog_production" : "legacy");
 if (engine !== "guarddog_production") errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid. Only "guarddog_production" is supported.`);
 if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "guarddog_production") errors.push("Production must use GuardDog production runtime.");
@@ -106,8 +108,8 @@ const autolinking = resolvedAppConfig.autolinking ?? packageConfig.expo?.autolin
 if (!(autolinking.android?.exclude ?? []).includes("guarddog-expo-module") || !(autolinking.ios?.exclude ?? []).includes("guarddog-expo-module")) {
   errors.push("The frozen GuardDog Expo bridge must remain excluded on Android and iOS; Apollo owns the only production bridge.");
 }
-// Runtime-mock exclusion: no mock adapter/selector may exist in application source, and the preview harness may only be
-// referenced from the web-only host selector (never from a native or shared module).
+// Runtime-mock exclusion: no mock adapter/selector may exist in application source, and simulation source may only be
+// reached through the single `@/src/simulation` entry (which a production build rewrites to src/simulationAbsent.ts).
 const workspace = path.resolve(root, "..");
 const appSources = [
   ...["src", "app", "modules", "plugins", "tests", "scripts"].flatMap((dir) => walk(path.join(root, dir))),
@@ -119,11 +121,17 @@ for (const file of appSources) {
   const text = fs.readFileSync(file, "utf8");
   const rel = path.relative(root, file);
   const assertionOnly = rel.startsWith("tests/") || rel.startsWith("scripts/") || rel.startsWith("../tests/");
-  if (!assertionOnly && /tools\/preview-device-harness/.test(text) && rel !== "src/security/hostAdapter.web.ts") errors.push(`${rel} references the preview harness; only src/security/hostAdapter.web.ts may.`);
+  // Only `@/src/simulation` may be imported. Reaching into a file inside the folder would survive the
+  // production alias and pull simulation source into the artifact. src/simulationAbsent.ts re-exports
+  // its TYPES from there (erased at compile time), so it is the one exemption.
+  const reachesIntoSimulation = /(?:from|require\()\s*["'][^"']*\/simulation\/[^"']+["']/.test(text);
+  if (!assertionOnly && reachesIntoSimulation && !rel.startsWith("src/simulation/") && rel !== "src/simulationAbsent.ts") {
+    errors.push(`${rel} reaches into src/simulation/ directly; application code must import "@/src/simulation" only.`);
+  }
   if (text.includes(RETIRED_SECURITY_MODE) || text.includes(RETIRED_RUNTIME_MOCK) || RETIRED_SELECTORS.some((selector) => text.includes(selector)) || text.toLowerCase().includes(RETIRED_SECURITY_NAME.toLowerCase())) errors.push(`${rel} references a retired security boundary.`);
 }
 
-console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} engine=${engine} preview-harness=${harness || "off"} app-sources-scanned=${appSources.length}`);
+console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} engine=${engine} preview-simulation=${previewBuild || "excluded"} app-sources-scanned=${appSources.length}`);
 if (errors.length) {
   console.error("SECURITY CONFIGURATION ERROR:\n - " + errors.join("\n - "));
   process.exit(1);

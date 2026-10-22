@@ -11,7 +11,6 @@ export function desktopHostKind(): DesktopHostKind | null {
   return null; // an unknown desktop OS is not a supported host; the web adapter's honest "unavailable" answers apply
 }
 
-export function chooseWebHostKind(desktop: DesktopHostKind | null, fixtureEnabled: boolean): "desktop" | "fixture" | "web" {
-  if (desktop) return "desktop";
-  return fixtureEnabled ? "fixture" : "web";
+export function chooseWebHostKind(desktop: DesktopHostKind | null): "desktop" | "web" {
+  return desktop ? "desktop" : "web";
 }

@@ -3,15 +3,9 @@
 // so it can never be mistaken for real device data, and it never carries a verdict — whatever the
 // person picks goes through the screen's own real check flow.
 
-import { Platform, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
-import { PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
-import { IS_PREVIEW_HARNESS } from "@/src/security/securityAdapter";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-
-/** True only in a preview build where the real source of this input cannot be reached. Every shipped
- *  build — native or web — fails this, so no simulated input can ever be offered to a real user. */
-export const PREVIEW_SIMULATION = PREVIEW_SAMPLES_ENABLED && (Platform.OS === "web" || IS_PREVIEW_HARNESS);
 
 export interface SimulatedChoice {
   id: string;
@@ -55,7 +49,7 @@ export function SimulatedPicker({
 }) {
   const s = useStyles();
   const { colors } = useTheme();
-  if (!PREVIEW_SIMULATION || items.length === 0) return null;
+  if (items.length === 0) return null;
   return (
     <View style={s.card} testID={testID}>
       <View style={s.header}>

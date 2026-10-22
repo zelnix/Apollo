@@ -24,9 +24,8 @@ function subscribeSystemHealth(listener: () => void) {
 }
 export function useSystemHealth(): FullHealthCheck { return useSyncExternalStore(subscribeSystemHealth, currentSystemHealth, currentSystemHealth); }
 
-async function deviceCheck(isMock: boolean): Promise<void> {
+async function deviceCheck(): Promise<void> {
   try {
-    if (isMock) { emit({ device: row("unavailable", "native_build_required") }); return; }
     const started = Date.now();
     await runProtectionHealthCheck("support");
     const observation = protectionHealthSnapshot();
@@ -105,14 +104,14 @@ async function serverCheck(signal: AbortSignal, started: number): Promise<void> 
   }
 }
 
-export function runSystemHealthCheck(isMock: boolean): Promise<FullHealthCheck> {
+export function runSystemHealthCheck(): Promise<FullHealthCheck> {
   if (running) return running;
   const controller = new AbortController();
   activeAbort = controller;
   const started = Date.now();
   emit({ checking: true, overall: "checking", checkedAt: null, device: row("checking"), backend: row("checking"),
     higgins: row("checking"), report: row("checking"), checkId: null });
-  running = Promise.all([deviceCheck(isMock), serverCheck(controller.signal, started)]).then(() => {
+  running = Promise.all([deviceCheck(), serverCheck(controller.signal, started)]).then(() => {
     if (controller.signal.aborted) {
       const complete = (part: CheckRow) => part.status === "checking" ? row("unavailable", "check_cancelled") : part;
       emit({ device: complete(snapshot.device), backend: complete(snapshot.backend),

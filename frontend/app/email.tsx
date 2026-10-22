@@ -50,7 +50,7 @@ import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { cleanEmailForDisplay } from "@/src/domain/emailCleaner";
 import { getShareIntake } from "@/src/share/shareIntake";
-import { SIMULATED_EMAILS, PREVIEW_SAMPLES_ENABLED } from "@/src/preview/samples";
+import { simulation } from "@/src/simulation";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -195,7 +195,7 @@ export default function CheckEmail() {
   const sharedBody = shared?.text || shared?.webUrl || params.text || "";
   const sharedBodyRaw = useRef(sharedBody);         // original for backend
   const autoRan = useRef(false);
-  const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox, isMock } = useApollo();
+  const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox } = useApollo();
 
   // ── Input state ──
   const [fromState, setFrom] = useState("");
@@ -281,7 +281,7 @@ export default function CheckEmail() {
   // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
   // alongside a connected one.
   // Preview only: never in a production build, and never when a real mailbox is connected.
-  const showSimulatedInbox = PREVIEW_SAMPLES_ENABLED && (Platform.OS === "web" || isMock) && gmailConnected !== true;
+  const showSimulatedInbox = simulation.included && gmailConnected !== true;
 
   // ── Derived ──
   const allAccounts = useMemo((): EmailAccount[] => {
@@ -498,7 +498,7 @@ export default function CheckEmail() {
         summary: a.title,
         subject: safeSubject.trim() || a.parsed.subject || undefined,
         sender: from.trim() || a.parsed.fromAddress || undefined,
-        account: source ? "Simulated inbox (preview)" : selectedAccount || undefined,
+        account: source ? simulation.accountLabel : selectedAccount || undefined,
         eventId: outcome.event.event_id,
         scenario: a.scenario,
       });
@@ -1021,11 +1021,11 @@ export default function CheckEmail() {
         title="Your inbox"
         note="Apollo runs the real email check on whichever one you pick — on-device analysis first, then Magnum DI where it matters."
         preview
-        items={SIMULATED_EMAILS.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes }))}
+        items={simulation.emails.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes }))}
         emptyText="There are no emails to choose from here."
         onSelect={(id) => {
           setEmailSourcePicker(false);
-          const sim = SIMULATED_EMAILS.find((x) => x.id === id);
+          const sim = simulation.emails.find((x) => x.id === id);
           if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body });
         }}
         onClose={() => setEmailSourcePicker(false)}

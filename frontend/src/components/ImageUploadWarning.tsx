@@ -4,6 +4,7 @@ import React from "react";
 import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
 
 import { Body, Button } from "@/src/components/ui";
+import { simulation } from "@/src/simulation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export const IMAGE_UPLOAD_WARNING = {
@@ -53,7 +54,7 @@ export function ImageUploadWarning({ visible, onContinue, onCancel, onCrop, busy
           <Text style={s.title} accessibilityRole="header">{error ? "Image not sent" : IMAGE_UPLOAD_WARNING.title}</Text>
           {notice ? (
             <View style={s.notice} testID={`${testID}-notice`}>
-              <View style={s.tag}><Text style={s.tagText}>PREVIEW ONLY</Text></View>
+              <View style={s.tag}><Text style={s.tagText}>{simulation.tag}</Text></View>
               <Text style={s.noticeText}>{notice}</Text>
             </View>
           ) : null}

@@ -12,12 +12,11 @@ function resolve(): ValidatedSecurityConfig {
     return validateSecurityConfig({
       appEnvironment: process.env.EXPO_PUBLIC_APP_ENV,
       androidEnforcementEngine: process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE,
-      devicePreviewHarness: process.env.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS,
       hostPlatform: Platform.OS,
     });
   } catch (error) {
     recordSecurityBootError(error);
-    return { appEnvironment: "production", androidEnforcementEngine: "guarddog_production", devicePreviewHarness: "off" };
+    return { appEnvironment: "production", androidEnforcementEngine: "guarddog_production" };
   }
 }
 

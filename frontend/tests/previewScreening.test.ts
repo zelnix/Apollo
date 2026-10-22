@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { classifyRegions } from "../src/domain/imagePrivacyCore.ts";
-import { SIMULATED_SCREENSHOT_TEXT } from "../src/preview/simulatedScreenshotText.ts";
+import { SIMULATED_SCREENSHOT_TEXT } from "../src/simulation/simulatedScreenshotText.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -50,9 +50,10 @@ test("an unplaceable credential is refused before the image is sent", () => {
   assert.match(prep, /credentials\.some\(\(r\) => !r\.frame \|\| r\.frame\.width <= 0 \|\| r\.frame\.height <= 0\)/);
 });
 
-test("the simulated read is gated to the preview bundle and never invents text", () => {
-  const sim = readFileSync(join(ROOT, "src/preview/simulatedScreening.ts"), "utf8");
-  assert.match(sim, /if \(!PREVIEW_SAMPLES_ENABLED\) return null;/);
+test("the simulated read only exists in a preview build and never invents text", () => {
+  const sim = readFileSync(join(ROOT, "src/simulation/simulatedScreening.ts"), "utf8");
+  // No runtime gate: this file is simply not in a production build's dependency graph.
+  assert.doesNotMatch(sim, /__DEV__|PREVIEW_SAMPLES/);
   // An image that is not a known sample reports NO text — never borrowed text from another sample.
   assert.match(sim, /if \(!blocks\) return \{ blocks: \[\], fromSample: false, notice: UNREAD_NOTICE \};/);
 });

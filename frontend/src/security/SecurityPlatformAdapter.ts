@@ -8,7 +8,7 @@ import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformC
 
 // AdapterKind lists the hosts this app can select at runtime (securityAdapter.ts): real Kotlin/Swift modules, the Windows/macOS
 // desktop host (Tauri shell, typed commands), the real browser adapter, and the development-only device-preview harness.
-export type AdapterKind = "ios" | "android" | "windows" | "macos" | "web" | "preview_harness";
+export type AdapterKind = "ios" | "android" | "windows" | "macos" | "web";
 
 export type PermissionUnavailableReason = "not_implemented" | "os_restricted" | "hardware_absent" | "configuration_missing" | "entitlement_missing" | "privacy_prohibited" | "source_refused" | "adapter_failed";
 

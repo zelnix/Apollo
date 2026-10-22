@@ -20,6 +20,7 @@ jobs:
     env:
       EXPO_PUBLIC_APP_ENV: production
       EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: guarddog_production
+      EXPO_PUBLIC_PREVIEW_BUILD: excluded
       EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: https://threat-patrol-1.emergent.host/api/guarddog/rules
       EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: apolloverify.harmonywellnessgroup.com.au
       EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: 52.25.179.131
@@ -47,9 +48,13 @@ jobs:
       - name: Audit the actual installed tree
         run: node scripts/native-dependency-guard.cjs
       - name: Run guard and security regression tests
-        run: node --test tests/nativeDependencyGuard.test.cjs tests/securityConfig.test.ts tests/securityBoot.test.ts
+        run: node --test tests/nativeDependencyGuard.test.cjs tests/securityConfig.test.ts tests/securityBoot.test.ts tests/previewIsolation.test.ts
       - name: Verify combined preflight
         run: yarn security:preflight
+      - name: Verify the production artifact carries no preview simulation
+        run: node scripts/verify-no-simulation.mjs
+      - name: Verify the preview artifact still carries its simulation
+        run: node scripts/verify-no-simulation.mjs --preview
       - name: Verify frozen GuardDog source
         working-directory: frontend/packages
         run: sha256sum --check ../../docs/APOLLO_STAGE1B_SHA256_MANIFEST.txt

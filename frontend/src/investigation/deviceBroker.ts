@@ -2,13 +2,12 @@
 //  - a capability is advertised only when this host implements it (native module, browser API, or a Settings
 //    destination this platform can open);
 //  - `requested` (Apollo's recorded request history) and `state` (fresh OS observation) are separate facts;
-//  - an unavailable observation carries its actual reason (`unavailableReason`), never an invented value;
-//  - the device-preview harness is the only source of simulated inputs and is labelled on every value.
+//  - an unavailable observation carries its actual reason (`unavailableReason`), never an invented value.
 import * as Device from "expo-device";
 import * as Localization from "expo-localization";
 import { Platform } from "react-native";
 
-import { IS_NATIVE_HOST, IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
+import { IS_NATIVE_HOST, securityAdapter } from "@/src/security/securityAdapter";
 import type { DeviceProfileFacts, ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
 import { supportedSettingsDescriptors } from "@/src/settings/guidance";
 import { EgressViolation } from "@/src/domain/privacy";
@@ -19,8 +18,6 @@ export const CAPABILITIES = {
   protection: "protection.status", network: "network.status", signals: "security.signals",
   permission: (id: ProtectionPermission["id"]) => `permission.${id}`,
 };
-
-const SIMULATION = IS_PREVIEW_HARNESS ? { kind: "preview_device" as const, label: "MOCKED DEVICE INPUT — PREVIEW ONLY", fixtureId: "preview-device-harness" } : null;
 
 let nativeFacts: DeviceProfileFacts | null = null;
 
@@ -46,7 +43,7 @@ export function currentDeviceProfile(): DeviceProfile {
   const settings = supportedSettingsDescriptors().map((d) => d.id);
   // Observations this host implements. Web: real reachability, real protection state ("none") and the browser's own
   // notification permission. Native/preview: the full adapter surface plus this platform's Settings destinations.
-  const capabilityIds = IS_NATIVE_HOST || IS_PREVIEW_HARNESS
+  const capabilityIds = IS_NATIVE_HOST
     ? [CAPABILITIES.protection, CAPABILITIES.network, CAPABILITIES.signals, ...PERMISSION_IDS.map(CAPABILITIES.permission), ...settings]
     : [CAPABILITIES.protection, CAPABILITIES.network, CAPABILITIES.permission("notifications")];
   return {
@@ -71,7 +68,7 @@ function unavailable(base: Omit<DeviceResult, "status" | "values" | "unavailable
 
 /** Fresh observation for a coordinator request. Requested and granted are reported as separate facts. */
 export async function observe(request: DeviceRequest): Promise<DeviceResult> {
-  const base = { requestId: request.id, caseRevision: request.caseRevision, capabilityId: request.capabilityId, observedAt: new Date().toISOString(), simulation: SIMULATION };
+  const base = { requestId: request.id, caseRevision: request.caseRevision, capabilityId: request.capabilityId, observedAt: new Date().toISOString(), simulation: null };
   if (!currentDeviceProfile().capabilityIds.includes(request.capabilityId)) return unavailable(base, IS_NATIVE_HOST ? "not_implemented" : "os_restricted");
   try {
     if (request.capabilityId === CAPABILITIES.protection) {

@@ -63,7 +63,8 @@
     "test:failure": "node --test tests/failureModes.test.ts",
     "test:higgins-checks": "node --test tests/higginsChecks.test.ts",
     "test:device-capabilities": "node --test tests/deviceCapabilities.test.ts",
-    "test:device-capabilities-report": "node --test tests/deviceCapabilityReport.test.ts"
+    "verify:no-simulation": "node scripts/verify-no-simulation.mjs",
+    "test:preview-isolation": "node --test tests/previewIsolation.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
@@ -128,6 +129,7 @@
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",
     "@types/react": "19.2.10",
+    "babel-plugin-module-resolver": "5.0.3",
     "eslint": "9.25.0",
     "eslint-config-expo": "57.0.2",
     "expo-doctor": "1.19.8",

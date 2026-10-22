@@ -242,7 +242,7 @@ export default function Home() {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
   const compact = screenW < 380;
-  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
+  const { resolution, capabilities, protection, adapterLabel, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -350,7 +350,6 @@ export default function Home() {
             testID="home-brand-title"
           />
           <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-            {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
             <AlertsButton testID="home-alerts" />
             <Pressable
               testID="home-menu"

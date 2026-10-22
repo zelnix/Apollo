@@ -10,18 +10,13 @@ const device = { manufacturer: "Google", model: "Pixel 8", deviceType: "Phone", 
 const protection = { running: true, requested: true, operational: true, enforcementMethod: "dns_filter" as const, coverage: "DNS-level filtering", coverageScope: ["dns:ipv4"], lastVerified: "2026-06-07T09:00:00.000Z", degradedReason: null, visibility: "full" as const, since: null, adapterLabel: "Android", checkedAt: "2026-06-07T09:00:00.000Z" };
 
 test("protection rows: a verified-running service reads 'Active and verified', never fabricated", () => {
-  const rows = buildProtectionRows(protection, null, [], { safeBrowsing: "ok", blocklistEntries: 1200 }, false);
+  const rows = buildProtectionRows(protection, null, [], { safeBrowsing: "ok", blocklistEntries: 1200 });
   assert.equal(rows.find((r) => r.label === "Apollo Protection")?.state, "Active and verified");
   assert.equal(rows.find((r) => r.label === "Last verified block")?.state, "Unverified"); // no evidence supplied
 });
 
-test("protection rows: preview build never claims real enforcement", () => {
-  const rows = buildProtectionRows(protection, null, [], { safeBrowsing: null, blocklistEntries: null }, true);
-  assert.equal(rows.find((r) => r.label === "Apollo Protection")?.state, "Available");
-});
-
 test("protection rows: degraded protection is a Warning, not Active", () => {
-  const rows = buildProtectionRows({ ...protection, operational: false, degradedReason: "VPN permission missing" }, null, [], { safeBrowsing: "ok", blocklistEntries: 10 }, false);
+  const rows = buildProtectionRows({ ...protection, operational: false, degradedReason: "VPN permission missing" }, null, [], { safeBrowsing: "ok", blocklistEntries: 10 });
   assert.equal(rows.find((r) => r.label === "Apollo Protection")?.state, "Warning");
 });
 
@@ -34,7 +29,7 @@ test("higgins info merges First Check concerns and uses latest timestamp", () =>
 
 test("email body/subject/report share the exact reference and redact raw data", () => {
   const reference = "AP-20260608-6D4A9E13B2C74F8A93D05E17C46F21B8";
-  const summary = buildSupportSummary(app, device, buildProtectionRows(protection, null, [], { safeBrowsing: "ok", blocklistEntries: 1200 }, false), buildHigginsInfo(null, null));
+  const summary = buildSupportSummary(app, device, buildProtectionRows(protection, null, [], { safeBrowsing: "ok", blocklistEntries: 1200 }), buildHigginsInfo(null, null));
   const body = renderEmailBody(summary, reference);
   const text = renderSupportSummaryText(summary, reference);
   const html = renderReportHtml(summary, reference);

@@ -557,11 +557,15 @@ async def get_di_transactions(case_id: str, request: Request):
     # window, so an expired or cleaned-up case must still be able to show how it was processed.
     if not await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 1}):
         raise http(404, "not_found", "No investigation with that reference belongs to this device.")
+    from services.higgins.provider import get_provider_mode
     records = await get_di_records(owner, case_id)
-    # Always filter out simulated DI records from the API response.
-    # Simulated records must never be displayed in any client — production or development.
-    # Developers who need to inspect simulated records can query the database directly.
-    records = [r for r in records if not r.get("simulated")]
+    # A simulated transaction is returned only where it can legitimately exist: a preview deployment,
+    # where services/higgins/preview/ is present and the simulator answered instead of Gemini. Each such
+    # record carries its own "SIMULATED — No Gemini API call was made" notice and the client marks it.
+    # In production the preview code is not deployed, so nothing simulated can be produced — and any
+    # older record is withheld here rather than shown as though Gemini had answered.
+    if get_provider_mode() != "preview":
+        records = [r for r in records if not r.get("simulated")]
     return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
 
 

@@ -5,8 +5,9 @@
 //   - Only "guarddog_production" engine is permitted, and only in production.
 //   - Development/staging builds always fail validation (boot safety screen).
 //   - No mock/native mode switches.
-//   - Device-preview harness: development + web only.
+//   - There is no simulated device host to configure at all.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { SecurityConfigurationError, validateSecurityConfig } from "../src/security/securityConfig.ts";
@@ -52,22 +53,15 @@ test("5. missing or invalid environment → rejected", () => {
 test("6. the removed mode switches are silently ignored (not accepted as active inputs)", () => {
   // Passing old mode switches doesn't cause a crash, they're just ignored.
   // The config still fails for non-production env (guarddog_production is production-only).
-  const legacy = { appEnvironment: "production", retiredMode: "mock", securityAdapterMode: "mock" } as unknown as Parameters<typeof validateSecurityConfig>[0];
+  const legacy = { appEnvironment: "production", retiredMode: "mock", securityAdapterMode: "mock", devicePreviewHarness: "enabled" } as unknown as Parameters<typeof validateSecurityConfig>[0];
   const result = validateSecurityConfig(legacy);
-  assert.deepEqual(Object.keys(result).sort(), ["androidEnforcementEngine", "appEnvironment", "devicePreviewHarness"]);
-  assert.equal(result.devicePreviewHarness, "off");
+  assert.deepEqual(Object.keys(result).sort(), ["androidEnforcementEngine", "appEnvironment"]);
 });
 
-test("7. device-preview harness: rejected in production; development never reaches harness check", () => {
-  // In production, engine check passes but harness is rejected:
-  rejected({ appEnvironment: "production", devicePreviewHarness: "enabled", hostPlatform: "web" }, "only permitted in development");
-  rejected({ appEnvironment: "production", devicePreviewHarness: "enabled", hostPlatform: "android", nativeSecurityAdapterAvailable: true }, "only permitted in development");
-  rejected({ appEnvironment: "production", devicePreviewHarness: "yes", hostPlatform: "web" }, "is invalid");
-  // In development, the production-only engine check fires before harness check is reached:
-  rejected({ appEnvironment: "development", devicePreviewHarness: "enabled", hostPlatform: "web" }, "production");
-  // Empty/off harness in production is fine:
-  assert.equal(validateSecurityConfig({ appEnvironment: "production", devicePreviewHarness: "", hostPlatform: "web" }).devicePreviewHarness, "off");
-  assert.equal(validateSecurityConfig({ appEnvironment: "production", devicePreviewHarness: "off", hostPlatform: "web" }).devicePreviewHarness, "off");
-  // Preflight (no host platform) in production passes with harness off:
-  assert.equal(validateSecurityConfig({ appEnvironment: "production" }).devicePreviewHarness, "off");
+test("7. there is no device-preview harness to configure — the security config cannot select a simulated host", () => {
+  const config = readFileSync(new URL("../src/security/securityConfig.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(config, /devicePreviewHarness|DevicePreviewHarness|PreviewDeviceAdapter/);
+  // Preview simulation is a build decision about sample INPUTS; it can never stand in for a device read.
+  assert.deepEqual(Object.keys(validateSecurityConfig({ appEnvironment: "production", hostPlatform: "web" })).sort(),
+    ["androidEnforcementEngine", "appEnvironment"]);
 });

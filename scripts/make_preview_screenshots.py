@@ -203,7 +203,7 @@ for name, blocks in BLOCKS.items():
         lines.append(f'    {{ text: {json.dumps(b["text"], ensure_ascii=False)}, frame: {frame} }},')
     lines.append("  ],")
 lines += ["};", ""]
-with open("/app/frontend/src/preview/simulatedScreenshotText.ts", "w") as fh:
+with open("/app/frontend/src/simulation/simulatedScreenshotText.ts", "w") as fh:
     fh.write("\n".join(lines))
 
 print("written:", sorted(os.listdir(OUT)))

@@ -42,7 +42,7 @@ export default function Recheck() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, isMock } = useApollo();
+  const { ready, setupDone } = useApollo();
   const [report, setReport] = useState<FirstCheckReport | null>(null);
   const [previous, setPrevious] = useState<FirstCheckReport | null>(null);
   const [changes, setChanges] = useState<FirstCheckChange[]>([]);
@@ -65,9 +65,9 @@ export default function Recheck() {
       setReport(fresh);
       void markCheckDone("device");
       // A Device Check is a full diagnostic: also refresh Apollo/Higgins service health for Support.
-      void runSystemHealthCheck(isMock);
+      void runSystemHealthCheck();
     } finally { setRunning(false); setProgress(null); }
-  }, [isMock]);
+  }, []);
 
   const justRan = !!report && previous !== report;
   const stamp = report ? new Date(report.checkedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;

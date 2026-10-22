@@ -103,7 +103,7 @@ const useStyles = makeStyles((c) => ({
 
 export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
-  const { deviceId, isMock, events, resolution, trust, adapterLabel, network, notificationStatus, quietHours, quietNow, lowPower } = useApollo();
+  const { deviceId, events, resolution, trust, adapterLabel, network, notificationStatus, quietHours, quietNow, lowPower } = useApollo();
   const health = useProtectionHealth();
   const callScreener = useCallScreener();
   const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string; screenshotUri?: string; screenshotName?: string; screenshotType?: string }>();
@@ -262,8 +262,8 @@ export default function Ask() {
   const snapshot = useMemo(() => buildDeviceSnapshot({
     health, events, trustCount: trust.length, notificationStatus, quietHours, quietNow, lowPower,
     adapterLabel, network, callScreener: callScreener.state === "checking" ? null : `${callScreener.summary} — ${callScreener.detail}`,
-    isMock, extras: snapshotExtras ?? undefined, capabilities: capabilityReading,
-  }), [health, events, trust.length, notificationStatus, quietHours, quietNow, lowPower, adapterLabel, network, callScreener.state, callScreener.summary, callScreener.detail, isMock, snapshotExtras, capabilityReading]);
+    extras: snapshotExtras ?? undefined, capabilities: capabilityReading,
+  }), [health, events, trust.length, notificationStatus, quietHours, quietNow, lowPower, adapterLabel, network, callScreener.state, callScreener.summary, callScreener.detail, snapshotExtras, capabilityReading]);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
 
@@ -521,7 +521,6 @@ export default function Ask() {
           <View style={s.headerText}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <Text style={s.name}>Ask Higgins</Text>
-              {isMock ? <DevTag label="Preview" testID="higgins-mock-pill" /> : null}
             </View>
           </View>
           <View style={s.headerActions}>

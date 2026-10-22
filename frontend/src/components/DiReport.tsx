@@ -10,6 +10,7 @@ import { Pressable, Share, Text, View } from "react-native";
 
 import { apiGet } from "@/src/api/client";
 import { Card } from "@/src/components/ui";
+import { simulation } from "@/src/simulation";
 import { formatBytes, provenanceLabel, type DiTransaction } from "@/src/domain/diTransaction";
 import { diRequestText, diResponseText } from "@/src/domain/diTransactionText";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -144,30 +145,24 @@ export function DiReport({ caseId }: { caseId: string | null }) {
   return (
     <View style={s.content} testID="tc-di-content">
       {state.records
-        // Production guard: never render simulated records outside dev.
-        // A production build must never display preview-simulator data — not even a warning.
-        .filter((record) => !record.simulated || __DEV__)
+        // A simulated transaction is shown only in a preview build. In a production build the
+        // simulation module is absent, `included` is false, and nothing simulated renders at all.
+        .filter((record) => !record.simulated || simulation.included)
         .map((record, index) => {
         const p = record.processing;
         const tokenNote = provenanceLabel(!!p.tokensAreSimulated, p.tokensAreEstimates);
 
-        // Dev-only: show simulator warning in development builds.
-        if (record.simulated) {
-          return (
-            <View key={`${record.investigationId}-${index}`} style={{ gap: spacing.md }}>
-              <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
-                <Text style={s.diNoticeText}>
-                  This record came from the preview simulator, not from Gemini. It is NOT a real investigation and
-                  must not be relied on.
-                </Text>
-              </View>
-            </View>
-          );
-        }
-
         return (
           <View key={`${record.investigationId}-${index}`} style={{ gap: spacing.md }}>
-            {record.notice ? (
+            {record.simulated ? (
+              <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
+                <Text style={s.diNoticeText}>
+                  {simulation.tag} — this record came from the preview simulator, not from Gemini. The workflow,
+                  the request and the processing below are real; the response was not produced by Gemini and is
+                  not a real investigation, so it must not be relied on.
+                </Text>
+              </View>
+            ) : record.notice ? (
               <View style={s.diNotice} testID={`tc-di-notice-${index}`}>
                 <Text style={s.diNoticeText}>{record.notice}</Text>
               </View>

@@ -76,7 +76,6 @@ export interface SnapshotInput {
   adapterLabel: string;
   network: NetworkStatus | null;
   callScreener?: string | null;
-  isMock?: boolean;
   extras?: SnapshotExtras;
   /** Device Capabilities reading, so Higgins answers from the same map the Device screen shows. */
   capabilities?: DeviceCapabilityReading | null;
@@ -156,7 +155,6 @@ export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
   const { counts, open } = threatLines(events);
   const caps = capabilityLines(input.capabilities);
   const notes: string[] = [];
-  if (input.isMock) notes.push("This phone is running Apollo's preview adapter, so protection readings are simulated, not real.");
   if (health.checking) notes.push("A protection status read is in progress right now.");
   if (health.lastCheckFailure) notes.push(`The most recent protection read FAILED (${health.lastCheckFailure.reason}); the statuses above are the previous successful reading.`);
   if (health.ruleBundle) notes.push(`Security rules: ${health.ruleBundle.detail}`);

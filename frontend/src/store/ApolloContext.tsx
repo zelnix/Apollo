@@ -37,8 +37,8 @@ import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
 import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
-import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
-import { MOCK_THREAT_EVENT } from "@/src/domain/mockThreatPreview";
+import { securityAdapter } from "@/src/security/securityAdapter";
+import { simulation } from "@/src/simulation";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } from '@/src/domain/packetEvidence';
@@ -162,7 +162,6 @@ interface ApolloContextValue {
   permissions: ProtectionPermission[];
   network: NetworkStatus | null;
   adapterLabel: string;
-  isMock: boolean;
   refreshing: boolean;
   refresh(minVisibleMs?: number): Promise<ProtectionStatus | null>;
   verifyNow(): Promise<ProtectionStatus | null>;
@@ -599,11 +598,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           setSetupDone(!!done);
           if (ev) {
             const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent)
-              // The example case is sample data: refresh its wording from the current definition,
-              // but never overwrite what the person did with it (resolved, reopened, state).
-              .map((event) => (event.event_id === MOCK_THREAT_EVENT.event_id
+              // The example case is sample data and only exists in a preview build: refresh its
+              // wording from the current definition, but never overwrite what the person did with it.
+              .map((event) => (simulation.exampleCase && event.event_id === simulation.exampleCase.event_id
                 ? {
-                    ...MOCK_THREAT_EVENT,
+                    ...simulation.exampleCase,
                     status: event.status,
                     state: event.state,
                     resolved_at: event.resolved_at,
@@ -615,11 +614,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state]));
             setEvents(restored);
           }
-          // Seed the clearly-labelled EXAMPLE threat case once, on every platform, so the full
-          // investigation UI can be seen on a real device as well as in the web preview. It is only
-          // seeded when there is nothing else in Patrol, and only once — dismissing it is permanent.
-          if (eventsRef.current.length === 0 && !(await storage.getItem<boolean>(K.exampleSeeded, false))) {
-            const seed = [MOCK_THREAT_EVENT];
+          // Seed the clearly-labelled EXAMPLE threat case once, so the full investigation UI can be
+          // seen before a real check has run. It is sample data, so it only exists in a preview
+          // build; it is seeded only when there is nothing else in Patrol, and only once.
+          if (simulation.exampleCase && eventsRef.current.length === 0 && !(await storage.getItem<boolean>(K.exampleSeeded, false))) {
+            const seed = [simulation.exampleCase];
             eventsRef.current = seed;
             alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state]));
             setEvents(seed);
@@ -1702,7 +1701,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, platformCanEnforce, now: Date.now() }), [events, visibility, lastVerifiedAt, platformCanEnforce, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: ApolloContextValue = {
-    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
+    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label,
     privateDnsStatus,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, checkEmail, scanGmailInbox, recordRecovery, upsertEvent, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, notificationPreferences, setNotificationPreferences, storage,

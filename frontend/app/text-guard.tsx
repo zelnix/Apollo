@@ -22,9 +22,7 @@ import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
-// Preview only — Metro tree-shakes these from production bundles via __DEV__ === false.
-const SimulatedPicker = __DEV__ ? require("@/src/preview/SimulatedPicker").SimulatedPicker : () => null;
-const SIMULATED_TEXTS = __DEV__ ? require("@/src/preview/samples").SIMULATED_TEXTS : [];
+import { simulation } from "@/src/simulation";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -213,13 +211,13 @@ export default function TextGuard() {
           </View>
         ) : null}
 
-        <SimulatedPicker
+        <simulation.Picker
           testID="textguard-simulated"
           title="Simulated messages"
           note="This is NOT your real message list and no texts are read from this device. These samples exist so the real message check can be exercised in the preview. Apollo runs his own checks on whichever you pick and decides the outcome himself."
           disabled={busy}
-          items={SIMULATED_TEXTS.map((m: any) => ({ id: m.id, primary: m.sender, secondary: m.text, probes: m.probes }))}
-          onSelect={(id: string) => { const m = SIMULATED_TEXTS.find((x: any) => x.id === id); if (m) void runWith({ sender: m.sender, text: m.text }); }}
+          items={simulation.texts.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, probes: m.probes }))}
+          onSelect={(id: string) => { const m = simulation.texts.find((x) => x.id === id); if (m) void runWith({ sender: m.sender, text: m.text }); }}
         />
 
         <View>
