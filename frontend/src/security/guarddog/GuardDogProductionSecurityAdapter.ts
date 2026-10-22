@@ -7,21 +7,53 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
 import { getGuardDogProductionConfig } from "./GuardDogProductionConfig";
 
-type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; productionAuthority?: boolean };
+type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; productionAuthority?: boolean; bundleVersion?: number | null };
+
+/** Thrown when the native GuardDog validator rejects a rule bundle. */
+class RuleBundleRejectedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Rule bundle rejected by native validator: ${reason}`);
+    this.name = "RuleBundleRejectedError";
+  }
+}
 
 export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapter {
   readonly kind = "android" as const;
   readonly label = "GuardDog production website protection";
   private configured: Promise<void> | null = null;
   private refreshedAt = 0;
+  /** Last rejection reason from a failed refresh, preserved for diagnostic surfaces. */
+  private lastRefreshRejection: string | null = null;
   private mod() { const module = getNativeModule(); if (!module) throw new NativeModuleUnavailable("Android GuardDog production runtime"); return module; }
   private async json<T>(value: Promise<string> | string): Promise<T> { return JSON.parse(await value) as T; }
+
+  /**
+   * Call refreshGuardDogProductionRules and CHECK the native result.
+   *
+   * The native method returns JSON: `{"accepted":true,...}` or `{"accepted":false,"reason":"..."}`.
+   * Previously the JS adapter only caught thrown exceptions, silently ignoring a returned rejection.
+   * This method parses the result and throws a descriptive error when the bundle is rejected.
+   */
+  private async refreshAndVerify(): Promise<void> {
+    const resultStr = await this.mod().refreshGuardDogProductionRules();
+    let result: { accepted?: boolean; reason?: string };
+    try { result = JSON.parse(resultStr); } catch { result = {}; }
+    if (result.accepted === false) {
+      const reason = result.reason || "unknown";
+      this.lastRefreshRejection = reason;
+      throw new RuleBundleRejectedError(reason);
+    }
+    // Bundle accepted — clear any previous rejection state.
+    this.lastRefreshRejection = null;
+    this.refreshedAt = Date.now();
+  }
+
   private ensureConfigured(): Promise<void> {
     if (!this.configured) this.configured = (async () => {
       this.mod().configureGuardDogProduction(JSON.stringify(getGuardDogProductionConfig()));
       // Pass the device bearer token to the native runtime for authenticated live reputation requests.
       try { const token = await getDeviceToken(); if (token) this.mod().setGuardDogDeviceToken(token); } catch { /* non-fatal */ }
-      try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
+      try { await this.refreshAndVerify(); }
       catch (refreshError) {
         // Offline fallback: if rules are still locally valid, don't throw.
         const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
@@ -33,7 +65,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     return this.configured;
   }
   private async refreshIfDue(force = false) { await this.ensureConfigured(); if (!force && Date.now() - this.refreshedAt < 15 * 60 * 1000) return;
-    try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
+    try { await this.refreshAndVerify(); }
     catch (error) {
       // Offline fallback: if locally-persisted rules are still valid, swallow the refresh failure.
       const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus()); const now = Date.now();
@@ -42,10 +74,13 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   }
   async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
     catch (error) {
-      // Report the real reason rather than asserting a rule problem Apollo hasn't established.
-      const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
+      // Surface the specific rejection reason rather than a generic "couldn't read" message.
+      const rejection = this.lastRefreshRejection;
+      const reason = rejection
+        ? `Rule bundle rejected by native validator (${rejection}). Ensure the backend signing key matches the pinned key in this build.`
+        : error instanceof Error && error.message ? error.message : "the reason could not be determined";
       return [{ id: "site_guard", title: "Website protection", status: "permission_required",
-        detail: `Production protection is not active and Apollo couldn't read its status (${reason}).` }];
+        detail: `Production protection is not active (${reason}).` }];
     } }
   async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
     catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. Apollo did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
@@ -59,7 +94,22 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     return this.json<NetworkStatus>(this.mod().getGuardDogProductionNetworkStatus());
   }
   getSecuritySignals() { return Promise.resolve([]); }
-  async startProtection() { await this.refreshIfDue(true); return this.json<ProtectionStatus>(this.mod().startGuardDogProduction()); }
+  async startProtection() {
+    await this.refreshIfDue(true);
+    // Pre-flight: confirm the native runtime actually has a current bundle before
+    // calling startGuardDogProduction(). Previously, a silently-rejected refresh
+    // would pass here and then the native start() would throw the generic
+    // "Production rule bundle is unavailable or expired" — hiding the real cause.
+    const preCheck = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
+    if (!preCheck.ruleExpiresAt || Date.parse(preCheck.ruleExpiresAt) <= Date.now()) {
+      const rejection = this.lastRefreshRejection;
+      const detail = rejection
+        ? `The backend delivered a rule bundle but the device rejected it (reason: ${rejection}). This can happen when the bundle signature doesn't match the pinned key, or the bundle version was rolled back.`
+        : `The device has no current rule bundle. The refresh may have failed silently — check network connectivity to the rule delivery backend and verify EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL is correct.`;
+      throw new Error(detail);
+    }
+    return this.json<ProtectionStatus>(this.mod().startGuardDogProduction());
+  }
   stopProtection() { return this.json<ProtectionStatus>(this.mod().stopGuardDogProduction()); }
   async getProtectionPermissions(): Promise<ProtectionPermission[]> {
     // Dedicated production native method — same OS permission observations with
@@ -111,8 +161,11 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
       const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
       const expiresAt = status.ruleExpiresAt ?? null;
       if (!expiresAt) {
-        return { observable: true, current: null, expiresAt: null,
-          detail: "Apollo's protection reported no expiry for its security rules, so their age could not be confirmed." };
+        const rejection = this.lastRefreshRejection;
+        const detail = rejection
+          ? `Apollo's backend delivered a rule bundle but the device's native validator rejected it (${rejection}). The signing key in this build may not match the backend's signing key, or the bundle version may conflict with a previously accepted version.`
+          : "Apollo's protection reported no expiry for its security rules, so their age could not be confirmed.";
+        return { observable: true, current: null, expiresAt: null, detail };
       }
       const live = Date.parse(expiresAt) > Date.now();
       const authority = status.productionAuthority === true;
@@ -123,9 +176,12 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
             ? "Apollo's protection is not running on its production rules."
             : `Apollo's security rules expired on ${new Date(expiresAt).toLocaleString()} and have not been refreshed.` };
     } catch (error) {
-      const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
+      const rejection = this.lastRefreshRejection;
+      const reason = rejection
+        ? `native validator rejected the rule bundle (${rejection})`
+        : error instanceof Error && error.message ? error.message : "the reason could not be determined";
       return { observable: true, current: null, expiresAt: null,
-        detail: `Apollo couldn't read the state of its security rules (${reason}). This is not a confirmation that they are current.` };
+        detail: `Apollo couldn't establish current security rules (${reason}). This is not a confirmation that they are current.` };
     }
   }
 

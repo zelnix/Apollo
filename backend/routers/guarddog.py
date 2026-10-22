@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter
 
 from core.db import db, now_utc
-from services.rule_signing import get_public_key_b64, is_signing_enabled, sign_bundle
+from services.rule_signing import get_public_key_b64, is_signing_enabled, sign_bundle, verify_bundle_signature
 
 router = APIRouter(prefix="/api/guarddog", tags=["guarddog"])
 
@@ -203,3 +203,71 @@ async def get_public_key():
         "encoding": "base64_raw_32bytes",
         "usage": "Verify the 'signature' field on /api/guarddog/rules responses",
     }
+
+
+@router.get("/rules/diagnostic")
+async def rules_diagnostic():
+    """End-to-end diagnostic for rule bundle delivery.
+
+    Verifies:
+    1. Bundle generation works
+    2. Ed25519 signing is active and the signature is valid
+    3. The derived public key matches the key pinned in the native APK
+    4. Bundle schema and content are well-formed
+
+    Returns a structured report with pass/fail for each check.
+    """
+    checks = []
+    bundle = None
+
+    # Check 1: Bundle generation
+    try:
+        bundle = await _get_or_publish_bundle()
+        checks.append({"check": "bundle_generation", "passed": True, "detail": f"Bundle v{bundle.get('bundleVersion')} generated with {len(bundle.get('payload', {}).get('rules', []))} rules"})
+    except Exception as exc:
+        checks.append({"check": "bundle_generation", "passed": False, "detail": str(exc)})
+        return {"diagnostic": "failed", "checks": checks}
+
+    # Check 2: Signing enabled
+    signing_active = is_signing_enabled()
+    checks.append({"check": "signing_enabled", "passed": signing_active, "detail": "Ed25519 signing is active" if signing_active else "RULE_SIGNING_PRIVATE_KEY not set in backend .env — bundles are unsigned and will be rejected by native clients on Android 13+"})
+
+    # Check 3: Signature validity (self-verify)
+    if signing_active:
+        sig = sign_bundle(bundle)
+        if sig:
+            valid = verify_bundle_signature(bundle, sig)
+            checks.append({"check": "signature_valid", "passed": valid, "detail": "Self-verification passed" if valid else "Self-verification FAILED — the signing key may be corrupted"})
+        else:
+            checks.append({"check": "signature_valid", "passed": False, "detail": "sign_bundle returned None despite signing being enabled"})
+
+    # Check 4: Public key matches pinned APK key
+    PINNED_APK_KEY = "tu+b28Kvrl7a0JYcgBLyn7XxSDzLkfhdBROHZq+4k5Q="
+    derived_pub = get_public_key_b64()
+    key_match = derived_pub == PINNED_APK_KEY
+    checks.append({
+        "check": "public_key_match",
+        "passed": key_match,
+        "detail": f"Backend public key matches APK pinned key" if key_match else f"MISMATCH — backend derives '{derived_pub}' but APK pins '{PINNED_APK_KEY}'. Regenerate the signing keypair and update both.",
+        "backend_public_key": derived_pub,
+        "pinned_apk_key": PINNED_APK_KEY,
+    })
+
+    # Check 5: Bundle schema
+    required_keys = {"schemaVersion", "rulesetId", "bundleVersion", "issuedAt", "expiresAt", "payload"}
+    present = set(bundle.keys()) if bundle else set()
+    missing = required_keys - present
+    checks.append({"check": "schema", "passed": not missing, "detail": f"All required fields present" if not missing else f"Missing fields: {missing}"})
+
+    # Check 6: Expiry
+    if bundle:
+        from datetime import datetime, timezone
+        try:
+            expires = datetime.strptime(bundle["expiresAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            expired = expires <= datetime.now(timezone.utc)
+            checks.append({"check": "expiry", "passed": not expired, "detail": f"Expires {bundle['expiresAt']}" + (" (EXPIRED)" if expired else " (valid)")})
+        except Exception as exc:
+            checks.append({"check": "expiry", "passed": False, "detail": f"Could not parse expiresAt: {exc}"})
+
+    all_passed = all(c["passed"] for c in checks)
+    return {"diagnostic": "passed" if all_passed else "issues_found", "checks": checks}
