@@ -127,9 +127,9 @@ def _forbid_live_gemini(monkeypatch):
     """
     from services.higgins import provider
 
-    if provider.get_provider_mode() == "mock":
-        # Mock mode: the provider.generate() gate routes to mock_provider.
-        # Don't block it — tests need to verify the full mock path works.
+    if provider.get_provider_mode() == "preview":
+        # Preview mode: the preview dispatch handles generate() calls.
+        # Don't block it — tests need to verify the full preview path works.
         return
 
     async def blocked(*_args, **_kwargs):

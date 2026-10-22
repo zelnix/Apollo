@@ -53,11 +53,10 @@ from services.seed_learning_images import router as seed_images_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # ── Preview provider dispatch (non-production only) ──────────────────
-    # Must run before any route can call provider.generate(). In production
-    # this is a no-op: the provider mode is 'live' and the handler is ignored.
-    from services.higgins.provider import get_provider_mode, IS_PRODUCTION_ENV
-    if not IS_PRODUCTION_ENV and get_provider_mode() in ("simulated", "mock"):
+    # ── Preview provider dispatch ─────────────────────────────────────────
+    # Preview → simulators run. Production → preview code is not deployed.
+    from services.higgins.provider import IS_PREVIEW
+    if IS_PREVIEW:
         from services.higgins.preview.dispatch import install_preview_provider
         install_preview_provider()
 

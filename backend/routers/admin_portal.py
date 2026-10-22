@@ -1763,9 +1763,8 @@ async def investigations_cost_report(request: Request):
     # Environment indicator
     from services.higgins.provider import get_provider_mode
     pmode = get_provider_mode()
-    env_indicator = f"""<div class="alert {'alert-warning' if pmode == 'mock' else 'alert-ok'}" style="margin-bottom:16px;">
-        <strong>Environment:</strong> {'Mock Provider (no paid Gemini calls)' if pmode == 'mock'
-            else 'Live-Test (development Gemini key)' if pmode == 'live_test'
+    env_indicator = f"""<div class="alert {'alert-warning' if pmode == 'preview' else 'alert-ok'}" style="margin-bottom:16px;">
+        <strong>Environment:</strong> {'Preview (simulated — no paid Gemini calls)' if pmode == 'preview'
             else 'Production'} &nbsp;|&nbsp;
         <strong>Timezone:</strong> {_ADMIN_TZ_LABEL} &nbsp;|&nbsp;
         <strong>Period:</strong> {period_label}

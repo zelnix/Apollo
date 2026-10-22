@@ -9,14 +9,9 @@ NO-FALLBACK CONTRACT:
     substitute, no "try again with fake data" path. Higgins surfaces the honest
     failure to the person.
 
-PROVIDER MODE (APOLLO_PROVIDER_MODE):
-    live       — Production. Uses the real Gemini API key. Failures propagate honestly.
-    live_test  — Explicit live-AI testing mode using GEMINI_DEV_API_KEY.
-    simulated  — Preview only. Handled by services.higgins.preview.dispatch (NOT this file).
-    mock       — Preview/dev only. Handled by services.higgins.preview.dispatch (NOT this file).
-
-    When a real GEMINI_API_KEY is present, "simulated" and "mock" are auto-upgraded to "live"
-    so that production deployments can never produce fake results even if the env var is misconfigured.
+ENVIRONMENT (APOLLO_ENV):
+    preview    — Simulators run. The preview dispatch handles generate() calls.
+    production — (default) Live Gemini only. Preview code is not deployed.
 """
 from __future__ import annotations
 
@@ -42,73 +37,41 @@ from services.gemini_usage import record_usage as _record_usage
 load_dotenv()
 
 # ── Environment ──────────────────────────────────────────────────────────────
+# Single source of truth. Preview → simulators. Production → live Gemini.
+# Preview code is physically excluded from production builds/deployments,
+# so there is no runtime mode selection needed in production.
 APOLLO_ENV = os.getenv("APOLLO_ENV", "").strip().lower() or "production"
-IS_PRODUCTION_ENV = APOLLO_ENV not in ("preview", "development", "staging", "test")
+IS_PREVIEW = APOLLO_ENV in ("preview", "development", "staging", "test")
+IS_PRODUCTION_ENV = not IS_PREVIEW
 
-# ── Provider mode ────────────────────────────────────────────────────────────
-# Determined by APOLLO_ENV, NOT by whether a Gemini key happens to be present.
-# The key decides whether live calls succeed; the environment decides whether
-# preview code is loaded. Production always runs "live" — enforced at import.
-#
-#   live       — Production. Gemini calls go out; failures propagate honestly.
-#   live_test  — Dev key testing. Non-production only.
-#   simulated  — Preview only. Real workflow, simulated Gemini response.
-#   mock       — Preview/dev only. Deterministic, zero external calls.
-_PROVIDER_MODE = os.getenv("APOLLO_PROVIDER_MODE", "").strip().lower()
-if not _PROVIDER_MODE:
-    _PROVIDER_MODE = "live" if IS_PRODUCTION_ENV else "mock"
-
-# Separate dev key for live_test mode (never the production key)
+# Separate dev key for explicit live-AI testing in preview
 _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
 
-def get_provider_mode() -> str:
-    """Return the current provider mode."""
-    return _PROVIDER_MODE
-
-def _validate_mode_at_import() -> None:
-    """Fail-fast safety checks run at import time."""
-    if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
-        raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
-    # Production may only run "live" — the environment decides, not the key.
-    if IS_PRODUCTION_ENV and _PROVIDER_MODE != "live":
-        raise RuntimeError(
-            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' cannot run with APOLLO_ENV='{APOLLO_ENV}'. "
-            "Production environments must use APOLLO_PROVIDER_MODE=live.")
-    # live requires the key; live_test requires its own key.
-    if _PROVIDER_MODE == "live" and not GEMINI_API_KEY:
-        _logging.getLogger(__name__).warning(
-            "APOLLO_PROVIDER_MODE=live but GEMINI_API_KEY is not set. "
-            "Every generate() call will fail with provider_configuration.")
-    if _PROVIDER_MODE == "live_test" and not _GEMINI_DEV_API_KEY:
-        raise RuntimeError(
-            "APOLLO_PROVIDER_MODE=live_test requires GEMINI_DEV_API_KEY to be set. "
-            "Use a free-tier Google AI Studio development project key.")
-
-_validate_mode_at_import()
-
 _gateway_log = _logging.getLogger("apollo.gateway")
-_gateway_log.info("provider_mode=%s apollo_env=%s gemini_key_configured=%s dev_key_configured=%s",
-                  _PROVIDER_MODE, APOLLO_ENV, bool(GEMINI_API_KEY), bool(_GEMINI_DEV_API_KEY))
+_gateway_log.info("apollo_env=%s is_preview=%s gemini_key_configured=%s",
+                  APOLLO_ENV, IS_PREVIEW, bool(GEMINI_API_KEY))
 
 # ── Preview handler slot ────────────────────────────────────────────────────
 # Filled ONLY by services.higgins.preview.dispatch.install_preview_provider()
-# at startup in non-production environments. Production leaves this None.
+# at startup in preview environments. Production leaves this None.
 # This is NOT a fallback — production failures must surface honestly as-is.
 _preview_generate = None
 
 
+def get_provider_mode() -> str:
+    """Return 'preview' or 'live' based on the environment."""
+    return "preview" if IS_PREVIEW and _preview_generate is not None else "live"
+
+
 def register_preview_handler(handler) -> None:
-    """Install a preview-mode generate handler. Refuses to register in production."""
+    """Install the preview-mode generate handler. Refuses to register in production."""
     global _preview_generate
     if IS_PRODUCTION_ENV:
         raise RuntimeError(
             "FATAL: register_preview_handler() called in a production environment "
             f"(APOLLO_ENV='{APOLLO_ENV}'). Preview handlers must never be installed in production.")
-    if _PROVIDER_MODE not in ("simulated", "mock"):
-        _gateway_log.info("preview handler offered but provider_mode='%s'; ignoring", _PROVIDER_MODE)
-        return
     _preview_generate = handler
-    _gateway_log.info("preview handler registered for provider_mode='%s'", _PROVIDER_MODE)
+    _gateway_log.info("preview handler registered (APOLLO_ENV='%s')", APOLLO_ENV)
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
 # input, Search grounding and structured outputs, which is everything the investigation request uses.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
@@ -162,33 +125,29 @@ def _sanitise_diagnostic(text: str) -> str:
 
 
 def client() -> genai.Client:
-    """Return the appropriate Gemini SDK client for the current provider mode.
+    """Return the Gemini SDK client. Only valid in production (live) environments.
     
-    SAFETY: In mock/simulated mode, this function is NEVER called — the preview
-    dispatch handles those modes entirely. If somehow called in a preview mode,
-    it raises immediately rather than making an unintended external call.
+    In preview the preview dispatch handles generate() — client() is never called.
+    If somehow reached in preview, it raises rather than making an unintended call.
     """
     global _client, _dev_client
 
-    if _PROVIDER_MODE in ("mock", "simulated"):
+    if IS_PREVIEW and _preview_generate is not None:
         raise ProviderFailure(
             "provider_configuration",
-            original_message=f"FATAL: client() called in {_PROVIDER_MODE} mode. The preview dispatch "
-                             "should handle all generate() calls. This indicates a code path bypassing "
-                             "the preview handler.")
+            original_message="FATAL: client() called in preview. The preview dispatch "
+                             "handles all generate() calls.")
 
-    if _PROVIDER_MODE == "live_test":
-        if not _GEMINI_DEV_API_KEY:
-            raise ProviderFailure("provider_configuration",
-                                  original_message="live_test mode requires GEMINI_DEV_API_KEY")
+    if _GEMINI_DEV_API_KEY and not GEMINI_API_KEY:
+        # Dev-key testing in preview: explicit choice to use live AI with a dev project key
         if _dev_client is None:
             _dev_client = genai.Client(api_key=_GEMINI_DEV_API_KEY, http_options=types.HttpOptions(
                 timeout=CALL_SECONDS * 1000, retry_options=types.HttpRetryOptions(attempts=1)))
         return _dev_client
 
-    # live mode
     if not GEMINI_API_KEY:
-        raise ProviderFailure("provider_configuration")
+        raise ProviderFailure("provider_configuration",
+                              original_message="GEMINI_API_KEY is not set. Cannot make live Gemini calls.")
     if _client is None:
         _client = genai.Client(api_key=GEMINI_API_KEY, http_options=types.HttpOptions(
             timeout=CALL_SECONDS * 1000, retry_options=types.HttpRetryOptions(attempts=1)))
@@ -337,31 +296,23 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    trigger_source: str | None = None) -> GeminiResult:
     """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
 
-    NO-FALLBACK CONTRACT: In production (_PROVIDER_MODE='live'), every Gemini failure is
-    reported exactly as-is — the error code, the HTTP status, the finish reason. There is
-    no simulation fallback, no mock substitute, no "try again with fake data" path.
-    Higgins surfaces the honest failure to the person.
+    NO-FALLBACK CONTRACT: In production every Gemini failure is reported exactly as-is.
+    There is no simulation fallback. Higgins surfaces the honest failure to the person.
 
-    Production: the auto-upgrade at import time ensures _PROVIDER_MODE='live' whenever
-    GEMINI_API_KEY is present. The preview handler branch below is structurally unreachable.
-    Preview/dev: a preview handler is installed at startup by services.higgins.preview.dispatch
-    — this file contains zero imports or references to preview/simulation modules.
+    Preview: the preview dispatch handles generate() calls — installed at startup.
+    Production: preview code is not deployed. This function calls live Gemini only.
     """
-    # ── Preview-only handler (structurally unreachable in production) ──────
-    # _PROVIDER_MODE is auto-upgraded to 'live' at import time when GEMINI_API_KEY
-    # is present, and _validate_mode_at_import() raises if a production env tries
-    # to use simulated/mock. This branch serves ONLY dev/preview environments.
-    if _PROVIDER_MODE in ("simulated", "mock"):
-        if _preview_generate is not None:
-            return await _preview_generate(
-                system, contents, model=model, capability=capability,
-                json_output=json_output, tools=tools, timeout=timeout,
-                response_schema=response_schema, purpose=purpose,
-                correlation_id=correlation_id, trigger_source=trigger_source)
-        raise ProviderFailure(
-            "provider_configuration",
-            original_message=f"Provider mode is '{_PROVIDER_MODE}' but no preview handler is registered. "
-                             "Call services.higgins.preview.dispatch.install_preview_provider() at startup.")
+    # ── Preview environment — dispatch handles it ─────────────────────────
+    # In production this branch does not exist (preview code is excluded).
+    # At runtime in preview, the handler was installed at startup.
+    if IS_PREVIEW and _preview_generate is not None:
+        return await _preview_generate(
+            system, contents, model=model, capability=capability,
+            json_output=json_output, tools=tools, timeout=timeout,
+            response_schema=response_schema, purpose=purpose,
+            correlation_id=correlation_id, trigger_source=trigger_source)
+
+    # ── Live Gemini — production path ─────────────────────────────────────
 
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
@@ -521,19 +472,16 @@ def configuration() -> dict:
     models = {"investigation": TEXT_MODEL, "vision": VISION_MODEL,
               "recovery": RECOVERY_MODEL or None, "chat": CHAT_MODEL,
               "triage": TRIAGE_MODEL}
-    mode = _PROVIDER_MODE
-    mock_active = mode == "mock"
-    return {"provider": "Gemini" if not mock_active else "Gemini (MOCK)",
-            "provider_mode": mode,
-            "mock_active": mock_active,
+    preview_active = IS_PREVIEW and _preview_generate is not None
+    return {"provider": "Gemini (preview)" if preview_active else "Gemini",
+            "environment": APOLLO_ENV,
+            "preview_active": preview_active,
             "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
-            "devKeyConfigured": bool(_GEMINI_DEV_API_KEY),
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
-            "accountAccess": "Direct Google AI Studio API key" if not mock_active else "Mock provider (no external calls)",
-            "providerRetention": "Apollo uses the Gemini API directly via the google-genai SDK under Google's published "
+            "accountAccess": "Preview provider (no external calls)" if preview_active else "Direct Google AI Studio API key",
+            "providerRetention": "Preview mode: no data leaves this server." if preview_active else
+                                 "Apollo uses the Gemini API directly via the google-genai SDK under Google's published "
                                  "Gemini API terms. Apollo does not control or independently verify Google's internal "
-                                 "retention practices. Apollo's own request-scoped processing copies are closed after completion."
-                                 if not mock_active else
-                                 "Mock mode: no data leaves this server.",
-            "dataFlow": "Device -> Apollo service -> Google Gemini API." if not mock_active else
-                        "Device -> Apollo service -> Mock provider (local, deterministic)."}
+                                 "retention practices. Apollo's own request-scoped processing copies are closed after completion.",
+            "dataFlow": "Device -> Apollo service -> Preview provider (local)." if preview_active else
+                        "Device -> Apollo service -> Google Gemini API."}
