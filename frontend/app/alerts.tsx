@@ -200,7 +200,7 @@ export default function AlertsScreen() {
                 testID={`alert-event-${e.event_id}`}
                 accessibilityRole="button"
                 accessibilityLabel={`${STATE_NAME[e.state]}: ${e.headline}`}
-                onPress={() => router.push(`/threats-list?highlight=${e.event_id}`)}
+                onPress={() => router.push({ pathname: "/patrol/[id]", params: { id: e.event_id } })}
                 style={({ pressed }) => [s.eventRow, { opacity: pressed ? 0.7 : 1 }]}
               >
                 <View style={[s.iconWrap, { backgroundColor: e.state === "barking" || e.state === "biting" ? colors.barkingTint : e.state === "growling" ? colors.growlingTint : colors.surfaceTertiary }]}>
