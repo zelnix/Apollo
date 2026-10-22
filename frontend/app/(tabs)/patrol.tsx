@@ -117,7 +117,7 @@ const useStyles = makeStyles((c) => ({
   headerIcons: { flexDirection: "row", gap: spacing.md },
   headerIconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
   // Title section
-  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xs, gap: 2 },
   titleText: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface },
   subtitleText: { fontFamily: fonts.text, fontSize: 15, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   // Controls row (filter dropdown + sort)
@@ -266,9 +266,11 @@ export default function ThreatsScreen() {
     <View style={s.root} testID="threats-screen">
       {/* Title */}
       <View style={[s.titleRow, { paddingTop: insets.top + spacing.sm }]}>
-        <Text style={s.titleText}>Threats</Text>
-        <AlertsButton testID="threats-alerts" />
-        <InfoButton info={THREATS_INFO} testID="threats-info" />
+        <Text style={[s.titleText, { flex: 1 }]}>Threats</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+          <AlertsButton testID="threats-alerts" />
+          <InfoButton info={THREATS_INFO} testID="threats-info" />
+        </View>
       </View>
       <Text style={s.subtitleText} testID="threats-last-check">
         {lastActivityAt ? `Apollo last checked ${new Date(lastActivityAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : "Apollo hasn't run a check yet"}

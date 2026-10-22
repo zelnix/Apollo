@@ -10,10 +10,10 @@ import { getNotificationHealth } from "@/src/push/notifications";
 import { makeStyles, radius, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
-  // Matches InfoButton's 44pt touch target so header icons line up.
-  button: { width: 44, height: 44, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  // Compact touch target — hitSlop extends the tappable area beyond the visual boundary.
+  button: { width: 34, height: 34, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   dot: {
-    position: "absolute", top: 10, right: 10, width: 9, height: 9, borderRadius: radius.pill,
+    position: "absolute", top: 5, right: 5, width: 9, height: 9, borderRadius: radius.pill,
     backgroundColor: c.warning, borderWidth: 1.5, borderColor: c.surface,
   },
 }));

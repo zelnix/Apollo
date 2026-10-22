@@ -11,8 +11,8 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 export interface ScreenInfo { title: string; body: string | string[] }
 
 const useStyles = makeStyles((c) => ({
-  // Icon sits flush with the right edge of its 44pt touch target so it lines up at the far right of headers.
-  button: { width: 44, height: 44, borderRadius: radius.pill, alignItems: "flex-end", justifyContent: "center" },
+  // Compact touch target — hitSlop extends the tappable area beyond the visual boundary.
+  button: { width: 34, height: 34, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   paragraph: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
 }));
 

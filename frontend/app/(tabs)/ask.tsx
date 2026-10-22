@@ -56,7 +56,7 @@ const useStyles = makeStyles((c) => ({
   // Column: the icon row can never squeeze the words, so nothing in the header is ever truncated.
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 2 },
   avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: 42, height: 42 },
   aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
@@ -64,7 +64,7 @@ const useStyles = makeStyles((c) => ({
   headerText: { flex: 1 },
   name: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
   subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
-  menuBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  menuBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
 
   list: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
 
@@ -528,7 +528,7 @@ export default function Ask() {
           <View style={s.headerActions}>
             <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={15} color={colors.onSurface} /></Pressable>
             <AlertsButton testID="higgins-alerts" />
-            <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={[s.menuBtn, { alignItems: "flex-end" }]} onPress={() => setAboutOpen(true)}><Info size={17} color={colors.onSurface} /></Pressable>
+            <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={s.menuBtn} onPress={() => setAboutOpen(true)}><Info size={17} color={colors.onSurface} /></Pressable>
           </View>
         </View>
         <Text style={s.subtitle}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>

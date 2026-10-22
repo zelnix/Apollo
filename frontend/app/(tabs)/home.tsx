@@ -319,7 +319,7 @@ export default function Home() {
             contentFit="contain"
             testID="home-brand-title"
           />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
             {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
             <AlertsButton testID="home-alerts" />
           </View>
