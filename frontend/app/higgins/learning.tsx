@@ -2,12 +2,11 @@
 // Redesigned to match the approved mock-up with hero section, search,
 // topic tiles, featured learning, all articles list, and filter bottom sheet.
 
-import { useRouter } from "expo-router";
+import { useRouter, useSegments } from "expo-router";
 import ArrowUpDown from "lucide-react-native/icons/arrow-up-down";
-import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import Calendar from "lucide-react-native/icons/calendar";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Clock from "lucide-react-native/icons/clock";
-import Calendar from "lucide-react-native/icons/calendar";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Search from "lucide-react-native/icons/search";
@@ -30,12 +29,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button } from "@/src/components/ui";
+import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
+import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { learningArticles, type LearningArticleSummary } from "@/src/higgins/hubClient";
-import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-
-const higginsHeadshot = require("@/assets/images/higgins-avatar.png");
-const learningHeroBg = require("@/assets/images/learning-hero-bg.png");
 
 // ── Topic tile definitions ──────────────────────────────────────────────────
 interface TopicTile {
@@ -524,6 +521,7 @@ export default function HigginsLearningScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const isTab = (useSegments() as string[]).includes("(tabs)");
 
   const [items, setItems] = useState<LearningArticleSummary[]>([]);
   const [backendFilters, setBackendFilters] = useState<Record<string, string[]>>({});
@@ -586,38 +584,16 @@ export default function HigginsLearningScreen() {
     [],
   );
 
-  // ── Header area (back button + title) ──
-  const headerArea = (
-    <View style={{ paddingTop: insets.top }}>
-      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.xs }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          testID="learning-back"
-          onPress={() => goBackOrHome(router)}
-          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-        >
-          <ChevronLeft size={24} color={colors.onSurface} />
-        </Pressable>
-        <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: colors.onSurface, flex: 1 }}>Learn with Higgins</Text>
-      </View>
-    </View>
-  );
+  // ── Header area ──
+  // Tab root: RootScreenHeader (consistent with Scam Alerts)
+  // Standalone: ChildScreenHeader (back X + title)
+  const headerArea = isTab
+    ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Learn with Higgins" testID="learning-header" /></View>
+    : <ChildScreenHeader title="Learn with Higgins" testID="learning-header" />;
 
-  // ── List header (hero + search + topics + featured) ──
+  // ── List header (search + topics + featured) ──
   const listHeader = (
     <View style={{ gap: spacing.sm }}>
-      {/* Hero card with background image and Higgins avatar */}
-      <View style={s.heroCard}>
-        <Image source={learningHeroBg} style={s.heroBgImage} resizeMode="cover" />
-        <View style={s.heroAvatarWrap}>
-          <Image source={higginsHeadshot} style={s.heroAvatarImg} resizeMode="cover" />
-        </View>
-      </View>
-      <Text style={s.heroSub}>
-        Practical guidance to help you recognise scams and stay safer online.
-      </Text>
-
       {/* Search + Filters */}
       <View style={s.searchRow}>
         <View style={s.searchBar}>

@@ -62,7 +62,7 @@ const useStyles = makeStyles((c) => ({
   aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
   aboutAvatarImg: { width: "100%", aspectRatio: 0.833, borderRadius: 16, marginBottom: spacing.sm },
   headerText: { flex: 1 },
-  name: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
+  name: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface },
   subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 2 },
   menuBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
 
@@ -517,7 +517,7 @@ export default function Ask() {
           <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
           <View style={s.headerText}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Text style={s.name}>Higgins</Text>
+              <Text style={s.name}>Ask Higgins</Text>
               {isMock ? <DevTag label="Preview" testID="higgins-mock-pill" /> : null}
             </View>
           </View>

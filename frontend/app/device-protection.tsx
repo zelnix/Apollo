@@ -181,7 +181,7 @@ export default function DeviceProtection() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle}>Device Protection</Text>
+          <Text style={s.headerTitle}>Device Capabilities and Status</Text>
           <AlertsButton testID="device-prot-alerts" />
         </View>
       </View>
