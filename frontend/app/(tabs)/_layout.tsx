@@ -3,7 +3,7 @@ import { NativeTabs } from "expo-router/unstable-native-tabs";
 // Bottom nav uses genuine solid/filled icons (pure SVG, no native font linking — safe in Expo Go
 // and web). Lucide is outline-only by design; faking "solid" with thicker strokes looks wrong, so
 // Lucide stays for secondary in-screen actions only (see other screens) and never the tab bar.
-import { ChatBubbleLeftRight, Cog6Tooth, Home, Megaphone, ShieldExclamation } from "@nandorojo/heroicons/24/solid";
+import { ChatBubbleLeftRight, Home, Megaphone, ShieldExclamation, BookOpen } from "@nandorojo/heroicons/24/solid";
 import React from "react";
 import { Platform, Text } from "react-native";
 
@@ -14,8 +14,8 @@ import { fonts, useTheme } from "@/src/theme";
 const isIOS26 = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
 const NAV_ICON_SIZE = 25;
 
-// Tab order: Home → Threats → Alerts → Higgins → Settings
-// Hidden tabs (accessible via routes but not in the tab bar): check-it, guard, protection
+// Tab order: Home → Threats → Alerts → Higgins → Learn
+// Hidden tabs (accessible via routes but not in the tab bar): check-it, guard, protection, settings
 export default function TabsLayout() {
   const { colors } = useTheme();
   const { ready, setupDone } = useApollo();
@@ -29,7 +29,7 @@ export default function TabsLayout() {
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="settings"><NativeTabs.Trigger.Icon sf="gearshape.fill" /><NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="learn"><NativeTabs.Trigger.Icon sf="book.fill" /><NativeTabs.Trigger.Label>Learn</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
   }
@@ -58,11 +58,12 @@ export default function TabsLayout() {
       <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats") }} />
       <Tabs.Screen name="scams" options={{ title: "Alerts", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel("Alerts") }} />
       <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
-      <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: tabIcon(Cog6Tooth), tabBarLabel: tabLabel("Settings") }} />
+      <Tabs.Screen name="learn" options={{ title: "Learn", tabBarButtonTestID: "tab-learn", tabBarIcon: tabIcon(BookOpen), tabBarLabel: tabLabel("Learn") }} />
       {/* Hidden tabs — still routable for deep links and backwards compatibility */}
       <Tabs.Screen name="check-it" options={{ href: null }} />
       <Tabs.Screen name="guard" options={{ href: null }} />
       <Tabs.Screen name="protection" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -3,15 +3,20 @@ import Camera from "lucide-react-native/icons/camera";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileText from "lucide-react-native/icons/file-text";
 import Globe from "lucide-react-native/icons/globe";
-import GraduationCap from "lucide-react-native/icons/graduation-cap";
 import Mail from "lucide-react-native/icons/mail";
+import Menu from "lucide-react-native/icons/menu";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
 import Shield from "lucide-react-native/icons/shield";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
-import React from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import Settings from "lucide-react-native/icons/settings";
+import Info from "lucide-react-native/icons/info";
+import Lock from "lucide-react-native/icons/lock";
+import HelpCircle from "lucide-react-native/icons/life-buoy";
+import X from "lucide-react-native/icons/x";
+import React, { useState } from "react";
+import { Modal, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { Image } from "expo-image";
@@ -216,6 +221,12 @@ const useStyles = makeStyles((c) => ({
   activitySub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   activityTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary },
   findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
+
+  // ── Hamburger menu ──
+  menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)" },
+  menuSheet: { position: "absolute", top: 0, right: 0, width: 280, height: "100%", backgroundColor: c.surface, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: -4, height: 0 }, elevation: 16 },
+  menuItem: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.lg, paddingHorizontal: spacing.lg, borderBottomWidth: 0.5, borderBottomColor: c.divider },
+  menuLabel: { flex: 1, fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
 }));
 
 
@@ -229,6 +240,7 @@ export default function Home() {
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // ── Refresh data whenever Home regains focus (e.g. after handling an item) ──
   useFocusEffect(
@@ -322,6 +334,15 @@ export default function Home() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
             {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
             <AlertsButton testID="home-alerts" />
+            <Pressable
+              testID="home-menu"
+              accessibilityRole="button"
+              accessibilityLabel="Menu"
+              onPress={() => setMenuOpen(true)}
+              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            >
+              <Menu size={22} color={colors.onSurface} />
+            </Pressable>
           </View>
         </View>
         <Text style={[s.brandSubtitle, { fontSize: Math.max(9, Math.min(11, screenW * 0.028)) }]}>Better Protection. Safer You. Safer Tomorrows.</Text>
@@ -445,23 +466,23 @@ export default function Home() {
             </View>
           </Pressable>
 
-          {/* Learn with Higgins Card */}
+          {/* Device Protection Card */}
           <Pressable
-            testID="home-learn-card"
+            testID="home-device-card"
             accessibilityRole="button"
-            accessibilityLabel="Learn with Higgins"
-            onPress={() => router.push("/higgins/learning")}
+            accessibilityLabel="Device Protection"
+            onPress={() => router.push("/device-protection")}
             style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
           >
             <View style={s.halfCardTitleRow}>
               <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: colors.goldTint }]}>
-                <GraduationCap size={compact ? 14 : 16} color={colors.gold} />
+                <Smartphone size={compact ? 14 : 16} color={colors.gold} />
               </View>
-              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Learn</Text>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Device</Text>
             </View>
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Practical scam-safety lessons from Higgins.</Text>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Device capabilities, protection and check history.</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
-              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>Start</Text>
+              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>View</Text>
             </View>
           </Pressable>
         </View>
@@ -577,6 +598,39 @@ export default function Home() {
 
       </ScrollView>
       <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} auto />
+
+      {/* ── Hamburger Menu Modal ── */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={s.menuOverlay} onPress={() => setMenuOpen(false)}>
+          <View style={[s.menuSheet, { paddingTop: insets.top + spacing.sm }]}>
+            {/* Close button */}
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+              <Pressable onPress={() => setMenuOpen(false)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Close menu">
+                <X size={22} color={colors.onSurface} />
+              </Pressable>
+            </View>
+            {([
+              { label: "Settings", icon: Settings, route: "/(tabs)/settings", testID: "menu-settings" },
+              { label: "About Apollo", icon: Info, route: "/about", testID: "menu-about" },
+              { label: "Privacy", icon: Lock, route: "/privacy", testID: "menu-privacy" },
+              { label: "Support", icon: HelpCircle, route: "/support", testID: "menu-support" },
+            ] as const).map((item) => (
+              <Pressable
+                key={item.testID}
+                testID={item.testID}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                onPress={() => { setMenuOpen(false); router.push(item.route as any); }}
+                style={({ pressed }) => [s.menuItem, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <item.icon size={20} color={colors.onSurface} />
+                <Text style={s.menuLabel}>{item.label}</Text>
+                <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
