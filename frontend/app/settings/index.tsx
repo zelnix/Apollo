@@ -55,7 +55,7 @@ const useStyles = makeStyles((c) => ({
   rowLabel: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface },
   rowHint: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, marginTop: 2 },
   trustRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
-  catRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider, opacity: 0.7 },
+  catRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: c.divider, opacity: 0.7 },
   footer: { fontFamily: fonts.text, fontSize: 12, color: c.muted, textAlign: "center" },
 }));
 
@@ -95,7 +95,7 @@ export default function SettingsScreen() {
   );
   const SwitchRow = ({ label, hint, value, onValueChange, testID, first }: { label: string; hint?: string; value: boolean; onValueChange: (v: boolean) => void; testID: string; first?: boolean }) => (
     <View style={[s.rowItem, !first && s.divider]}>
-      <View style={{ flex: 1 }}><Text style={s.rowLabel}>{label}</Text>{hint ? <Text style={s.rowHint}>{hint}</Text> : null}</View>
+      <View style={{ flex: 1 }}><Text style={s.rowLabel}>{label}</Text>{hint ? <Text style={s.rowHint} numberOfLines={1}>{hint}</Text> : null}</View>
       <Switch testID={testID} value={value} onValueChange={onValueChange} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
     </View>
   );
@@ -141,20 +141,20 @@ export default function SettingsScreen() {
         <View style={s.catRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.rowLabel}>Barking</Text>
-            <Text style={s.rowHint}>Active threats that need your immediate attention</Text>
+            <Text style={s.rowHint} numberOfLines={1}>Active threats needing immediate attention</Text>
           </View>
           <Pill tone="barking" label="Always on" testID="settings-cat-barking" />
         </View>
         <View style={s.catRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.rowLabel}>Biting</Text>
-            <Text style={s.rowHint}>Confirmed protective blocks Apollo has enforced</Text>
+            <Text style={s.rowHint} numberOfLines={1}>Confirmed protective blocks Apollo enforced</Text>
           </View>
           <Pill tone="barking" label="Always on" testID="settings-cat-biting" />
         </View>
         {/* Configurable categories */}
-        <SwitchRow label="Sniffing &amp; Growling" hint="Cases needing your attention, with a link straight to the case" value={notificationPreferences.sniffing_growling} onValueChange={(v) => void setNotificationPreferences({ sniffing_growling: v })} testID="settings-cat-sniffing-growling" />
-        <SwitchRow label="New Scam Alerts" hint="New scam advisories from official sources" value={notificationPreferences.scam_alerts} onValueChange={(v) => void setNotificationPreferences({ scam_alerts: v })} testID="settings-cat-scam-alerts" />
+        <SwitchRow label="Sniffing &amp; Growling" hint="Cases with a link straight to the investigation" value={notificationPreferences.sniffing_growling} onValueChange={(v) => void setNotificationPreferences({ sniffing_growling: v })} testID="settings-cat-sniffing-growling" />
+        <SwitchRow label="New Scam Alerts" hint="New advisories from official sources" value={notificationPreferences.scam_alerts} onValueChange={(v) => void setNotificationPreferences({ scam_alerts: v })} testID="settings-cat-scam-alerts" />
         <SwitchRow label="Learn with Higgins" hint="New learning content from Higgins" value={notificationPreferences.learn_with_higgins} onValueChange={(v) => void setNotificationPreferences({ learn_with_higgins: v })} testID="settings-cat-learn-higgins" />
       </Group>
 

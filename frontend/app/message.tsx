@@ -46,7 +46,6 @@ import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
 const SIMULATED_TEXTS: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_TEXTS : [];
-import { useApollo } from "@/src/store/ApolloContext";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
