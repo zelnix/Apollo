@@ -7,12 +7,14 @@
        These are sensitive; Apollo requests them contextually and only reads on demand (no background use). -->
   <uses-permission android:name="android.permission.READ_CALL_LOG" />
   <uses-permission android:name="android.permission.READ_SMS" />
-  <!-- Package visibility (Android 11+): Apollo deliberately does NOT use QUERY_ALL_PACKAGES. It can only see the
-       remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
+  <!-- Package visibility (Android 11+): Apollo deliberately does NOT request blanket all-package
+       visibility and is NOT an AccessibilityService. It can only see the remote-access risk catalog,
+       the stores/browsers/messengers needed to name an install source, and the OS/OEM scam-protection
+       providers it reports in Device Capabilities.
        Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES. -->
   <queries>
     <!-- Launchable user apps only: lets Apollo offer a "pick from installed apps" list without
-         QUERY_ALL_PACKAGES. This exposes apps the user can open from the launcher, nothing hidden. -->
+         blanket all-package visibility. This exposes apps the user can open from the launcher, nothing hidden. -->
     <intent>
       <action android:name="android.intent.action.MAIN" />
       <category android:name="android.intent.category.LAUNCHER" />
@@ -54,6 +56,16 @@
     <package android:name="com.samsung.android.messaging" />
     <package android:name="com.google.android.packageinstaller" />
     <package android:name="com.android.packageinstaller" />
+    <!-- Device Capabilities: OS/OEM scam-protection providers Apollo DETECTS (presence + whether it
+         is the active handler). Visibility is needed so "not installed" can be told apart from
+         "Android will not say". Apollo never reads these apps' scam verdicts. -->
+    <package android:name="com.google.android.dialer" />
+    <package android:name="com.samsung.android.dialer" />
+    <package android:name="com.samsung.android.smartcallprovider" />
+    <package android:name="com.hiya.star" />
+    <package android:name="com.tmobile.scamshield" />
+    <package android:name="com.att.callprotect" />
+    <package android:name="com.verizon.callfilter" />
   </queries>
   <application>
     <receiver android:name="com.hucentai.apollosecurity.ApolloGuardDogRestartReceiver" android:enabled="true" android:exported="true">

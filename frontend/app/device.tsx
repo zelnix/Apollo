@@ -303,6 +303,7 @@ export default function CheckDevice() {
   // All checks of this device share one case key, so Threats shows ONE device-check case with the
   // latest result instead of a new case per check. Background refreshes (simply opening this screen)
   // are not checks the person asked for and are never recorded.
+  const [historyKey, setHistoryKey] = useState(0);
   const recordedRun = useRef<number | null>(null);
   useEffect(() => {
     if (recheckPhase !== "briefing" || !briefing || checking || briefingRun === null) return;
@@ -323,6 +324,10 @@ export default function CheckDevice() {
       text: briefing.findings.join("\n"),
       data: review ? { overall: review.overall, results: review.results } : { state: result.state, findings: result.findings },
     }).catch(() => undefined);
+    // Check history records the SAME user-initiated checks as Patrol — never a background refresh,
+    // so "Checked today" on the Device screen can only mean a check the person actually ran.
+    void recordCheck("device", { at: checkedAt, state: review ? overallState(review.overall) : result.state, summary: briefing.headline });
+    setHistoryKey((k) => k + 1);
   }, [recheckPhase, briefing, briefingRun, checking, deviceId, adapterLabel, hostKind, platform, review, result, upsertEvent]);
 
   const openCheck = (r: CheckResult) => {
@@ -336,8 +341,6 @@ export default function CheckDevice() {
   // new submission appends to the SAME case rather than replacing its accepted history.
   const [submission, setSubmission] = useState<DeviceSubmission | null>(null);
   useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [historyKey, setHistoryKey] = useState(0);
-  useEffect(() => { if (checkSequence) { void recordCheck("device", { at: new Date().toISOString(), state: result.state, summary: meta.title }); setHistoryKey((k) => k + 1); } }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Guided "Fix it" flow ──
   const [fixingCheck, setFixingCheck] = useState<CheckResult | null>(null);

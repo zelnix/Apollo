@@ -51,8 +51,23 @@ object AppDeviceCatalog {
   )
   /** System package installers — an APK opened by the person (sideload) reports one of these as its installer. */
   val INSTALLERS: Set<String> = setOf("com.google.android.packageinstaller", "com.android.packageinstaller")
+  /**
+   * OS/OEM scam-protection providers Apollo DETECTS for Device Capabilities (never reads verdicts from).
+   * Package visibility is required on Android 11+ purely so Apollo can tell "this provider is not
+   * installed" apart from "Android will not say" — a false negative would wrongly report that the
+   * device has no built-in call protection. Apollo reads presence and default-handler status only.
+   */
+  val NATIVE_PROTECTION: Set<String> = setOf(
+    "com.google.android.dialer",
+    "com.samsung.android.dialer",
+    "com.samsung.android.smartcallprovider",
+    "com.hiya.star",
+    "com.tmobile.scamshield",
+    "com.att.callprotect",
+    "com.verizon.callfilter",
+  )
   /** Everything Apollo needs to be able to see, for the manifest `<queries>` block. */
-  val VISIBLE_PACKAGES: List<String> = (RISK_CATALOG.keys + STORES.keys + BROWSERS + MESSENGERS + INSTALLERS).toList()
+  val VISIBLE_PACKAGES: List<String> = (RISK_CATALOG.keys + STORES.keys + BROWSERS + MESSENGERS + INSTALLERS + NATIVE_PROTECTION).toList()
 
   /** Maps the installing package (PackageManager.getInstallSourceInfo) to the SDK contract's installSource. */
   fun installSource(installingPackage: String?): String = when {

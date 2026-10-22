@@ -108,7 +108,7 @@ export default function AlertsScreen() {
   // Patrol events — active threats and recent findings
   const activeEvents = useMemo(() =>
     events
-      .filter((e) => e.status !== "duplicate")
+      .slice()
       .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))
       .slice(0, 50),
     [events],

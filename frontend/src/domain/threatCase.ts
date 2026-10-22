@@ -153,6 +153,7 @@ export function sourceLabel(event: PatrolEvent): string {
     case "local_device": return "On-device detection";
     case "dns_observation": return "DNS monitoring";
     case "server_projected": return "Server analysis";
+    case "native_protection": return `${event.source_metadata?.provider ?? "Your device"}'s own protection`;
     default:
       switch (event.category) {
         case "email": return "Email app";

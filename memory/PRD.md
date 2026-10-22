@@ -1,3 +1,106 @@
+## Device Capabilities — real reads, five honest states, native evidence wired in (2026-06)
+
+**Objective.** Apollo must understand (1) what protection the device already provides, (2) what Apollo
+is actually allowed to use, and (3) how to leverage a permitted native classification as evidence and as
+a trigger for Apollo's EXISTING investigation — with attribution to the OS/OEM preserved. The Device area
+shows the person: what my device protects → what Apollo can use → what Apollo cannot access → what extra
+native protection I can enable, plus Device Check and previous check outcomes.
+
+**What was wrong before this change (all verified, not assumed).**
+- `app/device-protection.tsx` read `callProt.provider / .summary / .enabled` from
+  `summariseCallProtection()`, which returns `hasNativeProtection / activeProviders / detail`. Eight
+  TypeScript errors; the guard was always false, so **no Samsung / Google / carrier protection ever
+  rendered**. The only rows shown were two hardcoded ones.
+- Those hardcoded rows asserted "Google Play Protect — on" and "Lockdown Mode — off". Apollo cannot read
+  either state. Truth-of-state violation.
+- "Apollo can use" was `available: Platform.OS === "android"` — a platform guess. It ignored
+  `AppDeviceSdk.getAppDeviceCapabilities()` (which already returns `supported / permission_required /
+  unsupported`). Someone who had denied Call Log still saw "Call history ✓ Apollo can use".
+- "Checked today / x days ago" read `apollo.lastDeviceCheckAt`, a key nothing in the codebase writes —
+  so it always said "Not checked yet".
+- `buildNativeClassificationEvidence` had **zero callers**; nothing called the classification intake
+  anywhere. The native-evidence → investigation path existed on paper only.
+- "What additional native protection can I enable" did not exist at all.
+- `detectNativeProtection()` swallowed Android read failures into `EMPTY_CAPABILITIES`, turning a broken
+  read into "your device protects nothing".
+
+**New pure engine `src/domain/deviceCapabilities.ts`.** `buildDeviceCapabilities({platform, caps, native})`
+resolves a 13-entry catalogue into exactly the five declared classes — `apollo_can_use`,
+`permission_required`, `not_exposed`, `unavailable` — plus an honest `unknown` for a failed read, which is
+**never** upgraded. Native protections managed by the device are tracked separately as
+`NativeProtectionRow` (`active` / `installed_not_default` / `absent` / `unknown`) so the provider, not
+Apollo, owns the row. `native_call_verdict` / `native_message_verdict` resolve from
+`classificationAccessible`: shared → usable evidence attributed to the provider; present but not shared →
+`not_exposed` with "Apollo will not guess it from blocked calls or unknown numbers"; nothing recognised →
+`unavailable`. `caps: null` or `native: null` ⇒ `unknown`, never "clear".
+
+**Recommendations Apollo cannot verify** use the owner's exact wording: title → `Recommended protection`
+→ "Apollo can't verify whether this is currently enabled." → "Higgins recommends checking that Play
+Protect is turned on." → "Check Play Protect →", then a sheet with WHY it matters and the exact numbered
+setting path. Android: Play Protect, caller ID & spam (Samsung vs Google steps chosen from the real
+default handler), Messages spam protection. iOS: Silence Unknown Callers, Filter Unknown Senders, plus
+Lockdown Mode as `Optional protection` — "Higgins only recommends this if you believe you are being
+personally targeted." Any provider that is installed but not the active handler gets a generated
+"choose your phone/messaging app" recommendation.
+
+**Screen rebuild `app/device-protection.tsx`.** Sections in the person's order: This device (+ last check
+from the real check-history store) → Check Device → What your device protects → What Apollo can use →
+Needs your permission → What Apollo cannot access → Apollo couldn't tell (only when a read genuinely
+failed) → More protection you can turn on → Not on this device (compacted) → previous check history.
+Reads are real: `getAppDeviceCapabilities()` + `detectNativeProtection()` via `Promise.allSettled`, each
+failure landing as `null`. No native host (browser preview) is reported as exactly that, distinct from a
+failed read.
+
+**Native classification wired into the existing investigation** (`src/domain/nativeClassification.ts` +
+`ApolloContext.checkCall` / `checkMessage`). `readNativeClassification()` asks the intake; when a provider
+ever shares a verdict it becomes (a) the FIRST `why[]` line, worded "…This is <provider>'s finding,
+reported by Apollo — not an Apollo detection", (b) an original-source field "<provider> said:
+<classification> (<confidence> confidence)", (c) `evidence_provenance: "native_protection"` with the
+provider on `source_metadata.provider` / `provider_classification` / `provider_confidence`, and (d) a
+trigger that opens Apollo's existing Magnum DI investigation even when Triage found nothing. The
+investigation itself is unchanged. Attribution is carried through to the case screen: `caseSources`
+("<provider> classified this as … That is <provider>'s finding — Apollo investigated it from there"),
+`threatCase.sourceLabel`, and the `patrol/[id]` provenance line. Today no provider exposes a verdict, so
+the path is inert by design — and tested so it cannot silently start claiming one.
+
+**Android package visibility (needs a native build to confirm).** `com.google.android.dialer`,
+`com.samsung.android.dialer`, `com.samsung.android.smartcallprovider`, `com.hiya.star`,
+`com.tmobile.scamshield`, `com.att.callprotect`, `com.verizon.callfilter` added to
+`AppDeviceCatalog.NATIVE_PROTECTION` and the `<queries>` block (44 ≡ 44, parity asserted by
+`AppDeviceCatalogTest`). Without them Android 11+ returns NameNotFound for non-launchable providers and
+Apollo reported "not installed" when the honest answer was "Android will not say". The manifest/catalog
+comments no longer contain the literal `QUERY_ALL_PACKAGES`, which was itself failing that JUnit guard.
+
+**Other real bugs found and fixed on the way.**
+- `src/domain/privacy.ts`: `push_preferences` and `device_posture` were missing from `EgressEndpoint` and
+  `ALLOWED_KEYS`, so `enforceEgress` threw on `ALLOWED_KEYS[endpoint].has(...)`. Notification-category
+  sync and every Device Posture Monitor report to `/api/devices/posture` were failing silently inside
+  their `try/catch`. Both endpoints declared with explicit allow-lists.
+- `src/domain/deviceReview.ts`: the >5-month security-patch branch returned `{detail, recommendation}`
+  instead of `{risk, remediation, verifiedBy}`, so a badly out-of-date device showed "Action required"
+  with no risk text and no instruction. Now uses the `action()` builder.
+- `src/security/nativeBridge.ts`: `getNativeProtectionCapabilities` and `getDevicePostureSnapshot` were
+  missing from `ApolloSecurityNativeModule`, so neither bridge call was type-checked at all.
+- `app/device.tsx`: check history was recorded on EVERY refresh, including the automatic one on open, so
+  "Checked today" could mean "you opened the screen". History now records the same user-initiated checks
+  Patrol does, keyed on the same `briefingRun`.
+- `app/alerts.tsx`: dead `status !== "duplicate"` filter ("duplicate" is not an `EventStatus`).
+
+**Verification.** `tests/deviceCapabilities.test.ts` 19/19 (five classes exact, failed read never
+upgraded, Apple/Android attribution verbatim, provider verdict shared vs withheld vs absent, no
+recommendation ever claims a setting is on, Samsung-vs-Google step selection, Lockdown optional,
+attribution + provenance + investigation trigger). Full frontend suite 742 tests / 717 pass / 25 fail —
+**the same 25 that fail on a clean stash**, i.e. zero regressions, +19 new passing. `tsc --noEmit` is now
+fully CLEAN (it had 6 errors before, 8 of them in the broken Device screen). ESLint clean on every file
+touched. Web preview verified (honest no-native-host copy) and the Android branch verified by temporarily
+pinning the view inputs — Samsung Smart Call "Active on your device", Google Messages "Installed, not
+active", 6/13 usable, 3 permission-gated, 4 withheld by Android, both scam verdicts attributed to their
+provider, and the Play Protect sheet. **Real-device confirmation still requires an Android build.**
+
+**Known, not fixed (out of the approved scope).** `app/device.tsx`'s "Add my report to Higgins" button
+writes `submission` state that nothing reads — the self-report switches already feed `assessDevice()`
+live, so the button is redundant rather than lossy.
+
 ## Investigations can complete again + hero artwork + one way out of every screen (2026-06)
 
 **P0 FIXED — every investigation was failing `response_invalid`.** Not a Gemini fault and not a preview

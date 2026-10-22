@@ -153,7 +153,7 @@ export interface PatrolEvent {
    *  - "local_device": created on this device with real, detailed findings.
    *  - "server_projected": came from the server's privacy-projected summary.
    *  - "incomplete": data is missing, unverifiable, or was downgraded by an enforcement truth gate. */
-  evidence_provenance?: "local_device" | "server_projected" | "incomplete" | "dns_observation";
+  evidence_provenance?: "local_device" | "server_projected" | "incomplete" | "dns_observation" | "native_protection";
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;
@@ -225,6 +225,10 @@ export interface SourceMetadata {
   // Text/SMS fields
   preview?: string | null;
   content_complete?: boolean | null;
+  // Native protection attribution — the OS/OEM provider's OWN classification of this call or
+  // message. Recorded verbatim so a Samsung/Google/carrier finding is never read as Apollo's.
+  provider_classification?: string | null;
+  provider_confidence?: string | null;
   // Screenshot/image fields
   image_count?: number | null;
   user_question?: string | null;

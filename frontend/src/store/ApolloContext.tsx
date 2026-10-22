@@ -28,6 +28,7 @@ import { fetchMessageUrlIntel, linkTriageOutcome, type MessageUrlResult } from "
 import { fetchEvidencePhoneIntel } from "@/src/domain/phoneIntel";
 import { extractPhoneCandidates, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
+import { nativeClassificationAttribution, nativeClassificationProvenance, nativeClassificationWhyLine, triggersInvestigation, type NativeClassificationFact } from "@/src/domain/nativeClassification";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { evaluateTriage } from "@/src/domain/triage/engine";
 import { callTriageEvidence, linkTriageEvidence, messageTriageEvidence, numberRiskTriageEvidence, type CorrelationInput } from "@/src/domain/triage/evidence";
@@ -54,6 +55,7 @@ import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
 import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectionAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
+import { getNativeCallClassification, getNativeMessageClassification } from "@/src/security/nativeProtectionEvidence";
 import { storage } from "@/src/utils/storage";
 import { useCallGuardPipeline } from "@/src/pipelines/callGuardPipeline";
 import { useTextGuardLocalFindings } from "@/src/pipelines/textGuardPipeline";
@@ -228,6 +230,27 @@ export interface NotificationPreferences {
   learn_with_higgins: boolean;
 }
 export const DEFAULT_NOTIF_PREFS: NotificationPreferences = { sniffing_growling: true, scam_alerts: true, learn_with_higgins: true };
+
+/** Device Capabilities — read this device's OWN scam classification, but only where the OS/OEM
+ *  exposes it to Apollo through a permitted interface.
+ *
+ *  A native classification is two things and nothing more: evidence that permanently belongs to the
+ *  provider who made it, and a trigger for Apollo's existing investigation. Apollo never re-badges
+ *  it as its own detection, and an unavailable or failed read is never treated as "nothing found". */
+async function readNativeClassification(kind: "call" | "message", subject: string | null | undefined): Promise<NativeClassificationFact | null> {
+  const value = subject?.trim();
+  if (!value) return null;
+  try {
+    const result = kind === "call" ? await getNativeCallClassification(value) : await getNativeMessageClassification(value);
+    if (!result.available) return null;
+    return {
+      provider: result.provider, classification: result.classification, confidence: result.confidence,
+      communicationType: kind, subject: result.subject, classifiedAt: result.classifiedAt,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** Local-time check; mirrors backend `in_quiet_hours`. */
 export function isQuietNow(q: QuietHours, at = new Date()): boolean {
@@ -961,6 +984,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {    const analysis = analyseMessage(sender, text);
     const remoteError: string | null = null;
+    // ── Device Capabilities: the messaging app's own verdict, where it is shared with Apollo ──
+    // Evidence belongs to the provider; it only triggers Apollo's existing investigation.
+    const nativeFact = await readNativeClassification("message", sender);
     // Gate detection path: local/deterministic analysis + link reputation only.
     // No backend investigation call — Magnum DI investigates only when the person requests it.
     const urls = await fetchMessageUrlIntel(analysis.signals.urls, deviceId);
@@ -971,7 +997,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // The patrol record this check will file. Known before the investigation starts so the case can
     // name it, which is what keeps one check to one case.
     const eventId = Crypto.randomUUID();
-    let state = analysis.state; const why = [...analysis.why];
+    let state = analysis.state; const why = [...(nativeFact ? [nativeClassificationWhyLine(nativeFact)] : []), ...analysis.why];
     // Email Guard / Text Guard: automatic pre-click assessment over every checked link plus
     // any display-text-vs-real-destination mismatch. This can only raise state to growling/barking.
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
@@ -988,7 +1014,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones) }));
 
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
-    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triggersInvestigation(nativeFact)) {
       // Tier 2: exactly ONE Magnum DI investigation per correlated case.
       if (existingCaseId) {
         investigationCaseId = existingCaseId;
@@ -1013,11 +1039,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    if (state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
+    if (state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED" || nativeFact) {
       const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
       const apolloHeadline = analysis.state !== "resting"
         ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
-        : guardHeadline;
+        : guardHeadline || (nativeFact ? `${nativeFact.provider} flagged this sender` : "");
       event = await upsertEvent({
         event_id: eventId, device_id: deviceId ?? "local", category: "message", state, status: "active",
         headline: apolloHeadline,
@@ -1029,7 +1055,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
         evidence_phones: phones.length ? phones : null,
-      }, { kind: "text", fields: sender.trim() ? [{ label: "From", value: sender }] : [], text });
+        ...(nativeFact ? { evidence_provenance: nativeClassificationProvenance(), source_metadata: nativeClassificationAttribution(nativeFact) } : {}),
+      }, { kind: "text", fields: [
+        ...(sender.trim() ? [{ label: "From", value: sender }] : []),
+        ...(nativeFact ? [{ label: `${nativeFact.provider} said`, value: `${nativeFact.classification} (${nativeFact.confidence} confidence)` }] : []),
+      ], text });
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
@@ -1218,17 +1248,25 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const checkCall = useCallback(async (input: CallInput) => {
     const analysis = analyseCall(input);
     let event: PatrolEvent | null = null;
+    // ── Device Capabilities: the device's own verdict, where it is shared with Apollo ──
+    // Today no provider exposes one, so this is null and nothing below changes. When one does, it
+    // arrives as that provider's finding and starts Apollo's existing investigation.
+    const nativeFact = await readNativeClassification("call", input.number);
+    const nativeWhy = nativeFact ? [nativeClassificationWhyLine(nativeFact)] : [];
     // ── Triage Investigation (deterministic, 0 Gemini calls) ──
     const { correlation, existingCaseId } = correlationFor({ indicator: input.number?.trim() || null, mechanics: ["remote_access", "scam_call"] });
     const triage = evaluateTriage(callTriageEvidence({ input, analysis, correlation }));
-    if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED") {
+    if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED" || nativeFact) {
       // Tier 2 (Magnum DI) runs for a deterministic Possible Threat, AND when Triage could not
       // settle the call because a source it needed didn't answer — a call Apollo cannot settle
-      // itself is investigated rather than left at "couldn't determine". Once per correlated case.
+      // itself is investigated rather than left at "couldn't determine". A native provider's own
+      // classification is also a trigger: it saw something Apollo may not be able to see. The
+      // investigation itself is unchanged. Once per correlated case.
       let investigationCaseId: string | null = existingCaseId;
       let escalationNote: string | null = null;
-      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE") && !investigationCaseId) {
+      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || triggersInvestigation(nativeFact)) && !investigationCaseId) {
         const callSummary = [
+          nativeFact ? `${nativeFact.provider} classified this number as "${nativeFact.classification}" (${nativeFact.provider}'s own rating, not Apollo's)` : null,
           input.claim ? `Caller said: ${input.claim}` : null,
           input.brandName ? `Claimed brand: ${input.brandName}` : null,
           input.number ? `Number: ${input.number}` : null,
@@ -1240,7 +1278,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             gate: "call",
             question: `Investigate this phone call.\n\n${callSummary}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: callSummary, label: "Call details" }],
-            initial_findings: analysis.why.slice(0, 12),
+            initial_findings: [...nativeWhy, ...analysis.why].slice(0, 12),
           });
           investigationCaseId = typeof remote.case?.id === "string" ? remote.case.id : null;
           if (!investigationCaseId) escalationNote = "Apollo asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.";
@@ -1248,19 +1286,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           escalationNote = `Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`;
         }
       }
+      const why = [...nativeWhy, ...analysis.why];
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
-        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: escalationNote ? [...analysis.why, escalationNote] : analysis.why, what_to_do: analysis.recommendation,
+        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: escalationNote ? [...why, escalationNote] : why, what_to_do: analysis.recommendation,
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
+        ...(nativeFact ? { evidence_provenance: nativeClassificationProvenance(), source_metadata: nativeClassificationAttribution(nativeFact) } : {}),
       }, { kind: "call", fields: [
         ...(input.number?.trim() ? [{ label: "Number", value: input.number }] : []),
+        ...(nativeFact ? [{ label: `${nativeFact.provider} said`, value: `${nativeFact.classification} (${nativeFact.confidence} confidence)` }] : []),
         { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
         ...(input.asks.length ? [{ label: "Asked for", value: input.asks.join(", ") }] : []),
       ], text: input.transcript?.trim() ? input.transcript : null });
       if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
+      if (nativeFact) return { submissionId: event.event_id, analysis: { ...analysis, why: event.why }, event };
     }
     return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event };
   }, [correlationFor, deviceId, upsertEvent]);

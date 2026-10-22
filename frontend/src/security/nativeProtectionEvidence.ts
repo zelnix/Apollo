@@ -115,15 +115,14 @@ export async function detectNativeProtection(): Promise<NativeProtectionCapabili
   if (Platform.OS === "android") {
     const m = getNativeModule();
     if (!m) return EMPTY_CAPABILITIES;
-    try {
-      return await nativeJson<NativeProtectionCapabilities>(
-        "getNativeProtectionCapabilities",
-        () => m.getNativeProtectionCapabilities(),
-        EMPTY_CAPABILITIES,
-      );
-    } catch {
-      return EMPTY_CAPABILITIES;
-    }
+    // A failed read THROWS (NativeCallFailed). It is never flattened into "no protections found" —
+    // that would turn a broken read into a false "your device protects nothing". Callers decide
+    // how to report the failure; every one of them already does.
+    return await nativeJson<NativeProtectionCapabilities>(
+      "getNativeProtectionCapabilities",
+      () => m.getNativeProtectionCapabilities(),
+      EMPTY_CAPABILITIES,
+    );
   }
 
   // iOS: no public API exposes native call/message classification (rule 8).

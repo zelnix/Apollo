@@ -912,6 +912,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
               Source: {event.evidence_provenance === "local_device" ? "captured on this device"
                 : event.evidence_provenance === "server_projected" ? "from server analysis"
                 : event.evidence_provenance === "dns_observation" ? "DNS monitoring"
+                : event.evidence_provenance === "native_protection" ? `first flagged by ${event.source_metadata?.provider ?? "your device's own protection"}`
                 : "incomplete data"}
             </Text>
           ) : null}

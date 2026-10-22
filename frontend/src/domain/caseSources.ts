@@ -78,6 +78,18 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: event.occurred_at,
       answered: true,
     });
+  } else if (event.evidence_provenance === "native_protection") {
+    const owner = (event.source_metadata?.provider ?? "").trim() || "Your device's built-in protection";
+    const verdict = (event.source_metadata?.provider_classification ?? "").trim();
+    sources.push({
+      id: "native_protection",
+      name: owner,
+      returned: verdict
+        ? `${owner} classified this as “${verdict}”. That is ${owner}'s finding — Apollo investigated it from there.`
+        : `${owner} flagged this first. Apollo investigated it from there.`,
+      at: event.occurred_at,
+      answered: true,
+    });
   } else if (event.evidence_provenance === "incomplete") {
     sources.push({
       id: "incomplete",

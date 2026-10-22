@@ -63,8 +63,7 @@ export interface ApolloSecurityNativeModule {
   /** Text Guard: acknowledge (remove) local findings by ID array JSON. */
   acknowledgeTextGuardLocalFindings(idsJson: string): Promise<string>;
   // Gate 3 — Website & Browser (SDK contract). JSON strings; see src/security/webSdk.ts.
-  getWebProtectionCapabilities(): Promise<string>;
-  getDomainReputation(domain: string): Promise<string>;
+  getWebProtectionCapabilities(): Promise<string>;  getDomainReputation(domain: string): Promise<string>;
   getRedirectAssessment(url: string): Promise<string>;
   allowDestination(domain: string): Promise<string>;
   getRecentWebThreatEvents(): Promise<string>;
@@ -103,6 +102,14 @@ export interface ApolloSecurityNativeModule {
   getRecentInstallEvents(): Promise<string>;
   getDeviceSecuritySignals(): Promise<string>;
   getRecentAppSecurityEvents(): Promise<string>;
+  /** Device Capabilities — which OS/OEM call & message scam protections are present on this device,
+   *  whether each is the active handler, and whether its verdict is exposed to Apollo at all.
+   *  Detection only: this never returns a native scam classification.
+   *  See src/security/nativeProtectionEvidence.ts. */
+  getNativeProtectionCapabilities(): Promise<string>;
+  /** Device Posture Monitor — every Android-readable security setting in one call.
+   *  See src/security/devicePosture.ts. */
+  getDevicePostureSnapshot(): Promise<string>;
   /** iOS Share Extension protected App Group handoff. Native-only and opaque-id based. */
   getShareHandoff(handoffId: string): Promise<string>;
   acknowledgeShareHandoff(handoffId: string): Promise<string>;

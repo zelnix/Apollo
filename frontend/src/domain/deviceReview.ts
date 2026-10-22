@@ -116,7 +116,7 @@ const CHECKS: CheckDef[] = [
         const versionNote = osVer ? ` Running ${osVer}.` : "";
         if (monthsOld <= 2) return checked(`Security patch level is ${patch} (${monthsOld === 0 ? "current month" : monthsOld === 1 ? "1 month ago" : `${monthsOld} months ago`}).${versionNote}`);
         if (monthsOld <= 5) return review(`Security patch level is ${patch} (${monthsOld} months ago).${versionNote}`, "Check for a system update — patches fix known vulnerabilities.", `Security patch is ${monthsOld} months behind the current date.`);
-        return { outcome: "action" as const, detail: `Security patch level is ${patch} (${monthsOld} months old).${versionNote} This device may be missing critical security fixes.`, recommendation: "Check for a system update immediately — your device is significantly behind on security patches.", evidence: `Security patch is ${monthsOld} months behind the current date.` };
+        return action(`Security patch level is ${patch} (${monthsOld} months old).${versionNote} This device may be missing critical security fixes.`, "Check for a system update immediately — your device is significantly behind on security patches.", `Security patch is ${monthsOld} months behind the current date.`);
       } catch {
         return manual(`Security patch date: ${patch}. Check for updates manually.`);
       }

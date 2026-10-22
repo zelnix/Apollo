@@ -6,7 +6,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
@@ -55,6 +55,11 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   account_monitor: new Set(["device_id", "emails"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
+  // Notification categories — booleans only; no device id, no content.
+  push_preferences: new Set(["sniffing_growling", "scam_alerts", "learn_with_higgins"]),
+  // Device Posture Monitor — observed setting states and the changes between checks. Values are the
+  // OS's own answers ("on"/"off"/"unknown"), never app names, numbers, message text or identifiers.
+  device_posture: new Set(["snapshot", "changes"]),
   // Call Guard (Gate 4 add-on): only the number itself (+ optional 2-letter country for local
   // numbers) leaves the device, only when the person taps "Check this number" or a call rings with
   // no local block/allow/risk signal — see backend/services/phonerisk.py (IPQualityScore, proxied).
