@@ -292,9 +292,22 @@ async def push_test(request: Request, body: Optional[PushTestIn] = None):
 
 async def push_owner_alert(event: PatrolEvent) -> None:
     """Tell the protected person the moment Apollo barks/bites while the app is closed.
-    Growling is a non-urgent nudge → held until the quiet window ends rather than dropped."""
+    Growling is a non-urgent nudge → held until the quiet window ends rather than dropped.
+    Respects per-category notification preferences: barking/biting always send;
+    sniffing/growling can be disabled by the user."""
     try:
-        if event.state == "growling":
+        # Map event state to notification category
+        if event.state in ("barking", "biting"):
+            category = event.state
+        else:
+            category = "sniffing_growling"
+
+        # Check user's notification preference for this category
+        if not await should_send_category(event.device_id, category):
+            logger.info("push suppressed by preference: device=%s category=%s", event.device_id[:8], category)
+            return
+
+        if event.state == "growling" or event.state in ("sniffing", "ears_up"):
             data = {"title": "Apollo is growling", "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
             quiet_until = await device_quiet_until(event.device_id)
             if quiet_until:
@@ -365,3 +378,63 @@ async def mark_alert_opened(alert_key: str, request: Request):
     result = await db.push_deliveries.update_one({"event_key": alert_key, "recipient_id": owner, "opened_at": None},
                                                  {"$set": {"opened_at": now_utc(), "updated_at": now_utc()}})
     return {"recorded": result.modified_count > 0}
+
+
+
+# ------------------------------------------------------------------ notification categories & preferences
+# Five categories. Barking and Biting are always on (cannot be disabled).
+# Sniffing & Growling, New Scam Alerts, and New Learn with Higgins are user-configurable.
+NOTIFICATION_CATEGORIES = [
+    {"id": "barking", "label": "Barking", "description": "Active threats that need your immediate attention", "always_on": True},
+    {"id": "biting", "label": "Biting", "description": "Confirmed protective blocks Apollo has enforced", "always_on": True},
+    {"id": "sniffing_growling", "label": "Sniffing & Growling", "description": "Cases needing your attention, with a link straight to the case", "always_on": False},
+    {"id": "scam_alerts", "label": "New Scam Alerts", "description": "New scam advisories from official sources", "always_on": False},
+    {"id": "learn_with_higgins", "label": "Learn with Higgins", "description": "New learning content from Higgins", "always_on": False},
+]
+
+DEFAULT_PREFS = {"sniffing_growling": True, "scam_alerts": True, "learn_with_higgins": True}
+
+
+async def _get_notification_prefs(device_id: str) -> dict:
+    """Read this device's notification preferences. Missing = all enabled."""
+    doc = await db.devices.find_one({"device_id": device_id}, {"settings.notification_preferences": 1})
+    return {**DEFAULT_PREFS, **((doc or {}).get("settings", {}).get("notification_preferences") or {})}
+
+
+async def should_send_category(device_id: str, category: str) -> bool:
+    """Whether this device wants to receive notifications for the given category.
+    Barking and Biting always return True."""
+    if category in ("barking", "biting"):
+        return True
+    prefs = await _get_notification_prefs(device_id)
+    return bool(prefs.get(category, True))
+
+
+class NotificationPrefsIn(BaseModel):
+    sniffing_growling: Optional[bool] = None
+    scam_alerts: Optional[bool] = None
+    learn_with_higgins: Optional[bool] = None
+
+
+@router.get("/push/preferences")
+async def get_notification_preferences(request: Request):
+    """Current notification category preferences for this device."""
+    owner = request.state.device["device_id"]
+    prefs = await _get_notification_prefs(owner)
+    return {"categories": NOTIFICATION_CATEGORIES, "preferences": prefs}
+
+
+@router.put("/push/preferences")
+async def set_notification_preferences(body: NotificationPrefsIn, request: Request):
+    """Update notification category preferences. Only the three configurable categories can be changed.
+    Barking and Biting are always on — the endpoint silently ignores any attempt to disable them."""
+    owner = request.state.device["device_id"]
+    current = await _get_notification_prefs(owner)
+    update = {k: v for k, v in body.model_dump(exclude_none=True).items() if k in DEFAULT_PREFS}
+    merged = {**current, **update}
+    await db.devices.update_one(
+        {"device_id": owner},
+        {"$set": {"settings.notification_preferences": merged, "last_seen_at": now_utc()}},
+        upsert=True,
+    )
+    return {"categories": NOTIFICATION_CATEGORIES, "preferences": merged}

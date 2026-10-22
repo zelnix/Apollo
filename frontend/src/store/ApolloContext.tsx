@@ -96,7 +96,7 @@ const deviceMeta = () => ({
   locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
 });
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen", notifPrefs: "apollo.notification.prefs" };
 /** The device's region, so a local number in captured material ("0412 345 678") can be resolved. */
 const deviceRegion = () => Localization.getLocales()[0]?.regionCode ?? undefined;
 
@@ -209,6 +209,9 @@ interface ApolloContextValue {
   setQuietHours(next: QuietHours): Promise<void>;
   lowPower: boolean;
   setLowPower(on: boolean): Promise<void>;
+  /** Notification category preferences. Barking and Biting are always on. */
+  notificationPreferences: NotificationPreferences;
+  setNotificationPreferences(prefs: Partial<NotificationPreferences>): Promise<void>;
   /** Private DNS / DoH gap detection. null when not determined (web/non-native). */
   privateDnsStatus: PrivateDnsStatus | null;
   storage: { getItem(key: string, fallback: string | null): Promise<string | null>; setItem(key: string, value: string): Promise<boolean> };
@@ -216,6 +219,14 @@ interface ApolloContextValue {
 
 export interface QuietHours { enabled: boolean; start_minutes: number; end_minutes: number }
 const DEFAULT_QUIET: QuietHours = { enabled: false, start_minutes: 22 * 60, end_minutes: 7 * 60 };
+
+/** Notification category preferences. Barking and Biting are always on. */
+export interface NotificationPreferences {
+  sniffing_growling: boolean;
+  scam_alerts: boolean;
+  learn_with_higgins: boolean;
+}
+export const DEFAULT_NOTIF_PREFS: NotificationPreferences = { sniffing_growling: true, scam_alerts: true, learn_with_higgins: true };
 
 /** Local-time check; mirrors backend `in_quiet_hours`. */
 export function isQuietNow(q: QuietHours, at = new Date()): boolean {
@@ -282,10 +293,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Quiet hours (local + synced to backend so growling pushes are held) and battery saver.
   const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
   const [lowPower, setLowPowerState] = useState(false);
+  const [notificationPreferences, setNotifPrefsState] = useState<NotificationPreferences>(DEFAULT_NOTIF_PREFS);
   const [privateDnsStatus, setPrivateDnsStatus] = useState<PrivateDnsStatus | null>(null);
   useEffect(() => {
     void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet, (v) => typeof v === "object" && v !== null && !Array.isArray(v)); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
     void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
+    void storage.getItem<string | null>(K.notifPrefs, null).then((raw) => { if (raw) { const parsed = safeParse<NotificationPreferences | null>(raw, null, K.notifPrefs, (v) => typeof v === "object" && v !== null && !Array.isArray(v)); if (parsed) setNotifPrefsState({ ...DEFAULT_NOTIF_PREFS, ...parsed }); } });
   }, []);
   const quietNow = useMemo(() => isQuietNow(quietHours), [quietHours, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const quietRef = useRef(quietHours);
@@ -300,6 +313,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await syncQuiet(next, deviceIdRef.current);
   }, [syncQuiet]);
   const setLowPower = useCallback(async (on: boolean) => { setLowPowerState(on); await storage.setItem(K.lowPower, on); }, []);
+  const setNotificationPreferences = useCallback(async (partial: Partial<NotificationPreferences>) => {
+    const next = { ...notificationPreferences, ...partial };
+    setNotifPrefsState(next);
+    await storage.setItem(K.notifPrefs, JSON.stringify(next));
+    try { await apiPut("/push/preferences", "push_preferences", next); } catch { /* offline: local copy still gates local alerts */ }
+  }, [notificationPreferences]);
 
   const showToast = useCallback((message: string, tone: ApolloState | "neutral" = "neutral") => {
     if (tone === "growling" && isQuietNow(quietRef.current)) return; // quiet hours: hold non-urgent nudges
@@ -1637,7 +1656,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     privateDnsStatus,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, reopenEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, checkEmail, scanGmailInbox, recordRecovery, upsertEvent, checkCall, checkNumberRisk,
-    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
+    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, notificationPreferences, setNotificationPreferences, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

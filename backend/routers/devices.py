@@ -86,8 +86,16 @@ class QuietHours(BaseModel):
     tz_offset_minutes: int = Field(default=0, ge=-840, le=840)  # local = UTC + offset
 
 
+class NotificationPreferences(BaseModel):
+    """Per-category notification toggles. Barking and Biting are always on and cannot be disabled."""
+    sniffing_growling: bool = True   # Cases needing attention (growling/sniffing/ears_up)
+    scam_alerts: bool = True         # New scam advisories
+    learn_with_higgins: bool = True  # New learning content
+
+
 class DeviceSettingsIn(BaseModel):
     quiet_hours: QuietHours
+    notification_preferences: Optional[NotificationPreferences] = None
 
 
 def in_quiet_hours(qh: Optional[dict[str, Any]], at: Optional[datetime] = None) -> bool:

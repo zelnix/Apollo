@@ -55,12 +55,13 @@ const useStyles = makeStyles((c) => ({
   rowLabel: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface },
   rowHint: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, marginTop: 2 },
   trustRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
+  catRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider, opacity: 0.7 },
   footer: { fontFamily: fonts.text, fontSize: 12, color: c.muted, textAlign: "center" },
 }));
 
 export default function SettingsScreen() {
   const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
-  const { trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const { trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, notificationPreferences, setNotificationPreferences, showToast } = useApollo();
   const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
   const [showRetrofit, setShowRetrofit] = useState(false);
@@ -128,6 +129,33 @@ export default function SettingsScreen() {
         <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text><Text style={s.rowHint}>See exactly how an alert looks on this phone</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
         <SwitchRow label="Quiet hours" hint="Hold gentle alerts until the morning, then show each one. Urgent threat and family alerts still come through at once." value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} testID="settings-quiet-switch" />
         {quietHours.enabled ? <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}><View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View><Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /></View> : null}
+
+        {/* Notification categories */}
+        <View style={[s.rowItem, s.divider]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.rowLabel}>Notification categories</Text>
+            <Text style={s.rowHint}>Choose which types of alerts Apollo sends you. Critical alerts cannot be turned off.</Text>
+          </View>
+        </View>
+        {/* Always-on categories */}
+        <View style={s.catRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.rowLabel}>Barking</Text>
+            <Text style={s.rowHint}>Active threats that need your immediate attention</Text>
+          </View>
+          <Pill tone="barking" label="Always on" testID="settings-cat-barking" />
+        </View>
+        <View style={s.catRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.rowLabel}>Biting</Text>
+            <Text style={s.rowHint}>Confirmed protective blocks Apollo has enforced</Text>
+          </View>
+          <Pill tone="barking" label="Always on" testID="settings-cat-biting" />
+        </View>
+        {/* Configurable categories */}
+        <SwitchRow label="Sniffing &amp; Growling" hint="Cases needing your attention, with a link straight to the case" value={notificationPreferences.sniffing_growling} onValueChange={(v) => void setNotificationPreferences({ sniffing_growling: v })} testID="settings-cat-sniffing-growling" />
+        <SwitchRow label="New Scam Alerts" hint="New scam advisories from official sources" value={notificationPreferences.scam_alerts} onValueChange={(v) => void setNotificationPreferences({ scam_alerts: v })} testID="settings-cat-scam-alerts" />
+        <SwitchRow label="Learn with Higgins" hint="New learning content from Higgins" value={notificationPreferences.learn_with_higgins} onValueChange={(v) => void setNotificationPreferences({ learn_with_higgins: v })} testID="settings-cat-learn-higgins" />
       </Group>
 
       {/* 3 ── The accounts and people Apollo watches for you */}

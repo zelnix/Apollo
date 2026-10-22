@@ -1,3 +1,76 @@
+## 2026-10-22 Notification Categories + Push Notification Fix
+
+backend:
+  - task: "Fix _push_background_completion payload: body→message, device push_token→device_id, add action_url deep link"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/jobs.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Fixed 3 bugs: (1) recipients used device push_token instead of owner device_id, (2) used 'body' key instead of 'message' breaking relay validation, (3) missing action_url for deep linking. Now uses correct send_push contract."
+
+  - task: "GET/PUT /api/push/preferences - notification category preferences"
+    implemented: true
+    working: true
+    file: "backend/routers/push.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Added GET/PUT /api/push/preferences endpoints. 5 categories: barking/biting (always on), sniffing_growling/scam_alerts/learn_with_higgins (configurable). Preferences stored in devices.settings.notification_preferences. should_send_category() gates push_owner_alert by user prefs."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: All notification preferences API tests PASSED. (1) GET /api/push/preferences returns 200 with 5 categories (barking, biting, sniffing_growling, scam_alerts, learn_with_higgins). Barking and Biting have always_on=true. All 3 configurable preferences default to true. (2) PUT /api/push/preferences with {scam_alerts: false} returns 200 and updates correctly. (3) GET after PUT confirms persistence - scam_alerts remains false. (4) PUT with {sniffing_growling: false, learn_with_higgins: false} updates both correctly while scam_alerts remains false from previous update. (5) Backend health endpoint returns 200 with status='ok'. Test file: /app/test_notification_preferences.py. All 5 tests passed."
+
+  - task: "push_owner_alert respects notification category preferences"
+    implemented: true
+    working: true
+    file: "backend/routers/push.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "push_owner_alert now maps event state to notification category (barking/biting always send, sniffing/growling/ears_up gated by sniffing_growling pref). Logs suppressed sends."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Category gating logic is correctly implemented in push_owner_alert (lines 293-322 of push.py). Function maps event.state to category (barking/biting → category name, else → sniffing_growling), then calls should_send_category() which returns True for barking/biting (always send) and checks user preferences for other categories. Logs suppressed sends with device_id and category. Implementation matches specification. Existing push tests (test_iter6_push.py) all passed (14/14) confirming no regression."
+
+frontend:
+  - task: "Notification categories UI in Settings - toggles for 5 categories"
+    implemented: true
+    working: true
+    file: "frontend/app/settings/index.tsx, frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Added notification categories section in Settings Alerts group. Barking/Biting show 'Always on' pills (not toggleable). Sniffing & Growling, New Scam Alerts, Learn with Higgins have Switch toggles. Preferences synced to backend via PUT /api/push/preferences and persisted locally."
+
+test_plan:
+  current_focus:
+    - "Verify GET /api/push/preferences returns 5 categories with default preferences"
+    - "Verify PUT /api/push/preferences updates and persists preferences"
+    - "Verify Settings UI shows notification categories with correct toggles"
+    - "Verify barking/biting cannot be disabled"
+    - "Verify push_owner_alert respects sniffing_growling preference"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented notification categories system. BACKEND: Fixed P0 push notification payload bug in jobs.py (_push_background_completion was using 'body' instead of 'message' and wrong recipients). Added GET/PUT /api/push/preferences with 5 categories. push_owner_alert now gates by user preferences. FRONTEND: Added notification categories section in Settings with 5 categories - Barking and Biting shown as 'Always on' (not toggleable), Sniffing & Growling, New Scam Alerts, and Learn with Higgins shown with Switch toggles. Preferences synced to backend and persisted locally. To test: (1) Register device, (2) GET /api/push/preferences - should return 5 categories all enabled, (3) PUT /api/push/preferences {sniffing_growling: false} - should update, (4) GET again to verify persistence, (5) Frontend Settings screen shows categories with toggles. Auth: anonymous device auto-registers. Use ?__apollo_test_setup=1 to bypass onboarding."
+  - agent: "testing"
+    message: "BACKEND TESTING COMPLETE - ALL TESTS PASSED ✓. Notification Categories feature is working correctly. (1) GET /api/push/preferences: Returns 200 with 5 categories, barking/biting have always_on=true, all 3 configurable preferences default to true. (2) PUT /api/push/preferences: Single preference update works (scam_alerts: false). (3) Persistence verified: GET after PUT confirms scam_alerts remains false. (4) Multiple preference update works: sniffing_growling and learn_with_higgins both updated to false while scam_alerts remains false. (5) Category gating logic verified in code: push_owner_alert correctly maps event states to categories and calls should_send_category(). (6) Regression test: All 14 existing push tests (test_iter6_push.py) passed - no regression. (7) Backend health: Returns 200 with status='ok'. Test files: /app/test_notification_preferences.py (5/5 passed). Frontend testing not performed per system prompt. READY FOR MAIN AGENT TO SUMMARIZE AND FINISH."
+
+
+
 ## 2026-10-20 BUGFIX — Double Investigation Bug Fix in Call Guard Manual Flow
 
 backend:

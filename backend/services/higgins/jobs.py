@@ -89,19 +89,18 @@ async def _push_background_completion(owner: str, case: dict) -> None:
     gate = case.get("gate", "")
     if gate not in ("text",):
         return  # Email gate push is handled by mailbox_monitor._send_assessment_push
-    device = await db.devices.find_one({"device_id": owner}, {"push_token": 1})
-    if not device or not device.get("push_token"):
-        return
-    from routers.push import send_push
+    from routers.push import send_push, PUSH_GROWL
+    case_id = case.get("case_id", "")
     await send_push(
-        recipients=[device["push_token"]],
+        recipients=[owner],
         data={
             "title": "Apollo: message assessed",
-            "body": "Apollo completed a background assessment of a captured message. Open Apollo to review.",
-            "type": "text_assessment",
-            "caseId": case.get("case_id"),
+            "message": "Apollo completed a background assessment of a captured message. Open Apollo to review.",
+            "action_url": f"/patrol/{case_id}?focus=alert" if case_id else "/patrol",
+            **PUSH_GROWL,
         },
         owner_id=owner,
+        idempotency_key=f"bg-completion-{case_id}" if case_id else None,
     )
 
 
