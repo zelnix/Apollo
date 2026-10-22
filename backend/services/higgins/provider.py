@@ -41,25 +41,29 @@ from services.gemini_usage import record_usage as _record_usage
 load_dotenv()
 
 # ── Provider mode ────────────────────────────────────────────────────────────
-# "mock" (default when no GEMINI_API_KEY) | "live" | "live_test"
+# "live" (production) | "live_test" (dev key) | "simulated" (preview only) | "mock" (no external calls)
+# When a real GEMINI_API_KEY is present, "simulated" and "mock" are auto-upgraded to "live"
+# so that production deployments can never produce fake results even if the env var is misconfigured.
 _PROVIDER_MODE = os.getenv("APOLLO_PROVIDER_MODE", "").strip().lower()
 if not _PROVIDER_MODE:
-    # Auto-detect: if no production Gemini key, default to mock
     _PROVIDER_MODE = "live" if GEMINI_API_KEY else "mock"
+elif _PROVIDER_MODE in ("simulated", "mock") and GEMINI_API_KEY:
+    _log = _logging.getLogger(__name__)
+    _log.warning(
+        "APOLLO_PROVIDER_MODE='%s' auto-upgraded to 'live' because GEMINI_API_KEY is present. "
+        "A backend with a live Gemini key must never produce simulated/mock results.",
+        _PROVIDER_MODE,
+    )
+    _PROVIDER_MODE = "live"
 
 # Separate dev key for live_test mode (never the production key)
 _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
 
-# Deployment environment. "production" means a shipped app is talking to this backend, where the
-# preview simulator and the mock provider must never answer — a person would be shown a fixed
-# simulated verdict as if it were a real investigation. Fail-closed: anything other than the known
-# non-production values is treated as production.
 APOLLO_ENV = os.getenv("APOLLO_ENV", "").strip().lower() or "production"
 IS_PRODUCTION_ENV = APOLLO_ENV not in ("preview", "development", "staging", "test")
-_NON_PRODUCTION_MODES = ("simulated", "mock", "live_test")
 
 def get_provider_mode() -> str:
-    """Return the current provider mode: 'mock', 'live', or 'live_test'."""
+    """Return the current provider mode."""
     return _PROVIDER_MODE
 
 def _validate_mode_at_import() -> None:
@@ -70,12 +74,10 @@ def _validate_mode_at_import() -> None:
             "Use a free-tier Google AI Studio development project key.")
     if _PROVIDER_MODE not in ("mock", "live", "live_test", "simulated"):
         raise RuntimeError(f"Invalid APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}'. Must be mock|live|live_test|simulated.")
-    if IS_PRODUCTION_ENV and _PROVIDER_MODE in _NON_PRODUCTION_MODES:
+    if IS_PRODUCTION_ENV and _PROVIDER_MODE in ("simulated", "mock", "live_test"):
         raise RuntimeError(
-            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' is a preview-only mode and cannot run with "
-            f"APOLLO_ENV='{APOLLO_ENV}'. A shipped app would be shown simulated results as if they were "
-            "real investigations. Set APOLLO_PROVIDER_MODE=live for production, or APOLLO_ENV=preview "
-            "for the preview environment.")
+            f"APOLLO_PROVIDER_MODE='{_PROVIDER_MODE}' cannot run with APOLLO_ENV='{APOLLO_ENV}'. "
+            "Set APOLLO_PROVIDER_MODE=live for production.")
 
 _validate_mode_at_import()
 
@@ -308,15 +310,14 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    trigger_source: str | None = None) -> GeminiResult:
     """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
     
-    In mock mode: routes to mock_provider. Zero external calls. Fail-closed — never falls back.
-    In live_test mode: uses GEMINI_DEV_API_KEY (separate from production).
-    In live mode: uses the production GEMINI_API_KEY.
+    In preview (no Gemini key): routes to the simulator or mock. Zero external calls.
+    In production (real Gemini key): the auto-upgrade at import time ensures _PROVIDER_MODE='live',
+    so the simulated/mock branches are structurally unreachable.
     """
-    # ── Preview simulator gate (fail-closed) ─────────────────────────────
-    # The request below is the REAL one. Only the external call is replaced.
+    # ── Preview-only simulator (unreachable when GEMINI_API_KEY is present) ──
     if _PROVIDER_MODE == "simulated":
         from services.higgins import di_record as _di
-        from services.higgins.preview_simulator import simulate_generate
+        from services.higgins.preview.preview_simulator import simulate_generate
         _audit = _audit_payload(system, contents, tools)
         _t0 = time.monotonic()
         _result = await simulate_generate(
@@ -334,9 +335,9 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
             retries=0, calls=0)
         return _result
 
-    # ── Mock mode gate (fail-closed) ──────────────────────────────────────
+    # ── Preview-only mock (unreachable when GEMINI_API_KEY is present) ──
     if _PROVIDER_MODE == "mock":
-        from services.higgins.mock_provider import mock_generate
+        from services.higgins.preview.mock_provider import mock_generate
         return await mock_generate(
             system, contents, model=model, capability=capability,
             json_output=json_output, tools=tools, timeout=timeout,

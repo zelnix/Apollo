@@ -38,8 +38,8 @@ import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapte
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
-import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
-import { SIMULATED_CALLS } from "@/src/preview/samples";
+const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
+const SIMULATED_CALLS: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_CALLS : [];
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -492,9 +492,9 @@ export default function CheckNumber() {
         note="Apollo runs the real number check on whichever you pick."
         preview={PREVIEW_SIMULATION}
         error={PREVIEW_SIMULATION ? null : "Apollo can't read the call log on this build. Enter or paste the number below instead."}
-        items={SIMULATED_CALLS.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes }))}
+        items={SIMULATED_CALLS.map((c: any) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes }))}
         emptyText="There are no recent callers to choose from here."
-        onSelect={(id) => { setCallSourcePicker(false); const c = SIMULATED_CALLS.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}
+        onSelect={(id: string) => { setCallSourcePicker(false); const c = SIMULATED_CALLS.find((x: any) => x.id === id); if (c) void runInvestigation(c.number); }}
         onClose={() => setCallSourcePicker(false)}
         testID="callguard-source-picker"
       />

@@ -30,8 +30,8 @@ import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/s
 import { NativeCallFailed } from "@/src/security/nativeDiagnostics";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
-import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
-import { SIMULATED_APPS } from "@/src/preview/samples";
+const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
+const SIMULATED_APPS: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_APPS : [];
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";
@@ -351,13 +351,12 @@ export default function CheckApp() {
         note="Each one stands in for an app and its stated permissions. Apollo runs the real app check on whichever you pick."
         preview={PREVIEW_SIMULATION}
         error={PREVIEW_SIMULATION ? null : "Apollo can't list installed apps on this build. Type the app name below instead — this needs a production Android build."}
-        items={SIMULATED_APPS.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
+        items={SIMULATED_APPS.map((a: any) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
         emptyText="There are no apps to choose from here."
-        onSelect={(id) => {
+        onSelect={(id: string) => {
           setAppPicker(false);
-          const a = SIMULATED_APPS.find((x) => x.id === id);
+          const a = SIMULATED_APPS.find((x: any) => x.id === id);
           if (!a) return;
-          // Fill the same fields the person would answer, then let the normal check run.
           setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
           setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
           setAutoRun(a.appName);

@@ -44,8 +44,9 @@ import { getShareIntake } from "@/src/share/shareIntake";
 import { PhonePickers, type RecentSms } from "@/src/security/phonePickers";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
-import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
-import { SIMULATED_TEXTS } from "@/src/preview/samples";
+const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
+const SIMULATED_TEXTS: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_TEXTS : [];
+import { useApollo } from "@/src/store/ApolloContext";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -537,11 +538,11 @@ export default function CheckMessage() {
         title="Your messages"
         note="Apollo runs the real message check on whichever one you pick."
         preview
-        items={SIMULATED_TEXTS.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes }))}
+        items={SIMULATED_TEXTS.map((m: any) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes }))}
         emptyText="There are no messages to choose from here."
-        onSelect={(id) => {
+        onSelect={(id: string) => {
           setMessagePicker(false);
-          const m = SIMULATED_TEXTS.find((x) => x.id === id);
+          const m = SIMULATED_TEXTS.find((x: any) => x.id === id);
           if (!m) return;
           setSender(m.sender); setText(m.text);
           void run(m.text, m.sender);

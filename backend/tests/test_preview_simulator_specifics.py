@@ -4,7 +4,7 @@ import json
 from google.genai import types
 
 from services.higgins.llm_boundary import Purpose
-from services.higgins.preview_simulator import evidence_blocks, simulated_text
+from services.higgins.preview.preview_simulator import evidence_blocks, simulated_text
 
 BANK_TEXT = ("CommBank: A payment of $920.00 to CRYPTO EXCHANGE LTD is pending. If this wasn't you, cancel it now "
              "at http://commbank-cancel.co/stop and confirm your NetBank password.")

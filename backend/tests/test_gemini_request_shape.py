@@ -13,7 +13,7 @@ from core.db import db
 from services.higgins import coordinator
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
-from services.higgins.preview_simulator import simulated_text
+from services.higgins.preview.preview_simulator import simulated_text
 from services.higgins.provider import GeminiResult, Purpose
 from services.higgins.response_schema import RESPONSE_SCHEMA
 

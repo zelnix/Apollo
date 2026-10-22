@@ -21,7 +21,7 @@ import { apiGet } from "@/src/api/client";
 import { FILE_SIZE_LIMIT } from "@/src/domain/fileInspection";
 import { PhonePickerSheet } from "./PhonePickerSheet";
 import { Sheet } from "./Sheet";
-import { PREVIEW_SIMULATION } from "./SimulatedPicker";
+const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
 import { SourcePickerSheet, type SourceChoice } from "./SourcePickerSheet";
 import { AppDeviceSdk, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { PhonePickers } from "@/src/security/phonePickers";

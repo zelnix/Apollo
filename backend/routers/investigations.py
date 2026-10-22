@@ -558,6 +558,10 @@ async def get_di_transactions(case_id: str, request: Request):
     if not await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 1}):
         raise http(404, "not_found", "No investigation with that reference belongs to this device.")
     records = await get_di_records(owner, case_id)
+    # Always filter out simulated DI records from the API response.
+    # Simulated records must never be displayed in any client — production or development.
+    # Developers who need to inspect simulated records can query the database directly.
+    records = [r for r in records if not r.get("simulated")]
     return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
 
 

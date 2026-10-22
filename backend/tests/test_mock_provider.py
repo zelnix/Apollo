@@ -31,7 +31,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
     def test_mock_generate_no_network(self):
         """Mock generate() never calls genai.Client or any external HTTP."""
         # Import AFTER setting env
-        from services.higgins import mock_provider
+        from services.higgins.preview import mock_provider
         from services.higgins.provider import Purpose, GeminiResult
         from google.genai import types
 
@@ -58,7 +58,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
 
     def test_mock_generate_records_zero_cost(self):
         """Mock usage records must have $0 cost and mock=True flag."""
-        from services.higgins import mock_provider
+        from services.higgins.preview import mock_provider
         from services.higgins.provider import Purpose
         from google.genai import types
 
@@ -89,7 +89,7 @@ class TestMockProviderZeroExternalCalls(unittest.TestCase):
 
     def test_mock_investigation_single_pass(self):
         """Mock coordinator flow: single call returns complete investigation JSON."""
-        from services.higgins import mock_provider
+        from services.higgins.preview import mock_provider
         from services.higgins.provider import Purpose
         from google.genai import types
 
@@ -214,7 +214,7 @@ class TestMailboxCannotReachPaidGemini(unittest.TestCase):
 
         async def tracking_mock(*args, **kwargs):
             call_log.append(kwargs)
-            from services.higgins.mock_provider import mock_generate
+            from services.higgins.preview.mock_provider import mock_generate
             return await mock_generate(*args, **kwargs)
 
         with patch("services.higgins.provider.generate", side_effect=tracking_mock) as mock_gen, \
@@ -349,7 +349,7 @@ class TestMockResponseDeterminism(unittest.TestCase):
 
     def test_same_input_same_output(self):
         """Identical inputs produce identical outputs."""
-        from services.higgins import mock_provider
+        from services.higgins.preview import mock_provider
         from services.higgins.provider import Purpose
         from google.genai import types
 

@@ -22,8 +22,8 @@ import { FILE_SIZE_LIMIT, FILE_SAMPLE_BYTES, inspectSample, type Inspection } fr
 import { type PatrolEvent } from "@/src/domain/types";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
-import { PREVIEW_SIMULATION } from "@/src/components/SimulatedPicker";
-import { SIMULATED_FILES } from "@/src/preview/samples";
+const PREVIEW_SIMULATION = __DEV__ ? require("@/src/preview/SimulatedPicker").PREVIEW_SIMULATION : false;
+const SIMULATED_FILES: any[] = __DEV__ ? require("@/src/preview/samples").SIMULATED_FILES : [];
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -95,8 +95,8 @@ export default function CheckFile() {
   const sharedFile = shared?.files?.[0];
   const incomingUri = sharedFile?.path || params.uri;
   useEffect(() => { if (!incomingUri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, incomingUri]);
-  // A simulated file is written to a REAL temporary file so Apollo's own inspection reads real bytes
-  // and runs the same check a picked file runs — no preview-only analysis path.
+  // Preview only: a simulated file is written to a REAL temporary file so Apollo's own inspection
+  // reads real bytes and runs the same check a picked file runs — no preview-only analysis path.
   const checkSimulatedFile = async (sim: { name: string; mime: string; content: string }) => {
     setPickerError(null);
     try {
