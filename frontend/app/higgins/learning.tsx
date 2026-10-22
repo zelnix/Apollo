@@ -501,7 +501,7 @@ function FilterSheet({
               variant="secondary"
               label="Clear all"
               testID="filter-clear"
-              onPress={() => setDraft({ category: "", audience: "", risk_context: "", content_type: "" })}
+              onPress={() => { const empty = { category: "", audience: "", risk_context: "", content_type: "" }; setDraft(empty); onApply(empty); onClose(); }}
             />
             <Button
               label={activeCount > 0 ? `Show lessons (${activeCount})` : "Show lessons"}
