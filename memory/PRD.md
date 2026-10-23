@@ -1,3 +1,20 @@
+## Post-publish: tombstone sweep timeout on Atlas + remaining live-answer rejections — FIXED (2026-10)
+
+**Publish actually succeeded**: production served the new backend (`providerMode: live` present). The
+shared log line was a runtime defect, not a deploy-step failure (root `/health` and `/api/health` are
+DB-free liveness probes).
+1. `maintenance_component_failed component=tombstones type=TimeoutError` — `sweep_tombstones` re-scanned
+   the 200 oldest (long-deleted) cases every cycle with up to 600 delete round trips: instant on local
+   MongoDB, >15 s on Atlas, never progressing. Rewritten to be driven by the content that exists (one
+   `$group` per content collection, one case lookup per 200 groups, deletes only for real orphans).
+   `tests/test_tombstone_sweep.py` (orphan semantics + 3 000 deleted cases never visited).
+2. Live Gemini still failed ~1 in 3 production investigations: with `sourceIds` closed, Gemini moved its
+   search citations ("1.1.4") into `evidenceIds`. `response_schema()` now also limits
+   `findings[].evidenceIds` / `remainingEvidenceIds` to the supplied evidence ids and offers `basis:
+   observation` only when evidence exists. Live batch on preview: 5/5 answered on the first Gemini call.
+Deployment-agent BLOCKERs (TTL/maintenance deletions, `.env` in `.gitignore`) again NOT applied — they are
+the intended 15-minute privacy retention and secret hygiene, and did not stop this publish.
+
 ## Deploy failure: EAS update "Cannot read properties of undefined (reading 'transformFile')" — FIXED (2026-10)
 
 **Root cause (reproduced exactly):** the Emergent deploy builder installs WITHOUT devDependencies, and
@@ -3051,3 +3068,10 @@ and `test_recovery_fencing`.
 **Still skipped on purpose** (not failures): credentialed integration tests (`APOLLO_RUN_CREDENTIALED_INTEGRATION=1`),
 `ImagePrivacyGate.tsx` checks for a gate handled differently now, checkpoint/ledger replay removed with
 the single-pass coordinator, and server-side report retention which is disabled.
+
+## Play Store readiness review (2026-06, review only — no code changed)
+Verdict: 3 blockers, 6 warnings, 8 manual checks.
+- Blockers: READ_SMS + READ_CALL_LOG in modules/apollo-security manifest (restricted SMS/Call Log group, on-demand picker is not an eligible core use); no public privacy-policy URL; no in-app "report this answer" control on Gemini output (Higgins chat / Magnum DI) — Play AI-Generated Content policy.
+- Warnings: Expo template perms SYSTEM_ALERT_WINDOW + READ/WRITE_EXTERNAL_STORAGE (block via android.blockedPermissions); expo-audio default enableBackgroundPlayback adds FOREGROUND_SERVICE_MEDIA_PLAYBACK; FOREGROUND_SERVICE_MEDIA_PROJECTION declared but family-assist excluded on Android; ACCESS_FINE_LOCATION declared but never requested; EXPO_PUBLIC_BACKEND_URL not in eas.json production env (client.ts throws if missing); Gmail gmail.readonly needs Google OAuth verification + CASA.
+- Passes: target/compile SDK 36 (RN 0.86), AAB production profile, root ErrorBoundary, no QUERY_ALL_PACKAGES / AccessibilityService, photo picker (no READ_MEDIA_*), RECORD_AUDIO blocked, no billing, no accounts + in-app "Delete My Apollo Data", ML Kit 16.0.1 is 16 KB-ready.
+

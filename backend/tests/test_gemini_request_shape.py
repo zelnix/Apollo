@@ -59,12 +59,18 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
         coordinator.provider.generate = original
 
     # 1. No system prompt, and the response shape comes from the schema alone — limited to the ids
-    #    registered for this case (none yet, so every sourceIds list must stay empty).
+    #    registered for this case (none yet, so every sourceIds list must stay empty) and to the
+    #    evidence actually supplied (Gemini otherwise puts search citations like "1.1.4" in evidenceIds).
     assert captured["system"] == ""
     sent_schema = captured["kwargs"]["response_schema"]
     assert set(sent_schema.properties) == set(RESPONSE_SCHEMA.properties)
     assert sent_schema.properties["sourceIds"].max_items == 0
-    assert sent_schema.properties["findings"].items.properties["sourceIds"].max_items == 0
+    finding = sent_schema.properties["findings"].items.properties
+    assert finding["sourceIds"].max_items == 0
+    supplied = {row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])}
+    allowed = finding["evidenceIds"].items.enum or []
+    assert allowed and set(allowed) == supplied
+    assert sent_schema.properties["remainingEvidenceIds"].items.enum == allowed
     assert captured["kwargs"]["json_output"] is True
     # Google Search stays attached (a tool, not prompt text).
     assert captured["kwargs"]["tools"]

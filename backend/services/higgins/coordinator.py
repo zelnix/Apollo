@@ -123,7 +123,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     result = await provider.generate("", contents, model=job_model, tools=[search_tool],
                                      capability="search", purpose=provider.Purpose.INVESTIGATION,
                                      json_output=True,
-                                     response_schema=response_schema(source_ids=sorted(source_ids), capability_ids=sorted(capability_ids)),
+                                     response_schema=response_schema(evidence_ids=sorted(row["evidence_id"] for row in rows),
+                                                                     source_ids=sorted(source_ids), capability_ids=sorted(capability_ids)),
                                      correlation_id=f"case-{case['case_id']}", trigger_source=job_source)
 
     # ── Step 3: Parse and validate the response ──
