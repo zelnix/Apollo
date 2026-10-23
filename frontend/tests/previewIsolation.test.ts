@@ -5,6 +5,7 @@
 // scripts/verify-no-simulation.mjs, which exports a real bundle and greps it.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -77,16 +78,45 @@ test("one build-level mechanism decides, and it is not __DEV__", () => {
   assert.match(code, /module-resolver/, "the production build must resolve the entry away from the simulation source");
   assert.match(code, /"\^@\/src\/simulation\$": "\.\/src\/simulationAbsent"/);
   assert.doesNotMatch(code, /__DEV__/, "__DEV__ is not a build-isolation mechanism");
-  // Exactly one variable: the build file names no other EXPO_PUBLIC_ switch.
+  // Exactly two inputs: the build flag, and the backend the app talks to (a deployed app talks to the
+  // production backend, so it can never qualify as the preview build whatever the flag says).
   const vars = [...code.matchAll(/EXPO_PUBLIC_[A-Z_]+/g)].map((m) => m[0]);
-  assert.deepEqual([...new Set(vars)], ["EXPO_PUBLIC_PREVIEW_BUILD"]);
+  assert.deepEqual([...new Set(vars)].sort(), ["EXPO_PUBLIC_BACKEND_URL", "EXPO_PUBLIC_PREVIEW_BUILD"]);
   // The preview is the build that includes it; every EAS profile excludes it.
   assert.match(read(".env"), /EXPO_PUBLIC_PREVIEW_BUILD=included/);
   assert.match(read("eas.json"), /"EXPO_PUBLIC_PREVIEW_BUILD": "excluded"/);
   // The deploy pipeline copies the sandbox .env (PREVIEW_BUILD=included) into the EAS job and selects
   // its own profile, so the flag alone cannot be trusted: a store build must settle it structurally.
   assert.match(code, /EAS_BUILD/, "an EAS build must be production whatever the flag says");
-  assert.match(code, /!STORE_BUILD && process\.env\.EXPO_PUBLIC_PREVIEW_BUILD === "included"/);
+  assert.match(code, /!STORE_BUILD && PREVIEW_BACKEND && process\.env\.EXPO_PUBLIC_PREVIEW_BUILD === "included"/);
+  assert.match(code, /\\\.preview\\\.emergentagent\\\.com/, "only a preview backend can qualify");
+});
+
+test("the build's Babel plugin is a runtime dependency (the deploy install omits devDependencies)", () => {
+  // The Emergent deploy builder installs without devDependencies. A plugin the production Babel branch
+  // loads must therefore be in `dependencies`, or Metro's transformer never starts ("reading 'transformFile'").
+  const pkg = JSON.parse(read("package.json"));
+  assert.ok(pkg.dependencies["babel-plugin-module-resolver"], "babel-plugin-module-resolver must be in dependencies");
+  assert.equal(pkg.devDependencies?.["babel-plugin-module-resolver"], undefined);
+});
+
+test("a deployed app cannot carry the simulation even though it shares the project's flag", () => {
+  // Evaluate the real babel config with the deployment's inputs: flag "included", production backend.
+  const load = (env: Record<string, string>) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, env);
+    delete process.env.EAS_BUILD; delete process.env.EAS_BUILD_PLATFORM;
+    const requireCjs = createRequire(import.meta.url);
+    const file = join(ROOT, "babel.config.js");
+    delete requireCjs.cache[requireCjs.resolve(file)];
+    const config = requireCjs(file)({ cache: { using: () => undefined } });
+    process.env = saved;
+    return config.plugins.length > 0 ? "production" : "preview";
+  };
+  assert.equal(load({ EXPO_PUBLIC_PREVIEW_BUILD: "included", EXPO_PUBLIC_BACKEND_URL: "https://threat-patrol-1.emergent.host" }), "production");
+  assert.equal(load({ EXPO_PUBLIC_PREVIEW_BUILD: "included", EXPO_PUBLIC_BACKEND_URL: "https://evil.preview.emergentagent.com.attacker.net" }), "production");
+  assert.equal(load({ EXPO_PUBLIC_PREVIEW_BUILD: "excluded", EXPO_PUBLIC_BACKEND_URL: "https://uat-loop-fix.preview.emergentagent.com" }), "production");
+  assert.equal(load({ EXPO_PUBLIC_PREVIEW_BUILD: "included", EXPO_PUBLIC_BACKEND_URL: "https://uat-loop-fix.preview.emergentagent.com" }), "preview");
 });
 
 test("there is no configuration where only part of the simulation system is present", () => {

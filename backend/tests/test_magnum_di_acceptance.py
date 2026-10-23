@@ -119,7 +119,7 @@ class TestGeminiRequestContract:
         assert not hasattr(coordinator, "SYSTEM"), "the investigation request must carry no system prompt"
         source = inspect.getsource(coordinator.run_turn)
         assert 'provider.generate("", contents' in source, "the system argument must be empty"
-        assert "response_schema=RESPONSE_SCHEMA" in source, "the response shape must come from the schema"
+        assert "response_schema=response_schema(source_ids=" in source, "the response shape must come from the schema"
         assert "google_search" in inspect.getsource(coordinator), "Google Search stays attached as a tool"
 
     def test_request_is_question_then_evidence(self):

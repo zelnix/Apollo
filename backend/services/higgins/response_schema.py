@@ -5,6 +5,10 @@ the prompt: the request sent to Gemini is the person's question, the complete ca
 schema. Field names are the wire (camelCase) names the validator in `validation.py` accepts, and the
 enums are the literal values `contracts.py` defines — a schema drift here fails validation, which is
 reported honestly rather than reshaped into a result.
+
+Every id list is limited to the ids Apollo has actually registered for the case (`response_schema()`).
+Gemini cannot know Apollo's ids, and with Google Search attached it otherwise cites search results by
+ids of its own ("1.1.4") — which validation rightly rejects, failing every live investigation.
 """
 from __future__ import annotations
 
@@ -18,7 +22,15 @@ def _enum(values: list[str], description: str) -> types.Schema:
     return types.Schema(type="STRING", enum=values, description=description)
 
 
-_FINDING = types.Schema(
+def _id_list(ids: list[str], description: str) -> types.Schema:
+    """An array that can only hold registered ids — and must stay empty when none are registered."""
+    if not ids:
+        return types.Schema(type="ARRAY", items=_STRING, max_items=0, description=f"{description} None are registered: leave empty.")
+    return types.Schema(type="ARRAY", items=types.Schema(type="STRING", enum=sorted(ids)), description=description)
+
+
+def _finding(source_ids: list[str]) -> types.Schema:
+    return types.Schema(
     type="OBJECT",
     properties={
         "text": types.Schema(type="STRING", description="One fact or inference, stated once. Each finding is a "
@@ -33,24 +45,29 @@ _FINDING = types.Schema(
         "confidence": _enum(["low", "medium", "high"], "Confidence in this finding."),
         "evidenceIds": types.Schema(type="ARRAY", items=_STRING,
                                     description="Ids of the supplied evidence items this finding rests on."),
-        "sourceIds": types.Schema(type="ARRAY", items=_STRING, description="Ids of registered sources, if any."),
+        "sourceIds": _id_list(source_ids, "Ids of registered sources, if any."),
         "supersedesFindingIds": types.Schema(type="ARRAY", items=_STRING,
                                              description="Ids of earlier findings this replaces, if any."),
     },
     required=["text", "basis", "confidence", "evidenceIds", "sourceIds", "supersedesFindingIds"],
 )
 
-_ACTION = types.Schema(
+
+def _action(source_ids: list[str], capability_ids: list[str]) -> types.Schema:
+    # Device kinds exist only when the device advertises a capability; open_verified_source only when a
+    # source is registered — otherwise the only answer validation can accept is 'instruction'.
+    kinds = ["instruction"] + (["open_settings", "request_permission", "recheck"] if capability_ids else []) \
+        + (["open_verified_source"] if source_ids else [])
+    return types.Schema(
     type="OBJECT",
     properties={
-        "kind": _enum(["instruction", "open_settings", "request_permission", "recheck", "open_verified_source"],
-                      "Use 'instruction' unless a device capabilityId or a registered sourceId is available."),
+        "kind": _enum(kinds, "Use 'instruction' unless a device capabilityId or a registered sourceId is available."),
         "label": types.Schema(type="STRING", description="Short button label."),
         "instruction": types.Schema(type="STRING", description="What the person does — the action only. It does not "
                                                                "restate a finding or re-explain the reasoning."),
-        "capabilityId": types.Schema(type="STRING", nullable=True,
+        "capabilityId": types.Schema(type="STRING", nullable=True, enum=sorted(capability_ids) or None,
                                      description="Only for kinds that act on the device; otherwise null."),
-        "sourceIds": types.Schema(type="ARRAY", items=_STRING, description="Required for open_verified_source."),
+        "sourceIds": _id_list(source_ids, "Required for open_verified_source."),
         "desiredField": types.Schema(type="STRING", nullable=True),
         "desiredValue": types.Schema(type="STRING", nullable=True),
     },
@@ -69,7 +86,10 @@ _QUESTION = types.Schema(
     required=["text", "reasonNeeded", "answerType", "choices"],
 )
 
-RESPONSE_SCHEMA = types.Schema(
+def response_schema(*, source_ids: list[str] = (), capability_ids: list[str] = ()) -> types.Schema:
+    """The required response for one call, with every id list limited to what is registered for the case."""
+    source_ids, capability_ids = list(source_ids), list(capability_ids)
+    return types.Schema(
     type="OBJECT",
     properties={
         "overview": types.Schema(type="STRING", description="2-4 plain sentences: what this is and what to do now. "
@@ -90,14 +110,14 @@ RESPONSE_SCHEMA = types.Schema(
                                                                                  "of acting on it. Never a copy of a "
                                                                                  "finding or of the overview. Null when "
                                                                                  "attention is 'none'."),
-        "findings": types.Schema(type="ARRAY", items=_FINDING, description="The evidence-backed facts. Compare them "
+        "findings": types.Schema(type="ARRAY", items=_finding(source_ids), description="The evidence-backed facts. Compare them "
                                                                            "before answering and merge any that make "
                                                                            "the same point."),
         "uncertainties": types.Schema(type="ARRAY", items=_STRING, description="What could not be established."),
         "scope": types.Schema(type="STRING", description="What this investigation did and did not cover."),
-        "sourceIds": types.Schema(type="ARRAY", items=_STRING, description="Registered sourceIds relied on."),
+        "sourceIds": _id_list(source_ids, "Registered sourceIds relied on."),
         "remainingEvidenceIds": types.Schema(type="ARRAY", items=_STRING, description="Supplied evidence left unexamined."),
-        "actions": types.Schema(type="ARRAY", items=_ACTION),
+        "actions": types.Schema(type="ARRAY", items=_action(source_ids, capability_ids)),
         "recommendedActionIndex": types.Schema(type="INTEGER", nullable=True,
                                                description="Index of the primary action; required when actions are present."),
         "question": _QUESTION,
@@ -108,3 +128,7 @@ RESPONSE_SCHEMA = types.Schema(
               "uncertainties", "scope", "sourceIds", "remainingEvidenceIds", "actions", "recommendedActionIndex",
               "completion"],
 )
+
+
+# The shape with nothing registered — for calls made outside any case (the provider health check).
+RESPONSE_SCHEMA = response_schema()

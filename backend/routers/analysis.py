@@ -808,6 +808,11 @@ async def vision_investigate(
     provider_metadata: dict[str, Any] = {}
     gemini_used = False
     limitations: list[str] = []
+    # Set by the image branch below; a text-only request (image withheld on the device) has none.
+    _redacted_image_bytes: bytes = b""
+    _redacted_image_hash: Optional[str] = None
+    _raw_upload_digest: Optional[str] = None
+    _processed_digest: Optional[str] = None
 
     # ── Step 1: Visual analysis via Gemini (if image provided with valid receipt) ──
     # Submitting the image authorises its analysis; credentials were handled on the device before upload.
@@ -1091,7 +1096,7 @@ async def vision_investigate(
                 idem_key)
             investigation_case_id = case_id
     except Exception as exc:
-        logger.warning("vision: coordinator case creation failed (non-blocking): %s", type(exc).__name__)
+        logger.warning("vision: coordinator case creation failed (non-blocking): %s", type(exc).__name__, exc_info=True)
         limitations.append("Extended investigation could not be started. Findings are based on local analysis only.")
 
     return VisionInvestigateOut(

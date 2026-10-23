@@ -20,6 +20,8 @@ from services.higgins import provider
 from services.higgins.provider import ProviderFailure
 
 SOURCE = pathlib.Path(provider.__file__).read_text()
+# Captured at import, before conftest's autouse fixture swaps generate() for a blocker.
+_REAL_GENERATE = provider.generate
 SERVER = (pathlib.Path(__file__).resolve().parents[1] / "server.py").read_text()
 
 
@@ -74,3 +76,55 @@ def test_startup_installs_the_dispatch_only_behind_the_explicit_switch():
     guard = SERVER.index("if preview_environment():")
     assert guard < SERVER.index(install), "the import must sit behind the explicit switch"
     assert "except ImportError" not in SERVER, "a missing module must not be the production signal"
+
+
+def test_production_startup_loads_no_simulation_module():
+    """The simulation files ship with the project (Emergent deploys the whole snapshot), so the guarantee
+    is that production never LOADS them: importing the whole app without the switch must leave every
+    simulation module out of memory."""
+    import os
+    import subprocess
+    import sys
+    env = {k: v for k, v in os.environ.items() if k != "APOLLO_PREVIEW_SIMULATOR"}
+    probe = ("import sys, server; "
+             "loaded = sorted(m for m in sys.modules if m.startswith('services.higgins.preview') or m.endswith('preview_analysis')); "
+             "print('LOADED=' + ','.join(loaded))")
+    out = subprocess.run([sys.executable, "-c", probe], cwd=str(pathlib.Path(__file__).resolve().parents[1]),
+                         env=env, capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-800:]
+    assert "LOADED=\n" in out.stdout or out.stdout.strip().endswith("LOADED="), out.stdout[-400:]
+
+
+@pytest.mark.anyio
+async def test_preview_runs_every_production_check_before_the_simulator(monkeypatch):
+    """The simulator replaces only the network call: a request production refuses is refused in preview."""
+    from google.genai import types
+    from services.higgins.llm_boundary import Purpose
+    calls = []
+
+    async def _handler(*_args, **_kwargs):
+        calls.append(1)
+
+    monkeypatch.setattr(provider, "_preview_generate", _handler)
+    image = types.Part.from_bytes(data=b"\x89PNG fake", mime_type="image/png")
+    with pytest.raises(ProviderFailure) as refused:
+        await _REAL_GENERATE("", [image], model=provider.TEXT_MODEL, capability="text", purpose=Purpose.ORDINARY_CHAT)
+    assert refused.value.code == "privacy_violation"
+    with pytest.raises(ProviderFailure) as unknown_model:
+        await _REAL_GENERATE("", "hello", model="not-a-model", capability="text", purpose=Purpose.ORDINARY_CHAT)
+    assert unknown_model.value.code == "provider_configuration"
+    assert calls == [], "the simulator must never answer a request production would refuse"
+
+
+def test_every_purpose_the_code_names_exists_and_image_purposes_may_send_images():
+    """A purpose that doesn't exist fails only at call time — which only production reached."""
+    import re
+    from services.higgins.llm_boundary import Purpose
+    root = pathlib.Path(__file__).resolve().parents[1]
+    names = set()
+    for path in [*root.glob("routers/*.py"), *root.glob("services/**/*.py")]:
+        names |= set(re.findall(r"\bPurpose\.([A-Z_]+)\b", path.read_text()))
+    assert names, "no purposes found"
+    missing = sorted(n for n in names if n not in Purpose.__members__)
+    assert not missing, f"code names purposes that don't exist: {missing}"
+    assert Purpose.VISION_INVESTIGATION in provider._BINARY_AUTHORISED_PURPOSES

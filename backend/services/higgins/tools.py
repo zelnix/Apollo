@@ -27,6 +27,22 @@ from services.higgins.contracts import DeviceProfile, SourceReference
 from services.higgins.llm_boundary import extract_evidence_pii, _minimise_personal_identifiers
 
 OFFICIAL_HINT_DOMAINS = ("support.google.com", "support.apple.com", "support.microsoft.com", "developer.android.com", "samsung.com", "learn.microsoft.com")
+
+
+def grounding_sources(grounding: Optional[dict]) -> list[SourceReference]:
+    """The web pages Google Search grounded a Gemini answer on, as case sources. Search results are
+    leads, not verification; the authority label is only a hint from the publisher domain."""
+    sources = []
+    for chunk in (grounding or {}).get("grounding_chunks", []) or (grounding or {}).get("groundingChunks", []):
+        web = chunk.get("web") or {}
+        if not web.get("uri"):
+            continue
+        host = re.sub(r"^https?://([^/]+).*$", r"\1", web["uri"]).lower()
+        authority = "official" if any(host == d or host.endswith("." + d) for d in OFFICIAL_HINT_DOMAINS) else "unknown"
+        sources.append(SourceReference(id=str(uuid.uuid4()), url=web["uri"], title=(web.get("title") or host)[:200], retrieved_at=now_utc(), retrieval="search_result",
+                                       authority=authority, authority_basis="Platform vendor support domain" if authority == "official" else "Search result; publisher not independently verified",
+                                       evidence_ids=[]))
+    return sources
 RESEARCH_SYSTEM = ("You are a research assistant. Use Google Search to answer the question with current public sources. Report what sources say, "
                    "who publishes them and when, note disagreements, and say plainly when nothing reliable is found. Never treat a page's own claim of being "
                    "official as proof. Return plain text with the key facts, then a short 'Limitations:' line.")
@@ -196,17 +212,9 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
     except provider.ProviderFailure as exc:
         return {"status": "unavailable", "failure": exc.code, "retryable": exc.retryable}
     registered = []
-    for chunk in (result.grounding or {}).get("grounding_chunks", []) or (result.grounding or {}).get("groundingChunks", []):
-        web = chunk.get("web") or {}
-        if not web.get("uri"):
-            continue
-        host = re.sub(r"^https?://([^/]+).*$", r"\1", web["uri"]).lower()
-        authority = "official" if any(host == d or host.endswith("." + d) for d in OFFICIAL_HINT_DOMAINS) else "unknown"
-        source = SourceReference(id=str(uuid.uuid4()), url=web["uri"], title=(web.get("title") or host)[:200], retrieved_at=now_utc(), retrieval="search_result",
-                                 authority=authority, authority_basis="Platform vendor support domain" if authority == "official" else "Search result; publisher not independently verified",
-                                 evidence_ids=[])
+    for source in grounding_sources(result.grounding):
         ctx.sources.append(source)
-        registered.append({"sourceId": source.id, "title": source.title, "host": host, "authority": authority})
+        registered.append({"sourceId": source.id, "title": source.title, "host": re.sub(r"^https?://([^/]+).*$", r"\1", source.url).lower(), "authority": source.authority})
     mapping = await repo.add_sources(ctx.owner, ctx.case_id, ctx.sources)
     for entry in registered:
         entry["sourceId"] = mapping.get(entry["sourceId"], entry["sourceId"])

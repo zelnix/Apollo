@@ -193,6 +193,8 @@ _BINARY_AUTHORISED_PURPOSES = frozenset({
     Purpose.VISION_PREFLIGHT,
     Purpose.PAGE_SIGNAL_EXTRACTION,
     Purpose.INVESTIGATION,
+    # The Vision Gate exists to have Gemini look at the person's privacy-screened image.
+    Purpose.VISION_INVESTIGATION,
 })
 
 
@@ -306,18 +308,10 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     Preview (APOLLO_PREVIEW_SIMULATOR=on): the preview dispatch handles generate() calls — installed at startup.
     Production: no preview handler can be installed. This function calls live Gemini only.
     """
-    # ── Preview handler (installed at startup if preview/ exists) ───────
-    if _preview_generate is not None:
-        return await _preview_generate(
-            system, contents, model=model, capability=capability,
-            json_output=json_output, tools=tools, timeout=timeout,
-            response_schema=response_schema, purpose=purpose,
-            correlation_id=correlation_id, trigger_source=trigger_source)
-
-    # ── Live Gemini ───────────────────────────────────────────────────────
-
-    if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
-        raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
+    # ── Live Gemini and preview alike: every production check runs first ──
+    # The simulator replaces ONLY the network call below. Model capability, image authorisation,
+    # credential stripping and the privacy boundary all run before it, so a request production would
+    # refuse is refused in preview too — preview can no longer pass what production rejects.
     require_capability(model, capability)
 
     call_id = str(uuid.uuid4())
@@ -369,6 +363,18 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
             else _screen(item)
             for item in contents
         ]
+
+    # ── Preview (APOLLO_PREVIEW_SIMULATOR=on): the simulator answers instead of the network call ──
+    if _preview_generate is not None:
+        return await _preview_generate(
+            system, contents, model=model, capability=capability,
+            json_output=json_output, tools=tools, timeout=timeout,
+            response_schema=response_schema, purpose=purpose,
+            correlation_id=correlation_id, trigger_source=trigger_source)
+
+    # ── Live Gemini ───────────────────────────────────────────────────────
+    if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
+        raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
 
     config = types.GenerateContentConfig(
         system_instruction=system or None, max_output_tokens=OUTPUT.value,

@@ -1,6 +1,7 @@
 // Apollo build configuration — ONE build decision governs preview simulation.
 //
-//   EXPO_PUBLIC_PREVIEW_BUILD=included  → the preview build. `@/src/simulation` resolves to the real
+//   EXPO_PUBLIC_PREVIEW_BUILD=included  → the preview build — but ONLY when EXPO_PUBLIC_BACKEND_URL is a
+//                                        preview server. `@/src/simulation` then resolves to the real
 //                                        simulation source in src/simulation/, so samples, pickers,
 //                                        the simulated image read and the example case all exist.
 //   anything else (the default)         → a production build. Every import of `@/src/simulation` is
@@ -17,7 +18,11 @@
 // isolation — a production bundle must not contain the code at all. scripts/verify-no-simulation.mjs
 // inspects the exported artifact and fails if any of it got through.
 const STORE_BUILD = !!process.env.EAS_BUILD || !!process.env.EAS_BUILD_PLATFORM;
-const PREVIEW_BUILD = !STORE_BUILD && process.env.EXPO_PUBLIC_PREVIEW_BUILD === "included";
+// The simulation is bundled ONLY into an app whose backend is a preview server. An Emergent deployment
+// shares this project's EXPO_PUBLIC_PREVIEW_BUILD value, but the deployed app talks to the production
+// backend — so the flag alone can never put the simulation into a deployed app.
+const PREVIEW_BACKEND = /^https:\/\/[^/]+\.preview\.emergentagent\.com(\/|$)/i.test(process.env.EXPO_PUBLIC_BACKEND_URL || "");
+const PREVIEW_BUILD = !STORE_BUILD && PREVIEW_BACKEND && process.env.EXPO_PUBLIC_PREVIEW_BUILD === "included";
 
 module.exports = function babelConfig(api) {
   // Re-transform when the build kind changes, so a cached preview transform can never leak into a

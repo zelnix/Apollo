@@ -32,6 +32,7 @@ import { Body, Button } from "@/src/components/ui";
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { learningArticles, type LearningArticleSummary } from "@/src/higgins/hubClient";
+import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Topic tile definitions ──────────────────────────────────────────────────
@@ -533,12 +534,17 @@ export default function HigginsLearningScreen() {
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>({});
   const [sortNewest, setSortNewest] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
+  // Learning is read with this device's credential. A fresh install registers that credential during
+  // setup (or once the service is reachable again), so the screen waits for it and loads the moment it
+  // exists, instead of failing on a request that was never allowed to leave the device.
+  const { deviceId, identityReset } = useApollo();
 
   const load = useCallback(() => {
+    if (!deviceId) return;
     setLoading(true);
-    setError(false);
+    setError(null);
     void learningArticles({
       category: appliedFilters.category || undefined,
       audience: appliedFilters.audience || undefined,
@@ -551,11 +557,13 @@ export default function HigginsLearningScreen() {
         setItems(result.items);
         setBackendFilters(result.filters);
       })
-      .catch(() => setError(true))
+      .catch((e: unknown) => setError(e instanceof Error && e.message ? e.message : "The service did not answer."))
       .finally(() => setLoading(false));
-  }, [appliedFilters, search]);
+  }, [appliedFilters, search, deviceId]);
 
   useEffect(() => { load(); }, [load]);
+  // A device whose credential was reset has to re-register first — say so rather than spin forever.
+  const blocked = !deviceId && identityReset ? identityReset : null;
 
   const filterCount = useMemo(
     () => Object.values(appliedFilters).filter(Boolean).length,
@@ -682,11 +690,15 @@ export default function HigginsLearningScreen() {
         )}
         ListEmptyComponent={
           <View style={s.centerWrap}>
-            {loading ? (
+            {blocked ? (
+              <View style={{ alignItems: "center", gap: spacing.sm }} testID="learning-blocked">
+                <Body>Learning could not be loaded. {blocked}</Body>
+              </View>
+            ) : loading ? (
               <ActivityIndicator testID="learning-loading" color={colors.brand} />
             ) : error ? (
               <View style={{ alignItems: "center", gap: spacing.sm }}>
-                <Body>Learning could not be loaded.</Body>
+                <Body>Learning could not be loaded. {error}</Body>
                 <Button testID="learning-retry" label="Try again" onPress={load} />
               </View>
             ) : (

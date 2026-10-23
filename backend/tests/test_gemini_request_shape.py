@@ -58,9 +58,13 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
     finally:
         coordinator.provider.generate = original
 
-    # 1. No system prompt, and the response shape comes from the schema alone.
+    # 1. No system prompt, and the response shape comes from the schema alone — limited to the ids
+    #    registered for this case (none yet, so every sourceIds list must stay empty).
     assert captured["system"] == ""
-    assert captured["kwargs"]["response_schema"] is RESPONSE_SCHEMA
+    sent_schema = captured["kwargs"]["response_schema"]
+    assert set(sent_schema.properties) == set(RESPONSE_SCHEMA.properties)
+    assert sent_schema.properties["sourceIds"].max_items == 0
+    assert sent_schema.properties["findings"].items.properties["sourceIds"].max_items == 0
     assert captured["kwargs"]["json_output"] is True
     # Google Search stays attached (a tool, not prompt text).
     assert captured["kwargs"]["tools"]

@@ -1,3 +1,64 @@
+## Deploy failure: EAS update "Cannot read properties of undefined (reading 'transformFile')" — FIXED (2026-10)
+
+**Root cause (reproduced exactly):** the Emergent deploy builder installs WITHOUT devDependencies, and
+`babel-plugin-module-resolver` (the plugin the production Babel branch uses to swap `@/src/simulation`
+for `simulationAbsent`) was a devDependency → "Failed to construct transformer: Cannot find module
+'babel-plugin-module-resolver'" → Metro's `Bundler._transformer` undefined → `reading 'transformFile'`.
+It surfaced now because the babel change (preview only when the backend is a preview server) made the
+deployed app correctly take the production branch for the first time; before, the deployment wrongly took
+the preview branch, which loads no plugin (and carried the simulation).
+**Fix:** moved it to `dependencies` (`yarn remove` + `yarn expo install babel-plugin-module-resolver@5.0.3`;
+yarn.lock byte-identical). Guard test in `tests/previewIsolation.test.ts`. Verified with a copy of the
+frontend installed `--production --frozen-lockfile`: android + ios `expo export` succeed and contain zero
+simulation markers; hiding the plugin reproduces the exact deploy error.
+**Deployment-agent findings deliberately NOT applied:** removing `eas.json` (store builds need its env),
+committing `.env` files via `.gitignore` (would leak secrets to GitHub; deploys use the workspace
+snapshot), removing the TTL/maintenance deletions (intentional 15-minute privacy retention), and
+`ios.googleServicesFile` (iOS push wiring, unrelated to this failure).
+
+## Production ≠ preview audit (owner: "no simulation code in a production build or deployment") (2026-10)
+
+**Platform fact (Emergent support):** a deployment is a snapshot of the whole project; there is NO
+documented way to exclude a folder, no backend pre-start hook, and no reliable preview-only env var.
+So the backend simulator files cannot be kept out of the deployment — the guarantee is that production
+never LOADS them: `server.py` imports the dispatch only behind `APOLLO_PREVIEW_SIMULATOR=on`, and
+`tests/test_provider_environment_guard.py::test_production_startup_loads_no_simulation_module` imports
+the whole app without the switch and asserts no `services.higgins.preview*` / `preview_analysis` module
+is in memory.
+
+**Frontend deployment:** `babel.config.js` now bundles the simulation only when the flag is `included`
+AND `EXPO_PUBLIC_BACKEND_URL` is an `https://*.preview.emergentagent.com` server. The deployed app talks
+to the production backend, so it can never carry the simulation even though it shares the one-slot
+flag. `verify-no-simulation.mjs` production mode now reproduces a deployment (flag `included`, backend
+`https://verify.emergent.host`) and finds zero simulation; `--preview` still finds 9/9 markers. EAS
+store builds remain forced to production.
+
+**Root cause of "preview fine, production broken":** the simulator took over at the TOP of
+`provider.generate()`, skipping model capability, image authorisation, credential stripping, the privacy
+boundary, token budget and timeouts. It now replaces ONLY the network call — every production check runs
+first in preview too (`test_preview_runs_every_production_check_before_the_simulator`).
+
+**Production-only bugs found by running every Gemini feature live (all FIXED, all live-verified):**
+1. Investigations rejected (made-up citation ids) — per-call `response_schema(source_ids, capability_ids)`
+   limits every id list to registered ids; Google Search grounding chunks are registered as case sources
+   after a validated answer (`tools.grounding_sources`). Live: completion complete, DI `Live`.
+2. `/message/extract` — `Purpose.EXTRACTION` didn't exist and `images=` isn't a gateway argument →
+   now `[image part, prompt]` with `PAGE_SIGNAL_EXTRACTION`. Live: text + sender extracted.
+3. `/vision/investigate` with an image → `privacy_violation` (VISION_INVESTIGATION not image-authorised);
+   added to `_BINARY_AUTHORISED_PURPOSES`. Live: CommBank SMS recognised.
+4. `/vision/investigate` text-only (image withheld on device) never opened a case (`UnboundLocalError`
+   on `_redacted_image_bytes`) — initialised up front; failure now logs its traceback. Live: case opened.
+5. Learn: waits for the device credential (`deviceId`) and shows the real reason on failure.
+Live OK without changes: Higgins chat, page screenshot, page crawl, scam-alert analysis, provider health check.
+Guard test: every `Purpose.X` named in code must exist.
+
+**Other differences (not code):** ~20 settings have separate preview/production values (models match);
+production holds 9 dead settings (APOLLO_ENV, APOLLO_PROVIDER_MODE, EXPO_PUSH_ENABLED,
+EXPO_PUSH_ACCESS_TOKEN, EXPO_PROJECT_ID, EMERGENT_INTEGRATIONS_BASE_URL, EXPO_PUBLIC_PREVIEW_SAMPLES,
+EXPO_PUBLIC_SECURECORE_MODE, EXPO_PUBLIC_SECURITY_MODE) — owner can delete them in the deployment panel;
+production Learn has the 6 seed articles vs preview's 50 (feed-grown); preview is web, so native-only
+features need a device build.
+
 ## Production was answering from the preview simulator — fixed with one explicit switch (2026-10)
 
 **Proven on the live deployment** (`threat-patrol-1.emergent.host`): a Netflix scam text came back as the

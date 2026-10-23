@@ -42,10 +42,13 @@ function exportBundle() {
   fs.rmSync(outDir, { recursive: true, force: true });
   const env = {
     ...process.env,
-    EXPO_PUBLIC_PREVIEW_BUILD: preview ? "included" : "excluded",
+    // The production check reproduces an Emergent deployment: the project's flag says "included", but the
+    // app talks to the production backend — the artifact must still contain none of the simulation.
+    EXPO_PUBLIC_PREVIEW_BUILD: "included",
+    EXPO_PUBLIC_BACKEND_URL: preview ? "https://verify.preview.emergentagent.com" : "https://verify.emergent.host",
     NODE_ENV: "production",
   };
-  console.log(`[verify-no-simulation] exporting web bundle (EXPO_PUBLIC_PREVIEW_BUILD=${env.EXPO_PUBLIC_PREVIEW_BUILD})…`);
+  console.log(`[verify-no-simulation] exporting web bundle (EXPO_PUBLIC_PREVIEW_BUILD=${env.EXPO_PUBLIC_PREVIEW_BUILD}, backend ${env.EXPO_PUBLIC_BACKEND_URL})…`);
   execFileSync("npx", ["expo", "export", "--platform", "web", "--output-dir", outDir, "--clear"], {
     cwd: root, env, stdio: "inherit",
   });

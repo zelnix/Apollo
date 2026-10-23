@@ -159,11 +159,13 @@ async def extract_message_screenshot(image_bytes: bytes) -> dict:
         "Include ALL visible text. If a field is not visible, use empty string."
     )
     try:
+        # The gateway takes one contents list: the instruction and the image travel together, the same
+        # shape the page-screenshot reader uses. (An `images=` keyword is not part of the gateway and made
+        # this path fail before Gemini was ever reached.)
         data, _meta = await generate_json(
             "You extract text from screenshots accurately and completely.",
-            prompt,
-            images=[types.Part.from_bytes(data=image_bytes, mime_type="image/png")],
-            model=VISION_MODEL, purpose=Purpose.EXTRACTION,
+            [types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"), types.Part(text=prompt)],
+            model=VISION_MODEL, capability="vision", purpose=Purpose.PAGE_SIGNAL_EXTRACTION,
             correlation_id="screenshot-extract",
             trigger_source="vision_extract",
         )
