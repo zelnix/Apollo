@@ -6,11 +6,10 @@
 import * as Clipboard from "expo-clipboard";
 import Copy from "lucide-react-native/icons/copy";
 import { useEffect, useState } from "react";
-import { Pressable, Share, Text, View } from "react-native";
+import { Pressable, Share, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { apiGet } from "@/src/api/client";
 import { Card } from "@/src/components/ui";
-import { simulation } from "@/src/simulation";
 import { formatBytes, provenanceLabel, type DiTransaction } from "@/src/domain/diTransaction";
 import { diRequestText, diResponseText } from "@/src/domain/diTransactionText";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -92,11 +91,12 @@ function DiBlock({ title, body, testID }: { title: string; body: string; testID:
   );
 }
 
-export function DiReport({ caseId }: { caseId: string | null }) {
-  const s = useStyles();
-  const [state, setState] = useState<{ loading: boolean; error: string | null; records: DiTransaction[] }>({
-    loading: !!caseId, error: null, records: [],
-  });
+type DiState = { loading: boolean; error: string | null; records: DiTransaction[] };
+
+/** The Magnum DI record(s) for one case, exactly as the server holds them — nothing filtered out.
+ *  `refreshKey` re-reads the record when the case moves on (e.g. a new answer arrives). */
+export function useDiTransactions(caseId: string | null, refreshKey?: unknown): DiState {
+  const [state, setState] = useState<DiState>({ loading: !!caseId, error: null, records: [] });
 
   useEffect(() => {
     if (!caseId) return;
@@ -107,7 +107,31 @@ export function DiReport({ caseId }: { caseId: string | null }) {
         if (alive) setState({ loading: false, error: error instanceof Error ? error.message : "The DI record could not be read.", records: [] });
       });
     return () => { alive = false; };
-  }, [caseId]);
+  }, [caseId, refreshKey]);
+
+  return state;
+}
+
+/** Shown above an investigation's answer whenever the preview simulator produced it — in EVERY build,
+ *  production included. A simulated verdict must never pass for a Gemini investigation. */
+export function SimulatedAnswerNotice({ caseId, refreshKey, style }: { caseId: string | null; refreshKey?: unknown; style?: StyleProp<ViewStyle> }) {
+  const s = useStyles();
+  const { records } = useDiTransactions(caseId, refreshKey);
+  if (!records.some((record) => record.simulated)) return null;
+  return (
+    <View style={[s.diNotice, style]} testID="simulated-answer-notice" accessibilityRole="alert">
+      <Text style={s.diNoticeText}>SIMULATED ANSWER — not from Gemini</Text>
+      <Text style={s.sourceSub}>
+        The preview simulator answered this investigation. No Gemini API call was made, so this verdict is not a real
+        investigation and must not be relied on.
+      </Text>
+    </View>
+  );
+}
+
+export function DiReport({ caseId }: { caseId: string | null }) {
+  const s = useStyles();
+  const state = useDiTransactions(caseId);
 
   if (!caseId) {
     return (
@@ -144,11 +168,9 @@ export function DiReport({ caseId }: { caseId: string | null }) {
 
   return (
     <View style={s.content} testID="tc-di-content">
-      {state.records
-        // A simulated transaction is shown only in a preview build. In a production build the
-        // simulation module is absent, `included` is false, and nothing simulated renders at all.
-        .filter((record) => !record.simulated || simulation.included)
-        .map((record, index) => {
+      {/* Every record is shown in every build. A simulated one is labelled, never hidden: hiding it is
+          how production once ran on the simulator without anyone seeing it. */}
+      {state.records.map((record, index) => {
         const p = record.processing;
         const tokenNote = provenanceLabel(!!p.tokensAreSimulated, p.tokensAreEstimates);
 
@@ -157,7 +179,7 @@ export function DiReport({ caseId }: { caseId: string | null }) {
             {record.simulated ? (
               <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
                 <Text style={s.diNoticeText}>
-                  {simulation.tag} — this record came from the preview simulator, not from Gemini. The workflow,
+                  SIMULATED — this record came from the preview simulator, not from Gemini. The workflow,
                   the request and the processing below are real; the response was not produced by Gemini and is
                   not a real investigation, so it must not be relied on.
                 </Text>

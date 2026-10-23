@@ -361,6 +361,8 @@ class ProviderResult(Wire):
     provider_complete: bool
     usage: Usage = Field(default_factory=Usage)
     source_ids: list[str] = Field(default_factory=list)
+    # True when the preview simulator answered instead of Gemini — recorded, never hidden.
+    simulated: bool = False
 
 
 class TurnCommit(Wire):

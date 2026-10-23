@@ -521,6 +521,7 @@ async def export_investigation_pdf(case_id: str, request: Request):
     """Generate and return a branded Apollo investigation PDF.
     The PDF includes the full Magnum DI investigation, Higgins explanation,
     Evidentiary Chain metadata, sources, and retention information."""
+    from services.higgins.di_record import get_di_records
     from services.higgins.pdf_export import generate_pdf
     owner = owner_of(request)
     case_doc = await repo.get_case(owner, case_id)
@@ -528,7 +529,8 @@ async def export_investigation_pdf(case_id: str, request: Request):
     evidence_rows = await repo.list_evidence(owner, case_id)
     evidence_wire = [repo.evidence_view(r).wire() for r in evidence_rows]
     subject = (case_wire.get("response") or {}).get("subject", "Investigation")
-    pdf_bytes = generate_pdf(case_wire, evidence_wire, subject=subject)
+    simulated = any(r.get("simulated") for r in await get_di_records(owner, case_id))
+    pdf_bytes = generate_pdf(case_wire, evidence_wire, subject=subject, simulated=simulated)
     safe_subject = re.sub(r'[^\w\s-]', '', subject)[:40].strip().replace(" ", "_") or "report"
     filename = f"Apollo_{safe_subject}_{case_id[:8]}.pdf"
     return Response(
@@ -558,15 +560,10 @@ async def get_di_transactions(case_id: str, request: Request):
     # window, so an expired or cleaned-up case must still be able to show how it was processed.
     if not await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 1}):
         raise http(404, "not_found", "No investigation with that reference belongs to this device.")
-    from services.higgins.provider import get_provider_mode
+    # Every record is returned, in every environment. A simulated one carries `simulated: true` and its
+    # own "SIMULATED — No Gemini API call was made" notice; withholding it would hide the fact that
+    # Gemini never answered, which is exactly how production once ran on the simulator unnoticed.
     records = await get_di_records(owner, case_id)
-    # A simulated transaction is returned only where it can legitimately exist: the preview
-    # (APOLLO_PREVIEW_SIMULATOR=on), where the simulator answered instead of Gemini. Each such record carries
-    # its own "SIMULATED — No Gemini API call was made" notice and the client marks it. In production
-    # no simulator can be installed, so nothing simulated can be produced — and any older record is
-    # withheld here rather than shown as though Gemini had answered.
-    if get_provider_mode() != "preview":
-        records = [r for r in records if not r.get("simulated")]
     return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
 
 

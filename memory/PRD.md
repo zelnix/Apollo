@@ -18,6 +18,26 @@ calls live Gemini too). `EXPO_PUBLIC_PREVIEW_BUILD` has only one slot, so it can
 environment; store builds are already forced to production by `babel.config.js`.
 Requires a redeploy. Tests: `tests/test_provider_environment_guard.py` rewritten to the new contract.
 
+**Hiding removed (owner's follow-up).** Simulated output is now LABELLED everywhere, never withheld:
+`GET /investigations/{id}/di` returns every record in every environment (the `get_provider_mode() != "preview"`
+filter is gone); `DiReport` dropped its `!record.simulated || simulation.included` filter and its label no
+longer borrows the preview-only `simulation.tag` (empty in production) — it reads "SIMULATED — …" in every
+build. The verdict itself: `GeminiResult.simulated` (set by the simulator) flows into
+`ProviderResult.simulated` on the turn commit, so a simulated answer is no longer stored as a Gemini one;
+`SimulatedAnswerNotice` (in `DiReport.tsx`, driven by the case's DI records via `useDiTransactions`) shows
+"SIMULATED ANSWER — not from Gemini" above the tabs on both Ask Higgins (`InvestigationView`) and the Threat
+Case screen; the PDF export prints the same statement. The build-time strip of preview SAMPLE content
+(`simulationAbsent`) is deliberately kept — that is fake input, not hidden results.
+Verified: backend 103 targeted tests, frontend 859/859, tsc + ESLint clean, all 8 CI steps, screenshot of
+the notice + labelled DI record.
+
+**Found while verifying — live Gemini answers are ALL rejected (`response_invalid`).** With Google Search
+attached, Gemini cites sources as made-up ids ("1.1.4", "1.2.3"); the single-call coordinator (rewritten
+2026-10-20) registers no sources before or after the call, so `validate()` rejects every finding with
+"references unknown ids". Three live attempts on a preview case all failed this way. The simulator always
+produced valid answers, which masked it. NOT FIXED — awaiting the owner's decision (production will hit this
+as soon as it calls Gemini).
+
 ## Device Capabilities: desktop protections, grouped by category (2026-06)
 
 **Catalogue wired to the engine.** `src/domain/deviceSecurityCatalogue.ts` (18 protections) +

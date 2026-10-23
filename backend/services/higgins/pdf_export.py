@@ -141,6 +141,7 @@ def generate_pdf(
     *,
     subject: str = "",
     generated_at: Optional[datetime] = None,
+    simulated: bool = False,
 ) -> bytes:
     """Generate a branded Apollo investigation PDF.
 
@@ -207,6 +208,13 @@ def generate_pdf(
     ]))
     story.append(badge_table)
     story.append(Spacer(1, 12))
+
+    # A simulated answer is stated on the report itself, so a printed copy can't pass for a Gemini one.
+    if simulated:
+        story.append(Paragraph("<b>SIMULATED ANSWER — not from Gemini.</b> This investigation was answered by the "
+                               "preview simulator; no Gemini API call was made. It is not a real investigation "
+                               "and must not be relied on.", s["subtitle"]))
+        story.append(Spacer(1, 12))
 
     # ── Overview ──
     overview = response.get("overview", "")

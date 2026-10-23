@@ -168,12 +168,15 @@ class GeminiResult:
     usage: dict[str, Any]
     grounding: dict[str, Any] | None
     model: str
+    # True when the preview simulator produced this result instead of Gemini. Carried through to
+    # what is stored, so a simulated answer can never be recorded as a Gemini one.
+    simulated: bool = False
 
     @property
     def metadata(self) -> dict:
-        return {"provider": "Gemini", "model": self.model, "finish_reason": self.finish_reason,
-                "provider_complete": self.finish_reason == "STOP", "usage": self.usage,
-                "grounding": self.grounding}
+        return {"provider": "Preview simulator" if self.simulated else "Gemini", "model": self.model,
+                "finish_reason": self.finish_reason, "provider_complete": self.finish_reason == "STOP",
+                "usage": self.usage, "grounding": self.grounding, "simulated": self.simulated}
 
     def object(self) -> dict:
         try:

@@ -243,4 +243,5 @@ async def simulate_generate(
         usage=usage,
         grounding=None,
         model=model,
+        simulated=True,
     )

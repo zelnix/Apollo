@@ -149,7 +149,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     usage = result.usage or {}
     provider_result = ProviderResult(model=result.model, finish_reason=result.finish_reason, provider_complete=result.finish_reason == "STOP",
                                      usage=Usage(input_tokens=usage.get("prompt_token_count"), output_tokens=usage.get("candidates_token_count"), total_tokens=usage.get("total_token_count")),
-                                     source_ids=response.source_ids)
+                                     source_ids=response.source_ids, simulated=result.simulated)
     commit = TurnCommit(turn_id=job["turn_id"], case_id=case["case_id"], input_revision=job["input_revision"], committed_revision=revision, question=payload["message"],
                         answer_to_question_id=payload.get("answerToQuestionId"), response=response, provider=provider_result,
                         evidence_ids=sorted(evidence_ids), source_ids=sorted(source_ids), committed_at=now_utc())

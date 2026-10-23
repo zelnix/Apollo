@@ -58,7 +58,7 @@ import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
 import { subjectDescriptor, threatSubject } from "@/src/domain/threatSubject";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
-import { DiReport } from "@/src/components/DiReport";
+import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
@@ -1242,6 +1242,15 @@ export default function ThreatCaseScreen() {
           <Text style={s.sourceTime}>{formatDateTime(event.occurred_at)}</Text>
         </View>
       </View>
+
+      {/* A simulated answer is labelled above every tab, in every build. */}
+      {hasInvestigation ? (
+        <SimulatedAnswerNotice
+          caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null}
+          refreshKey={status}
+          style={{ marginHorizontal: spacing.md, marginBottom: spacing.xs }}
+        />
+      ) : null}
 
       {/* Tab bar */}
       <View style={s.tabBar} testID="tc-tab-bar">

@@ -29,7 +29,7 @@ import { API_BASE } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
-import { DiReport } from "@/src/components/DiReport";
+import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -719,6 +719,9 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           </View>
         </View>
       </View>
+
+      {/* A simulated answer is labelled on every tab, in every build. */}
+      {caseData && response ? <SimulatedAnswerNotice caseId={caseData.id} refreshKey={response.revision} /> : null}
 
       {/* ── Tab Navigation ── */}
       <TabBar active={activeTab} onChange={setActiveTab} s={s} />

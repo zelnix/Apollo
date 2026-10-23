@@ -1,15 +1,24 @@
-"""The DI tab must show the preview simulator's transaction in a preview deployment, and must never
-show a simulated transaction in production.
+"""A simulated answer is always visible as simulated — in every environment, never withheld.
+
+Production once ran on the preview simulator unnoticed because the DI endpoint dropped simulated
+records outside preview mode and the answer itself was stored as a Gemini one. Now:
+  - the DI endpoint returns every record, a simulated one carrying its SIMULATED notice;
+  - the simulator's result is marked `simulated`, and so is the turn's provider record.
 
 Run: cd /app/backend && python -m pytest tests/test_di_simulated_visibility.py -q
 """
 from __future__ import annotations
+
+import json
 
 import pytest
 from starlette.requests import Request
 
 from routers import investigations
 from services.higgins import provider
+from services.higgins.contracts import ProviderResult
+from services.higgins.llm_boundary import Purpose
+from services.higgins.preview.preview_simulator import simulate_generate
 
 
 def _request(device_id: str) -> Request:
@@ -38,21 +47,35 @@ def case(monkeypatch):
 
 
 async def _transactions(owner: str, case_id: str) -> list[dict]:
-    import json
     response = await investigations.get_di_transactions(case_id, _request(owner))
     return json.loads(bytes(response.body))["transactions"]
 
 
 @pytest.mark.anyio
-async def test_preview_deployment_shows_the_simulated_transaction(case, monkeypatch):
-    monkeypatch.setattr(provider, "_preview_generate", lambda *a, **k: None)
-    assert provider.get_provider_mode() == "preview"
+@pytest.mark.parametrize("handler", [lambda *a, **k: None, None], ids=["preview", "production"])
+async def test_a_simulated_transaction_is_returned_labelled_in_every_environment(case, monkeypatch, handler):
+    monkeypatch.setattr(provider, "_preview_generate", handler)
     records = await _transactions(*case)
-    assert len(records) == 1 and records[0]["simulated"] is True
+    assert len(records) == 1
+    assert records[0]["simulated"] is True
+    assert records[0]["notice"].startswith("SIMULATED")
 
 
 @pytest.mark.anyio
-async def test_production_withholds_a_simulated_transaction(case, monkeypatch):
-    monkeypatch.setattr(provider, "_preview_generate", None)
-    assert provider.get_provider_mode() == "live"
-    assert await _transactions(*case) == []
+async def test_the_simulator_marks_its_own_result_as_simulated(monkeypatch):
+    async def _no_usage(**_kwargs):
+        return None
+
+    monkeypatch.setattr("services.higgins.preview.preview_simulator._record_usage", _no_usage)
+    result = await simulate_generate("", "Is this message genuine?", model="gemini-3.1-flash-lite", capability="text",
+                                     json_output=True, tools=None, timeout=10, response_schema=None,
+                                     purpose=Purpose.INVESTIGATION, correlation_id=None, trigger_source=None,
+                                     payload_audit={})
+    assert result.simulated is True
+    assert result.metadata["simulated"] is True and result.metadata["provider"] != "Gemini"
+
+
+def test_a_turn_records_whether_the_simulator_answered():
+    base = {"model": "gemini-3.1-flash-lite", "finish_reason": "STOP", "provider_complete": True}
+    assert ProviderResult(**base).wire()["simulated"] is False
+    assert ProviderResult(**base, simulated=True).wire()["simulated"] is True
