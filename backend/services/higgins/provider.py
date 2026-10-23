@@ -9,11 +9,16 @@ NO-FALLBACK CONTRACT:
     substitute, no "try again with fake data" path. Higgins surfaces the honest
     failure to the person.
 
-PREVIEW vs PRODUCTION:
-    Preview  — the preview/ directory exists. server.py installs the simulator at
-               startup. generate() routes through it. No Gemini calls.
-    Production — the preview/ directory is not deployed. _preview_generate stays
-               None. generate() calls live Gemini. Nothing to configure.
+PREVIEW vs PRODUCTION — decided by APOLLO_PREVIEW_SIMULATOR, nothing else:
+    Preview  — APOLLO_PREVIEW_SIMULATOR=on (set in the preview/test slot only). server.py
+               installs the simulator at startup. generate() routes through it. No Gemini calls.
+    Production — the variable is missing or holds anything other than "on".
+               _preview_generate stays None and cannot be installed. generate() calls
+               live Gemini.
+    The preview/ directory IS deployed with the rest of the project, so its presence
+    proves nothing; a missing or mistyped value always means live Gemini, never fake
+    answers. (APOLLO_ENV is deliberately NOT used: an old "preview" value of it still
+    sits in the deployment's secrets.)
 """
 from __future__ import annotations
 
@@ -44,10 +49,15 @@ _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
 _gateway_log = _logging.getLogger("apollo.gateway")
 _gateway_log.info("gemini_key_configured=%s", bool(GEMINI_API_KEY))
 
+def preview_environment() -> bool:
+    """True only when this server is explicitly the preview: APOLLO_PREVIEW_SIMULATOR=on."""
+    return os.getenv("APOLLO_PREVIEW_SIMULATOR", "").strip().lower() == "on"
+
+
 # ── Preview handler slot ────────────────────────────────────────────────────
 # Filled by services.higgins.preview.dispatch.install_preview_provider() at
-# startup — IF that module exists in the deployment. In production the preview/
-# directory is not shipped, so this stays None and generate() calls live Gemini.
+# startup, and only when preview_environment() is true. Everywhere else this
+# stays None and generate() calls live Gemini.
 _preview_generate = None
 
 
@@ -57,8 +67,11 @@ def get_provider_mode() -> str:
 
 
 def register_preview_handler(handler) -> None:
-    """Install the preview generate handler. Called at startup from preview/dispatch.py."""
+    """Install the preview generate handler. Called at startup from preview/dispatch.py.
+    Refuses outside an explicit preview environment, so the simulator can never answer in production."""
     global _preview_generate
+    if not preview_environment():
+        raise RuntimeError("The preview simulator can only be installed when APOLLO_PREVIEW_SIMULATOR=on.")
     _preview_generate = handler
     _gateway_log.info("preview handler registered")
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
@@ -287,8 +300,8 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     NO-FALLBACK CONTRACT: In production every Gemini failure is reported exactly as-is.
     There is no simulation fallback. Higgins surfaces the honest failure to the person.
 
-    Preview: the preview dispatch handles generate() calls — installed at startup.
-    Production: preview code is not deployed. This function calls live Gemini only.
+    Preview (APOLLO_PREVIEW_SIMULATOR=on): the preview dispatch handles generate() calls — installed at startup.
+    Production: no preview handler can be installed. This function calls live Gemini only.
     """
     # ── Preview handler (installed at startup if preview/ exists) ───────
     if _preview_generate is not None:

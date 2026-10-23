@@ -1,3 +1,23 @@
+## Production was answering from the preview simulator — fixed with one explicit switch (2026-10)
+
+**Proven on the live deployment** (`threat-patrol-1.emergent.host`): a Netflix scam text came back as the
+simulator's canned "ING impersonation" answer and its DI record read `Simulated / Preview`; an email check
+did the same. Cause: `server.py` installed the simulator whenever `services/higgins/preview/` could be
+imported, on the assumption the folder is not deployed — Emergent deploys the whole project, so production
+never called Gemini. The owner's empty DI tab on the deployed app was the same root cause.
+
+**Fix.** `provider.preview_environment()` is true ONLY for `APOLLO_PREVIEW_SIMULATOR=on`; `server.py` installs the
+dispatch only behind it, and `register_preview_handler()` refuses otherwise. Missing / empty / any other
+value = live Gemini (never fake answers). Startup logs `provider_mode=…`; `/api/ai/capabilities` now
+returns `providerMode` so production can be checked without a paid call. A NEW name was chosen on
+purpose: the deployment's secrets still hold a stale `APOLLO_ENV` (very likely `preview`, copied when
+`backend/.env` carried it), and redeploys don't overwrite existing deployment secrets — production has
+never had `APOLLO_PREVIEW_SIMULATOR`, so it is guaranteed live. The preview needs
+`APOLLO_PREVIEW_SIMULATOR=on` in its test slot only (owner skipped the card, so the preview currently
+calls live Gemini too). `EXPO_PUBLIC_PREVIEW_BUILD` has only one slot, so it cannot differ per
+environment; store builds are already forced to production by `babel.config.js`.
+Requires a redeploy. Tests: `tests/test_provider_environment_guard.py` rewritten to the new contract.
+
 ## Device Capabilities: desktop protections, grouped by category (2026-06)
 
 **Catalogue wired to the engine.** `src/domain/deviceSecurityCatalogue.ts` (18 protections) +

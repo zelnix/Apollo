@@ -54,13 +54,13 @@ from services.seed_learning_images import router as seed_images_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # ── Preview provider ──────────────────────────────────────────────────
-    # If the preview/ directory exists in this deployment, install the
-    # simulator. In production it's not shipped — ImportError, nothing to do.
-    try:
+    # The simulator is installed ONLY when APOLLO_PREVIEW_SIMULATOR=on. The preview/ directory is deployed
+    # with everything else, so its presence decides nothing; any other value means live Gemini.
+    from services.higgins.provider import get_provider_mode, preview_environment
+    if preview_environment():
         from services.higgins.preview.dispatch import install_preview_provider
         install_preview_provider()
-    except ImportError:
-        pass
+    logger.info("provider_mode=%s", get_provider_mode())
 
     await migrate_and_index()
     await investigation_repository.ensure_indexes()

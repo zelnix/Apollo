@@ -114,7 +114,8 @@ async def capabilities():
               "lifetimeSeconds": {"value": policy()["lifetimeSeconds"], "unit": "seconds", "purpose": "temporary content ceiling; never extended", "overflow": "410"}}
     return JSONResponse({"schemaVersion": 1, "provider": "gemini", "modalities": [modality("text", provider.TEXT_MODEL, "text"), modality("vision", provider.VISION_MODEL, "vision"),
                          modality("research", provider.TEXT_MODEL, "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
-                         "models": config["models"], "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
+                         "providerMode": provider.get_provider_mode(),
+            "models": config["models"], "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
 
 
 # ── Source metadata builder (Original Item Summary) ──────────────────────────
@@ -559,11 +560,11 @@ async def get_di_transactions(case_id: str, request: Request):
         raise http(404, "not_found", "No investigation with that reference belongs to this device.")
     from services.higgins.provider import get_provider_mode
     records = await get_di_records(owner, case_id)
-    # A simulated transaction is returned only where it can legitimately exist: a preview deployment,
-    # where services/higgins/preview/ is present and the simulator answered instead of Gemini. Each such
-    # record carries its own "SIMULATED — No Gemini API call was made" notice and the client marks it.
-    # In production the preview code is not deployed, so nothing simulated can be produced — and any
-    # older record is withheld here rather than shown as though Gemini had answered.
+    # A simulated transaction is returned only where it can legitimately exist: the preview
+    # (APOLLO_PREVIEW_SIMULATOR=on), where the simulator answered instead of Gemini. Each such record carries
+    # its own "SIMULATED — No Gemini API call was made" notice and the client marks it. In production
+    # no simulator can be installed, so nothing simulated can be produced — and any older record is
+    # withheld here rather than shown as though Gemini had answered.
     if get_provider_mode() != "preview":
         records = [r for r in records if not r.get("simulated")]
     return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
