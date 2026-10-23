@@ -3075,3 +3075,7 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Warnings: Expo template perms SYSTEM_ALERT_WINDOW + READ/WRITE_EXTERNAL_STORAGE (block via android.blockedPermissions); expo-audio default enableBackgroundPlayback adds FOREGROUND_SERVICE_MEDIA_PLAYBACK; FOREGROUND_SERVICE_MEDIA_PROJECTION declared but family-assist excluded on Android; ACCESS_FINE_LOCATION declared but never requested; EXPO_PUBLIC_BACKEND_URL not in eas.json production env (client.ts throws if missing); Gmail gmail.readonly needs Google OAuth verification + CASA.
 - Passes: target/compile SDK 36 (RN 0.86), AAB production profile, root ErrorBoundary, no QUERY_ALL_PACKAGES / AccessibilityService, photo picker (no READ_MEDIA_*), RECORD_AUDIO blocked, no billing, no accounts + in-app "Delete My Apollo Data", ML Kit 16.0.1 is 16 KB-ready.
 
+
+## Higgins Overview shows the full Gemini response (2026-10)
+- `src/components/InvestigationView.tsx` Overview tab now renders every field Magnum DI returns: overview, explanationMarkdown, attention label + attentionReason, findings (text + basis + confidence), uncertainties, scope, sources used, and the full action instruction (no 2-line truncation). Verified live in preview; tsc, lint and 817 frontend tests pass.
+- Pending user decision: Play SMS/Call Log permission approach (remove from Play build behind an off-by-default switch, "Calls Apollo screened" list, declaration drafts).

@@ -100,6 +100,7 @@ const useStyles = makeStyles((c) => ({
   sectionTitle: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
   row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: spacing.sm, alignItems: "center" as const },
   source: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
+  findingRow: { gap: 2, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   link: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
   question: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
   turn: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
@@ -170,6 +171,9 @@ const useStyles = makeStyles((c) => ({
 
 /** Attention projection → Apollo tone. */
 export function attentionTone(attention: Attention): Tone { return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting"; }
+
+const BASIS_LABEL: Record<string, string> = { observation: "Observed", user_report: "You reported", inference: "Inferred" };
+const CONFIDENCE_LABEL: Record<string, string> = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
 
 function plain(markdown: string) {
   return scrubMessage(markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)"));
@@ -749,10 +753,39 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             <Text style={s.briefingText} testID="inv-overview">{error}</Text>
           ) : null}
 
+          {/* Everything else Magnum DI returned, in full — nothing summarised away. */}
+          {response?.explanationMarkdown?.trim() ? (
+            <Text style={s.briefingText} testID="inv-explanation">{plain(response.explanationMarkdown)}</Text>
+          ) : null}
+
           {response?.attentionReason ? <>
             <View style={s.divider} />
-            <Text style={s.briefingText}>{scrubMessage(response.attentionReason)}</Text>
+            <Text style={s.sectionTitle}>{attentionLabel(response.attention)}</Text>
+            <Text style={s.briefingText} testID="inv-attention-reason">{scrubMessage(response.attentionReason)}</Text>
           </> : null}
+
+          {response?.findings.length ? <View style={{ gap: spacing.sm }} testID="inv-findings">
+            <Text style={s.sectionHeader}>What Magnum DI found</Text>
+            {response.findings.map((finding, i) => <View key={finding.id || i} style={s.findingRow} testID={`inv-finding-${i}`}>
+              <Text style={s.text}>{scrubMessage(finding.text)}</Text>
+              <Text style={s.muted}>{BASIS_LABEL[finding.basis] ?? finding.basis} · {CONFIDENCE_LABEL[finding.confidence] ?? finding.confidence}</Text>
+            </View>)}
+          </View> : null}
+
+          {response?.uncertainties.length ? <View style={{ gap: spacing.xs }} testID="inv-uncertainties">
+            <Text style={s.sectionHeader}>What isn&apos;t certain</Text>
+            {response.uncertainties.map((line, i) => <Text key={i} style={s.briefingText}>{"\u2022"} {scrubMessage(line)}</Text>)}
+          </View> : null}
+
+          {response?.scope?.trim() ? <View style={{ gap: spacing.xs }} testID="inv-scope">
+            <Text style={s.sectionHeader}>What this covered</Text>
+            <Text style={s.briefingText}>{scrubMessage(response.scope)}</Text>
+          </View> : null}
+
+          {usedSources.length ? <View testID="inv-sources">
+            <Text style={s.sectionHeader}>Sources Magnum DI used</Text>
+            {usedSources.map((source) => <SourceRow key={source.id} source={source} s={s} />)}
+          </View> : null}
 
           {/* What you can do */}
           <Text style={s.sectionHeader}>What you can do</Text>
@@ -787,7 +820,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
                 <View style={s.actionContent}>
                   <Text style={s.actionTitle}>{action.label}</Text>
-                  <Text style={s.actionDescription} numberOfLines={2}>{action.instruction}</Text>
+                  <Text style={s.actionDescription}>{scrubMessage(action.instruction)}</Text>
                 </View>
                 {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>
