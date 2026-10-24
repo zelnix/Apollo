@@ -1,8 +1,9 @@
 """Higgins chat — Higgins faithfully communicates what Apollo already knows.
 
 HARD BOUNDARY. Before any Gemini call the question is checked against everything already established:
-  1. Investigation intent with an artefact → the shared Magnum DI pipeline (Magnum DI investigates).
-  2. A completed Magnum DI report, a scam alert, Patrol findings, the phone's live state, recent
+  1. Investigation intent with an artefact → the shared investigation pipeline (Teddy FlyBy first, Magnum DI only
+     when a deeper look could change the answer).
+  2. A completed investigation report (Teddy FlyBy's or Magnum DI's), a scam alert, Patrol findings, the phone's live state, recent
      investigations or Apollo's product knowledge → deterministic presentation (presenter.py).
   3. Apollo's knowledge base — Learn articles, Scam Alerts, official guidance and researched trusted pages,
      quoted with their provenance and labelled as general knowledge, never as a finding about a case.
@@ -43,9 +44,9 @@ log = logging.getLogger("apollo.higgins.chat")
 
 _PERMANENT_CORE = """You are Higgins, Apollo's trusted adviser, interpreter and guide.
 
-APOLLO DETECTS AND PROTECTS. MAGNUM DI INVESTIGATES AND SEARCHES. HIGGINS KNOWS APOLLO AND SCAMS, AND COMMUNICATES, EXPLAINS AND GUIDES.
+APOLLO DETECTS AND PROTECTS. TEDDY FLYBY AND MAGNUM DI INVESTIGATE AND SEARCH. HIGGINS KNOWS APOLLO AND SCAMS, AND COMMUNICATES, EXPLAINS AND GUIDES.
 
-You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in Apollo, and you know how scams and fraud work. You are not a general assistant and you do not investigate: Magnum DI owns investigation and external searching, Apollo owns detection and protection.
+You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in Apollo, and you know how scams and fraud work. You are not a general assistant and you do not investigate: Teddy FlyBy (fast checks of official sources, Apollo's knowledge base and one targeted search) and Magnum DI (deep investigation, only when it could change the answer) own investigation and external searching; Apollo owns detection and protection.
 
 SCOPE — STRICTLY ENFORCED:
 You specialise ONLY in: scams and fraud safety; cybersecurity and digital safety; Apollo functionality, features, protections, settings, checks, screens, flows, privacy; device settings and OS information as observed by Apollo; security findings and investigation results; Patrol findings and warnings; Scam Alerts; Learn articles; guidance in the above areas.
@@ -54,7 +55,7 @@ If asked about anything outside this scope (e.g. general knowledge, cooking, mat
 "I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
 Do NOT answer general knowledge questions, even partially.
 
-INVESTIGATION: You may tell the person you'll hand off to Magnum DI when they ask to check/investigate a specific item. You do NOT conduct the investigation yourself. If a completed investigation already answers the question, use those stored findings directly. Do NOT re-summarise. Answer follow-up questions about existing investigations using the actual case evidence.
+INVESTIGATION: You may tell the person you'll hand it to Apollo's investigators when they ask to check/investigate a specific item: Teddy FlyBy checks it first, and Magnum DI investigates deeper only if that could change the answer. You do NOT conduct the investigation yourself. If a completed investigation already answers the question, use those stored findings directly. Do NOT re-summarise. Answer follow-up questions about existing investigations using the actual case evidence.
 
 EVIDENCE RULES (non-negotiable):
 - DEVICE SNAPSHOT: when supplied, it is a live authoritative reading. Use it for any question about their protections, threats, permissions, alerts, settings. It is the truth about their phone; NEVER contradict it and NEVER guess past it.
@@ -250,15 +251,15 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                 if reused:
                     answer = (
                         "I found an existing investigation for that item on your device. "
-                        "You can review the full Magnum DI findings in your investigation history — "
+                        "You can review the full findings in your investigation history — "
                         "tap the investigation to see the complete briefing, evidence and assessment."
                     )
                 else:
                     artefact_desc = items[0]["value"][:80] if items else "your item"
                     answer = (
-                        f"I've submitted that for a full Magnum DI investigation. "
+                        f"I've submitted that for investigation. "
                         f"Apollo is now investigating {artefact_desc} through the same pipeline "
-                        f"used for all security checks. You'll find the full briefing, evidence chain "
+                        f"used for all security checks: Teddy FlyBy investigates it first, and Magnum DI looks deeper only if that could change the answer. You'll find the full briefing, evidence chain "
                         f"and recommended actions in your investigation history once it completes."
                     )
 
@@ -281,7 +282,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                     suggested_actions=[SuggestedAction(
                         destination="higgins_case",
                         label="View Investigation",
-                        purpose="Open the Magnum DI investigation that was submitted from this conversation.",
+                        purpose="Open the investigation that was submitted from this conversation.",
                     )],
                     investigation_available=True,
                     investigative_work_started=True,
@@ -439,7 +440,7 @@ async def _saved_report(owner: str, report_id: str) -> Optional[dict]:
 
 async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan,
                        snapshot: DeviceSnapshot | None, patrol_record_id: str | None = None) -> Optional[tuple[dict, str, list[str]]]:
-    """What Apollo, Patrol, Magnum DI or the device already established — presented, never re-reasoned."""
+    """What Apollo, Patrol, Teddy FlyBy, Magnum DI or the device already established — presented, never re-reasoned."""
     label = plan.label
     if label == "patrol_record_context" and patrol_record_id:
         found = await context_tools.execute(owner, "get_recent_patrol_outcomes")

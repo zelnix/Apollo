@@ -499,7 +499,7 @@ function getStatusExplanation(gate: GatePresentation): string {
     case "Watching":
       return "This Gate is actively protecting your device. It is verified, running and monitoring in the background within its supported scope.";
     case "Manual check":
-      return "This Gate is ready for you to use whenever you need it. Submit something to check and Magnum DI will analyse it.";
+      return "This Gate is ready for you to use whenever you need it. Submit something to check and Teddy FlyBy will investigate it, with Magnum DI looking deeper only if needed.";
     case "Check in progress":
       return "Apollo is currently verifying this Gate's status. This usually completes quickly.";
     case "Setup required":

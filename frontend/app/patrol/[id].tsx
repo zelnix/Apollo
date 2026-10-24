@@ -787,7 +787,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
             <CollapseSection
               icon={Search} iconBg="#DBEAFE" iconFg="#1E3A5F"
               title={`${si.label} analysis`}
-              subtitle="Findings from Magnum DI investigation"
+              subtitle={`Findings from ${investigatorName(inv?.answeredBy)}'s investigation`}
               testID="tc-evidence-analysis"
             >
               {briefing.evidence_points.map((point, i) => (
@@ -1039,7 +1039,7 @@ function InvestigatedEvidenceView({ inv, originalSource, imageEvidence, event, m
   if (imageEvidence?.sentUri) {
     protectedItems.push({
       kind: "image",
-      label: "Screenshot/image sent to Magnum DI",
+      label: "Screenshot/image sent for investigation",
       content: imageEvidence.sentUri,
     });
   }

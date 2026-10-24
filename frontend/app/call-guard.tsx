@@ -323,7 +323,7 @@ export default function CheckNumber() {
         visible={busy}
         title="Checking number"
         subject={numberState.trim() || undefined}
-        description={"Looking up reputation data and running\nMagnum DI analysis. This usually takes\na few seconds."}
+        description={"Apollo Triage and Teddy FlyBy are checking\nreputation data and scam patterns.\nThis usually takes a few seconds."}
       />
     </View>
   );

@@ -118,7 +118,7 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
     "records": {
         "/patrol/history": "Threat history — full record including resolved",
         "/saved-checks": "Saved checks — kept with original analysis",
-        "/saved-reports": "Saved reports — completed Magnum DI briefings on this phone",
+        "/saved-reports": "Saved reports — completed investigation briefings (Teddy FlyBy or Magnum DI) on this phone",
         "/higgins/history": "Conversation history — past Higgins conversations",
         "/app-reports": "App reports — results of app checks",
         "/digest": "Weekly digest — the week in one summary",
@@ -141,6 +141,7 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
     "learning": {
         "/higgins/learning": "Learn with Higgins — article library on scams",
         "/higgins/scams": "Scam Alerts — government feeds",
+        "/how-apollo-checks": "How Apollo checks — the rules Apollo, Apollo Triage, Teddy FlyBy, Magnum DI and Higgins follow, and what each result means",
     },
 }
 
@@ -163,8 +164,10 @@ def _render_route_group(name: str) -> str:
 # PERMANENT: role separation (always in prompt — safety invariant)
 _ROLES = """WHO DOES WHAT — NEVER BLUR THESE:
 - APOLLO: protection and detection. Watches, detects, blocks, records. Acts on the device.
-- MAGNUM DI: investigation and external searching. Examines evidence, searches sources, produces the full briefing. You do NOT investigate or search externally.
-- HIGGINS (you): knows this app completely and knows scams. Explains, guides, navigates, hands off. When investigation is needed, say so and hand to Magnum DI."""
+- TEDDY FLYBY: fast, low-cost investigation. Checks official sources, Apollo's knowledge base and one targeted search, and stops as soon as more checking couldn't change the answer. When it settles a check, Magnum DI is not called.
+- MAGNUM DI: deep investigation, only when Teddy FlyBy can't settle something that could change the answer. Examines just what's still open and produces the full briefing.
+- You do NOT investigate or search externally.
+- HIGGINS (you): knows this app completely and knows scams. Explains, guides, navigates, hands off. When investigation is needed, say so and hand it to Apollo's investigators (Teddy FlyBy first, Magnum DI only if needed)."""
 
 # PERMANENT: protection names (always needed for snapshot interpretation)
 _PROTECTION_NAMES = """USER-FACING PROTECTIONS:
@@ -193,7 +196,7 @@ def _screens_block(route_groups: Sequence[str]) -> str:
 _FLOWS = """HOW APOLLO'S FLOWS WORK:
 - Sharing into Apollo: in apps that offer Share, tap Share and choose Apollo. Not every app offers Share — copy/paste or a screenshot always works. Apollo asks which app, shows what it received, waits for confirmation.
 - One case per check: checking the same thing twice reuses and updates the existing case.
-- Triage then investigation: every check runs deterministic triage first (rules + reputation, no AI). If clean, that's the answer. If possible threat or inconclusive, escalates to full Magnum DI investigation.
+- Triage then investigation: every check runs deterministic triage first (rules + reputation, no AI). If clean, that's the answer. If possible threat or inconclusive, it is investigated: Teddy FlyBy first, and Magnum DI only if a deeper look could change the answer. The full rules are on the How Apollo checks screen.
 - Deliberate checks escalate; background screening stays deterministic and never silently starts an investigation.
 - Phone numbers in checked messages/emails/screenshots are extracted and reputation-checked during triage.
 - Apollo states: Patrolling (clear), Sniffing (looking closer), Growling (possible concern), Barking (significant concern), Biting (confirmed block).

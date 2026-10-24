@@ -50,10 +50,11 @@ import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { buildDailyActivity } from "@/src/domain/dailyActivity";
+import { investigatorName } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
-const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in Apollo, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. Magnum DI examines evidence and searches the outside world; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
+const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in Apollo, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. Teddy FlyBy checks evidence quickly against official sources, Apollo's knowledge base and a targeted search, and Magnum DI looks deeper only when that could change the answer; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
@@ -286,7 +287,7 @@ export default function Ask() {
       const links = resolveNavLinks(reply.navigation);
       setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
-    }).catch(() => setChatError("Magnum DI could not answer right now. No investigation was started.")).finally(() => setChatBusy(false));
+    }).catch(() => setChatError("Higgins couldn't answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
 
   // ── Local-first intent handler ──
@@ -524,7 +525,7 @@ export default function Ask() {
     void start(input, files, operationId);
   }, [deviceId, router, start]);
 
-  const caseStatus = state.phase === "answered" ? "Magnum DI has finished this investigation." : state.phase === "waiting_user" ? "Magnum DI needs one answer from you" : state.phase === "failed" ? `Investigation incomplete${state.error ? ` — ${state.error}` : ""}.${state.failure || state.caseData ? " Retry available." : ""}` : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Magnum DI is investigating…" : "Investigation content expires within 15 minutes";
+  const caseStatus = state.phase === "answered" ? `${investigatorName(state.caseData?.answeredBy)} has finished this investigation.` : state.phase === "waiting_user" ? "Magnum DI needs one answer from you" : state.phase === "failed" ? `Investigation incomplete${state.error ? ` — ${state.error}` : ""}.${state.failure || state.caseData ? " Retry available." : ""}` : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Apollo is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
   // Twenty ideas in the space of four: a fresh handful is drawn every few seconds, with
   // whatever this person has asked before kept at the front. Rotation stops as soon as a
@@ -605,7 +606,7 @@ export default function Ask() {
 
         {!investigationMode && lastAction?.destination === "higgins_case" && latestUserMessage ? <Card testID="ask-investigation-offer" style={{ marginTop: spacing.xs }}><Body>{lastAction.purpose}</Body><Button testID="ask-start-investigation" label={lastAction.label} onPress={() => startInvestigation(latestUserMessage)} /></Card> : null}
         {!investigationMode && lastAction?.destination === "check_it" ? <Card testID="ask-check-it-offer" style={{ marginTop: spacing.xs }}><Body>{lastAction.purpose}</Body><Button testID="ask-open-check-it" label={lastAction.label} onPress={() => router.push("/(tabs)/check-it")} /></Card> : null}
-        {!investigationMode && issueOffer ? <Card testID="ask-issue-investigate-offer" style={{ marginTop: spacing.xs }}><Body>{INVESTIGATE_OFFER}</Body><Button testID="ask-issue-investigate" label="Ask Magnum DI to investigate" disabled={busy} onPress={() => { const offer = issueOffer; setIssueOffer(null); setActiveContext(offer.context); startInvestigation(offer.question, offer.context); }} /></Card> : null}
+        {!investigationMode && issueOffer ? <Card testID="ask-issue-investigate-offer" style={{ marginTop: spacing.xs }}><Body>{INVESTIGATE_OFFER}</Body><Button testID="ask-issue-investigate" label="Ask Apollo to investigate" disabled={busy} onPress={() => { const offer = issueOffer; setIssueOffer(null); setActiveContext(offer.context); startInvestigation(offer.question, offer.context); }} /></Card> : null}
 
         {investigationMode ? <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation" onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} /> : null}
         {routeError ? <Card style={s.context} testID="ask-error-card"><Text style={s.errorText} testID="ask-error">{routeError}</Text></Card> : null}

@@ -80,7 +80,7 @@ class TestPermanentCore:
 
     def test_role_separation_in_core(self):
         assert "APOLLO DETECTS" in _PERMANENT_CORE
-        assert "MAGNUM DI INVESTIGATES" in _PERMANENT_CORE
+        assert "TEDDY FLYBY AND MAGNUM DI INVESTIGATE" in _PERMANENT_CORE
         assert "COMMUNICATES" in _PERMANENT_CORE and "HIGGINS" in _PERMANENT_CORE
 
     def test_scope_restriction_in_core(self):

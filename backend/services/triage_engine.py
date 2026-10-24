@@ -3,8 +3,9 @@
 Tier 1 (here): deterministic catalogue rules (services/triage) over normalised
     evidence plus specialist provider results. Outcome is one of
     NO THREAT IDENTIFIED / POSSIBLE THREAT IDENTIFIED / LIMITED-UNABLE TO DETERMINE.
-Tier 2 (Magnum DI): started by the caller ONLY for POSSIBLE THREAT — one correlated
-    case = exactly one Gemini call.
+Tier 2 (the investigation): started by the caller ONLY for POSSIBLE THREAT — one correlated
+    case, investigated by Teddy FlyBy first and by Magnum DI (exactly one Gemini call) only
+    when a deeper look could change the answer.
 
 DESIGN PRINCIPLES:
     • No AI triage tier exists. There is no fallback that spends tokens on
@@ -48,7 +49,7 @@ class TriageResult:
 
     @property
     def should_escalate(self) -> bool:
-        """Only a deterministic POSSIBLE THREAT may start one Magnum DI investigation."""
+        """Only a deterministic POSSIBLE THREAT may open one investigation case (Teddy FlyBy first, Magnum DI only if needed)."""
         return self.outcome is Outcome.POSSIBLE_THREAT
 
     @property
@@ -72,10 +73,10 @@ class TriageResult:
 
     def compact_evidence_for_magnum_di(self) -> str:
         """Produce a compact, provenance-attributed summary of all specialist
-        provider findings suitable for injection into a Magnum DI case.
+        provider findings suitable for injection into an investigation case.
 
         Format: one line per finding, with provider name and query timestamp.
-        Magnum DI retains the ability to investigate further if evidence is
+        Teddy FlyBy and Magnum DI retain the ability to investigate further if evidence is
         conflicting, incomplete or stale.
         """
         lines = ["Pre-gathered specialist intelligence (Apollo Triage):"]
@@ -495,7 +496,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
     """Run all applicable specialist providers and return structured results.
 
     Called ONCE before triage_item. Results are reused across all tiers and
-    forwarded to Magnum DI if escalation occurs.
+    forwarded to the investigation (Teddy FlyBy, then Magnum DI if needed) if escalation occurs.
 
     Each provider entry includes:
       - status: "ok" | "unavailable" | "not_configured" | "not_applicable"
@@ -941,7 +942,7 @@ async def triage_item(
     2. Gather specialist provider evidence, with bounded retries for transient failures.
     3. Evaluate the canonical rule catalogue.
 
-    Tier 2 (Magnum DI) is NOT invoked here — the caller starts exactly one
+    Tier 2 (the investigation) is NOT invoked here — the caller starts exactly one
     investigation per correlated case when result.should_escalate is True.
     """
     fingerprint = compute_fingerprint(evidence)
@@ -1000,7 +1001,7 @@ async def get_triage_stats(start: datetime | None = None, end: datetime | None =
     """Aggregate Triage statistics for the admin dashboard.
 
     Triage spends nothing, so cost reporting exists only to prove that: every
-    deterministic decision is $0 and Magnum DI escalations equal POSSIBLE THREAT count.
+    deterministic decision is $0 and investigation escalations equal POSSIBLE THREAT count.
     """
     match: dict = {"record_type": "decision"}
     if start or end:

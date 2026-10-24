@@ -74,7 +74,7 @@ export function CheckingModal({ visible, title, subject, description }: Checking
             <Text style={s.subject} numberOfLines={2}>{subject}</Text>
           ) : null}
           <Text style={s.description}>
-            {description || "Looking up reputation data and running\nMagnum DI analysis. This usually takes\na few seconds."}
+            {description || "Apollo Triage and Teddy FlyBy are checking\nreputation data and scam patterns.\nThis usually takes a few seconds."}
           </Text>
         </View>
       </View>

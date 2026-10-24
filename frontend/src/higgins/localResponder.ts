@@ -49,21 +49,22 @@ export function diagnosticToHigginsMessage(result: DiagnosticResult, conversatio
 
 const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
   how_apollo_works:
-    "Apollo is your scam protection, and three of us do the work:\n\n" +
+    "Apollo is your scam protection, and four of us do the work:\n\n" +
     "• **Apollo** watches and detects — websites, calls, messages, apps, your device and your connection. Apollo acts on the phone.\n" +
-    "• **Magnum DI** investigates — examining evidence and searching reputation and intelligence sources when something needs a real answer.\n" +
+    "• **Teddy FlyBy** investigates quickly — checking official sources, Apollo's knowledge base and one targeted search.\n" +
+    "• **Magnum DI** investigates deeply — only when Teddy FlyBy can't settle something that could change the answer.\n" +
     "• **Higgins** (me) knows Apollo and scams. I explain what was found, guide you, and take you to the right screen.\n\n" +
-    "Every check runs on your device first and produces exactly one threat case. If the rules settle it cleanly, that's your answer. If something looks possible, or can't be determined, it escalates to Magnum DI for a full investigation.",
+    "Every check runs on your device first and produces exactly one threat case. If the rules settle it cleanly, that's your answer. If something looks possible, or can't be determined, Teddy FlyBy investigates it — and Magnum DI looks deeper only if that could change the answer. How Apollo checks has the full rules.",
 
   what_is_higgins:
     "I'm Higgins — Apollo's trusted adviser, interpreter and guide, and the savant of this app.\n\n" +
     "I know every screen, check, protection, setting and privacy rule in Apollo, and I know how scams work. Ask me where something is and I'll take you there. Ask me why Apollo is growling and I'll tell you from what your phone actually reports.\n\n" +
-    "What I don't do is investigate — when you ask me to check a number, link, message or email, Magnum DI runs the investigation and I bring you the findings.",
+    "What I don't do is investigate — when you ask me to check a number, link, message or email, Teddy FlyBy investigates it first, Magnum DI looks deeper only if needed, and I bring you the findings.",
 
   what_is_magnum_di:
-    "Magnum DI is Apollo's investigator, and the only part of Apollo that searches the outside world.\n\n" +
-    "When something is submitted — a screenshot, link, message, email or phone number — Magnum DI examines the evidence and searches reputation and intelligence sources, then returns a full briefing with findings and recommended actions.\n\n" +
-    "Magnum DI runs only when it's genuinely needed. \"Am I protected?\" is answered on your phone, with no investigation at all.",
+    "Magnum DI is Apollo's deep investigator. It's called only when Teddy FlyBy — Apollo's fast, low-cost investigator — can't settle something that could change the answer.\n\n" +
+    "Teddy FlyBy checks official sources, Apollo's knowledge base and one targeted search first. Magnum DI then examines just what's still open — for example a picture Apollo couldn't read, or a request to send money somewhere nobody has verified — and returns a full briefing with findings and recommended actions.\n\n" +
+    "\"Am I protected?\" is answered on your phone, with no investigation at all.",
 
   explain_feature:
     "Apollo's protections, by the names you'll see:\n\n" +
@@ -96,9 +97,9 @@ const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
 
 /** Where each canned answer sensibly leads. */
 const KNOWLEDGE_LINKS: Record<LocalKnowledgeIntent, NavLink[]> = {
-  how_apollo_works: navLinks("/gates"),
+  how_apollo_works: navLinks("/how-apollo-checks", "/gates"),
   what_is_higgins: navLinks("/higgins/learning"),
-  what_is_magnum_di: navLinks("/(tabs)/check-it"),
+  what_is_magnum_di: navLinks("/how-apollo-checks", "/(tabs)/check-it"),
   explain_feature: navLinks("/gates"),
   help_navigation: navLinks("/(tabs)/check-it", "/(tabs)/settings"),
   explain_alert: navLinks("/(tabs)/patrol"),

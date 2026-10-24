@@ -3374,3 +3374,7 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Egress allow-list now includes `sanitizationDecision`, `redactedRegions`, `sanitizationTransformations`.
 - Rules each layer operates under: `/app/memory/OPERATING_RULES.md`.
 - Wording that predates Teddy FlyBy (not changed, flagged to user): Higgins' Gemini prompt "MAGNUM DI INVESTIGATES AND SEARCHES"; gate triage docstring; check/message screen copy "Magnum DI will investigate it".
+
+## Old wording updated + "How Apollo checks" screen (2026-10)
+- Higgins' Gemini prompt (`chat.py _PERMANENT_CORE`, `app_knowledge._ROLES/_FLOWS`), Higgins' on-phone answers (`localResponder.ts`), gate-triage docstrings, presenter, and check-screen copy (check, message, email, account, text-guard, device, call-guard, CheckingModal, gate-details, patrol, ask) now name Teddy FlyBy first and Magnum DI only for deeper investigation. Magnum-only statements (its questions, failures, DI record, resubmit) unchanged.
+- New screen `app/how-apollo-checks.tsx` (content `src/domain/howApolloChecks.ts`, test `tests/howApolloChecks.test.ts`): five roles in check order with their rules, five results with their pills, Apollo's promises. Linked from the hamburger menu ("How Apollo checks"), Higgins' destinations (frontend `appMap.ts`, backend `app_knowledge` learning routes), and Higgins' "how Apollo works" / "what is Magnum DI" answers.

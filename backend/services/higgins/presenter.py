@@ -1,6 +1,6 @@
 """Deterministic Higgins presentation — Higgins may change presentation, never meaning.
 
-Every answer here is assembled from structured fields that Magnum DI, Patrol, the device or Apollo's
+Every answer here is assembled from structured fields that Teddy FlyBy, Magnum DI, Patrol, the device or Apollo's
 product knowledge already established, using fixed mappings and templates. No AI is called. When the
 record doesn't hold the answer, Higgins says so instead of inferring one.
 """
@@ -85,7 +85,7 @@ def _join(labels: list[str]) -> str:
 
 
 def is_finished(response: Optional[dict[str, Any]]) -> bool:
-    """A Magnum DI result that is complete or partial — not one still waiting for the person's answer."""
+    """An investigation result (Teddy FlyBy's or Magnum DI's) that is complete or partial — not one still waiting for the person's answer."""
     return bool(response) and response.get("completion") in ("complete", "partial") and not response.get("question")
 
 
@@ -301,9 +301,9 @@ def patrol_record(item: dict[str, Any]) -> dict[str, Any]:
 
 def recent_investigations(items: list[dict[str, Any]]) -> dict[str, Any]:
     if not items:
-        return {"answer": "You don't have any recent Magnum DI investigations on this device.", "navigate": ["/saved-reports"], "limitation": False}
+        return {"answer": "You don't have any recent investigations on this device.", "navigate": ["/saved-reports"], "limitation": False}
     lines = [f"{(item.get('gates') or ['Apollo'])[0].title()} check ({item.get('status')}): {item.get('summary')}" for item in items[:5]]
-    return {"answer": "Your recent Magnum DI investigations, in Magnum DI's own words:\n" + _bullets(lines), "navigate": ["/saved-reports"], "limitation": False}
+    return {"answer": "Your recent investigations, in the investigators' own words:\n" + _bullets(lines), "navigate": ["/saved-reports"], "limitation": False}
 
 
 def scam_alerts(alerts: list[dict[str, Any]]) -> dict[str, Any]:

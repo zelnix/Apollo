@@ -4,6 +4,7 @@ import { useRouter, useSegments } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import HelpCircle from "lucide-react-native/icons/life-buoy";
 import Info from "lucide-react-native/icons/info";
+import ListChecks from "lucide-react-native/icons/list-checks";
 import Lock from "lucide-react-native/icons/lock";
 import Menu from "lucide-react-native/icons/menu";
 import Settings from "lucide-react-native/icons/settings";
@@ -18,6 +19,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 const ITEMS = [
   { label: "Settings", icon: Settings, route: "/(tabs)/settings", testID: "menu-settings" },
   { label: "About Apollo", icon: Info, route: "/about", testID: "menu-about" },
+  { label: "How Apollo checks", icon: ListChecks, route: "/how-apollo-checks", testID: "menu-how-apollo-checks" },
   { label: "Privacy", icon: Lock, route: "/privacy", testID: "menu-privacy" },
   { label: "Support", icon: HelpCircle, route: "/support", testID: "menu-support" },
 ] as const;

@@ -47,6 +47,7 @@ export const APOLLO_DESTINATIONS: Record<string, string> = {
   // Learning and alerts
   "/higgins/learning": "Learn with Higgins",
   "/higgins/scams": "Scam Alerts",
+  "/how-apollo-checks": "How Apollo checks",
   // Protections
   "/gates": "All protections",
   // Settings and policies

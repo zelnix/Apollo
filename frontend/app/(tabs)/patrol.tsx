@@ -53,7 +53,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const THREATS_INFO: ScreenInfo = { title: "About Threats", body: [
-  "Threats lists everything Apollo has detected or investigated for you: blocked links, suspicious messages, calls and Magnum DI cases.",
+  "Threats lists everything Apollo has detected or investigated for you: blocked links, suspicious messages, calls and investigation cases.",
   "Use the filter to see threats by status, and tap any threat to see its overview, the original evidence and its history.",
   "The line under the title shows when Apollo last ran a check or discovered a threat.",
 ] };
