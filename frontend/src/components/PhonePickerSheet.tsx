@@ -1,7 +1,8 @@
 // Shared Call/Text Gate picker: lists recent callers (READ_CALL_LOG) or inbox messages (READ_SMS)
-// after a contextual permission prompt. Honours the permission contract — explains before asking,
-// polls for the grant, and offers Open Settings if the person declines. Android-only; elsewhere it
-// shows a short "not available on this build" note so the screen still works via manual entry.
+// after a contextual permission prompt. Both permissions are Google Play restricted and are only
+// declared under the approved build switch (off by default) — screens don't offer this sheet otherwise.
+// Honours the permission contract — explains before asking, polls for the grant, and offers Open
+// Settings if the person declines. Where unavailable it says so, so the screen still works manually.
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -51,7 +52,7 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
   };
 
   const evaluate = useCallback(async () => {
-    if (!PhonePickers.isSupported()) { setPhase("unsupported"); return; }
+    if (!PhonePickers.isSupported(perm)) { setPhase("unsupported"); return; }
     const { granted } = await PhonePickers.hasPermission(perm);
     if (granted) await load(); else setPhase("need_permission");
   }, [perm, load]);
@@ -82,7 +83,7 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
   return (
     <Sheet visible={visible} onClose={onClose} title={title} testID={`phone-picker-${mode}`}>
       {phase === "unsupported" ? (
-        <Body testID="phone-picker-unsupported">This picker needs a production Android build. You can still {mode === "calls" ? "type the caller number" : "paste or share the message"} by hand.</Body>
+        <Body testID="phone-picker-unsupported">This version of Apollo doesn&apos;t read your {mode === "calls" ? "call log" : "messages"}. You can still {mode === "calls" ? "type or paste the caller number" : "paste the message or use a screenshot"}.</Body>
       ) : phase === "need_permission" ? (
         <View style={{ gap: spacing.md }}>
           <Body testID="phone-picker-explain">{mode === "calls" ? "Apollo can list your recent callers so you can pick the number to check. It reads them only when you open this picker — never in the background." : "Apollo can list your recent inbox messages so you can pick one to check. It reads them only when you open this picker — never in the background."}</Body>

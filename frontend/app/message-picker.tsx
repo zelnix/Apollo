@@ -1,7 +1,8 @@
 // Text Gate — Messages-style inbox picker (Android, READ_SMS). Full screen (not a bottom sheet) to fix
 // the previous overlap/tap issues. Inbox of conversations → tap → chat bubbles → "Check with Apollo" on a
 // single incoming message, which returns the sender + full body to Text Gate. Never selects a whole thread.
-// Where READ_SMS isn't available, the person is pointed to Share → Apollo from their Messages app.
+// READ_SMS is only declared under the approved build switch (off by default); Check a message hides the
+// entry point otherwise, and this screen explains the permission-free ways in if reached anyway.
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Search from "lucide-react-native/icons/search";
@@ -51,7 +52,7 @@ export default function MessagePicker() {
 
   const load = useCallback(async () => { setConversations(groupSms(await PhonePickers.listRecentSms())); setPhase("ready"); }, []);
   const evaluate = useCallback(async () => {
-    if (!PhonePickers.isSupported()) { setPhase("unsupported"); return; }
+    if (!PhonePickers.isSupported("sms")) { setPhase("unsupported"); return; }
     const { granted } = await PhonePickers.hasPermission("sms");
     if (granted) await load(); else setPhase("need_permission");
   }, [load]);
@@ -82,13 +83,13 @@ export default function MessagePicker() {
     </View>
 
     {phase === "unsupported" ? (
-      <View style={s.center}><Body testID="message-picker-unsupported">Apollo can&apos;t open your inbox on this build. In your Messages app, open the text, tap Share, and choose Apollo — Apollo will check it the same way.</Body><Button testID="message-picker-unsupported-back" variant="secondary" label="Go back" onPress={() => goBackOrHome(router)} /></View>
+      <View style={s.center}><Body testID="message-picker-unsupported">This version of Apollo doesn&apos;t open your inbox. Copy the message and paste it into Check a message, or use a screenshot. If the app the message is in offers Share, you can share it to Apollo.</Body><Button testID="message-picker-unsupported-back" variant="secondary" label="Go back" onPress={() => goBackOrHome(router)} /></View>
     ) : phase === "need_permission" ? (
-      <View style={s.center}><Body testID="message-picker-explain">Apollo can list your recent messages so you can pick one to check. It reads them only while this screen is open — never in the background — and nothing is saved.</Body><Button testID="message-picker-allow" label="Allow messages" onPress={() => void allow()} /><Button testID="message-picker-share-fallback" variant="ghost" label="Or share a message from your Messages app" onPress={() => goBackOrHome(router)} /></View>
+      <View style={s.center}><Body testID="message-picker-explain">Apollo can list your recent messages so you can pick one to check. It reads them only while this screen is open — never in the background — and nothing is saved.</Body><Button testID="message-picker-allow" label="Allow messages" onPress={() => void allow()} /><Button testID="message-picker-share-fallback" variant="ghost" label="Paste or screenshot the message instead" onPress={() => goBackOrHome(router)} /></View>
     ) : phase === "requesting" || phase === "checking" ? (
       <View style={s.center}><ActivityIndicator color={colors.gold} /><Body>{phase === "requesting" ? "Waiting for your permission…" : "Opening your messages…"}</Body></View>
     ) : phase === "denied" ? (
-      <View style={s.center}><Body testID="message-picker-denied">Permission isn&apos;t granted, so Apollo can&apos;t list your messages. Enable it in Settings, or share a message from your Messages app instead.</Body><Button testID="message-picker-settings" variant="secondary" label="Open Settings" onPress={() => void Linking.openSettings()} /><Button testID="message-picker-retry" variant="ghost" label="Try again" onPress={() => void evaluate()} /></View>
+      <View style={s.center}><Body testID="message-picker-denied">Permission isn&apos;t granted, so Apollo can&apos;t list your messages. Enable it in Settings, or paste or screenshot the message instead.</Body><Button testID="message-picker-settings" variant="secondary" label="Open Settings" onPress={() => void Linking.openSettings()} /><Button testID="message-picker-retry" variant="ghost" label="Try again" onPress={() => void evaluate()} /></View>
     ) : open ? (
       // Conversation view — chat bubbles, each incoming message selectable.
       <FlatList

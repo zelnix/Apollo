@@ -3,7 +3,7 @@
 import { Linking, Platform } from "react-native";
 import type { AppPermission } from "@/src/domain/appAnalysis";
 
-export type SettingsTarget = "apps" | "accessibility" | "vpn" | "security" | "unknown_sources" | "overlay" | "notification_access" | "all_files" | "developer";
+export type SettingsTarget = "apps" | "accessibility" | "vpn" | "security" | "unknown_sources" | "overlay" | "notification_access" | "all_files" | "developer" | "private_dns";
 
 const ANDROID_INTENT: Record<SettingsTarget, string> = {
   apps: "android.settings.MANAGE_APPLICATIONS_SETTINGS",
@@ -15,10 +15,27 @@ const ANDROID_INTENT: Record<SettingsTarget, string> = {
   notification_access: "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS",
   all_files: "android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION",
   developer: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS",
+  private_dns: "android.settings.PRIVATE_DNS_SETTINGS",
 };
+
+/**
+ * Android has no public intent for the Private DNS screen on every phone, so this tries it first, then
+ * the Network & internet screen, then Settings itself. Returns which one opened, so the caller can show
+ * the remaining path when it wasn't the Private DNS screen itself.
+ */
+export async function openPrivateDnsSettings(): Promise<"private_dns" | "network" | "settings" | "failed"> {
+  if (Platform.OS !== "android") return "failed";
+  try { await Linking.sendIntent(ANDROID_INTENT.private_dns); return "private_dns"; } catch { /* not on this phone */ }
+  try { await Linking.sendIntent("android.settings.WIRELESS_SETTINGS"); return "network"; } catch { /* not on this phone */ }
+  try { await Linking.openSettings(); return "settings"; } catch { return "failed"; }
+}
 
 export async function openDeviceSettings(target: SettingsTarget, path: string, toast: (m: string) => void) {
   try {
+    if (Platform.OS === "android" && target === "private_dns") {
+      if ((await openPrivateDnsSettings()) !== "private_dns") toast(`Then go to: ${path}`);
+      return;
+    }
     if (Platform.OS === "android") { await Linking.sendIntent(ANDROID_INTENT[target]); return; }
     if (Platform.OS === "ios") { toast(`In Settings go to: ${path}`); await Linking.openSettings(); return; }
     // Desktop (Windows/macOS): no supported deep link — show the path to follow.

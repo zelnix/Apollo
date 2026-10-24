@@ -23,6 +23,7 @@ import {
   type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow,
   type DeviceProtectionState, type ProtectionArea, type ProtectionGuidance,
 } from "./deviceProtectionTypes.ts";
+import type { PrivateDnsMode } from "./types.ts";
 
 /**
  * The subset of the existing reads this catalogue interprets. Every field is nullable and `null`
@@ -45,6 +46,10 @@ export interface SecurityStateRead {
   userCertificateCount: number | null;
   rootIndicators: string[] | null;
   privateDnsActive: boolean | null;
+  /** How Private DNS is set (see PrivateDnsMode). Null when nothing could be read. */
+  privateDnsMode: PrivateDnsMode | null;
+  /** The provider hostname when Private DNS is set to one. */
+  privateDnsHost: string | null;
   /** The OS's own scanner, e.g. Google Play Protect or Microsoft Defender. */
   osThreatReport: { source: string; status: string; protectionOff?: boolean | null } | null;
   /** Desktop host reads. */
@@ -61,7 +66,7 @@ export interface SecurityStateRead {
 export const EMPTY_SECURITY_READ: SecurityStateRead = {
   screenLockSecure: null, biometricStatus: null, developerOptions: null, usbDebugging: null,
   unknownSources: null, securityPatch: null, osVersion: null, deviceAdmins: null,
-  userCertificateCount: null, rootIndicators: null, privateDnsActive: null, osThreatReport: null,
+  userCertificateCount: null, rootIndicators: null, privateDnsActive: null, privateDnsMode: null, privateDnsHost: null, osThreatReport: null,
   firewallEnabled: null, osUpdatesCurrent: null, antivirusEnabled: null, systemProtections: null,
   defaultDialerPackage: null, defaultSmsPackage: null,
 };
@@ -368,20 +373,22 @@ const CATALOGUE: SecurityDef[] = [
     platforms: ["android"],
     owner: "Android",
     what: "A setting that encrypts the “which address is this website?” lookups your phone makes, so they can’t be read or redirected on the network you are using.",
-    benefit: "On a hotel or café network, an unencrypted lookup can be pointed at a fake banking site. Private DNS closes that door, and a filtering provider can block known scam domains outright.",
-    recommended: "Higgins recommends setting Private DNS to ‘Automatic’ at minimum. Apollo’s own protection filters on this phone, so a strict Private DNS hostname can sit alongside it.",
+    benefit: "On a hotel or café network, an unencrypted lookup can be pointed at a fake banking site. Private DNS on Automatic encrypts those lookups wherever the network supports it.",
+    recommended: "Higgins recommends setting Private DNS to ‘Automatic’. Apollo’s website checks keep working alongside it. A provider hostname also encrypts lookups, but sends every one straight to that provider, past Apollo’s website checks.",
     steps: () => [
-      "Open Settings → Network & internet → ‘Private DNS’",
-      "Choose ‘Automatic’, or ‘Private DNS provider hostname’ if you use a filtering service",
+      "Open Settings → Network & internet → ‘Private DNS’ (Samsung: Settings → Connections → More connection settings → Private DNS)",
+      "Choose ‘Automatic’",
       "Save, then reopen the screen to confirm it stuck",
     ],
-    action: () => ({ target: "security", path: "Settings → Network & internet → Private DNS", label: "Open network settings" }),
+    action: () => ({ target: "private_dns", path: "Settings → Network & internet → Private DNS", label: "Open Private DNS settings" }),
     unverified: "Apollo could not read this phone’s Private DNS setting.",
     resolve: (read) => {
-      if (read.privateDnsActive === null) return null;
-      return read.privateDnsActive
-        ? { state: "active", detail: "Private DNS is active on this phone, so your website lookups are encrypted.", attributedTo: "Android" }
-        : { state: "off", detail: "Private DNS is not active, so this phone’s website lookups can be read, and in some cases redirected, by the network you are on.", attributedTo: "Android" };
+      const mode = read.privateDnsMode ?? (read.privateDnsActive === null ? null : read.privateDnsActive ? "automatic" : "not_in_use");
+      if (mode === "automatic") return { state: "as_recommended", detail: "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
+      if (mode === "hostname") return { state: "off", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
+      if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this phone’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
+      if (mode === "not_in_use") return { state: "off", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell Apollo which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
+      return null;
     },
   },
   {

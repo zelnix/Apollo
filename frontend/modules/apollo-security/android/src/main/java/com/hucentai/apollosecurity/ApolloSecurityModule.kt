@@ -217,22 +217,32 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("getInstalledAppAssessment") { nameOrPackage: String -> AppDeviceSignals(ctx).appAssessmentJson(nameOrPackage) }
     AsyncFunction("listInstalledApps") { AppDeviceSignals(ctx).installedLaunchableAppsJson() }
     // ── Call Gate / Text Gate on-demand pickers (sensitive runtime permissions) ──────────────
-    // The person grants READ_CALL_LOG / READ_SMS explicitly; JS polls hasRuntimePermission after
-    // requesting. Readers return [] when the permission is not held (never throw).
+    // READ_CALL_LOG / READ_SMS are Google Play restricted permissions and are NOT declared by default
+    // (plugins/withRestrictedPhonePermissions.js). When this build does not declare one, every call
+    // below reports it as not declared and never reaches the system dialog or the provider.
+    // When declared, the person grants it explicitly; JS polls hasRuntimePermission after requesting.
     AsyncFunction("hasRuntimePermission") { name: String ->
       val perm = runtimePermission(name)
-      JSONObject().put("granted", perm != null && androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED).toString()
+      val declared = perm != null && isDeclared(perm)
+      JSONObject()
+        .put("granted", declared && perm != null && androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        .put("declared", declared)
+        .toString()
     }
     AsyncFunction("requestRuntimePermission") { name: String ->
       val perm = runtimePermission(name)
       val activity = appContext.currentActivity
       if (perm == null) JSONObject().put("requested", false).put("reason", "unsupported").toString()
+      else if (!isDeclared(perm)) JSONObject().put("requested", false).put("reason", "not_declared").toString()
       else if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED) JSONObject().put("requested", false).put("granted", true).toString()
       else if (activity == null) JSONObject().put("requested", false).put("reason", "no_activity").toString()
       else { try { activity.requestPermissions(arrayOf(perm), 0xA910) } catch (_: Exception) {}; JSONObject().put("requested", true).toString() }
     }
-    AsyncFunction("listRecentCalls") { PhonePickers.recentCallsJson(ctx) }
-    AsyncFunction("listRecentSms") { PhonePickers.recentSmsJson(ctx) }
+    AsyncFunction("listRecentCalls") { if (isDeclared(android.Manifest.permission.READ_CALL_LOG)) PhonePickers.recentCallsJson(ctx) else "[]" }
+    AsyncFunction("listRecentSms") { if (isDeclared(android.Manifest.permission.READ_SMS)) PhonePickers.recentSmsJson(ctx) else "[]" }
+    // "Calls Apollo screened" — only numbers Android handed to ApolloCallScreeningService. No permission needed.
+    AsyncFunction("getScreenedCalls") { ApolloCallScreeningService.readScreenedCalls(ctx).toString() }
+    AsyncFunction("clearScreenedCalls") { ApolloCallScreeningService.clearScreenedCalls(ctx); JSONObject().put("cleared", true).toString() }
     AsyncFunction("getRecentInstallEvents") { "[]" }        // no PACKAGE_ADDED receiver by design (would need broad visibility)
     AsyncFunction("getDeviceSecuritySignals") { AppDeviceSignals(ctx).deviceSignalsJson() }
     AsyncFunction("getRecentAppSecurityEvents") { "[]" }
@@ -386,6 +396,13 @@ class ApolloSecurityModule : Module() {
   private fun recordRequest(id: String) { prefs.edit().putString("perm_requested_at_$id", now()).apply() }
 
   private fun now(): String = Instant.now().toString()
+
+  /** True only when this build's merged manifest actually requests [permission]. */
+  private fun isDeclared(permission: String): Boolean = try {
+    @Suppress("DEPRECATION")
+    val info = ctx.packageManager.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
+    info.requestedPermissions?.contains(permission) == true
+  } catch (_: Exception) { false }
 
   /** Maps the JS picker permission key to the Android manifest permission (null = unsupported). */
   private fun runtimePermission(name: String): String? = when (name) {

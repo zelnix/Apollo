@@ -43,6 +43,9 @@ export const RETENTION_INVENTORY: RetentionItem[] = [
   { key: "local_only", label: "On this phone only", where: "device",
     what: "Your settings, saved checks, recent-check history and preferences stored only on this device.",
     retention: "Never leaves this phone. Erased when you delete all your data or uninstall Apollo." },
+  { key: "screened_calls", label: "Calls Apollo screened (Android)", where: "device",
+    what: "The incoming numbers Android passed to Apollo's call screening, with the time and what Apollo did. Apollo never reads your call log.",
+    retention: "The last 50 calls, for up to 30 days, on this phone only. Clear it on Check a number, or delete all your data." },
 ];
 
 export interface InventoryCategory { key: string; label: string; count: number }

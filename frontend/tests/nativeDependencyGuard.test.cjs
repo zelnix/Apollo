@@ -204,6 +204,8 @@ test('combined preflight is strict except for the actual EAS pre-install lifecyc
   // "declared but missing" errors in a fixture that intentionally has a minimal node_modules.
   const appConfigSrc = path.resolve(__dirname, '../app.config.js');
   if (fs.existsSync(appConfigSrc)) fs.copyFileSync(appConfigSrc, path.join(root, 'app.config.js'));
+  // app.config.js requires helpers from plugins/ (e.g. withRestrictedPhonePermissions).
+  fs.cpSync(path.resolve(__dirname, '../plugins'), path.join(root, 'plugins'), { recursive: true });
   fs.mkdirSync(path.join(root, 'src/security'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../src/security/securityConfig.ts'), path.join(root, 'src/security/securityConfig.ts'));
   // Use production env so the securityConfig check passes (guarddog_production is production-only).
@@ -220,6 +222,9 @@ test('combined preflight is strict except for the actual EAS pre-install lifecyc
       EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: 'https://test.example/',
       EXPO_PUBLIC_GUARDDOG_RULESET_ID: 'test-rules',
       npm_lifecycle_event: lifecycle,
+      // The copied plugins require @expo/config-plugins; resolve it from the real install while the
+      // fixture root itself keeps its deliberately minimal node_modules for the native guard.
+      NODE_PATH: path.resolve(__dirname, '../node_modules'),
     },
   });
   assert.equal(run('security:preflight').status, 2, 'no node_modules is not a pass');

@@ -103,6 +103,49 @@ class ApolloCallScreeningService : CallScreeningService() {
       .put("allow", JSONArray(loadSet(ctx, KEY_ALLOW).toList()))
       .put("autoRisky", JSONArray(loadSet(ctx, KEY_AUTO_RISKY).toList()))
 
+    // ── "Calls Apollo screened" ────────────────────────────────────────────────────────────────
+    // A short, on-phone history built ONLY from the incoming numbers Android itself hands to
+    // onScreenCall while Apollo holds the call-screening role. Never read from the system call log.
+    // Bounded to MAX_SCREENED entries and SCREENED_RETENTION_MS; cleared by the app on request and by
+    // "Delete My Apollo Data".
+    private const val KEY_SCREENED = "screened_calls"
+    private const val MAX_SCREENED = 50
+    private const val SCREENED_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+
+    /** Newest first: [{number (E.164), at (epoch ms), outcome}]. Entries past retention are dropped. */
+    @Synchronized
+    fun readScreenedCalls(ctx: Context): JSONArray {
+      val p = prefs(ctx)
+      val raw = p.getString(KEY_SCREENED, null) ?: return JSONArray()
+      val all = try { JSONArray(raw) } catch (_: Exception) { return JSONArray() }
+      val cutoff = System.currentTimeMillis() - SCREENED_RETENTION_MS
+      val live = JSONArray()
+      for (i in 0 until all.length()) {
+        val entry = all.optJSONObject(i) ?: continue
+        if (entry.optLong("at", 0L) >= cutoff && entry.optString("number").isNotBlank()) live.put(entry)
+      }
+      if (live.length() != all.length()) p.edit().putString(KEY_SCREENED, live.toString()).apply()
+      return live
+    }
+
+    @Synchronized
+    fun clearScreenedCalls(ctx: Context) { prefs(ctx).edit().remove(KEY_SCREENED).apply() }
+
+    @Synchronized
+    private fun recordScreenedCall(ctx: Context, number: String, outcome: String) {
+      if (number.isBlank()) return
+      val existing = readScreenedCalls(ctx)
+      val next = JSONArray().put(JSONObject().put("number", number).put("at", System.currentTimeMillis()).put("outcome", outcome))
+      for (i in 0 until minOf(existing.length(), MAX_SCREENED - 1)) next.put(existing.get(i))
+      prefs(ctx).edit().putString(KEY_SCREENED, next.toString()).apply()
+    }
+
+    /** Before Android 10 the screening service was only bound for incoming calls; from 10 on, ask the call. */
+    private fun isIncoming(details: Call.Details): Boolean {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) return details.callDirection == Call.Details.DIRECTION_INCOMING
+      return true
+    }
+
     private const val MAX_RETRY_ATTEMPTS = 4
 
     /** Numbers seen ringing with no local signal — non-destructive read.
@@ -191,15 +234,18 @@ class ApolloCallScreeningService : CallScreeningService() {
 
   override fun onScreenCall(callDetails: Call.Details) {
     val ctx = applicationContext
+    // What to add to "Calls Apollo screened" — decided alongside the response, written only afterwards.
+    var screened: Pair<String, String>? = null
     try {
       val number = toE164(callDetails.handle?.schemeSpecificPart, ctx)
       if (number.isBlank()) { respond(callDetails, disallow = false, reject = false); return }
-      if (number in loadSet(ctx, KEY_ALLOW)) { respond(callDetails, disallow = false, reject = false); return }
+      if (number in loadSet(ctx, KEY_ALLOW)) { respond(callDetails, disallow = false, reject = false); screened = number to "allowed_by_you"; return }
 
       val block = loadSet(ctx, KEY_BLOCK)
       val risky = loadSet(ctx, KEY_AUTO_RISKY)
       if (number in block || number in risky) {
         respond(callDetails, disallow = true, reject = true, skipNotification = true)
+        screened = number to (if (number in block) "rejection_requested_block" else "rejection_requested_risky")
         // Record evidence honestly: a rejection REQUEST was issued but Android provides no completion
         // receipt confirming the call was actually blocked. The evidence is "rejection_requested",
         // not "verified" — the caller may still reach voicemail or the system may override the request.
@@ -217,10 +263,17 @@ class ApolloCallScreeningService : CallScreeningService() {
       // controls independently. Apollo does not claim silencing as its own action and preserves the
       // missed-call record (setSkipCallLog=false) so the person can review and check the number later.
       respond(callDetails, disallow = false, reject = false)
+      screened = number to "rang"
       queuePendingLookup(ctx, number)
     } catch (_: Exception) {
       // Never let a screening failure hang up a real call — always fall through to allow.
       respond(callDetails, disallow = false, reject = false)
+    } finally {
+      // History is written only after Android already has its answer, inside its own guard, so it can
+      // never delay, change or fail the screening decision above.
+      screened?.let { (number, outcome) ->
+        try { if (isIncoming(callDetails)) recordScreenedCall(ctx, number, outcome) } catch (_: Exception) { }
+      }
     }
   }
 

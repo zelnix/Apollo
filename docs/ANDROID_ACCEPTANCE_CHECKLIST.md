@@ -165,3 +165,24 @@
 **Build ID/SHA:** _______________
 **Device:** _______________
 **Android Version:** _______________
+
+---
+
+## Always-on VPN and Private DNS (added 2026-06)
+
+Apollo's `ApolloAlwaysOnVpnStarter` is now the only component that answers Android's own "connect the VPN"
+request. It rebuilds website protection from the saved rules. Before this change, the certified
+`GuardDogVpnService` ignored that request, and Android showed "Can't connect to always-on VPN". These
+rows can only be proven on a real device build. Expo Go and the web preview cannot run a VPN.
+
+| # | Test | Expected Behaviour | Result | Notes |
+|---|---|---|---|---|
+| AO1 | Turn on website protection in Apollo, then Settings → Network & internet → VPN → Apollo ⚙ → Always-on VPN **on** (leave "Block connections without VPN" **off**) | VPN key icon stays, no "Can't connect to always-on VPN" | | |
+| AO2 | With AO1 set, swipe Apollo away / force-stop it, wait 1 min | Android reconnects Apollo (key icon returns) without opening the app | | |
+| AO3 | With AO1 set, reboot and unlock the phone, don't open Apollo | Within ~1 min the VPN key icon appears; Protection → Website protection shows Watching after opening Apollo | | |
+| AO4 | Toggle Wi-Fi off/on and switch to mobile data | Protection reconnects by itself after each change | | |
+| AO5 | Turn on "Block connections without VPN" | Protection tab shows "Android may be blocking your internet" with an Open VPN settings button | | |
+| AO6 | Fresh install, enable Always-on before ever turning on protection in Apollo | VPN stays down; Protection shows "Android asked Apollo to reconnect … website protection hasn't been set up" | | |
+| PD1 | Private DNS **Off** → open Protection tab | "Set Private DNS to Automatic" card; button opens the Private DNS screen (or Network & internet + the path) | | |
+| PD2 | Set Private DNS to **Automatic**, return to Apollo | Card disappears; "Private DNS is set to Automatic." shown | | |
+| PD3 | Private DNS hostname (e.g. dns.adguard.com) | "Private DNS is going around Apollo" card naming the host; Website protection gate shows the limitation | | |

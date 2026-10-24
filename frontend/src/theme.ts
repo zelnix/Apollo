@@ -128,6 +128,8 @@ const light = {
   groupDataTint: "rgba(107,70,193,0.14)",
   groupApp: "#475569",
   groupAppTint: "rgba(71,85,105,0.14)",
+  groupDiagnostics: "#B83280",
+  groupDiagnosticsTint: "rgba(184,50,128,0.14)",
   groupHelp: "#0E7490",
   groupHelpTint: "rgba(14,116,144,0.14)",
   groupPolicies: "#8A5A2B",

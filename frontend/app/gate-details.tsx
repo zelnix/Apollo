@@ -35,6 +35,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, Pill } from "@/src/components/ui";
+import { WebsiteProtectionNotices } from "@/src/components/WebsiteProtectionNotices";
 import type { GateId, GatePresentation, GateStatusLabel } from "@/src/domain/gates";
 import { gateTone } from "@/src/domain/gates";
 import { GATE_CONTENT } from "@/src/domain/gateContent";
@@ -209,7 +210,7 @@ function getHigginsGuidance(gate: GatePresentation): HigginsGuidance {
       whatsWrong: auto?.limitation ?? `${gate.title} is running with reduced coverage.`,
       whyItMatters: "Some protection capabilities are restricted. Apollo is still working within its available scope.",
       whatToDo: auto?.limitation?.includes("DNS") || auto?.limitation?.includes("dns")
-        ? "This is typically caused by device DNS settings. You don't need to change anything — other protections continue working."
+        ? "Set Private DNS to Automatic in your phone’s settings, then come back here and Apollo will re-check."
         : "Check device settings if you'd like to expand coverage. Otherwise, Apollo continues protecting within its current scope.",
       howToConfirm: "After any changes, return here to see the updated status.",
       actionLabel: "Check device settings",
@@ -924,6 +925,7 @@ export default function GateDetailsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Higgins guidance — shown first when there's an issue */}
+        {gateId === "site" ? <WebsiteProtectionNotices protection={health.protection} testID="gate-site-notices" /> : null}
         {(guidance.needsGuidance || justVerified) ? (
           <HigginsTroubleshootCard
             gate={gate}

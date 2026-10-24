@@ -1,3 +1,21 @@
+## Feed Health screen + old test fix (2026-06)
+
+**Feed Health** — Settings > Diagnostics > Feed health (`/settings/feed-health`), visible to everyone.
+- Backend `GET /api/feeds/health` (device-authed, `services/feed_health.py`): one row per enabled government
+  feed with source, last successful sync, records in the last sync (`item_count`), last error (plain words +
+  code/detail) and a status badge. Rule: failing = latest attempt failed; stale = no successful sync in 24 h
+  (incl. never synced); healthy otherwise. Sorted failing → stale → healthy.
+- `learning_feeds.refresh` now also stores `error_detail` (Apollo's own ValueError reason / OutboundBlocked
+  code) so the screen can explain failures; cleared on success.
+- Frontend: `src/domain/feedHealth.ts` (labels, tones, relative times), `src/components/FeedHealthRow.tsx`,
+  `app/settings/feed-health.tsx` (waits for device identity, pull to refresh, retry). New Settings group
+  colour `groupDiagnostics`. Higgins app maps updated (Settings now has eight groups).
+- Tests: `tests/feedHealth.test.ts`, `backend/tests/test_feed_health.py`.
+
+**Old test fix** — `tests/nativeDependencyGuard.test.cjs` preflight fixture now copies `plugins/` (app.config.js
+requires `withRestrictedPhonePermissions`) and resolves `@expo/config-plugins` via NODE_PATH. Full frontend
+suite: 901/901 pass.
+
 ## Post-publish: tombstone sweep timeout on Atlas + remaining live-answer rejections — FIXED (2026-10)
 
 **Publish actually succeeded**: production served the new backend (`providerMode: live` present). The
@@ -3079,3 +3097,10 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 ## Higgins Overview shows the full Gemini response (2026-10)
 - `src/components/InvestigationView.tsx` Overview tab now renders every field Magnum DI returns: overview, explanationMarkdown, attention label + attentionReason, findings (text + basis + confidence), uncertainties, scope, sources used, and the full action instruction (no 2-line truncation). Verified live in preview; tsc, lint and 817 frontend tests pass.
 - Pending user decision: Play SMS/Call Log permission approach (remove from Play build behind an off-by-default switch, "Calls Apollo screened" list, declaration drafts).
+
+## Play restricted permissions: READ_SMS / READ_CALL_LOG removed from Play builds (2026-10)
+- Removed both from `modules/apollo-security/android/src/main/AndroidManifest.xml`. `plugins/withRestrictedPhonePermissions.js` blocks them (`tools:node="remove"`) by default. Re-enabling requires `APOLLO_ANDROID_RESTRICTED_PERMISSIONS=READ_CALL_LOG|READ_SMS` plus `APOLLO_ANDROID_RESTRICTED_PERMISSIONS_APPROVAL=<Play approval ref>`; any other value fails the config load. `eas.json` production pins it to "off". `expo.extra.restrictedPhonePermissions` drives JS gating (`PhonePickers.isSupported("call_log"|"sms")`). Native `isDeclared()` refuses undeclared permissions.
+- Call Guard: "Recent calls" was replaced by **Calls Apollo screened**: the native history written by `ApolloCallScreeningService` only after `respond()`, in its own try (last 50, 30 days, incoming only). Bridge: `getScreenedCalls` / `clearScreenedCalls`. UI: `src/components/ScreenedCallsList.tsx` on `/call-guard` (tap = check) and in a sheet on `/call` (tap = use number). Cleared by Delete My Apollo Data and listed in the privacy inventory.
+- Text Guard / Check a message: the inbox hero and Recent messages section are hidden unless READ_SMS is declared (preview samples still show). Added a permission-free "other ways" card (Text Guard notification access, paste, screenshot, Share where the app offers it). Share copy no longer claims every app supports it (share.tsx, settings, text-guard, message-picker, backend app_knowledge).
+- Docs: `/app/docs/APOLLO_PLAY_RESTRICTED_PERMISSIONS_FUTURE_DECLARATIONS.md` (NOT FOR CURRENT PLAY SUBMISSION).
+- Tests: `tests/restrictedPhonePermissions.test.ts` and `tests/screenedCalls.test.ts`; updated `deviceCapabilities.test.ts`. 837/837 frontend tests and tsc pass. Prebuild verified: default build removes both permissions; the approved switch adds only the named one. The Kotlin was not compiled here (no Android SDK) — a native build is required.

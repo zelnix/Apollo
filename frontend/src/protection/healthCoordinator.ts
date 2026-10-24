@@ -54,9 +54,12 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     recordNativeFailure("getCallProtectionCapabilities", error instanceof Error ? error.message : String(error));
     return null;
   });
-  let [capabilities, protection, permissions, network, messaging, calls, email, desiredSetting] = await Promise.all([
+  let [capabilities, protection, permissions, network, messaging, calls, email, desiredSetting, privateDns] = await Promise.all([
     securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
     readMessaging, readCalls, readEmailCapability(), storage.getItem<boolean>(DESIRED_KEY, false),
+    // Android only: Private DNS decides whether Apollo's website checks see the lookups. Elsewhere there
+    // is no such setting, so it is left out rather than reported as "couldn't tell".
+    securityAdapter.kind === "android" && securityAdapter.getPrivateDnsStatus ? securityAdapter.getPrivateDnsStatus().catch(() => null) : Promise.resolve(null),
   ]);
   const callAutoCheckEnabled = (await storage.getItem("apollo.call.auto_check", null)) === "true";
   // Security rules: only adapters whose platform can report rule state implement this. A missing
@@ -84,7 +87,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network, ruleBundle };
-  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn, messagingReadFailed, callsReadFailed });
+  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn, messagingReadFailed, callsReadFailed, privateDns });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates, lastCheckFailure: null };
   publishProtectionHealth(next);
   void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);

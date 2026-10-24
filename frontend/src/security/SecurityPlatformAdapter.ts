@@ -69,6 +69,12 @@ export interface ProtectionStatus {
   since: string | null;
   adapterLabel: string; // visible label, e.g. "MOCK adapter — simulated"
   checkedAt: string;
+  /** Android: Apollo is the Always-on VPN. Read only while Apollo's tunnel is up; null = Android didn't say. */
+  alwaysOn?: boolean | null;
+  /** Android: "Block connections without VPN" is on for Apollo. Read only while the tunnel is up; null = unknown. */
+  lockdown?: boolean | null;
+  /** Android: the last time Android itself asked Apollo to connect (Always-on VPN), and what happened. */
+  systemStart?: { at: string; outcome: "started" | "already_running" | "failed" | "superseded" | null; reason: string | null } | null;
 }
 
 export interface NetworkStatus {

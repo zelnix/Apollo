@@ -104,7 +104,7 @@ export default function ShareLanding() {
         ) : null}
         </>
         )}
-        <Body>Share to Apollo from any app: Share → Apollo. Apollo keeps native handoffs protected for no more than 24 hours.</Body>
+        <Body>In apps that offer Share, tap Share → Apollo. Not every app offers it — you can always copy and paste the text or use a screenshot instead. Apollo keeps native handoffs protected for no more than 24 hours.</Body>
       </ScrollView>
       {/* Asked as a popup, and only for a share from another app. */}
       <Sheet visible={!!appAsk} onClose={() => setAppAsk(null)} title="Which app did this arrive in?" testID="share-app-sheet">

@@ -21,6 +21,10 @@ const EAS_OWNER      = process.env.EAS_PROJECT_OWNER || CANONICAL_OWNER;
 const EAS_SLUG       = process.env.EAS_PROJECT_SLUG  || CANONICAL_SLUG;
 const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID    || CANONICAL_PROJECT_ID;
 
+// Google Play restricted SMS / Call Log permissions — OFF unless explicitly approved (see the plugin header).
+const { resolveRestrictedPhonePermissions } = require("./plugins/withRestrictedPhonePermissions");
+const restrictedPhonePermissions = resolveRestrictedPhonePermissions();
+
 // Evaluate dynamic values at require-time (all env vars are available).
 const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
 const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
@@ -130,6 +134,7 @@ module.exports = {
       "./plugins/withApolloTextGuard",
       "./plugins/withGuardDogEngine",
       "./plugins/withLiveCallerID",
+      "./plugins/withRestrictedPhonePermissions",
       "expo-sharing",
       ["expo-camera", { cameraPermission: "Scan QR codes and photograph suspicious items for Apollo to check", microphonePermission: false, recordAudioAndroid: false }],
       ["expo-image-picker", { photosPermission: "Pick images of suspicious content for Apollo to investigate", cameraPermission: "Photograph suspicious items for Apollo to investigate", microphonePermission: false }],
@@ -154,6 +159,8 @@ module.exports = {
     // ── Extra ────────────────────────────────────────────────────────────
     extra: {
       pirServer: { url: "" },
+      // Which restricted pickers this build declares. Both false unless the approved build switch is set.
+      restrictedPhonePermissions: { callLog: restrictedPhonePermissions.callLog, sms: restrictedPhonePermissions.sms },
       eas: {
         build: {
           experimental: {

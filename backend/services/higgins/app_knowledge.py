@@ -67,6 +67,7 @@ NAV_ROUTES: dict[str, str] = {
     # Settings and policies
     "/settings/personal-data": "My personal data",
     "/settings/email-accounts": "Email accounts",
+    "/settings/feed-health": "Feed health",
     "/privacy-data": "What Apollo stores",
     "/privacy-disclosure": "Privacy statement",
     "/third-party-register": "Third-party services",
@@ -99,10 +100,10 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
         "/(tabs)/guard": "Your protections — every protection and its real status",
     },
     "checks": {
-        "/message": "Check a message — paste, share or screenshot",
+        "/message": "Check a message — paste, screenshot, or share from apps that offer Share",
         "/check": "Check a website link — see where it really goes",
         "/file": "Check a file — a download or attachment",
-        "/call-guard": "Check a number — who called, scam check, call screener setup",
+        "/call-guard": "Check a number — type/paste a number, Calls Apollo screened (Android), call screener setup",
         "/scan": "Scan a code — QR code or barcode",
         "/email": "Check an email — plus connect Gmail for ongoing checking",
         "/app-check": "Check an app — installed or being considered",
@@ -124,12 +125,13 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
         "/account-monitor": "Account monitoring — email breach monitoring (weekly)",
     },
     "settings": {
-        "/(tabs)/settings": "Settings — seven groups below",
+        "/(tabs)/settings": "Settings — eight groups below",
         "/gates": "View all protections — every protection and its real status",
         "/notification-check": "Notification check",
         "/settings/email-accounts": "Email accounts",
         "/family": "Family sharing",
         "/settings/personal-data": "My personal data",
+        "/settings/feed-health": "Feed health — sync status of each government feed",
         "/privacy-data": "What Apollo stores",
         "/privacy-disclosure": "Privacy statement",
         "/third-party-register": "Third-party services",
@@ -189,7 +191,7 @@ def _screens_block(route_groups: Sequence[str]) -> str:
 
 # CONDITIONAL: how flows work
 _FLOWS = """HOW APOLLO'S FLOWS WORK:
-- Sharing into Apollo: use Share from any app, choose Apollo. Apollo asks which app, shows what it received, waits for confirmation.
+- Sharing into Apollo: in apps that offer Share, tap Share and choose Apollo. Not every app offers Share — copy/paste or a screenshot always works. Apollo asks which app, shows what it received, waits for confirmation.
 - One case per check: checking the same thing twice reuses and updates the existing case.
 - Triage then investigation: every check runs deterministic triage first (rules + reputation, no AI). If clean, that's the answer. If possible threat or inconclusive, escalates to full Magnum DI investigation.
 - Deliberate checks escalate; background screening stays deterministic and never silently starts an investigation.
@@ -212,17 +214,20 @@ _PRIVACY = """APOLLO'S PRIVACY RULES (state accurately):
 # CONDITIONAL: call screening detail
 _CALL_SCREENING = """CALL SCREENING:
 - Android: Apollo can become default call screener via Settings > Default apps > Caller ID & spam blocking. Offered during setup and on Check a number `/call-guard`.
+- Android: "Calls Apollo screened" on `/call-guard` lists the incoming numbers Android passed to Apollo's call screening (usually numbers not in contacts), kept on the phone for up to 30 days; tap one to check it. Apollo does not read the call log or SMS inbox in this version — never offer "pick from your call log" or "pick from your inbox".
+- Text Guard (Android) checks new texts through opt-in notification access. Otherwise: paste the text, use a screenshot, or Share → Apollo where the source app offers Share.
 - iOS: Apple provides no equivalent. No app can be the call screener. Apollo works from numbers the person checks and a blocked-number list. Say this plainly; never imply parity."""
 
 # CONDITIONAL: settings structure
-_SETTINGS_DETAIL = """SETTINGS `/(tabs)/settings` — seven groups:
+_SETTINGS_DETAIL = """SETTINGS `/(tabs)/settings` — eight groups:
 1. Protection — View all protections `/gates`.
 2. Alerts — notification permission, Notification check, alert preview, quiet hours.
 3. Accounts & family — Email accounts, Family sharing, trusted links.
 4. Your data — Personal data, What Apollo stores, clear Threat history.
 5. App — battery saver, minimise Apollo, retrofit past investigations.
-6. Help & about — Get help, how to share into Apollo, About Apollo.
-7. Policies — Privacy statement, Third-party services, Compliance matrix."""
+6. Diagnostics — Feed health `/settings/feed-health`: each government feed's last successful sync, records loaded, last error, and a Healthy / Stale (no sync in 24 hours) / Failing badge.
+7. Help & about — Get help, how to share into Apollo, About Apollo.
+8. Policies — Privacy statement, Third-party services, Compliance matrix."""
 
 
 # ── Module registry ──────────────────────────────────────────────────────────

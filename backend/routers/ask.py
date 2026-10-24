@@ -17,7 +17,7 @@ from services.higgins import chat
 from services.higgins import context as memory
 from services.higgins.contracts import Wire
 from services.higgins import repository as investigation_repository
-from services import government_alerts
+from services import feed_health, government_alerts
 from core.db import db
 from core.redaction import redact_investigation_secrets
 
@@ -149,6 +149,12 @@ async def delete_higgins_history(history_id: str, request: Request):
 @router.get("/higgins/scams")
 async def government_scam_feed(limit: int = Query(default=50, ge=1, le=100)):
     return JSONResponse(jsonable_encoder(await government_alerts.snapshot(limit)), headers=NO_STORE)
+
+
+@router.get("/feeds/health")
+async def feed_health_report():
+    """Settings > Diagnostics > Feed health: sync status of every enabled government feed."""
+    return JSONResponse(jsonable_encoder(await feed_health.snapshot()), headers=NO_STORE)
 
 
 @router.get("/higgins/scams/diagnostics")

@@ -45,6 +45,36 @@ const path = require("path");
 const MARKER = "GuardDog engine (Stage 1C)";
 const SERIALIZATION_MARKER = "GuardDog kotlin.serialization plugin (Stage 1C)";
 
+// ── Always-on VPN: exactly one VpnService entry point ────────────────────────────────────────────
+// Android's Always-on VPN starts "the" service in the package that declares the android.net.VpnService
+// action. The certified GuardDogVpnService declares it, but by design ignores that system request (it
+// only starts when Apollo configures it first), so Always-on never connected. Apollo's own
+// ApolloAlwaysOnVpnStarter (modules/apollo-security) now carries the action and rebuilds protection
+// from the saved rules. Two services with the action would make Android's choice arbitrary, so the
+// app manifest REPLACES the certified declaration with the identical one minus its intent filter.
+// The certified source and its own manifest are not touched; establish() resolves the service by its
+// explicit class name, which needs no intent filter. Keep these attributes identical to
+// packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml (asserted by tests/alwaysOnVpn.test.ts).
+const GUARDDOG_VPN_SERVICE = "com.guarddog.vpn.GuardDogVpnService";
+const GUARDDOG_VPN_SERVICE_ATTRIBUTES = {
+  "android:exported": "false",
+  "android:foregroundServiceType": "systemExempted",
+  "android:permission": "android.permission.BIND_VPN_SERVICE",
+};
+
+/** Pure: give the app manifest the single-entry-point replacement for the certified VPN service. */
+function applySingleVpnEntryPoint(androidManifest) {
+  const manifest = androidManifest.manifest;
+  manifest.$ = manifest.$ ?? {};
+  if (!manifest.$["xmlns:tools"]) manifest.$["xmlns:tools"] = "http://schemas.android.com/tools";
+  const application = manifest.application?.[0];
+  if (!application) throw new Error("[withGuardDogEngine] The generated AndroidManifest has no <application>.");
+  const services = (application.service ?? []).filter((svc) => svc.$?.["android:name"] !== GUARDDOG_VPN_SERVICE);
+  services.push({ $: { "android:name": GUARDDOG_VPN_SERVICE, "tools:node": "replace", ...GUARDDOG_VPN_SERVICE_ATTRIBUTES } });
+  application.service = services;
+  return androidManifest;
+}
+
 // packages/ lives inside the Expo project root (frontend/packages), i.e. one level above frontend/android/.
 // It MUST be inside frontend/ because Emergent runs `eas build` from frontend/ with no VCS, and eas-cli then
 // archives only the project root — anything outside frontend/ never reaches the EAS worker (Stage 1C.1 finding).
@@ -129,7 +159,10 @@ module.exports = function withGuardDogEngine(config) {
         });
       }
     }
+    applySingleVpnEntryPoint(mod.modResults);
     return mod;
   });
   return config;
 };
+module.exports.applySingleVpnEntryPoint = applySingleVpnEntryPoint;
+module.exports.GUARDDOG_VPN_SERVICE_ATTRIBUTES = GUARDDOG_VPN_SERVICE_ATTRIBUTES;

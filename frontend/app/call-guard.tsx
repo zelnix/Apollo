@@ -1,24 +1,16 @@
 // Check a Number — Approved screen implementation.
-// Matches the approved mock-up exactly: header, description, phone card,
-// gold Check number CTA, "or" divider, recent calls section.
+// Header, description, phone card, gold Check number CTA, then "Calls Apollo screened": the incoming
+// numbers Android handed to Apollo's CallScreeningService (never the call log), each tappable to check.
 //
 // One number → one reputation check → at most ONE Magnum DI investigation. Apollo's own Triage
 // decides whether to open one (see checkNumberRisk); this screen FOLLOWS that case through the
 // shared InvestigationFlow instead of starting a second investigation of its own.
 import { useRouter } from "expo-router";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
-import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleX from "lucide-react-native/icons/circle-x";
-import Clock from "lucide-react-native/icons/clock";
 import PhoneIcon from "lucide-react-native/icons/phone";
 import Search from "lucide-react-native/icons/search";
-import User from "lucide-react-native/icons/user";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  AppState,
-  Platform,
   Pressable,
   Text,
   TextInput,
@@ -32,11 +24,11 @@ import { CallScreenerCard } from "@/src/components/CallScreenerCard";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
+import { ScreenedCallsList } from "@/src/components/ScreenedCallsList";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { Body, Button } from "@/src/components/ui";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
-import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { simulation } from "@/src/simulation";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
@@ -94,41 +86,6 @@ const useStyles = makeStyles((c) => ({
   goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
 
   // ── Or divider (removed) ──
-
-  // ── Recent calls dropdown ──
-  recentDropdown: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, overflow: "hidden" as const },
-  recentDropdownToggle: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, padding: spacing.lg },
-  recentDropdownIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center" as const, justifyContent: "center" as const },
-  recentDropdownTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, flex: 1 },
-  recentDropdownSub: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-
-  // ── Recent calls section ──
-  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, overflow: "hidden" },
-  recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
-  recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  recentClockWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  recentTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
-  seeAllRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  seeAllText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
-  recentSub: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginLeft: 48 },
-
-  // ── Call row ──
-  callRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
-  callIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  callAlertWell: { backgroundColor: "rgba(217,83,79,0.12)" },
-  callContactWell: { backgroundColor: "rgba(76,175,80,0.12)" },
-  callUnknownWell: { backgroundColor: c.surfaceTertiary },
-  callInfo: { flex: 1, gap: 2 },
-  callNumber: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  callDesc: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary },
-  callDateCol: { alignItems: "flex-end", gap: 2, flexShrink: 0 },
-  callDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  callTime: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-
-  // ── Empty recent ──
-  recentEmpty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
-
   // ── Error card ──
   errorCard: { backgroundColor: "rgba(217,83,79,0.08)", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: "rgba(217,83,79,0.2)" },
   errorText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
@@ -154,41 +111,11 @@ export default function CheckNumber() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  // Phone picker
+  // Restricted call-log picker: retained, but only present when this build declares READ_CALL_LOG
+  // (off by default — see plugins/withRestrictedPhonePermissions.js).
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
   const [callSourcePicker, setCallSourcePicker] = useState(false);
-  const [recentOpen, setRecentOpen] = useState(false);
-  const canPickPhone = PhonePickers.isSupported();
-
-  // Recent calls from call log (Android native)
-  const [recentCalls, setRecentCalls] = useState<{ number: string; name: string | null; date: number; type: string }[]>([]);
-  const loadRecentCalls = useCallback(async () => {
-    if (!PhonePickers.isSupported()) return;
-    try {
-      const perm = await PhonePickers.hasPermission("call_log");
-      if (perm.granted) {
-        const calls = await PhonePickers.listRecentCalls();
-        setRecentCalls(calls.slice(0, 10));
-      }
-    } catch { /* silently degrade */ }
-  }, []);
-
-  useEffect(() => { void loadRecentCalls(); }, [loadRecentCalls]);
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void loadRecentCalls(); });
-    return () => sub.remove();
-  }, [loadRecentCalls]);
-
-  // ── Open the full recent-calls picker ──
-  const handleSeeAll = () => {
-    if (canPickPhone) {
-      setCallerPickerOpen(true);
-    } else {
-      showToast(Platform.OS === "ios"
-        ? "Recent call access is not available on iOS. Enter the number manually or paste it."
-        : "Recent call access requires a native build with call-log permission.", "neutral");
-    }
-  };
+  const canPickCallLog = PhonePickers.isSupported("call_log");
 
   // ── Primary investigation action ──
   // `pickedNumber` lets a simulated selection be checked immediately. Everything below is the same
@@ -296,38 +223,6 @@ export default function CheckNumber() {
   // ── MAIN INPUT VIEW ──
   const hasValidNumber = numberState.replace(/[\s\-()]/g, "").length >= 7;
 
-  // Helper: format date for recent call rows
-  const formatCallDate = (ts: number) => {
-    const d = new Date(ts);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-    const datePart = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-    const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-    return { datePart, timePart };
-  };
-
-  // Helper: determine icon style for a call entry
-  const callIcon = (call: { name: string | null; type: string }) => {
-    const isMissed = call.type === "missed" || call.type === "MISSED";
-    const isSpam = call.type === "blocked" || call.type === "BLOCKED";
-    if (isMissed || isSpam) return "alert" as const;
-    if (call.name) return "contact" as const;
-    return "unknown" as const;
-  };
-
-  // Helper: description text for a call entry
-  const callDescription = (call: { name: string | null; type: string }) => {
-    const isMissed = call.type === "missed" || call.type === "MISSED";
-    const isSpam = call.type === "blocked" || call.type === "BLOCKED";
-    if (isSpam) return "Possible spam";
-    if (call.name) return "Saved contact";
-    if (isMissed) return "Missed call";
-    return "Unknown number";
-  };
-
   return (
     <View style={s.root}>
       {/* ── Header ── */}
@@ -338,7 +233,7 @@ export default function CheckNumber() {
             "Apollo investigates phone numbers using reputation data, fraud databases, line-type intelligence and Higgins analysis.",
             "This works without answering the call — check before you call back.",
             "Reputation data indicates risk but cannot authenticate who is actually calling. Caller ID can be spoofed.",
-            "On Android, Apollo can access recent calls with your permission. On iOS, call-log access is not available — enter or paste the number instead.",
+            "On Android, Calls Apollo screened lists the incoming numbers Android passed to Apollo's call screening — Apollo doesn't read your call log. On iOS, enter or paste the number.",
           ] }}
           testID="callguard"
         />
@@ -349,86 +244,6 @@ export default function CheckNumber() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        <SourceHero
-          testID="callguard-hero"
-          title="Pick a number from your recent calls"
-          caption="Apollo checks the number's reputation, line type and fraud history — without you having to call back."
-          actions={[{
-            testID: "callguard-pick-caller",
-            label: busy ? "Checking…" : "Choose a recent caller",
-            disabled: busy,
-            icon: <Clock size={20} color={colors.onBrandPrimary} />,
-            onPress: () => { if (canPickPhone) { setCallerPickerOpen(true); return; } setCallSourcePicker(true); },
-          }]}
-        />
-
-        {/* ── Recent Calls Dropdown (above phone input) ── */}
-        <View style={s.recentDropdown} testID="callguard-recent-section">
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setRecentOpen((v) => !v)}
-            style={s.recentDropdownToggle}
-            testID="callguard-recent-toggle"
-          >
-            <View style={s.recentDropdownIconWell}>
-              <Clock size={18} color={colors.onSurface} />
-            </View>
-            <Text style={s.recentDropdownTitle}>Select from recent calls</Text>
-            {recentOpen ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
-          </Pressable>
-
-          {recentOpen ? <>
-            <Text style={s.recentDropdownSub}>Tap a number to check it with Apollo.</Text>
-
-            {recentCalls.length > 0 ? (
-              recentCalls.slice(0, 5).map((call) => {
-                const icon = callIcon(call);
-                const desc = callDescription(call);
-                const { datePart, timePart } = call.date ? formatCallDate(call.date) : { datePart: "", timePart: "" };
-                return (
-                  <Pressable
-                    key={`${call.number}-${call.date}`}
-                    testID={`callguard-recent-${call.number}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Check ${call.name || call.number}`}
-                    onPress={() => { setNumber(call.number); setRecentOpen(false); }}
-                    style={({ pressed }) => [s.callRow, { opacity: pressed ? 0.7 : 1 }]}
-                  >
-                    <View style={[s.callIconWell, icon === "alert" ? s.callAlertWell : icon === "contact" ? s.callContactWell : s.callUnknownWell]}>
-                      {icon === "alert" ? <CircleAlert size={22} color={colors.error} /> : icon === "contact" ? <PhoneIcon size={20} color="#4CAF50" /> : <User size={22} color={colors.muted} />}
-                    </View>
-                    <View style={s.callInfo}>
-                      <Text style={s.callNumber}>{call.number}</Text>
-                      <Text style={s.callDesc}>{call.name || desc}</Text>
-                    </View>
-                    <View style={s.callDateCol}>
-                      <Text style={s.callDate}>{datePart}</Text>
-                      <Text style={s.callTime}>{timePart}</Text>
-                    </View>
-                    <ChevronRight size={18} color={colors.muted} />
-                  </Pressable>
-                );
-              })
-            ) : (
-              <View style={s.recentEmpty}>
-                <PhoneIcon size={28} color={colors.muted} />
-                <Body>
-                  {Platform.OS === "android"
-                    ? "Recent calls will appear here when call-log permission is granted."
-                    : "Recent calls are not available on this platform. Enter or paste the number below."}
-                </Body>
-              </View>
-            )}
-
-            {recentCalls.length > 5 ? (
-              <Pressable accessibilityRole="button" onPress={handleSeeAll} style={[s.callRow, { justifyContent: "center" }]} hitSlop={8}>
-                <Text style={s.seeAllText}>See all</Text>
-                <ChevronRight size={16} color={colors.brand} />
-              </Pressable>
-            ) : null}
-          </> : null}
-        </View>
-
         {/* ── Phone Number Card ── */}
         <View style={s.phoneCard} testID="callguard-number-card">
           <View style={s.phoneCardHeader}>
@@ -479,18 +294,23 @@ export default function CheckNumber() {
           </View>
         ) : null}
 
+        {/* Every incoming number Android handed to Apollo's call screening — tap one to check it. */}
+        <ScreenedCallsList testID="callguard-screened" onSelect={(n) => void runInvestigation(n)} disabled={busy} />
+        {canPickCallLog ? <Button testID="callguard-pick-caller" variant="secondary" label="Choose from your call log" onPress={() => setCallerPickerOpen(true)} /> : null}
+        {simulation.included ? <Button testID="callguard-sample-caller" variant="ghost" label="Try a sample caller (preview)" onPress={() => setCallSourcePicker(true)} /> : null}
+
         {/* Checking a number is the deliberate act; screening every incoming call is the
             standing protection. This is where a person comes to turn that on. */}
         <CallScreenerCard testID="callguard-screener" />
       </KeyboardAwareScrollView>
 
-      <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />
+      {canPickCallLog ? <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} /> : null}
       <SourcePickerSheet
         visible={callSourcePicker}
-        title="Recent callers"
+        title="Sample callers"
         note="Apollo runs the real number check on whichever you pick."
         preview={simulation.included}
-        error={simulation.included ? null : "Apollo can't read the call log on this build. Enter or paste the number below instead."}
+        error={simulation.included ? null : "There are no sample callers in this build. Enter or paste the number above instead."}
         items={simulation.calls.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes }))}
         emptyText="There are no recent callers to choose from here."
         onSelect={(id: string) => { setCallSourcePicker(false); const c = simulation.calls.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}

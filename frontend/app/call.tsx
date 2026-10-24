@@ -12,7 +12,9 @@ import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScr
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
+import { ScreenedCallsList } from "@/src/components/ScreenedCallsList";
 import { PhonePickers } from "@/src/security/phonePickers";
+import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
 import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { buildCallCheckResult } from "@/src/domain/callCheckResultAdapter";
@@ -64,7 +66,10 @@ export default function CheckCall() {
   const [result, setResult] = useState<{ analysis: CallAnalysis; event: PatrolEvent | null } | null>(null);
   const [verify, setVerify] = useState(false);
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
-  const canPickPhone = PhonePickers.isSupported();
+  const canPickPhone = PhonePickers.isSupported("call_log");
+  // Permission-free alternative: numbers Android handed to Apollo's call screening.
+  const canPickScreened = !canPickPhone && ScreenedCalls.isSupported();
+  const [screenedOpen, setScreenedOpen] = useState(false);
   const [autoCheck, setAutoCheck] = useState(false);
   const [trustedList, setTrustedList] = useState<string[]>([]);
   const reloadTrusted = React.useCallback(() => { void getTrustedCallers().then(setTrustedList); }, []);
@@ -130,7 +135,7 @@ export default function CheckCall() {
           <Body>Never verify using a number, link or website the caller gave you.</Body>
           <Button testID="verify-caller-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
         </Sheet>
-        <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />
+        {canPickPhone ? <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} /> : null}
       </>
     );
   }
@@ -162,11 +167,13 @@ export default function CheckCall() {
             ))}
           </Card>
         ) : null}
-        {canPickPhone ? (
+        {canPickPhone || canPickScreened ? (
           <Card style={{ gap: spacing.sm }} testID="call-number-picker">
             <SectionTitle>Who called?</SectionTitle>
-            {number.trim() ? <Text style={s.chipText} testID="call-picked-number">Checking: {number}</Text> : <Body>Pick the caller from your recent calls, or add the number lower down.</Body>}
-            <Button testID="call-pick-recent" variant="secondary" label={number.trim() ? "Pick a different caller" : "Pick a recent caller"} onPress={() => setCallerPickerOpen(true)} />
+            {number.trim() ? <Text style={s.chipText} testID="call-picked-number">Checking: {number}</Text> : <Body>{canPickPhone ? "Pick the caller from your recent calls, or add the number lower down." : "Pick the caller from the calls Apollo screened, or add the number lower down."}</Body>}
+            {canPickPhone
+              ? <Button testID="call-pick-recent" variant="secondary" label={number.trim() ? "Pick a different caller" : "Pick a recent caller"} onPress={() => setCallerPickerOpen(true)} />
+              : <Button testID="call-pick-screened" variant="secondary" label={number.trim() ? "Pick a different caller" : "Pick from calls Apollo screened"} onPress={() => setScreenedOpen(true)} />}
           </Card>
         ) : null}
         <Text style={s.q}>What are they asking you to do?</Text>
@@ -197,7 +204,13 @@ export default function CheckCall() {
         <Button testID="call-check-number" variant="ghost" label="Just want to check a number? Use Check a Number" onPress={() => router.push("/call-guard")} />
         <CheckHistoryCard gate="call" refreshKey={historyKey} testID="call-history" />
       </KeyboardAwareScrollView>
-      <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />
+      {canPickPhone ? <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} /> : null}
+      {canPickScreened ? (
+        <Sheet visible={screenedOpen} onClose={() => setScreenedOpen(false)} title="Calls Apollo screened" testID="call-screened-sheet">
+          <ScreenedCallsList testID="call-screened" actionLabel="Use" onSelect={(n) => { setNumber(n); setMore(true); setScreenedOpen(false); }} />
+          <Button testID="call-screened-close" variant="ghost" label="Close" onPress={() => setScreenedOpen(false)} />
+        </Sheet>
+      ) : null}
     </View>
   );
 }

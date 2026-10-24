@@ -17,12 +17,15 @@ import { Platform } from "react-native";
 import { buildDeviceCapabilities, type CapabilityPlatform, type DeviceCapabilityView, type NativeProtectionRead } from "@/src/domain/deviceCapabilities";
 import { EMPTY_SECURITY_READ, type SecurityStateRead } from "@/src/domain/deviceSecurityCatalogue";
 import { AppDeviceSdk, type AppDeviceCapabilities } from "@/src/security/appDeviceSdk";
+import { pickerDeclaredByBuild } from "@/src/security/phonePickers";
 import { detectNativeProtection } from "@/src/security/nativeProtectionEvidence";
 import { getNativeModule } from "@/src/security/nativeBridge";
 import { desktopHostKind } from "@/src/security/desktopHost";
 import { readDeviceSettingsSnapshot } from "@/src/security/devicePosture";
 import { securityAdapter } from "@/src/security/securityAdapter";
 import type { DeviceSignals } from "@/src/domain/deviceAnalysis";
+import { privateDnsMode } from "@/src/domain/privateDnsAdvice";
+import type { PrivateDnsStatus } from "@/src/domain/types";
 
 export interface DeviceCapabilityReading {
   view: DeviceCapabilityView;
@@ -49,8 +52,11 @@ export function capabilityPlatform(): CapabilityPlatform {
 function toSecurityRead(
   posture: Awaited<ReturnType<typeof readDeviceSettingsSnapshot>>,
   signals: DeviceSignals | null,
-  privateDnsActive: boolean | null,
+  dns: PrivateDnsStatus | null,
 ): SecurityStateRead {
+  // "unobservable" is not "off" — only a real reading becomes a state.
+  const dnsRead = dns && dns.bypassLevel !== "unobservable" ? dns : null;
+  const dnsMode = dnsRead ? privateDnsMode(dnsRead) : null;
   return {
     ...EMPTY_SECURITY_READ,
     screenLockSecure: posture?.screenLockSecure ?? signals?.screenLockSecure ?? null,
@@ -64,8 +70,9 @@ function toSecurityRead(
     // -1 from the native read means "couldn't read" — the catalogue keeps that unknown.
     userCertificateCount: posture?.userCertificateCount ?? signals?.userTrustedCertificates ?? null,
     rootIndicators: posture?.rootIndicators ?? signals?.systemIntegrity?.indicators ?? null,
-    privateDnsActive,
-    firewallEnabled: signals?.firewallEnabled ?? null,
+    privateDnsActive: dnsRead ? dnsRead.privateDnsActive : null,
+    privateDnsMode: dnsMode === "unknown" || dnsMode === "unsupported" ? null : dnsMode,
+    privateDnsHost: dnsRead?.privateDnsServer ?? null,
     osUpdatesCurrent: signals?.osUpdatesCurrent ?? null,
     antivirusEnabled: signals?.antivirusEnabled ?? null,
     systemProtections: signals?.systemIntegrity?.protections ?? null,
@@ -101,11 +108,9 @@ async function read(): Promise<DeviceCapabilityReading> {
   const posture = postureResult.status === "fulfilled" ? postureResult.value : null;
   const signals = signalsResult.status === "fulfilled" ? signalsResult.value : null;
   const dns = dnsResult.status === "fulfilled" ? dnsResult.value : null;
-  // "unobservable" is not "off" — only a real reading becomes a state.
-  const privateDnsActive = dns && dns.bypassLevel !== "unobservable" ? dns.privateDnsActive : null;
 
   return {
-    view: buildDeviceCapabilities({ platform, caps, native, security: toSecurityRead(posture, signals, privateDnsActive) }),
+    view: buildDeviceCapabilities({ platform, caps, native, security: toSecurityRead(posture, signals, dns), restrictedPickers: { callLog: pickerDeclaredByBuild("call_log"), sms: pickerDeclaredByBuild("sms") } }),
     hasNativeHost: true,
     capsReadFailed: caps === null,
     nativeReadFailed: native === null,

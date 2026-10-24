@@ -634,7 +634,8 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   const sources = CATEGORY_SOURCES[category].filter((key) => {
     if (PREVIEW_ONLY_SOURCES.includes(key)) return simulation.included;
     if (simulation.included) return true;
-    if (key === "messages" || key === "calls") return PhonePickers.isSupported();
+    if (key === "messages") return PhonePickers.isSupported("sms");
+    if (key === "calls") return PhonePickers.isSupported("call_log");
     if (key === "apps") return Platform.OS === "android";
     return true;  // email (asks the server) and files (the OS picker) work everywhere
   });

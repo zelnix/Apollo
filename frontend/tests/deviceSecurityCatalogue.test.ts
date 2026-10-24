@@ -123,14 +123,30 @@ test("developer options, certificates and admin apps report the real read", () =
   assert.equal(rows({ deviceAdmins: [] }).find((r) => r.id === "device_admin_apps")!.state, "as_recommended");
 });
 
-test("Private DNS and system integrity never guess", () => {
-  const dnsOff = securityProtectionRows("android", read({ privateDnsActive: false }), NOW).find((r) => r.id === "private_dns")!;
-  assert.equal(dnsOff.state, "off");
-  const dnsOn = securityProtectionRows("android", read({ privateDnsActive: true }), NOW).find((r) => r.id === "private_dns")!;
-  assert.equal(dnsOn.state, "active");
-  assert.equal(securityProtectionRows("android", read(), NOW).find((r) => r.id === "private_dns")!.state, "not_verifiable");
+test("Private DNS follows Higgins' recommendation (Automatic) and never guesses", () => {
+  const row = (r: Partial<SecurityStateRead>) => securityProtectionRows("android", read(r), NOW).find((x) => x.id === "private_dns")!;
+  // Automatic is what Higgins recommends.
+  assert.equal(row({ privateDnsMode: "automatic" }).state, "as_recommended");
+  // Off and a provider hostname both need attention; the hostname is named and the bypass explained.
+  assert.equal(row({ privateDnsMode: "off" }).state, "off");
+  const host = row({ privateDnsMode: "hostname", privateDnsHost: "dns.adguard.com" });
+  assert.equal(host.state, "off");
+  assert.match(host.detail, /dns\.adguard\.com/);
+  assert.match(host.detail, /Apollo’s website checks never see them/);
+  // Android can't tell Off from Automatic-not-in-use: that is said, never reported as plain "Off".
+  const unclear = row({ privateDnsMode: "not_in_use" });
+  assert.equal(unclear.state, "off");
+  assert.match(unclear.detail, /either Off, or Automatic/);
+  // Older native builds only report active/inactive.
+  assert.equal(row({ privateDnsActive: true }).state, "as_recommended");
+  assert.match(row({ privateDnsActive: false }).detail, /either Off, or Automatic/);
+  assert.equal(row({}).state, "not_verifiable");
+  // The button goes straight to the Private DNS setting.
+  assert.equal(row({}).guidance!.action.target, "private_dns");
+  assert.match(row({}).guidance!.recommended, /‘Automatic’/);
+});
 
-  const rooted = securityProtectionRows("android", read({ rootIndicators: ["su_binary:/system/bin/su"] }), NOW).find((r) => r.id === "system_integrity")!;
+test("system integrity never guesses", () => {  const rooted = securityProtectionRows("android", read({ rootIndicators: ["su_binary:/system/bin/su"] }), NOW).find((r) => r.id === "system_integrity")!;
   assert.equal(rooted.state, "off");
   assert.match(rooted.detail, /indicators, not proof/);
   assert.equal(securityProtectionRows("android", read({ rootIndicators: [] }), NOW).find((r) => r.id === "system_integrity")!.state, "as_recommended");
@@ -148,7 +164,7 @@ test("the instructions name the person's actual phone and messaging apps", () =>
 });
 
 test("every deep link points at a settings target the app can actually open", () => {
-  const targets = new Set(["apps", "accessibility", "vpn", "security", "unknown_sources", "overlay", "notification_access", "all_files", "developer"]);
+  const targets = new Set(["apps", "accessibility", "vpn", "security", "unknown_sources", "overlay", "notification_access", "all_files", "developer", "private_dns"]);
   for (const platform of ["android", "ios"] as const) {
     for (const row of securityProtectionRows(platform, read(), NOW)) {
       assert.ok(targets.has(row.guidance!.action.target), `${row.id}: unknown settings target ${row.guidance!.action.target}`);

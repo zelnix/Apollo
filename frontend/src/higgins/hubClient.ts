@@ -1,4 +1,5 @@
 import { apiDelete, apiGet } from "@/src/api/client";
+import type { FeedHealthReport } from "@/src/domain/feedHealth";
 
 export interface HigginsHistoryItem { id: string; kind: "investigation" | "saved_report"; title: string; summary: string; status: "active" | "completed" | "cancelled" | "failed" | "saved"; occurredAt: string; caseStart: string; lastUpdate: string; gates: string[]; attention: string; conclusion: string; caseId: string | null; reportId: string | null; reopenable: boolean }
 export interface GovernmentFeedState { status: "fresh" | "stale" | "unavailable"; source: string; sourceUrl: string; sourceType: "live_alert" | "official_advice"; lastSuccessAt: string | null; lastCheckedAt: string | null; errorType?: string | null }
@@ -15,6 +16,7 @@ export function higginsHubHistory(limit = 50, options: { cursor?: string; status
 export function deleteHigginsHistory(id: string) { return apiDelete<void>(`/higgins/history/${encodeURIComponent(id)}`); }
 export function governmentScams(limit = 50) { return apiGet<{ coverage: string; generatedAt: string; feeds: Record<string, GovernmentFeedState>; alerts: GovernmentAlert[]; emerging: GovernmentAlert[]; pendingCount: number; lastAnalysedAt: string | null; lastSourcedAt: string | null; growling: GovernmentAlert | null }>(`/higgins/scams?limit=${limit}`); }
 export function scamDiagnostics() { return apiGet<ScamDiagnostics>("/higgins/scams/diagnostics"); }
+export function feedHealth() { return apiGet<FeedHealthReport>("/feeds/health"); }
 export interface ScamDiagnostics { generated_at: string; recency_cutoff_days: number; analysis_version: string; pipeline: { "1_total_feed_items": number; "2_with_analysis": number; "3_without_analysis_pending": number; "4_matching_current_version": number; "5_wrong_version_needs_reanalysis": number; "6_after_filters": { specific_scam_shown: number; emerging_pattern_shown: number; general_education_excluded: number; stale_excluded: number; unknown_tier: number } }; shown_alerts: DiagItem[]; shown_emerging: DiagItem[]; excluded_stale: DiagItem[]; excluded_education: DiagItem[]; feeds: DiagFeed[] }
 export interface DiagItem { title: string; url: string; source_id: string; tier: string; severity: string; region: string; published_at: string | null; reported_date: string | null; effective_date: string | null; age_days: number | null; is_stale: boolean }
 export interface DiagFeed { feed_id: string; source_id: string; content_type: string; status: string; last_success: string | null; last_checked: string | null; error: string | null; items_ingested: number }

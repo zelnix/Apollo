@@ -316,6 +316,13 @@ export interface DnsThreatObservation {
 }
 
 /**
+ * How Private DNS is set, as far as Android tells Apollo (read from the physical network, never
+ * Apollo's own tunnel). `not_in_use` = Off, or Automatic on a network that doesn't support it —
+ * Android can't tell those apart when its own setting isn't readable, so it is never shown as "off".
+ */
+export type PrivateDnsMode = "off" | "automatic" | "hostname" | "not_in_use" | "unknown" | "unsupported";
+
+/**
  * Private DNS / DoH gap detection status. Identifies when Apollo's website protection
  * is reduced because DNS queries bypass the virtual DNS gateway.
  */
@@ -324,7 +331,11 @@ export interface PrivateDnsStatus {
   privateDnsActive: boolean;
   /** The configured Private DNS server name (e.g. "dns.google"), or null for "Automatic". */
   privateDnsServer: string | null;
-  /** "confirmed" = Private DNS is on (verified), "none" = off, "unobservable" = cannot determine. */
+  /** How Private DNS is set. Absent from builds that predate the mode read. */
+  mode?: PrivateDnsMode;
+  /** Where `mode` came from: Android's own setting, or only the network's current Private DNS state. */
+  modeSource?: "android_setting" | "network_state" | null;
+  /** "confirmed" = a provider hostname sends lookups past Apollo, "none" = Apollo sees them, "unobservable" = cannot determine. */
   bypassLevel: "confirmed" | "none" | "unobservable";
   /** Chrome DoH is always "unobservable" — no Android API exposes Chrome's internal DNS config. */
   chromeDoH: "unobservable";

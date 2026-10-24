@@ -106,11 +106,13 @@ async def refresh(feed: dict, source: dict) -> dict:
             run["accepted"] += int(bool(result.upserted_id))
         run["status"] = "success"
         await db.learning_feed_state.update_one({"feed_id": feed["feed_id"]}, {"$set": {"feed_id": feed["feed_id"], "last_checked_at": started,
-            "last_success_at": started, "status": "fresh", "item_count": len(rows), "error": None}}, upsert=True)
+            "last_success_at": started, "status": "fresh", "item_count": len(rows), "error": None, "error_detail": None}}, upsert=True)
     except Exception as exc:
         run["status"] = "failed"; run["error"] = type(exc).__name__
+        # ValueError reasons are Apollo's own fixed strings (or OutboundBlocked codes) — safe to keep for Feed Health.
+        detail = str(exc)[:120] if isinstance(exc, ValueError) else None
         await db.learning_feed_state.update_one({"feed_id": feed["feed_id"]}, {"$set": {"feed_id": feed["feed_id"], "last_checked_at": started,
-            "status": "unavailable", "error": type(exc).__name__}}, upsert=True)
+            "status": "unavailable", "error": type(exc).__name__, "error_detail": detail}}, upsert=True)
     run["finished_at"] = now_utc()
     await db.learning_feed_runs.update_one({"run_id": run_id}, {"$set": run})
     return {key: run[key] for key in ("run_id", "feed_id", "status", "fetched", "accepted", "rejected", "error")}

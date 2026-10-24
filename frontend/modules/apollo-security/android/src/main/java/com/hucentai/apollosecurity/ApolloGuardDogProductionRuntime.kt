@@ -33,6 +33,9 @@ import com.guarddog.vpn.VpnStateRepository
 import com.guarddog.vpn.WebsiteGateAddressing
 import android.net.ConnectivityManager
 import android.net.LinkProperties
+import android.net.NetworkCapabilities
+import android.os.Build
+import android.provider.Settings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -250,7 +253,43 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private fun persistedBundleVersion(): Long? = prefs.getLong("rule_bundle_version", -1).takeIf { it >= 0 }
   private fun persistBundle(raw: String, version: Long) { prefs.edit().putString("rule_bundle_raw", raw).putLong("rule_bundle_version", version).apply() }
 
-  fun start(): String = transitions.serialized { startLocked() }
+  fun start(): String = transitions.serialized { startLocked().also { clearSystemStartFailure() } }
+
+  /**
+   * Android's own request to connect Apollo's VPN (see [ApolloAlwaysOnVpnStarter]): sent only when
+   * the person chose Apollo as the Always-on VPN, so it is their intent and is recorded as such.
+   * Rebuilds protection from the persisted, validated config + rule bundle. Idempotent: a request
+   * while protection already runs changes nothing. Every outcome is recorded for the status.
+   */
+  fun startForSystemRequest(): String = transitions.serialized {
+    if (actualOperational()) { recordSystemStart("already_running", null); return@serialized statusLocked() }
+    try {
+      requireProductionEnabled()
+      checkNotNull(config) { "website protection hasn't been set up on this phone yet. Open Apollo and turn it on" }
+      check(ruleBundleCurrent()) { "Apollo has no current security rules on this phone. Open Apollo with an internet connection to fetch them" }
+      check(prefs.edit().putBoolean("requested", true).commit()) { "Could not record the protection request" }
+      startLocked().also { recordSystemStart("started", null) }
+    } catch (t: Throwable) {
+      recordSystemStart("failed", t.message ?: t.javaClass.simpleName); throw t
+    }
+  }
+
+  /** Waits (outside the transition lock) until a physical network offers an IPv4 DNS resolver. */
+  fun awaitPhysicalDns(timeoutMs: Long): Boolean = transitions.await(timeoutMs, 250) { networkObserver.currentIpv4Dns() != null }
+
+  private fun recordSystemStart(outcome: String, reason: String?) {
+    prefs.edit().putString("system_start_at", Instant.now().toString()).putString("system_start_outcome", outcome)
+      .also { if (reason != null) it.putString("system_start_reason", reason.take(300)) else it.remove("system_start_reason") }.apply()
+  }
+  private fun clearSystemStartFailure() {
+    if (prefs.getString("system_start_outcome", null) == "failed") prefs.edit().remove("system_start_reason").putString("system_start_outcome", "superseded").apply()
+  }
+  private fun systemStartJson(): Any {
+    val at = prefs.getString("system_start_at", null) ?: return JSONObject.NULL
+    return JSONObject().put("at", at).put("outcome", prefs.getString("system_start_outcome", null) ?: JSONObject.NULL)
+      .put("reason", prefs.getString("system_start_reason", null) ?: JSONObject.NULL)
+  }
+
   private fun startLocked(): String {
     requireProductionEnabled(); val activeConfig = checkNotNull(config); check(ruleBundleCurrent()) { "Production rule bundle is unavailable or expired" }
     check(VpnService.prepare(context) == null) { "VPN consent is not granted" }
@@ -309,9 +348,15 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private fun statusLocked(recheckAuthority: Boolean = true): String {
     val runtime = RecoveryInspector.inspect(context, state); val operational = actualOperational(); val requested = prefs.getBoolean("requested", false); val inboxState = inbox.status()
     val bundleVersion = engine?.acceptedBundle()?.bundleVersion
+    val systemStartFailure = if (prefs.getString("system_start_outcome", null) == "failed") prefs.getString("system_start_reason", null) else null
     val reason = when {
       acceptedBundleExpiresAt == null -> "No accepted production rule bundle"; recheckAuthority && !ruleBundleCurrent() -> "Production rule bundle expired"
+      !operational && systemStartFailure != null -> "Android asked Apollo to reconnect its protection (Always-on VPN) and it couldn't: $systemStartFailure"
       requested && !GuardDogVpnRuntime.websiteGateActive -> "Website Gate DNS/sinkhole runtime is inactive"; requested && !operational -> "TUN/route/reporter observations are incomplete"; else -> null }
+    // Android only answers these for the app whose VPN is currently connected, so they are read
+    // while Apollo's tunnel is up and are otherwise unknown (null) — never "off".
+    val alwaysOn: Any = if (operational) ApolloVpnSystemState.alwaysOn() ?: JSONObject.NULL else JSONObject.NULL
+    val lockdown: Any = if (operational) ApolloVpnSystemState.lockdown() ?: JSONObject.NULL else JSONObject.NULL
     return JSONObject().put("running", operational).put("requested", requested).put("operational", operational).put("enforcementMethod", "packet_filter")
       .put("coverage", "GuardDog production Website Gate: plaintext IPv4 DNS is inspected; exact-host blocks use short-lived sinkhole /32 routes. Private DNS, DoH, DoT, QUIC and IPv6 are outside this source claim.")
       .put("coverageScope", JSONArray().put("dns:ipv4-udp-53").put("ip:controlled-/32").put("ip:website-gate-sinkhole-/32"))
@@ -327,6 +372,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       .put("evidencePersistenceError", inboxState.error ?: JSONObject.NULL)
       .put("dnsThreatObservations", dnsThreatInbox.status().let { JSONObject().put("pending", it.pending).put("capacity", it.capacity).put("error", it.error ?: JSONObject.NULL) })
       .put("privateDns", privateDnsStatus())
+      .put("alwaysOn", alwaysOn).put("lockdown", lockdown).put("systemStart", systemStartJson())
       .toString()
   }
 
@@ -348,30 +394,38 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
 
   // ── Private DNS / DoH Gap Detection ──────────────────────────────────────
   fun privateDnsStatus(): JSONObject {
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-    val activeNetwork = cm?.activeNetwork
-    val linkProps: LinkProperties? = if (activeNetwork != null) cm.getLinkProperties(activeNetwork) else null
-    val privateDnsActive = linkProps?.isPrivateDnsActive ?: false
-    val privateDnsServer = linkProps?.privateDnsServerName
-    // Distinguish confirmed bypass from possible bypass:
-    // - privateDnsActive == true && server != null → confirmed bypass (user-configured DoT provider)
-    // - privateDnsActive == true && server == null → confirmed bypass (Android "Automatic" mode)
-    // - privateDnsActive == false → Private DNS off; Apollo's DNS gateway is active
-    // Chrome's internal DoH is unobservable (no API) — report as "possible"
-    val bypassLevel = when {
-      privateDnsActive && privateDnsServer != null -> "confirmed"
-      privateDnsActive -> "confirmed"
-      else -> "none"
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+      // LinkProperties' Private DNS reads exist from Android 9; below that Android reports nothing.
+      return JSONObject().put("privateDnsActive", false).put("privateDnsServer", JSONObject.NULL).put("mode", "unsupported")
+        .put("modeSource", JSONObject.NULL).put("bypassLevel", "unobservable").put("chromeDoH", "unobservable")
+        .put("explanation", "This Android version doesn't report its Private DNS setting to apps.")
     }
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    // Read the PHYSICAL network. While Apollo's VPN is up, `activeNetwork` is Apollo's own tunnel,
+    // whose LinkProperties describe the DNS server Apollo declared — not the person's setting.
+    val physical = cm?.let { manager ->
+      manager.allNetworks.firstOrNull { network ->
+        val caps = manager.getNetworkCapabilities(network)
+        caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+      }
+    }
+    val linkProps: LinkProperties? = physical?.let { cm?.getLinkProperties(it) }
+    val privateDnsActive = linkProps?.isPrivateDnsActive ?: false
+    // Android's own setting, when it lets Apollo read it (not a promised API, so null is normal).
+    val setting = runCatching { Settings.Global.getString(context.contentResolver, "private_dns_mode") }.getOrNull()
+      ?.takeIf { it in setOf("off", "opportunistic", "hostname") }
+    val specifier = if (setting == "hostname") runCatching { Settings.Global.getString(context.contentResolver, "private_dns_specifier") }.getOrNull() else null
+    val privateDnsServer = linkProps?.privateDnsServerName ?: specifier?.takeIf { it.isNotBlank() }
+    val mode = PrivateDnsTruth.mode(setting, privateDnsActive, privateDnsServer, linkProps != null)
+    // Chrome's internal DoH is unobservable (no API) and is reported as such separately.
     return JSONObject()
       .put("privateDnsActive", privateDnsActive)
       .put("privateDnsServer", privateDnsServer ?: JSONObject.NULL)
-      .put("bypassLevel", bypassLevel)
+      .put("mode", mode)
+      .put("modeSource", if (setting != null) "android_setting" else if (linkProps != null) "network_state" else JSONObject.NULL)
+      .put("bypassLevel", PrivateDnsTruth.bypassLevel(mode))
       .put("chromeDoH", "unobservable")
-      .put("explanation", when (bypassLevel) {
-        "confirmed" -> "Your device's Private DNS setting sends all DNS queries through an encrypted channel that Apollo cannot inspect. Website protection is reduced to rule-bundle filtering only."
-        else -> "Apollo's DNS gateway is active and inspecting plaintext DNS queries."
-      })
+      .put("explanation", PrivateDnsTruth.explanation(mode, privateDnsServer))
   }
 
   // ── Urgent rule refresh ──────────────────────────────────────────────────
@@ -402,7 +456,12 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     if (upstream == observedUpstreamDns) return
     observedUpstreamDns = upstream
     if (!ownsEnforcement()) return
-    runCatching { transitions.serialized { stopLocked(clearIntent = false); if (upstream != null && ruleBundleCurrent()) startLocked() } }
+    // Only stop a tunnel that exists: asking a stopped service to stop is a background service start
+    // Android refuses, and that refusal used to abort the restart below (e.g. network arriving after boot).
+    runCatching { transitions.serialized {
+      if (state.current().state in setOf(ProtectionState.STARTING, ProtectionState.ACTIVE)) stopLocked(clearIntent = false)
+      if (upstream != null && ruleBundleCurrent()) startLocked()
+    } }
       .onFailure { inbox.reportFailure("Production Website Gate stopped after a physical-network DNS change") }
   }
   fun resumeRequested(): String = transitions.serialized { if (prefs.getBoolean("requested", false)) startLocked() else statusLocked() }

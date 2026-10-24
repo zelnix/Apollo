@@ -3,10 +3,11 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-  <!-- Call Gate / Text Gate on-demand pickers: the person chooses a recent caller or an inbox message.
-       These are sensitive; Apollo requests them contextually and only reads on demand (no background use). -->
-  <uses-permission android:name="android.permission.READ_CALL_LOG" />
-  <uses-permission android:name="android.permission.READ_SMS" />
+  <!-- READ_CALL_LOG / READ_SMS are deliberately NOT declared here. They are Google Play restricted
+       permissions and are absent from every build by default; plugins/withRestrictedPhonePermissions.js
+       adds them back only under an explicit, approved build switch (and blocks them otherwise).
+       Live protection does not use them: Call Guard uses CallScreeningService, Text Guard uses
+       notification access. -->
   <!-- Package visibility (Android 11+): Apollo deliberately does NOT request blanket all-package
        visibility and is NOT an AccessibilityService. It can only see the remote-access risk catalog,
        the stores/browsers/messengers needed to name an install source, and the OS/OEM scam-protection
@@ -75,6 +76,19 @@
         <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
       </intent-filter>
     </receiver>
+    <!-- Always-on VPN entry point. Android starts THE service in the package that carries the
+         android.net.VpnService action when the person chose Apollo as the Always-on VPN (and after
+         boot, unlock, updates and drops). This must be the only one: plugins/withGuardDogEngine.js
+         replaces the certified GuardDogVpnService declaration with one without the filter, so this
+         starter rebuilds protection from the saved rules instead of the request being ignored. -->
+    <service
+      android:name="com.hucentai.apollosecurity.ApolloAlwaysOnVpnStarter"
+      android:exported="false"
+      android:permission="android.permission.BIND_VPN_SERVICE">
+      <intent-filter>
+        <action android:name="android.net.VpnService" />
+      </intent-filter>
+    </service>
     <!-- Text Guard: opt-in NotificationListenerService (Settings > Notification access). No READ_SMS,
          ever — see ApolloSmsListenerService.kt header for the full truth-of-state contract. -->
     <service

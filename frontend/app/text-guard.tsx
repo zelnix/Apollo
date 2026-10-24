@@ -1,7 +1,8 @@
 // Text Guard — SMS-focused guard. Android: optional automatic scanning of new text-message
-// notifications via Apollo's opt-in Notification Listener access (no READ_SMS, ever — see
+// notifications via Apollo's opt-in Notification Listener access (READ_SMS is never used here — see
 // ApolloSmsListenerService.kt). iOS: Apple gives third-party apps no way to read Messages
-// automatically, so the honest path is pasting a message here, or Share → Apollo from Messages.
+// automatically, so the honest paths are pasting a message here, a screenshot, or Share → Apollo where
+// the source app offers Share.
 // Both platforms run the SAME on-device Text & Message engine + Email/Text Guard link assessment as
 // a pasted check (src/store/ApolloContext.checkMessage) — nothing here invents a separate verdict path.
 import { useRouter } from "expo-router";
@@ -198,7 +199,7 @@ export default function TextGuard() {
               </>
             )
           ) : (
-            <Body testID="textguard-auto-detail">Apple doesn&apos;t let apps read your Messages automatically — there&apos;s no setting Apollo can turn on for this. Paste a suspicious text below, or share it to Apollo from the Messages app.</Body>
+            <Body testID="textguard-auto-detail">Apple doesn&apos;t let apps read your Messages automatically — there&apos;s no setting Apollo can turn on for this. Paste a suspicious text below or use a screenshot. If the app it&apos;s in offers Share, you can share it to Apollo.</Body>
           )}
         </Card>
 

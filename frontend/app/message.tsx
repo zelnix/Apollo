@@ -1,6 +1,6 @@
 // Gate 2 — Check a message. Approved screen implementation.
-// Matches the approved mock-up: header, description, message card,
-// gold Check message CTA, "or" divider, two action cards, recent messages.
+// Header, optional inbox picker (only where READ_SMS is declared — off by default for Play), screenshot,
+// typed/pasted text, gold Check message CTA, and the permission-free ways in (Text Guard, Share where offered).
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
@@ -24,7 +24,7 @@ import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermission
 import { ImageUploadPrep, type PreparedImage, type UploadSubmissionState } from "@/src/components/ImageUploadPrep";
 import { saveImageEvidence } from "@/src/store/imageEvidence";
 import { Sheet } from "@/src/components/Sheet";
-import { Body, Button } from "@/src/components/ui";
+import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
@@ -146,9 +146,11 @@ export default function CheckMessage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
-  const [manualOpen, setManualOpen] = useState(false);
   const isEmail = params.source === "email";
-  const canPickSms = !isEmail && PhonePickers.isSupported();
+  // The inbox picker needs READ_SMS, which a build only declares under the approved switch (off by default).
+  const canPickSms = !isEmail && PhonePickers.isSupported("sms");
+  // With no inbox picker (and no preview samples) typing or pasting is the main way in, so start open.
+  const [manualOpen, setManualOpen] = useState(!canPickSms && !simulation.included);
   const autoRan = useRef(false);
   const autoImage = useRef(false);
   const autoPicker = useRef(false);
@@ -366,21 +368,23 @@ export default function CheckMessage() {
       </View>
 
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]} bottomOffset={24} testID="message-scroll">
-        <SourceHero
-          testID="message-hero"
-          title="Pick a message from this phone"
-          caption="Apollo reads the one message you choose — never your inbox or your history."
-          actions={[{
-            testID: "message-pick-sms",
-            label: "Choose a message",
-            icon: <MessageSquare size={20} color={colors.onBrandPrimary} />,
-            onPress: () => {
-              if (canPickSms) { router.push("/message-picker"); return; }
-              if (simulation.included) { setMessagePicker(true); return; }
-              showToast(Platform.OS === "ios" ? "Direct message access is not available on iOS. Use the share or screenshot options instead." : "Message access requires a native build with SMS permission.", "neutral");
-            },
-          }]}
-        />
+        {/* Inbox picker — only when this build can actually read SMS, or preview samples exist. Never a dead option. */}
+        {canPickSms || simulation.included ? (
+          <SourceHero
+            testID="message-hero"
+            title="Pick a message from this phone"
+            caption="Apollo reads the one message you choose — never your inbox or your history."
+            actions={[{
+              testID: "message-pick-sms",
+              label: "Choose a message",
+              icon: <MessageSquare size={20} color={colors.onBrandPrimary} />,
+              onPress: () => {
+                if (canPickSms) { router.push("/message-picker"); return; }
+                setMessagePicker(true);
+              },
+            }]}
+          />
+        ) : null}
 
         {/* ── Screenshot action card ── */}
         <View style={s.actionCardsRow}>
@@ -457,7 +461,19 @@ export default function CheckMessage() {
 
         {/* ── Progress handled by CheckingModal ── */}
 
-        {/* ── Recent Messages Section ── */}
+        {/* ── Other ways in when Apollo can't open the inbox (no READ_SMS) ── */}
+        {!canPickSms && !isEmail ? (
+          <Card testID="message-other-ways" style={{ gap: spacing.sm }}>
+            {Platform.OS === "android" ? <>
+              <Body testID="message-other-ways-textguard">Text Guard can check new texts as they arrive, using notification access you turn on in Android&apos;s settings.</Body>
+              <Button testID="message-open-textguard" variant="secondary" label="Set up Text Guard" onPress={() => router.push("/text-guard")} />
+            </> : null}
+            <Body testID="message-other-ways-share">You can also copy a message and paste it above, or use a screenshot. If the app the message is in offers Share, you can share it straight to Apollo.</Body>
+          </Card>
+        ) : null}
+
+        {/* ── Recent Messages Section (inbox picker builds only) ── */}
+        {canPickSms ? (
         <View style={s.recentSection} testID="message-recent-section">
           {/* Header */}
           <View style={s.recentHeader}>
@@ -516,14 +532,11 @@ export default function CheckMessage() {
           ) : (
             <View style={s.recentEmpty}>
               <MessageSquare size={28} color={colors.muted} />
-              <Body>
-                {Platform.OS === "android"
-                  ? "Recent messages will appear here when SMS permission is granted."
-                  : "Recent messages are not available on this platform. Use the options above instead."}
-              </Body>
+              <Body>Recent messages will appear here when SMS permission is granted.</Body>
             </View>
           )}
         </View>
+        ) : null}
 
         <CheckHistoryCard gate="message" refreshKey={historyKey} testID="message-history" />
       </KeyboardAwareScrollView>

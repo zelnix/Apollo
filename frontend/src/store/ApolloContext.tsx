@@ -55,6 +55,7 @@ import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
 import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectionAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
+import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { getNativeCallClassification, getNativeMessageClassification } from "@/src/security/nativeProtectionEvidence";
 import { storage } from "@/src/utils/storage";
 import { useCallGuardPipeline } from "@/src/pipelines/callGuardPipeline";
@@ -1680,6 +1681,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     // Server records are gone. Now wipe this phone and reset the in-memory app state to first run.
     try { await wipeLocalApolloData(); } catch { /* best effort — the service copy is already gone */ }
+    try { await ScreenedCalls.clear(); } catch { /* best effort — native history lives outside AsyncStorage */ }
     await clearDeviceIdentity();
     eventsRef.current = [];
     setEvents([]); setTrust([]); setTrustedSsids([]); setLastVerifiedAt(null);

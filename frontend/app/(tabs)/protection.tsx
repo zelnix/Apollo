@@ -31,6 +31,7 @@ import {
   type ProtectionAreaId,
 } from "@/src/domain/protectionAreas";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { WebsiteProtectionNotices } from "@/src/components/WebsiteProtectionNotices";
 import { agoLabel } from "@/src/domain/alertFreshness";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
@@ -379,6 +380,9 @@ export default function ProtectionScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Phone settings that decide whether website protection works (Android only). */}
+        <WebsiteProtectionNotices protection={health.protection} testID="protection-site-notices" />
 
         {/* ── Section header ── */}
         <View style={styles.sectionHeader}>

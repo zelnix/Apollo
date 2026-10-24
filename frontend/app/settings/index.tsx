@@ -1,5 +1,6 @@
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import Activity from "lucide-react-native/icons/activity";
 import Bell from "lucide-react-native/icons/bell";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -38,7 +39,7 @@ const SETTINGS_INFO: ScreenInfo = { title: "About Settings", body: [
 ] };
 
 type IconComponent = React.ComponentType<{ size?: number; color?: string }>;
-type GroupTone = "protection" | "alerts" | "accounts" | "data" | "app" | "help" | "policies";
+type GroupTone = "protection" | "alerts" | "accounts" | "data" | "app" | "diagnostics" | "help" | "policies";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -73,6 +74,7 @@ export default function SettingsScreen() {
     accounts: { fg: colors.groupAccounts, bg: colors.groupAccountsTint },
     data: { fg: colors.groupData, bg: colors.groupDataTint },
     app: { fg: colors.groupApp, bg: colors.groupAppTint },
+    diagnostics: { fg: colors.groupDiagnostics, bg: colors.groupDiagnosticsTint },
     help: { fg: colors.groupHelp, bg: colors.groupHelpTint },
     policies: { fg: colors.groupPolicies, bg: colors.groupPoliciesTint },
   };
@@ -188,17 +190,22 @@ export default function SettingsScreen() {
         <NavRow label="Retrofit new enhancements" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
       </Group>
 
-      {/* 6 ── Help */}
+      {/* 6 ── Diagnostics */}
+      <Group icon={Activity} title="Diagnostics" tone="diagnostics" testID="settings-diagnostics">
+        <NavRow first label="Feed health" hint="Sync status of each government scam and cyber-security feed" onPress={() => router.push("/settings/feed-health")} testID="settings-feed-health" />
+      </Group>
+
+      {/* 7 ── Help */}
       <Group icon={LifeBuoy} title="Help &amp; about" tone="help" testID="settings-help">
         <NavRow first label="Get help with Apollo" hint="App details, protection issues, device checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
         <Pressable testID="settings-share" accessibilityRole="button" accessibilityLabel="How to share into Apollo" onPress={() => setShowShare((v) => !v)} style={[s.rowItem, s.divider]}>
           <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
         </Pressable>
-        {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
+        {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Many messaging, mail and browser apps offer Share — tap it, then choose Apollo. Not every app does; if yours doesn&apos;t, copy and paste the text or use a screenshot. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
         <NavRow label="About Apollo" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
       </Group>
 
-      {/* 7 ── The documents, last: read occasionally, never urgent */}
+      {/* 8 ── The documents, last: read occasionally, never urgent */}
       <Group icon={FileText} title="Policies &amp; assurance" tone="policies" testID="settings-policies">
         <NavRow first label="Privacy statement" hint="What Apollo stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
         <NavRow label="Third-party services" hint="External services, what they receive and HWG accountability" onPress={() => router.push("/third-party-register")} testID="settings-third-party" />

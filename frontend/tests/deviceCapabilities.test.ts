@@ -185,7 +185,8 @@ test("no recognised protection present means there is no classification to use",
 // ── Capability health score (Home's Device card) ──────────────────
 
 test("capability health scores only what the person can change, never platform facts", () => {
-  const v = buildDeviceCapabilities(input());
+  // A build that declares the restricted call-log / SMS pickers (approved switch on).
+  const v = buildDeviceCapabilities(input({ restrictedPickers: { callLog: true, sms: true } }));
   const h = capabilityHealth(v, true);
   // 6 available, 3 awaiting permission → 9 obtainable. The 4 the OS/provider keeps are NOT counted.
   assert.equal(h.available, 6);
@@ -194,6 +195,15 @@ test("capability health scores only what the person can change, never platform f
   assert.equal(h.band, "amber");
   assert.equal(h.label, "6 of 9 ready");
   assert.match(h.detail, /3 need your permission/);
+});
+
+test("the default (Play) build never scores the call-log / inbox pickers it doesn't declare", () => {
+  const h = capabilityHealth(buildDeviceCapabilities(input()), true);
+  // Same phone, but READ_CALL_LOG / READ_SMS are absent: they are not obtainable, so not counted.
+  assert.equal(h.available, 6);
+  assert.equal(h.obtainable, 7);
+  assert.equal(h.label, "6 of 7 ready");
+  assert.match(h.detail, /1 needs? your permission/);
 });
 
 test("green only when Apollo has everything this phone can give it", () => {

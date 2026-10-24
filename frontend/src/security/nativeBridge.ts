@@ -99,6 +99,10 @@ export interface ApolloSecurityNativeModule {
   requestRuntimePermission(name: string): Promise<string>;
   listRecentCalls(): Promise<string>;
   listRecentSms(): Promise<string>;
+  /** Android only: "Calls Apollo screened" — the incoming numbers Android handed to Apollo's
+   * CallScreeningService, newest first. No permission involved; never read from the call log. */
+  getScreenedCalls?(): Promise<string>;
+  clearScreenedCalls?(): Promise<string>;
   getRecentInstallEvents(): Promise<string>;
   getDeviceSecuritySignals(): Promise<string>;
   getRecentAppSecurityEvents(): Promise<string>;

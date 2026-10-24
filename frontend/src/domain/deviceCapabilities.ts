@@ -110,6 +110,8 @@ export interface DeviceCapabilityInput {
   hostIsDevice?: boolean;
   /** The existing device-posture / device-signal reads, interpreted by the security catalogue. */
   security?: SecurityStateRead | null;
+  /** Which Google Play restricted pickers this build declares (READ_CALL_LOG / READ_SMS). Absent = neither. */
+  restrictedPickers?: { callLog: boolean; sms: boolean };
   /** Clock, injected so patch-age stays testable. */
   now?: number;
 }
@@ -524,7 +526,15 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
   // Capabilities with no native status field: platform rules decide.
   const reason = def.notExposed?.[platform];
   if (reason) return { ...base, klass: "not_exposed", detail: reason, attributedTo: platformName(platform), action: def.action };
-  // Android picker-backed reads are permission-gated and asked for in the moment.
+  // Android picker-backed reads use Play-restricted permissions this build declares only under an
+  // approved switch. Without it Apollo does not read them at all — say what it uses instead.
+  if (platform === "android" && def.id === "call_history" && input.restrictedPickers?.callLog !== true) {
+    return { ...base, klass: "unavailable", detail: "This version of Apollo doesn’t read your call log. Calls Apollo screened lists the incoming numbers Android passes to Apollo’s call screening — tap one to check it, or type the number." };
+  }
+  if (platform === "android" && def.id === "message_inbox" && input.restrictedPickers?.sms !== true) {
+    return { ...base, klass: "unavailable", detail: "This version of Apollo doesn’t read your text messages. Text Guard checks new texts through notification access; you can also paste a message, use a screenshot, or share it to Apollo where the app offers Share." };
+  }
+  // Declared picker-backed reads are permission-gated and asked for in the moment.
   if (platform === "android" && (def.id === "call_history" || def.id === "message_inbox")) {
     return { ...base, klass: "permission_required", detail: "Apollo asks for this only when you choose to pick a recent caller or message, and only reads the one you pick.", action: def.action };
   }
