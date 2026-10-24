@@ -1,3 +1,12 @@
+## Admin portal: "Live AI" / "Simulated" badge on every page (2026-10-24)
+- `routers/admin_portal.py` `_ai_mode_badge()` rendered by `_shell` at the top of every signed-in page
+  (`#ai-mode-badge`, `data-mode="preview|live"`), read from `provider.get_provider_mode()` + `provider.GEMINI_API_KEY`:
+  **Simulated** (amber: preview server, no Gemini calls, simulator + Apollo KB) · **Live AI** (green: every AI request
+  goes to Gemini and is billed) · **Live AI — no key** (red: would call Gemini but no key, AI requests fail).
+  Signed-out pages show nothing. Each server's own portal shows its own mode (preview → Simulated; published → Live AI).
+- Verified in the preview portal (Dashboard + Usage & Costs) with a temporary admin session, then removed.
+- Tests: `tests/test_admin_mode_badge.py` (4).
+
 ## Preview never calls live Gemini — the simulator answers from the Apollo KB (2026-10-24)
 **Why preview went live:** commit 6f025ec (23 Oct 00:59 UTC, an agent fix for production answering from the
 simulator) made the simulator depend on `APOLLO_PREVIEW_SIMULATOR=on` in the preview-only slot. That value was never

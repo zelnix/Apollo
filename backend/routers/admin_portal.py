@@ -2884,6 +2884,23 @@ def _read_logs(count: int = 200) -> str:
     return "(No log file found)"
 
 
+def _ai_mode_badge() -> str:
+    """This server's AI mode, at the top of every page: Live AI (real, billed Gemini) or Simulated (the preview
+    server — no Gemini calls). Read from the provider gateway itself, so it can't disagree with what runs."""
+    if provider.get_provider_mode() == "preview":
+        cls, label = "mode-sim", "Simulated"
+        detail = "Preview server — no Gemini calls are made. AI answers come from the simulator and Apollo's knowledge base."
+    elif provider.GEMINI_API_KEY:
+        cls, label = "mode-live", "Live AI"
+        detail = "Every AI request on this server goes to Gemini and is billed."
+    else:
+        cls, label = "mode-off", "Live AI — no key"
+        detail = "This server would call Gemini, but no Gemini key is set, so AI requests fail."
+    return (f'<div class="mode-bar {cls}" id="ai-mode-badge" data-mode="{provider.get_provider_mode()}">'
+            f'<span class="mode-pill"><span class="dot"></span>{label}</span>'
+            f'<span class="mode-detail">{detail}</span></div>')
+
+
 def _shell(title: str, active_path: str, body: str, *, admin: dict | None = None,
            show_nav: bool = True, extra_css: str = "") -> str:
     nav_html = ""
@@ -2901,6 +2918,7 @@ def _shell(title: str, active_path: str, body: str, *, admin: dict | None = None
 
     sidebar = f'<nav class="sidebar">{nav_html}</nav>' if show_nav and admin else ""
     main_cls = "main" if show_nav and admin else "main-full"
+    mode_bar = _ai_mode_badge() if admin else ""
 
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2955,6 +2973,15 @@ pre{{background:var(--card);padding:12px;border-radius:8px;overflow-x:auto;margi
 .report-list{{display:flex;flex-direction:column;gap:8px;}}
 .report-row{{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;}}
 .topbar-row{{display:flex;justify-content:space-between;align-items:center;padding:10px 0;margin-bottom:12px;border-bottom:1px solid var(--border);}}
+.mode-bar{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-radius:8px;padding:8px 14px;margin-bottom:16px;font-size:0.85em;border:1px solid;}}
+.mode-pill{{display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:2px 10px;border-radius:10px;white-space:nowrap;}}
+.mode-detail{{color:var(--muted);}}
+.mode-live{{background:rgba(63,185,80,0.08);border-color:rgba(63,185,80,0.3);}}
+.mode-live .mode-pill{{background:rgba(63,185,80,0.15);color:var(--green);}} .mode-live .dot{{background:var(--green);}}
+.mode-sim{{background:rgba(210,153,34,0.08);border-color:rgba(210,153,34,0.3);}}
+.mode-sim .mode-pill{{background:rgba(210,153,34,0.15);color:var(--yellow);}} .mode-sim .dot{{background:var(--yellow);}}
+.mode-off{{background:rgba(248,81,73,0.08);border-color:rgba(248,81,73,0.3);}}
+.mode-off .mode-pill{{background:rgba(248,81,73,0.15);color:var(--red);}} .mode-off .dot{{background:var(--red);}}
 .log-box{{max-height:60vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.4;}}
 .spinner{{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto;}}
 @keyframes spin{{to{{transform:rotate(360deg);}}}}
@@ -2963,5 +2990,5 @@ article table{{width:100%;}} article h1{{font-size:1.5rem;}} article h2{{font-si
 {extra_css}
 </style></head><body>
 {sidebar}
-<div class="{main_cls}">{body}</div>
+<div class="{main_cls}">{mode_bar}{body}</div>
 </body></html>"""
