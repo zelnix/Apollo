@@ -12,13 +12,14 @@ from typing import Any, Optional
 from services.higgins import app_knowledge
 from services.higgins.knowledge import terms
 
+# "{name}" is whichever investigator settled the result: Teddy FlyBy or Magnum DI (see `investigator`).
 ASSESSMENT_TEXT = {
-    "concern_found": "Magnum DI found a concern.",
-    "no_concern_found_within_scope": "Magnum DI found no concern within what it was able to check.",
-    "uncertain": "Magnum DI couldn't reach a firm conclusion.",
+    "concern_found": "{name} found a concern.",
+    "no_concern_found_within_scope": "{name} found no concern within what it was able to check.",
+    "uncertain": "{name} couldn't reach a firm conclusion.",
 }
 ATTENTION_TEXT = {"none": "No action is needed.", "review": "It's worth reviewing.", "action_needed": "Action is needed.", "urgent": "This is urgent."}
-BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told Magnum DI", "inference": "Magnum DI's inference from the evidence"}
+BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told Apollo", "inference": "{name}'s inference from the evidence"}
 STATE_TEXT = {"resting": "all clear", "sniffing": "Apollo is looking closer", "ears_up": "worth a look", "growling": "possible concern",
               "barking": "significant concern", "biting": "Apollo blocked it", "unknown": "state not known"}
 SEVERITY_TEXT = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "LOW": "Low"}
@@ -56,8 +57,13 @@ _NEW_ITEMS: list[tuple[str, re.Pattern]] = [
     ("a link", re.compile(r"\bhttps?://\S+|\bwww\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|app|xyz|top|online|site|shop|link|co|au|uk|nz)(?:/\S*)?\b", re.I)),
     ("a phone number", re.compile(r"(?<![\w.])\+?\d[\d ()-]{6,}\d(?![\w.])")),
 ]
-NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of this investigation. Magnum DI doesn't reopen a finished investigation, "
+NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of this investigation. Apollo doesn't reopen a finished investigation, "
                  "so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.")
+
+
+def investigator(answered_by: Optional[str]) -> str:
+    """Who settled a result, by name. Results recorded before routing existed were Magnum DI's."""
+    return "Teddy FlyBy" if str(answered_by or "").startswith("teddy") else "Magnum DI"
 
 
 def new_items(question: str) -> list[str]:
@@ -83,14 +89,16 @@ def is_finished(response: Optional[dict[str, Any]]) -> bool:
     return bool(response) and response.get("completion") in ("complete", "partial") and not response.get("question")
 
 
-def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, Any]], question: str) -> dict[str, Any]:
-    """Answer a follow-up from a completed Magnum DI result (camelCase wire shape). Never infers.
+def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, Any]], question: str, answered_by: Optional[str] = None) -> dict[str, Any]:
+    """Answer a follow-up from a completed investigation result (camelCase wire shape), credited to whichever
+    investigator settled it (`answered_by`). Never infers.
 
     A follow-up never reaches Gemini, even when it brings something new: the new item is named as
     not covered, and the answer comes only from what the finished investigation recorded.
     """
+    name = investigator(answered_by)
     overview = str(response.get("overview") or "").strip()
-    assessment = ASSESSMENT_TEXT.get(str(response.get("assessment") or ""), "")
+    assessment = ASSESSMENT_TEXT.get(str(response.get("assessment") or ""), "").format(name=name)
     attention = ATTENTION_TEXT.get(str(response.get("attention") or ""), "")
     reason = str(response.get("attentionReason") or "").strip()
     findings = [f for f in response.get("findings") or [] if str(f.get("text") or "").strip()]
@@ -104,7 +112,7 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
     limitation = False
 
     def finding_line(f: dict, *, detail: bool = False) -> str:
-        line = f"{f['text']} ({BASIS_TEXT.get(f.get('basis'), 'basis not recorded')}; {f.get('confidence', 'unknown')} confidence"
+        line = f"{f['text']} ({BASIS_TEXT.get(f.get('basis'), 'basis not recorded').format(name=name)}; {f.get('confidence', 'unknown')} confidence"
         if detail:
             count = len(f.get("evidenceIds") or [])
             titles = [by_source[i].get("title") for i in f.get("sourceIds") or [] if by_source.get(i, {}).get("title")]
@@ -113,48 +121,48 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
         return line + ")"
 
     if intent == "recheck":
-        answer = ("Magnum DI's investigation is finished, so it isn't re-assessed — any fresh reading Apollo took is shown with the action, "
+        answer = (f"{name}'s investigation is finished, so it isn't re-assessed — any fresh reading Apollo took is shown with the action, "
                   "and what the investigation established is unchanged.") + (f"\n\n{overview}" if overview else "")
     elif intent == "meaning":
         answer = "\n\n".join(part for part in [overview, " ".join(p for p in [assessment, attention, reason] if p)] if part)
     elif intent == "why":
-        answer = "\n\n".join(part for part in [reason or assessment, "What Magnum DI found:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if part)
+        answer = "\n\n".join(part for part in [reason or assessment, f"What {name} found:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if part)
         if not findings and not reason:
-            answer, limitation = "Magnum DI's investigation doesn't record specific reasons beyond its overall result. " + overview, True
+            answer, limitation = f"{name}'s investigation doesn't record specific reasons beyond its overall result. " + overview, True
     elif intent == "evidence":
         answer = ("Each finding and what supports it:\n" + _bullets([finding_line(f, detail=True) for f in findings])) if findings else \
-            "Magnum DI didn't record individual findings with supporting evidence for this investigation."
+            f"{name} didn't record individual findings with supporting evidence for this investigation."
         limitation = not findings
     elif intent == "confidence":
         counts = {level: sum(1 for f in findings if f.get("confidence") == level) for level in ("high", "medium", "low")}
         parts = [f"Overall: {assessment}" if assessment else "",
                  "Confidence in the findings: " + ", ".join(f"{n} {level}" for level, n in counts.items() if n) if findings else "",
                  "What it couldn't establish:\n" + _bullets(uncertainties) if uncertainties else ""]
-        answer = "\n\n".join(p for p in parts if p) or "Magnum DI didn't record a confidence level for this investigation."
+        answer = "\n\n".join(p for p in parts if p) or f"{name} didn't record a confidence level for this investigation."
     elif intent == "watch":
         watch = [a.get("instruction") or a.get("label") for a in actions if _WATCH_WORDS.search(f"{a.get('label', '')} {a.get('instruction', '')}")]
         if watch:
-            answer = "What Magnum DI says to look out for:\n" + _bullets(watch)
+            answer = f"What {name} says to look out for:\n" + _bullets(watch)
         else:
-            answer, limitation = "Magnum DI's investigation doesn't list specific warning signs to watch for.", True
+            answer, limitation = f"{name}'s investigation doesn't list specific warning signs to watch for.", True
             if actions:
                 answer += " What it does recommend:\n" + _bullets([f"{a.get('label')}: {a.get('instruction')}" for a in actions])
     elif intent == "actions":
-        answer = ("What Magnum DI recommends:\n" + _bullets([f"{a.get('label')}: {a.get('instruction')}" if a.get("label") else a.get("instruction") for a in actions])) \
-            if actions else f"Magnum DI didn't recommend any action for this. {attention}".strip()
+        answer = (f"What {name} recommends:\n" + _bullets([f"{a.get('label')}: {a.get('instruction')}" if a.get("label") else a.get("instruction") for a in actions])) \
+            if actions else f"{name} didn't recommend any action for this. {attention}".strip()
     elif intent == "not_established":
-        answer = "\n\n".join(p for p in ["What Magnum DI couldn't establish:\n" + _bullets(uncertainties) if uncertainties else
-                                          "Magnum DI didn't record anything it was unable to establish.",
+        answer = "\n\n".join(p for p in [f"What {name} couldn't establish:\n" + _bullets(uncertainties) if uncertainties else
+                                          f"{name} didn't record anything it was unable to establish.",
                                           f"What it checked: {scope}" if scope else ""] if p)
     elif intent == "sources":
         listed = [f"{s.get('title') or s.get('url')} — {s.get('url')} ({s.get('authority', 'unknown')} source)" for s in sources if s.get("url")]
-        answer = ("The sources Magnum DI used:\n" + _bullets(listed)) if listed else \
-            "Magnum DI didn't use any outside sources for this; its findings come from the evidence you submitted."
+        answer = (f"The sources {name} used:\n" + _bullets(listed)) if listed else \
+            f"{name} didn't use any outside sources for this; its findings come from the evidence you submitted."
     elif intent == "findings":
         answer = "\n\n".join(p for p in [overview, "Findings:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if p)
     else:
         limitation = True
-        answer = ("I can only answer from what Magnum DI's investigation established, and it doesn't answer that directly."
+        answer = (f"I can only answer from what {name}'s investigation established, and it doesn't answer that directly."
                   + (f" Here's what it did establish: {overview}" if overview else ""))
     mentioned = new_items(question)
     if mentioned:

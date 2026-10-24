@@ -327,12 +327,12 @@ async def simulate_generate(
     )
 
 
-# ── Teddy DI's targeted search, answered from Apollo's knowledge base ───────
+# ── Teddy FlyBy's targeted search, answered from Apollo's knowledge base ───────
 _TEDDY_QUESTION = re.compile(r"^Q(\d+) \[statuses: ([A-Z_, ]+)\] \[subject: (.*?)\] (.+)$", re.M)
 
 
 async def teddy_lookup(blocks: list[EvidenceBlock]) -> tuple[str, dict]:
-    """Each Teddy DI question answered from Apollo's KB, in the line format and grounding shape Google Search
+    """Each Teddy FlyBy question answered from Apollo's KB, in the line format and grounding shape Google Search
     grounding produces. A warning is reported only when an official alert in the KB names the exact value;
     anything else is reported as not found. No web search is made."""
     from urllib.parse import urlparse

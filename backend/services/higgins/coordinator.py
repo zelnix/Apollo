@@ -1,13 +1,13 @@
-"""Investigation coordinator: Apollo Triage → Teddy DI → Magnum DI.
+"""Investigation coordinator: Apollo Triage → Teddy FlyBy → Magnum DI.
 
-On the first turn of a case, Apollo Triage decides what needs checking and Teddy DI runs those checks the
+On the first turn of a case, Apollo Triage decides what needs checking and Teddy FlyBy runs those checks the
 cheapest reliable way (official sources → Apollo KB → one targeted, low-cost Google Search call). When Teddy
 reliably settles the case, its result is committed and Magnum DI is not called at all.
 
 Otherwise Magnum DI makes its call with the existing configured model. The request contains exactly three
 things:
   1. the person's question, once;
-  2. the case evidence Magnum DI needs — the submitted material itself plus Teddy DI's brief of what is
+  2. the case evidence Magnum DI needs — the submitted material itself plus Teddy FlyBy's brief of what is
      still unresolved — each item labelled with its id and kind (raw lookups Teddy already settled are not
      resent);
   3. the required response shape, as Gemini's structured-output schema (`response_schema.py`).
@@ -122,7 +122,7 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
 
 async def _commit_teddy(owner: str, case: dict, job: dict, payload: dict, fly_by: teddy.TeddyOutcome,
                         capability_ids: set[str]) -> Optional[Outcome]:
-    """Teddy DI settled the case: its result passes the same validation as Magnum DI's, then commits.
+    """Teddy FlyBy settled the case: its result passes the same validation as Magnum DI's, then commits.
     None when it doesn't validate — Magnum DI then takes the case."""
     rows = await repo.list_evidence(owner, case["case_id"])
     evidence_ids = {row["evidence_id"] for row in rows}
@@ -133,14 +133,14 @@ async def _commit_teddy(owner: str, case: dict, job: dict, payload: dict, fly_by
     if response is None:
         log.warning("teddy_result_invalid case=%s errors=%s", case["case_id"], "; ".join(errors)[:300])
         return None
-    provider_result = ProviderResult(provider="apollo", model="teddy-di" + (f" + {fly_by.model}" if fly_by.model else ""), api_version="",
+    provider_result = ProviderResult(provider="apollo", model="teddy-flyby" + (f" + {fly_by.model}" if fly_by.model else ""), api_version="",
                                      finish_reason="STOP", provider_complete=True, usage=Usage(**fly_by.usage),
                                      source_ids=sorted(response.source_ids), simulated=fly_by.simulated, answered_by=fly_by.answered_by)
     return await _commit(owner, case, job, payload, response, provider_result, evidence_ids, source_ids)
 
 
 async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
-    """First turn: Apollo Triage → Teddy DI → (only if needed) Magnum DI's one call. Follow-ups: Magnum DI.
+    """First turn: Apollo Triage → Teddy FlyBy → (only if needed) Magnum DI's one call. Follow-ups: Magnum DI.
 
     Magnum DI flow: claim the call slot → send question and evidence → validate the schema-shaped response
     → commit. No autonomous tool rounds, reassessment cycles or repair loops; a retry is the caller's
@@ -162,13 +162,13 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
 
     # Too much written evidence for one investigation. Apollo sends NOTHING rather than quietly
     # shortening, sampling or dropping any of it, and no evidence is marked as examined — so this is
-    # decided before Teddy DI reads anything.
+    # decided before Teddy FlyBy reads anything.
     _parts, _marks, evidence_words = await ev.model_parts(owner, case, rows)
     if evidence_words > ev.EVIDENCE_WORD_LIMIT:
         return Outcome("evidence_too_large", evidence_words=evidence_words,
                        errors=[f"written evidence is {evidence_words} words; Apollo's limit for one investigation is {ev.EVIDENCE_WORD_LIMIT}"])
 
-    # ── Step 2: Apollo Triage → Teddy DI (first turn only) ──
+    # ── Step 2: Apollo Triage → Teddy FlyBy (first turn only) ──
     if first_turn:
         fly_by = await teddy.investigate(owner, case, job, payload["message"], rows, progress)
         if fly_by.resolved:

@@ -30,7 +30,7 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
-import { assessmentLabel, attentionLabel, investigationHistory, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
+import { assessmentLabel, attentionLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
@@ -374,14 +374,15 @@ interface TimelineEntry { title: string; body: string; at: string; iconType: "cr
 function buildTimeline(state: CaseState): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const { caseData, turns, failure, phase, response } = state;
-  if (caseData) entries.push({ title: "Investigation opened", body: "Magnum DI began the investigation.", at: caseData.createdAt, iconType: "create" });
+  const name = investigatorName(caseData?.answeredBy);
+  if (caseData) entries.push({ title: "Investigation opened", body: "Apollo began the investigation.", at: caseData.createdAt, iconType: "create" });
   for (const turn of turns) entries.push({ title: "Follow-up submitted", body: `You asked: "${turn.question.slice(0, 100)}${turn.question.length > 100 ? "\u2026" : ""}"`, at: turn.committedAt, iconType: "question" });
   const history = ((failure as unknown as Record<string, unknown> | null)?.retryHistory ?? (failure as unknown as Record<string, unknown> | null)?.retry_history ?? []) as Record<string, unknown>[];
   for (const rh of history) {
     entries.push({ title: kindLabel(String(rh.kind ?? "Retry")), body: `${rh.outcome === "success" ? "Succeeded" : "Failed"}${rh.failureCode || rh.failure_code ? ` \u2014 ${rh.failureCode ?? rh.failure_code}` : ""}`, at: String(rh.timestamp ?? caseData?.createdAt ?? ""), iconType: rh.outcome === "success" ? "complete" : "retry" });
   }
   if (response && (phase === "answered" || phase === "waiting_user")) {
-    entries.push({ title: response.completion === "complete" ? "Investigation complete" : "Results available", body: response.completion === "complete" ? "Magnum DI completed the investigation within scope." : response.completion === "partial" ? "Magnum DI provided partial results." : "Magnum DI is waiting for your answer.", at: caseData?.updatedAt ?? caseData?.createdAt ?? "", iconType: "complete" });
+    entries.push({ title: response.completion === "complete" ? "Investigation complete" : "Results available", body: response.completion === "complete" ? `${name} completed the investigation within scope.` : response.completion === "partial" ? `${name} provided partial results.` : "Magnum DI is waiting for your answer.", at: caseData?.updatedAt ?? caseData?.createdAt ?? "", iconType: "complete" });
   } else if (phase === "failed") {
     entries.push({ title: "Investigation incomplete", body: failure?.message ?? state.error ?? "The investigation could not be completed.", at: caseData?.updatedAt ?? caseData?.createdAt ?? "", iconType: "failed" });
   } else if (phase === "expired") {
@@ -698,6 +699,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   // Apollo's case outcome (e.g. "Likely scam"), whichever investigation layer answered.
   const outcome = outcomeLabel(response?.outcome);
   const outcomeKey = outcomeTone(response?.outcome);
+  // Whoever actually settled this result: Teddy FlyBy or Magnum DI.
+  const investigator = investigatorName(caseData?.answeredBy);
   const outcomeBg = { resting: colors.restingTint, barking: colors.barkingTint, ears_up: colors.ears_upTint, sniffing: colors.sniffingTint }[outcomeKey];
   const outcomeColor = { resting: colors.restingText, barking: colors.barkingText, ears_up: colors.ears_upText, sniffing: colors.sniffingText }[outcomeKey];
   const OutcomeIcon = outcomeKey === "resting" ? CircleCheck : outcomeKey === "barking" ? CircleAlert : Info;
@@ -712,7 +715,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
 
     {/* ── Working / progress state ── */}
-    {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted \u2014 reconnecting to the same investigation\u2026" : phase === "waiting_device" ? "Checking this device for a fresh observation\u2026" : "Magnum DI is investigating\u2026"}</Body></View>
+    {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted \u2014 reconnecting to the same investigation\u2026" : phase === "waiting_device" ? "Checking this device for a fresh observation\u2026" : "Apollo is investigating\u2026"}</Body></View>
       {progress.slice(-3).map((line, i) => <Text key={`${i}-${line}`} style={s.muted}>{line}</Text>)}
       {caseData?.activeJobId ? <Button testID="inv-cancel" variant="ghost" label="Cancel this investigation" onPress={onCancel} /> : null}</Card> : null}
 
@@ -794,7 +797,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           </> : null}
 
           {response?.findings.length ? <View style={{ gap: spacing.sm }} testID="inv-findings">
-            <Text style={s.sectionHeader}>What Magnum DI found</Text>
+            <Text style={s.sectionHeader}>What {investigator} found</Text>
             {response.findings.map((finding, i) => <View key={finding.id || i} style={s.findingRow} testID={`inv-finding-${i}`}>
               <Text style={s.text}>{scrubMessage(finding.text)}</Text>
               <Text style={s.muted}>{BASIS_LABEL[finding.basis] ?? finding.basis} · {CONFIDENCE_LABEL[finding.confidence] ?? finding.confidence}</Text>
@@ -812,7 +815,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           </View> : null}
 
           {usedSources.length ? <View testID="inv-sources">
-            <Text style={s.sectionHeader}>Sources Magnum DI used</Text>
+            <Text style={s.sectionHeader}>Sources {investigator} used</Text>
             {usedSources.map((source) => <SourceRow key={source.id} source={source} s={s} />)}
           </View> : null}
 
@@ -1008,7 +1011,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           {/* Investigation history from domain (phase-based) */}
           {response ? <Card style={[s.card, { gap: spacing.xs }]}>
             <Text style={s.sectionTitle}>INVESTIGATION PROGRESS</Text>
-            {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-progress-history-${i}`}>{"\u2022"} {h.text}</Text>)}
+            {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion, answeredBy: caseData?.answeredBy }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-progress-history-${i}`}>{"\u2022"} {h.text}</Text>)}
           </Card> : null}
         </View>
       ) : null}
@@ -1022,7 +1025,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           <Text style={s.higginsExplainLabel}>Higgins</Text>
           <Text style={s.higginsExplainText} testID="inv-followup-answer">{scrubMessage(item.answer)}</Text>
         </View>
-        <Text style={s.muted}>{"From Magnum DI's finished investigation. Nothing new was analysed."}</Text>
+        <Text style={s.muted}>{`From ${investigator}'s finished investigation. Nothing new was analysed.`}</Text>
       </Card>
     </View>)}
 

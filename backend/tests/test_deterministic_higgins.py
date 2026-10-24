@@ -246,3 +246,9 @@ def test_public_health_result_carries_the_provider_status():
     doc = {"check_id": "00000000-0000-4000-8000-000000000009", "state": "failed", "started_at": now_utc(), "expires_at": now_utc(),
            "provider_status": {"keyConfigured": True, "lastCall": None}}
     assert system_health_jobs.public(doc)["investigation"]["provider"] == {"keyConfigured": True, "lastCall": None}
+
+
+def test_a_follow_up_credits_whichever_investigator_settled_the_result():
+    assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?", "teddy_kb")["answer"].startswith("What Teddy FlyBy recommends")
+    assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?", "magnum_di")["answer"].startswith("What Magnum DI recommends")
+    assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?")["answer"].startswith("What Magnum DI recommends"), "older results were Magnum DI's"

@@ -16,6 +16,7 @@ import { observe } from "./deviceBroker";
 import { appendManagedOperation, cancelManagedOperation, expireOperation, managedOperation, retryManagedOperation,
   settleManagedOperation, startManagedOperation, subscribeManagedOperation, type ManagedOperation } from "./transferManager";
 import type { CreateCase, DeviceResult, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
+import { investigatorName } from "@/src/domain/messageVoice";
 import { investigationFollowUp, isFinished, type FollowUpAnswer } from "@/src/higgins/followUp";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
@@ -31,11 +32,11 @@ const EMPTY: CaseState = { phase: "idle", operationId: null, caseData: null, job
   sources: [], turns: [], failure: null, question: null, error: null, notice: null, followUps: [] };
 
 /** New material handed to a finished investigation: not added, not checked, and said so. */
-function finishedWithNewMaterial(response: HigginsResponse, sources: SourceReference[], input: Omit<CreateCase, "deviceProfile">): FollowUpAnswer {
+function finishedWithNewMaterial(response: HigginsResponse, sources: SourceReference[], input: Omit<CreateCase, "deviceProfile">, answeredBy: string | null): FollowUpAnswer {
   const material = [...input.submissions.map((item) => item.value), ...input.initialFindings].join("\n");
-  const answer = investigationFollowUp(response, sources, `${input.question}\n${material}`, safeUUID());
+  const answer = investigationFollowUp(response, sources, `${input.question}\n${material}`, safeUUID(), answeredBy);
   const note = material.trim() && !answer.newItems.length
-    ? "Magnum DI's investigation is finished, so the new material wasn't added to it or checked. To have it checked, start a new check.\n\n" : "";
+    ? `${investigatorName(answeredBy)}'s investigation is finished, so the new material wasn't added to it or checked. To have it checked, start a new check.\n\n` : "";
   return { ...answer, question: input.question, answer: `${note}${answer.answer}` };
 }
 const UNDELETED_KEY = "apollo.investigation.undeleted";
@@ -132,7 +133,7 @@ export function useInvestigation(boundOperationId?: string | null) {
                 question: pending.current?.message ?? "",
                 response: caseData.response, sources: sourcesData.items,
                 turns: turnsData.items, evidenceItems,
-                patrolEventId: null, committedAt: new Date().toISOString(),
+                patrolEventId: null, committedAt: new Date().toISOString(), answeredBy: caseData.answeredBy ?? null,
               };
               await commitInvestigation(snapshot);
               // Tell the server to purge — failures are queued for retry
@@ -217,7 +218,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     // even when the follow-up mentions a new link, email or number.
     const finished = state.response ?? caseData.response;
     if (isFinished(finished)) {
-      const answer = investigationFollowUp(finished, state.sources, message, safeUUID());
+      const answer = investigationFollowUp(finished, state.sources, message, safeUUID(), caseData.answeredBy ?? null);
       update((previous) => ({ followUps: [...previous.followUps, answer], phase: "answered", error: null, notice: null }));
       return true;
     }
@@ -244,7 +245,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const caseData = caseRef.current ?? state.caseData; if (!caseData || (caseData.activeJobId && !managedOperation(operationId, caseData.id))) return false;
     const finished = state.response ?? caseData.response;
     if (isFinished(finished)) {
-      const answer = finishedWithNewMaterial(finished, state.sources, input);
+      const answer = finishedWithNewMaterial(finished, state.sources, input, caseData.answeredBy ?? null);
       update((previous) => ({ followUps: [...previous.followUps, answer], phase: "answered", error: null, notice: null }));
       return true;
     }

@@ -1,5 +1,5 @@
-## Teddy DI stopping rule + one Apollo outcome system (2026-10-24)
-**Owner's rule:** a case is RESOLVED at Teddy DI when further Magnum DI investigation could not change Apollo's finding or
+## Teddy FlyBy stopping rule + one Apollo outcome system (2026-10-24)
+**Owner's rule:** a case is RESOLVED at Teddy FlyBy when further Magnum DI investigation could not change Apollo's finding or
 Higgins' action; "Unable to determine" is a valid resolved outcome; a KB pattern match supports the assessment but is never
 proof about the sender. Owner's answers: impersonation + brand-new domain → Concerning (no Magnum); "Hi Mum" → check Apollo KB
 first, pattern match → Concerning/Likely scam, unclear → Magnum; bare link → stop at Concerning / Unable to determine after all
@@ -3357,7 +3357,7 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Docs: `/app/docs/APOLLO_PLAY_RESTRICTED_PERMISSIONS_FUTURE_DECLARATIONS.md` (NOT FOR CURRENT PLAY SUBMISSION).
 - Tests: `tests/restrictedPhonePermissions.test.ts` and `tests/screenedCalls.test.ts`; updated `deviceCapabilities.test.ts`. 837/837 frontend tests and tsc pass. Prebuild verified: default build removes both permissions; the approved switch adds only the named one. The Kotlin was not compiled here (no Android SDK) — a native build is required.
 
-## Apollo Triage → Teddy DI → Magnum DI: the 6 routing corrections (2026-10)
+## Apollo Triage → Teddy FlyBy → Magnum DI: the 6 routing corrections (2026-10)
 - **Triage extracts every input first** (`teddy/__init__.py::_material`): submitted text/links, the text the phone read from a screenshot (`deviceExtractedText`, sent by `investigation/client.ts::investigationImageMeta`, credential-redacted, allow-listed + redacted in `privacy.ts`, stored as a derived text child in `evidence.ingest_file`), and the text layer of documents. Anything not extracted is a recorded gap (`magnum: true` only for images Magnum can read; audio/attachments/omitted pages are uncertainties). An image examined through its extracted text is marked examined.
 - **One deciding test** (`teddy/decide.py::evaluate`): could Magnum DI change Apollo's finding or Higgins' action? Concern outcomes the evidence already supports stand (confirmed → likely scam (full KB pattern) → corroborated impersonation → opening → established signals). Otherwise Magnum gets only these issues: reading (an unextracted image), reasoning (a consequential request through an unverified route), relating (a register name conflict / org name merely mentioned beside another address / pattern vs official links when the request goes elsewhere). No fixed list or input type routes to Magnum; `message_analysis` is `not_needed` unless the test sends it.
 - **Bare links use the same rule**: no link-only special case; a lookalike address (org name inside the host, `official._lookalike`) is a warning sign by itself for any input.
@@ -3367,3 +3367,10 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Admin drilldown: "Settled By" shows Not needed; new "Sent To Magnum DI" row. Triage payment requests also catch "must be paid to".
 - Tests: `tests/test_teddy_routing.py` (24), full backend suite 1054 passed; tsc clean.
 - Family Change Alerts: dropped at the user's request ("No family alerts") — not to be built or suggested.
+
+## Teddy DI renamed Teddy FlyBy + investigator credited correctly (2026-10)
+- Every display string "Teddy DI" → "Teddy FlyBy" (backend copy, admin portal, tests). Internal codes kept: `teddy_official|teddy_kb|teddy_search`, item ids `teddy-di-checks/brief`. Model label now `teddy-flyby`.
+- Case wire now carries `answeredBy` (`repository.case_view` from `routing.answeredBy`); saved on-device investigations keep it. App credits the right investigator: `investigatorName()` in `messageVoice.ts` (Teddy FlyBy / Magnum DI; older results default Magnum DI). Used in InvestigationView (found / sources / history / follow-up note), follow-ups (`followUp.ts`, backend `presenter.investigation_follow_up(..., answered_by)`), threat-case timeline, patrol evidence header. In-progress spinner says "Apollo is investigating…".
+- Egress allow-list now includes `sanitizationDecision`, `redactedRegions`, `sanitizationTransformations`.
+- Rules each layer operates under: `/app/memory/OPERATING_RULES.md`.
+- Wording that predates Teddy FlyBy (not changed, flagged to user): Higgins' Gemini prompt "MAGNUM DI INVESTIGATES AND SEARCHES"; gate triage docstring; check/message screen copy "Magnum DI will investigate it".

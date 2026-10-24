@@ -5,7 +5,7 @@ Every entry keeps its source, link, authority tier, jurisdiction and dates, and 
 - scam_alert         — official scam alerts and advisories from the government feeds
 - official_guidance  — cyber.gov.au guidance (CC BY 4.0), shipped in data/cyber_gov_au_guidance.json
 - scam_pattern       — established scam patterns as official sources describe them (teddy/patterns.py), with the
-                       markers Teddy DI compares submitted material against
+                       markers Teddy FlyBy compares submitted material against
 - researched         — trusted pages found and maintained through Tavily (services/apollo_kb.py), versioned
 - gemini_answer      — an answer cache: Gemini's answer to a general question nothing above covered. It is
                        labelled as Gemini's and is never treated as sourced knowledge.

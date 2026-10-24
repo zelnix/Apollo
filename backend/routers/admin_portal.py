@@ -1494,9 +1494,9 @@ def _env_label(model_str: str | None) -> str:
     return "Production"
 
 
-# How each investigation was answered (cost routing): Teddy DI's route, or Magnum DI's Gemini call.
+# How each investigation was answered (cost routing): Teddy FlyBy's route, or Magnum DI's Gemini call.
 ANSWERED_BY_LABELS = {"teddy_official": "Official check", "teddy_kb": "Apollo KB", "teddy_search": "Web search", "magnum_di": "Gemini"}
-_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "Apollo KB", "google_search": "Web search (Teddy DI)"}
+_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "Apollo KB", "google_search": "Web search (Teddy FlyBy)"}
 
 
 def _answered_by(case: dict, magnum_calls: int) -> str:
@@ -1508,7 +1508,7 @@ def _answered_by_badge(key: str) -> str:
     if not key:
         return '<span style="color:var(--muted);">&mdash;</span>'
     colour = "var(--yellow)" if key == "magnum_di" else "var(--green)"
-    who = "Magnum DI" if key == "magnum_di" else "Teddy DI"
+    who = "Magnum DI" if key == "magnum_di" else "Teddy FlyBy"
     return (f'<span class="badge" data-testid="answered-by-{html_mod.escape(key)}" style="background:rgba(127,127,127,0.12);color:{colour};">'
             f'{html_mod.escape(ANSWERED_BY_LABELS.get(key, key))}</span> <span style="font-size:0.78em;color:var(--muted);">{who}</span>')
 
@@ -1527,7 +1527,7 @@ def _outcome_badge(key: str | None) -> str:
 
 
 def _routing_html(rows: list[dict], avg_cost: float) -> str:
-    """Cost & performance measurement for Triage → Teddy DI → Magnum DI over the period."""
+    """Cost & performance measurement for Triage → Teddy FlyBy → Magnum DI over the period."""
     routed = [r for r in rows if (r["routing"] or {}).get("teddy")]
     n = len(routed)
     resolved = sum(1 for r in routed if r["routing"]["teddy"].get("resolved"))
@@ -1556,9 +1556,9 @@ def _routing_html(rows: list[dict], avg_cost: float) -> str:
         for key, b in sorted(outcomes.items()))
     outcome_heads = "".join(f"<th>{html_mod.escape(case_outcomes.LABELS[o])}</th>" for o in case_outcomes.OUTCOMES)
     return f"""
-    <h2 data-testid="cost-routing-heading">Cost Routing — Triage &rarr; Teddy DI &rarr; Magnum DI</h2>
+    <h2 data-testid="cost-routing-heading">Cost Routing — Triage &rarr; Teddy FlyBy &rarr; Magnum DI</h2>
     <div class="stats-grid">
-        {_stat_card(f'{n:,}', 'Teddy DI Investigations')}
+        {_stat_card(f'{n:,}', 'Teddy FlyBy Investigations')}
         {_stat_card(f'{resolved:,} ({pct(resolved, n)})', 'Resolved Without Magnum DI')}
         {_stat_card(pct(n - resolved, n), 'Magnum DI Invocation Rate')}
         {_stat_card(f"{total('teddy_queries'):,} / {total('magnum_queries'):,}", 'Google Search Queries (Teddy / Magnum)')}
@@ -1603,9 +1603,9 @@ def _routing_drilldown_html(case: dict | None) -> str:
             <tr><td style="color:var(--muted);">Outcome</td><td>{_outcome_badge(routing.get('outcome'))}</td></tr>
             <tr><td style="color:var(--muted);">Message Type</td><td>{html_mod.escape(teddy.get('messageType') or 'unknown')}</td></tr>
             <tr><td style="color:var(--muted);">Apollo KB Scam Pattern</td><td>{pattern_line}</td></tr>
-            <tr><td style="color:var(--muted);">Teddy DI Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
+            <tr><td style="color:var(--muted);">Teddy FlyBy Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
             <tr><td style="color:var(--muted);">Magnum DI</td><td>{magnum_line}</td></tr>
-            <tr><td style="color:var(--muted);">Sent To Magnum DI</td><td data-testid="magnum-issues">{issues or 'Nothing — Teddy DI settled it'}</td></tr>
+            <tr><td style="color:var(--muted);">Sent To Magnum DI</td><td data-testid="magnum-issues">{issues or 'Nothing — Teddy FlyBy settled it'}</td></tr>
         </tbody>
     </table>
     <table style="margin-top:8px;">
@@ -1691,7 +1691,7 @@ async def investigations_cost_report(request: Request):
             "purposes": {"$addToSet": "$purpose"},
             "models": {"$addToSet": "$model"},
             "sources": {"$addToSet": "$extra.trigger_source"},
-            # Cost routing: Magnum DI's call(s) and Teddy DI's search call(s) are counted apart.
+            # Cost routing: Magnum DI's call(s) and Teddy FlyBy's search call(s) are counted apart.
             "magnum_calls": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, 1, 0]}},
             "teddy_calls": {"$sum": {"$cond": [{"$eq": ["$purpose", "teddy_search"]}, 1, 0]}},
             "magnum_in": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, {"$ifNull": ["$tokens.input", 0]}, 0]}},
@@ -1717,14 +1717,14 @@ async def investigations_cost_report(request: Request):
         else:
             unattributed_groups.append(g)
 
-    # Cases Teddy DI settled without any Gemini call have no usage record, but they are investigations too.
+    # Cases Teddy FlyBy settled without any Gemini call have no usage record, but they are investigations too.
     gemini_case_ids = [g["_id"][5:] for g in investigation_groups]
     async for routed in db.investigation_cases.find({"routing.teddy.ranAt": {"$gte": start_utc, "$lte": end_utc},
                                                      "case_id": {"$nin": gemini_case_ids}}, {"_id": 0, "case_id": 1, "routing": 1}):
         ran_at = routed["routing"]["teddy"]["ranAt"]
         investigation_groups.append({"_id": f"case-{routed['case_id']}", "calls": 0, "ok": 0, "fail": 0, "input_tokens": 0, "output_tokens": 0,
                                      "thinking_tokens": 0, "cached_tokens": 0, "cost": 0.0, "first_call": ran_at, "last_call": ran_at,
-                                     "purposes": [], "models": ["teddy-di"], "sources": []})
+                                     "purposes": [], "models": ["teddy-flyby"], "sources": []})
 
     # ── 3. Lookup investigation_cases and jobs for each case_id ──
     case_ids = [g["_id"][5:] for g in investigation_groups]  # strip "case-" prefix
@@ -1925,7 +1925,7 @@ async def investigations_cost_report(request: Request):
         return str(n)
 
     # One Magnum DI investigation = one Gemini call (one retry allowed after a failed call).
-    # Teddy DI's low-cost search call is counted separately below, under cost routing.
+    # Teddy FlyBy's low-cost search call is counted separately below, under cost routing.
     retried = sum(1 for r in report_rows if r["magnum_calls"] == 2)
     over_limit = sum(1 for r in report_rows if r["magnum_calls"] > 2)
     magnum_cases = sum(1 for r in report_rows if r["magnum_calls"])

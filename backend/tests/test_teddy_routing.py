@@ -1,7 +1,7 @@
-"""Cost routing: Apollo Triage → Teddy DI → Magnum DI.
+"""Cost routing: Apollo Triage → Teddy FlyBy → Magnum DI.
 
 - Triage extracts entities deterministically and plans only the relevant checks.
-- Teddy DI stops as soon as a check is reliably resolved: an official listing, an official domain, Apollo's
+- Teddy FlyBy stops as soon as a check is reliably resolved: an official listing, an official domain, Apollo's
   KB or one targeted low-cost search — and then Magnum DI (Gemini) is never called.
 - When Magnum DI is needed it receives the material plus Teddy's brief (not the raw lookups), with Google
   Search off unless a specific external fact is still missing. One Magnum call, no second model.
@@ -161,7 +161,7 @@ def _grounded(lines: list[str], urls: list[tuple[str, str]]) -> tuple[str, dict]
     return text, {"grounding_chunks": chunks, "grounding_supports": supports, "web_search_queries": ["q"] * len(lines)}
 
 
-# ── Teddy DI settles it: Magnum DI is never called ──────────────────────────
+# ── Teddy FlyBy settles it: Magnum DI is never called ──────────────────────────
 async def test_an_official_listing_settles_the_case_without_gemini(monkeypatch):
     calls = _gateway(monkeypatch)
     _lookups(monkeypatch, verdict="malicious", threats=["SOCIAL_ENGINEERING"])
@@ -252,7 +252,7 @@ async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_searc
     assert magnum["model"] == provider.TEXT_MODEL, "the existing configured model — no escalation"
     assert "outcome" in magnum["response_schema"].required, "Magnum DI feeds the same outcome system"
     sent = [p.text for p in captured[0] if p.text]
-    assert any("Teddy DI fly-by results" in t and "For Magnum DI to settle" in t for t in sent)
+    assert any("Teddy FlyBy fly-by results" in t and "For Magnum DI to settle" in t for t in sent)
     assert any("(reasoning) Message and deception analysis" in t and "payment details change" in t for t in sent), "only the unresolved issue"
     assert not any("apollo-triage-intelligence" in t or '"safe_browsing"' in t for t in sent), "raw lookups Teddy settled are not resent"
     assert any("please pay invoice 4471" in t for t in sent), "the material the issue is about is sent in full"
@@ -282,6 +282,7 @@ async def test_a_plain_message_asking_nothing_is_settled_without_magnum(monkeypa
     teddy = case["routing"]["teddy"]
     assert teddy["resolved"] is True and teddy["issues"] == []
     assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "not_needed"
+    assert (await repo.case_view(case)).wire()["answeredBy"] == teddy["answeredBy"] == "teddy_kb", "the app is told who settled it"
 
 
 async def test_a_screenshot_is_investigated_through_the_text_triage_extracted(monkeypatch):
@@ -368,7 +369,7 @@ async def test_admin_report_shows_answered_by_and_routing(monkeypatch):
     assert 'data-testid="outcome-confirmed_threat"' in drill
 
 
-# ── When a case is resolved at Teddy DI (Apollo's outcome criteria) ─────────
+# ── When a case is resolved at Teddy FlyBy (Apollo's outcome criteria) ─────────
 async def test_impersonation_with_a_brand_new_domain_is_concerning_without_gemini(monkeypatch):
     calls = _gateway(monkeypatch)
     _lookups(monkeypatch, age_days=6)

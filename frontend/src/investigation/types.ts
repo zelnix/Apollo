@@ -3,7 +3,7 @@ export type Gate = "site" | "link" | "text" | "call" | "network" | "account" | "
 export type CaseStatus = "queued" | "investigating" | "waiting_device" | "waiting_user" | "retry_wait" | "partial" | "complete" | "failed" | "cancelled" | "expired";
 export type CoverageStatus = "not_started" | "partial" | "examined" | "unavailable" | "out_of_scope";
 export type Assessment = "concern_found" | "no_concern_found_within_scope" | "uncertain";
-/** Apollo's case outcome — the same five whichever investigation layer (Teddy DI or Magnum DI) answered. */
+/** Apollo's case outcome — the same five whichever investigation layer (Teddy FlyBy or Magnum DI) answered. */
 export type Outcome = "no_scam_indicators" | "concerning" | "likely_scam" | "confirmed_threat" | "unable_to_determine";
 export type Attention = "none" | "review" | "action_needed" | "urgent";
 export type Completion = "complete" | "partial" | "waiting_user";
@@ -17,7 +17,7 @@ export interface Question { id: string; text: string; reasonNeeded: string; answ
 export interface ActionProposal { id: string; kind: "instruction" | "open_settings" | "request_permission" | "recheck" | "open_verified_source"; label: string; instruction: string; capabilityId: string | null; executionDescriptorId: string | null; requiresUserGesture: boolean; sourceIds: string[]; desiredField: string | null; desiredValue: boolean | string | null }
 export interface HigginsResponse { revision: number; overview: string; explanationMarkdown: string; assessment: Assessment; outcome?: Outcome | null; attention: Attention; attentionReason: string | null; findings: Finding[]; uncertainties: string[]; scope: string; sourceIds: string[]; remainingEvidenceIds: string[]; actions: ActionProposal[]; recommendedActionId: string | null; question: Question | null; completion: Completion }
 export interface Inventory { total: number; examined: number; partial: number; unavailable: number; purged: number; contentExpired: number }
-export interface InvestigationCase { schemaVersion: 1; id: string; revision: number; gates: Gate[]; status: CaseStatus; createdAt: string; updatedAt: string; expiresAt: string; evidenceExpiresAt: string | null; reportExpiresAt: string | null; retentionClass: string; reportByteSize: number; response: HigginsResponse | null; activeJobId: string | null; pendingDeviceRequestIds: string[]; inventory: Inventory; cleanupStatus: "not_due" | "pending" | "complete" | "failed" }
+export interface InvestigationCase { schemaVersion: 1; id: string; revision: number; gates: Gate[]; status: CaseStatus; createdAt: string; updatedAt: string; expiresAt: string; evidenceExpiresAt: string | null; reportExpiresAt: string | null; retentionClass: string; reportByteSize: number; response: HigginsResponse | null; activeJobId: string | null; pendingDeviceRequestIds: string[]; inventory: Inventory; cleanupStatus: "not_due" | "pending" | "complete" | "failed"; answeredBy?: string | null }
 export interface Failure { code: string; message: string; retryable: boolean; retryAfterSeconds: number | null; resubmitAt?: string | null; missingEvidenceIds: string[] }
 export interface Job { id: string; caseId: string; turnId: string; status: CaseStatus; startedAt: string | null; deadlineAt: string; retryAt: string | null; attempt: number; lastEventSequence: number; failure: Failure | null }
 export type UnavailableReason = "not_implemented" | "os_restricted" | "hardware_absent" | "configuration_missing" | "entitlement_missing" | "privacy_prohibited" | "source_refused" | "adapter_failed";

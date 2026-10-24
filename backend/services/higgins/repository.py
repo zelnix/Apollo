@@ -224,7 +224,7 @@ async def case_view(doc: dict) -> InvestigationCase:
                              evidence_expires_at=utc(doc["evidence_expires_at"]) if doc.get("evidence_expires_at") else None,
                              retention_class=doc.get("retention_class", ""),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
-                             cleanup_status=doc.get("cleanup_status", "not_due"))
+                             cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=(doc.get("routing") or {}).get("answeredBy"))
 
 
 def device_profile(doc: dict) -> Optional[dict]:

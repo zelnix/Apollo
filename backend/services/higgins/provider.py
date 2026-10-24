@@ -88,7 +88,7 @@ def register_preview_handler(handler) -> None:
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
 # input, Search grounding and structured outputs, which is everything the investigation request uses.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
-# Teddy DI's targeted Google Search lookups: the low-cost model with Search grounding. By default the same
+# Teddy FlyBy's targeted Google Search lookups: the low-cost model with Search grounding. By default the same
 # model Magnum DI is configured with — never a stronger one, and never a second attempt at Magnum's task.
 TEDDY_MODEL = os.getenv("GEMINI_TEDDY_MODEL", TEXT_MODEL)
 # Vision extraction and advisory generation stay on their existing model — unchanged by the

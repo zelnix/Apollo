@@ -898,10 +898,11 @@ async def _finished_follow_up(owner: str, case: dict, body: SubmitTurn) -> Optio
     response = repo.dec_json(case["response_ciphertext"])
     if not presenter.is_finished(response):
         return None
-    answer = presenter.investigation_follow_up(response, await repo.sources(owner, case["case_id"]), redact_investigation_secrets(body.message))
+    answered_by = (case.get("routing") or {}).get("answeredBy")
+    answer = presenter.investigation_follow_up(response, await repo.sources(owner, case["case_id"]), redact_investigation_secrets(body.message), answered_by)
     if body.evidence_ids and answer["intent"] != "recheck":
-        answer = {**answer, "answer": ("The new material was kept with this case, but Magnum DI's investigation is finished, so it wasn't re-assessed.\n\n"
-                                       + answer["answer"])}
+        answer = {**answer, "answer": (f"The new material was kept with this case, but {presenter.investigator(answered_by)}'s investigation is finished, "
+                                       "so it wasn't re-assessed.\n\n" + answer["answer"])}
     return {"turnId": body.turn_id, "question": redact_investigation_secrets(body.message), "answer": answer["answer"],
             "intent": answer["intent"], "limitation": answer["limitation"], "newItems": answer["newItems"], "answeredBy": "apollo"}
 

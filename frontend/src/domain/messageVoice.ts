@@ -157,18 +157,26 @@ export function scrubMessage(text: string | null | undefined): string {
 }
 
 // --- Investigation status history (History Everywhere) -----------------------------------------------
-/** Plain-English "what Magnum DI has done so far", derived from the turns and current phase. */
+/** Who settled an investigation result, by name (the case's `answeredBy`). Results recorded before
+ *  routing existed were Magnum DI's. */
+export function investigatorName(answeredBy: string | null | undefined): "Teddy FlyBy" | "Magnum DI" {
+  return (answeredBy ?? "").startsWith("teddy") ? "Teddy FlyBy" : "Magnum DI";
+}
+
+/** Plain-English "what has been done so far", derived from the turns and current phase, credited to whichever
+ *  investigator settled the result. Only Magnum DI asks questions or requests a device reading. */
 export function investigationHistory(args: {
-  turns: { question: string; overview: string }[]; phase: string; completion?: string | null;
+  turns: { question: string; overview: string }[]; phase: string; completion?: string | null; answeredBy?: string | null;
 }): HistoryEntry[] {
-  const entries: { text: string }[] = [{ text: "Magnum DI opened this investigation." }];
-  args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — Magnum DI answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
-  const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Magnum DI is still investigating."
+  const name = investigatorName(args.answeredBy);
+  const entries: { text: string }[] = [{ text: "Apollo opened this investigation." }];
+  args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — ${name} answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
+  const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Apollo is still investigating."
     : args.phase === "waiting_user" ? "Magnum DI is waiting on your answer to continue."
     : args.phase === "waiting_device" ? "Magnum DI is checking this device for a fresh observation."
     : args.phase === "failed" || args.phase === "expired" ? "This investigation stopped before finishing."
-    : args.completion === "complete" ? "Magnum DI completed the investigation within scope."
-    : args.completion === "partial" ? "Magnum DI answered, with more still to examine."
+    : args.completion === "complete" ? `${name} completed the investigation within scope.`
+    : args.completion === "partial" ? `${name} answered, with more still to examine.`
     : "Magnum DI has a question before it can finish.";
   entries.push({ text: current });
   return entries.map((e) => ({ at: "", text: e.text }));

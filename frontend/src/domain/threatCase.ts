@@ -10,6 +10,7 @@
  */
 
 import type { CaseSource } from "./caseSources.ts";
+import { investigatorName } from "./messageVoice.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import type {
   ApolloState,
@@ -185,7 +186,7 @@ export function buildTimeline(
   event: PatrolEvent,
   sources: CaseSource[] = [],
   /** What the stored investigation recorded, when there is one. */
-  investigation: { completedAt?: string | null; conclusion?: string | null; findingCount?: number } = {},
+  investigation: { completedAt?: string | null; conclusion?: string | null; findingCount?: number; answeredBy?: string | null } = {},
 ): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const record = event.patrol_record;
@@ -248,8 +249,8 @@ export function buildTimeline(
     });
   }
 
-  // 4. Magnum DI investigation (only if one actually exists)
-  // Factual timeline: Investigation requested → Personal-data protection applied → Sent to Magnum DI
+  // 4. The investigation (only if one actually exists)
+  // Factual timeline: Investigation requested → Personal-data protection applied → Sent for investigation
   // → Response received. The first three happened when the case was opened; the response carries the
   // time it was committed to this device and what it actually concluded.
   const investigationId = event.investigation_case_id ?? record?.investigationCaseId;
@@ -259,8 +260,8 @@ export function buildTimeline(
       timestamp: event.occurred_at,
       title: "Investigation requested",
       description: subject
-        ? `You requested a Magnum DI investigation for ${subjectDescriptor(subject)}.`
-        : "You requested a Magnum DI investigation for this item.",
+        ? `You requested an investigation for ${subjectDescriptor(subject)}.`
+        : "You requested an investigation for this item.",
       dotColor: "#2563EB",
       iconId: "investigation",
     });
@@ -275,7 +276,7 @@ export function buildTimeline(
     entries.push({
       id: `tl-${idx++}`,
       timestamp: event.occurred_at,
-      title: "Sent to Magnum DI",
+      title: "Sent for investigation",
       description: "Protected evidence submitted for investigation.",
       dotColor: "#2563EB",
       iconId: "gathering",
@@ -285,10 +286,10 @@ export function buildTimeline(
     entries.push({
       id: `tl-${idx++}`,
       timestamp: investigation.completedAt ?? null,
-      title: investigation.completedAt || conclusion ? "Magnum DI answered" : "Waiting for Magnum DI",
+      title: investigation.completedAt || conclusion ? `${investigatorName(investigation.answeredBy)} answered` : "Waiting for the investigation",
       description: conclusion
         ? `${conclusion}${findingCount ? ` ${findingCount} finding${findingCount === 1 ? "" : "s"} recorded on this device.` : ""}`
-        : "Magnum DI has not answered yet.",
+        : "The investigation hasn't answered yet.",
       dotColor: "#059669",
       iconId: "findings",
     });

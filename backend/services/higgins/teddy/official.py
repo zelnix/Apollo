@@ -1,4 +1,4 @@
-"""Teddy DI stage 1 — direct and authoritative sources.
+"""Teddy FlyBy stage 1 — direct and authoritative sources.
 
 Every lookup here is a direct check against the source that holds the answer: Apollo's blocklist and
 Google Safe Browsing (cached in reputation_cache), the domain registry's RDAP record, Apollo's register of

@@ -220,14 +220,15 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
     if selected_report_id:
         report = await _saved_report(owner, selected_report_id)
         if report is not None:
-            follow = presenter.investigation_follow_up(report, report.get("sources") or [], clean)
+            follow = presenter.investigation_follow_up(report, report.get("sources") or [], clean, report.get("answeredBy"))
             provenance = ["saved_report"]
             if follow["intent"] == "unanswered" and not follow["newItems"]:
                 # A general question about this kind of scam: Higgins can teach from the KB, kept apart from the case.
                 entries = await knowledge.search(clean)
                 if entries:
                     general, sources = knowledge.present(entries, clean)
-                    follow = {**follow, "answer": f"{follow['answer']}\n\nGeneral knowledge — not part of Magnum DI's findings about this case:\n\n{general}",
+                    follow = {**follow, "answer": f"{follow['answer']}\n\nGeneral knowledge — not part of {presenter.investigator(report.get('answeredBy'))}'s "
+                                                  f"findings about this case:\n\n{general}",
                               "sources": sources}
                     provenance.append("apollo_knowledge_base")
             return await _deterministic(owner, conversation_id, turn_id, clean, follow, "investigation_report", provenance,

@@ -141,7 +141,7 @@ def _forbid_live_gemini(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _teddy_offline(monkeypatch):
-    """Teddy DI's direct-source lookups (Safe Browsing, RDAP, advisories) and its targeted Google Search reach the
+    """Teddy FlyBy's direct-source lookups (Safe Browsing, RDAP, advisories) and its targeted Google Search reach the
     network. Bounded tests run them offline: every lookup reports unavailable, so investigations reach Magnum DI
     exactly as before. Teddy's own tests replace these with fixed results."""
     from services.higgins.teddy import official, search

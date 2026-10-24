@@ -62,7 +62,7 @@ import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
-import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { investigatorName, looksLikeInternalCode } from "@/src/domain/messageVoice";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
@@ -750,7 +750,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
               <si.Icon size={18} color={si.fg} />
             </View>
             <View style={s.evidenceHeaderText}>
-              <Text style={s.evidenceHeaderTitle}>Evidence investigated by Magnum DI</Text>
+              <Text style={s.evidenceHeaderTitle}>{`Evidence investigated by ${investigatorName(inv?.answeredBy)}`}</Text>
             </View>
           </View>
 
@@ -1107,6 +1107,7 @@ function HistoryContent({ event }: { event: PatrolEvent }) {
     completedAt: inv?.committedAt ?? null,
     conclusion: inv?.response?.overview ?? null,
     findingCount: inv?.response?.findings?.length,
+    answeredBy: inv?.answeredBy ?? null,
   });
   const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
 
