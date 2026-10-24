@@ -16,6 +16,7 @@ _ORDER = {"failing": 0, "stale": 1, "healthy": 2}
 
 # Our own rejection reasons (stored as error_detail) and OutboundBlocked codes, in plain words.
 _DETAIL_MESSAGES = {
+    "fetch_failed": "The source never answered Apollo's server. The site may be down, or blocking requests from cloud servers.",
     "dns_failed": "Apollo couldn't find the source's web address. The site may be down or renamed.",
     "private_target": "The source's address pointed somewhere Apollo won't connect to, so the sync was stopped.",
     "invalid_target": "The feed address isn't a valid web address.",
@@ -29,7 +30,7 @@ _DETAIL_MESSAGES = {
 _CODE_MESSAGES = {
     "SourceUnavailable": "This feed's government source is switched off or no longer recognised.",
     "FeedRefreshFailure": "The sync stopped unexpectedly.",
-    "OutboundBlocked": "Apollo's safety checks refused the connection to this source.",
+    "OutboundBlocked": "Apollo couldn't complete the connection to this source.",
     "ValueError": "The source answered, but its response didn't pass Apollo's checks.",
     "ConnectTimeout": "The source took too long to answer.",
     "ReadTimeout": "The source took too long to answer.",

@@ -27,6 +27,9 @@ def test_classify_applies_the_24_hour_rule():
 
 def test_error_messages_are_plain_language():
     assert "couldn't find" in feed_health.error_message("OutboundBlocked", "dns_failed")
+    # A source that never answers is not a safety refusal.
+    assert "never answered" in feed_health.error_message("OutboundBlocked", "fetch_failed")
+    assert "safety" not in feed_health.error_message("OutboundBlocked", None)
     assert "not with a usable feed" in feed_health.error_message("ValueError", "feed response rejected")
     assert feed_health.error_message("ReadTimeout", None) == "The source took too long to answer."
     assert feed_health.error_message("ValueError", None).startswith("The source answered")
