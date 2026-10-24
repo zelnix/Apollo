@@ -1,16 +1,21 @@
 """Preview Gemini simulator — the ONLY substitution Apollo makes in preview.
 
-Apollo → Magnum DI → Gemini Simulator → Magnum DI → Higgins
+Apollo → Magnum DI → Gemini Simulator (+ Apollo knowledge base) → Magnum DI → Higgins
 
 Everything before this point is the real production pipeline: the real Magnum DI prompt, the real
 investigation evidence, the real on-device privacy screening and redaction, and the real attachments
 that would have been transmitted. This module replaces ONLY the external Gemini API call, and it
 always succeeds.
 
-The investigation result is derived from THE ACTUAL EVIDENCE that was sent (see preview_analysis):
-the sender, the link, the amount, the request and the pressure present in the material are named, so
-a preview investigation says something specific instead of a fixed paragraph. It is deterministic and
-rule-based, it quotes only what the evidence contains, and it is labelled SIMULATED everywhere.
+Its information base is Apollo's own knowledge base (Learn with Higgins, official scam alerts, official
+guidance and the trusted pages Apollo maintains) — never Gemini, never the web at question time:
+- A Higgins question is answered with what the knowledge base says, quoted with its source, or says plainly
+  that the knowledge base has nothing on it.
+- An investigation is derived from THE ACTUAL EVIDENCE that was sent (see preview_analysis), and any
+  knowledge-base entry on the same subject is added as general knowledge — never as a finding.
+- A Device Protection explanation uses a matching entry where there is one.
+It is deterministic and rule-based, it quotes only what the evidence and the knowledge base contain, and
+it is labelled SIMULATED everywhere.
 
 What it does NOT do: it does not simulate Magnum DI, evidence handling, privacy/redaction, Higgins,
 state management or investigation reporting. The returned material goes through the real validation,
@@ -27,6 +32,7 @@ from typing import Any
 from google.genai import types
 
 from services.gemini_usage import record_usage as _record_usage
+from services.higgins import knowledge
 from services.higgins.llm_boundary import Purpose
 from services.higgins.preview_analysis import EvidenceBlock, analyse
 
@@ -54,11 +60,50 @@ FIXED_PREVIEW_RESPONSE = (
 SIMULATED_NOTE = "SIMULATED — No Gemini API call was made"
 
 
-def _investigation_payload(blocks: list[EvidenceBlock]) -> dict:
+# ── Apollo's knowledge base as the simulator's information base ─────────────
+
+def _kb_passage(entry: dict, query: str, max_chars: int) -> str:
+    """One entry, the way Higgins quotes the library: who says it, their words, provenance, the link."""
+    words = knowledge.excerpt(entry.get("body") or entry.get("summary") or "", knowledge.terms(query), max_chars=max_chars)
+    intro = (f"The Learn with Higgins article “{entry['title']}”" if entry.get("kind") == "learn_article"
+             else f"{entry.get('publisher') or 'Apollo'} — “{entry['title']}”")
+    meta = knowledge.provenance_line(entry)
+    link = f"\nRead the original: {entry['url']}" if entry.get("url") else ""
+    return f"{intro}{(' ' + meta) if meta else ''}:\n{words}{link}"
+
+
+def _kb_reference(entry: dict) -> str:
+    return f"- {entry.get('publisher') or 'Apollo'}: “{entry['title']}”" + (f" — {entry['url']}" if entry.get("url") else "")
+
+
+def query_text(purpose_name: str, blocks: list[EvidenceBlock]) -> str:
+    """What to look up in the knowledge base: the evidence for an investigation, otherwise the person's own
+    question, or the protection being explained."""
+    if purpose_name == "investigation":
+        evidence = " ".join(b.text for b in blocks if b.evidence_id and b.text)
+        if evidence:
+            return evidence[:4000]
+    raw = " ".join((b.text or "") for b in blocks if b.kind == "question").strip()
+    try:
+        data = json.loads(raw) if raw else None
+    except (ValueError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        for field in ("message", "protection"):
+            if isinstance(data.get(field), str):
+                return data[field].split("\n\n", 1)[0]
+    return raw.split("\n\n", 1)[0][:4000]
+
+
+def _investigation_payload(blocks: list[EvidenceBlock], kb: list[dict] | None = None) -> dict:
     """The simulated result in the shape the real investigation contract expects, built from the
     evidence that was actually sent, so the real validator, commit and Higgins workflow process it
-    unchanged."""
-    return analyse(blocks)
+    unchanged. Knowledge-base entries on the same subject are general knowledge, never a finding."""
+    payload = analyse(blocks)
+    if kb:
+        payload["explanationMarkdown"] += ("\n\n**From Apollo's knowledge base** (general knowledge, not a finding about what you sent):\n"
+                                           + "\n".join(_kb_reference(entry) for entry in kb[:2]))
+    return payload
 
 
 _EVIDENCE_LABEL = re.compile(r"^\[evidence ([^\s\]·]+)[^\]]*\]\s*", re.I)
@@ -115,32 +160,50 @@ def _preview_question(blocks: list[EvidenceBlock] | None) -> str:
     return raw.split("\n\n", 1)[0].lower()
 
 
-def _chat_payload(blocks: list[EvidenceBlock] | None = None) -> dict:
+def _chat_payload(blocks: list[EvidenceBlock] | None = None, kb: list[dict] | None = None, query: str = "") -> dict:
     """An ordinary-chat reply in the shape `chat.ModelChatReply` requires.
 
-    Preview replaces only the Gemini call, so the reply must still be valid for the
-    real validator, and it must still exercise the real deep-link path — otherwise
-    a preview build cannot show the navigation Higgins offers at all. The route is
-    chosen deterministically from the words in the question against Apollo's own
-    destination list; nothing is inferred and nothing is invented.
+    Preview replaces only the Gemini call, so the reply must still be valid for the real validator, and it
+    must still exercise the real deep-link path. The answer is what Apollo's knowledge base says on the
+    question, quoted with its source — or a plain statement that it has nothing. The route is chosen
+    deterministically from the words in the question against Apollo's own destination list.
     """
     question = _preview_question(blocks)
     route = next((r for words, r in _PREVIEW_ROUTE_HINTS if all(word in question for word in words)), None)
-    answer = (
-        f"{SIMULATED_NOTE}. This is a preview build, so Higgins' wording is not generated — "
-        "the question, Apollo's product knowledge and the live reading of this phone were all "
-        "assembled and would have been sent to Gemini. "
-        + ("The destination below is the one Apollo matched to your question." if route
-           else "Install Apollo on the device for a real answer.")
-    )
+    if kb:
+        passages = "\n\n".join(_kb_passage(entry, query or question, 500) for entry in kb[:2])
+        answer = f"{SIMULATED_NOTE}. Preview build — instead of Gemini, here is what Apollo's knowledge base says:\n\n{passages}"
+    else:
+        answer = (f"{SIMULATED_NOTE}. Preview build — Gemini isn't called here, and Apollo's knowledge base has nothing on "
+                  "this yet, so there is no answer to show."
+                  + (" The destination below is the one Apollo matched to your question." if route else ""))
     return {
-        "answer": answer,
-        "evidenceBasis": ["preview_simulator"],
-        "uncertainty": ["Preview build: the wording of this answer was not generated by Gemini."],
+        "answer": answer[:2000],
+        "evidenceBasis": ["preview_simulator", "apollo_kb"] if kb else ["preview_simulator"],
+        "uncertainty": ["Preview build: this answer was not generated by Gemini."],
         "clarification": None,
         "recommendInvestigation": False,
         "destination": None,
         "navigate": [route] if route else [],
+    }
+
+
+_EXPLANATION_FIELDS = {"what", "why", "protects_against"}
+
+
+def _explanation_payload(kb: list[dict] | None, query: str) -> dict:
+    """A Device Protection explanation in the shape `ModelExplanation` requires, labelled as simulated."""
+    if kb:
+        entry = kb[0]
+        words = knowledge.excerpt(entry.get("body") or entry.get("summary") or "", knowledge.terms(query), max_chars=260)
+        why = f"From {entry.get('publisher') or 'Apollo'} — “{entry['title']}”: {words}"
+    else:
+        why = "Apollo's knowledge base has nothing on this protection yet."
+    return {
+        "what": f"{SIMULATED_NOTE}. Preview build, so Gemini wasn't asked to explain “{query}”."[:400],
+        "why": why[:400],
+        "protects_against": "Shown in the published app, where Higgins explains it."[:300],
+        "recommended": "Open the published Apollo app for Higgins' explanation."[:300],
     }
 
 
@@ -170,15 +233,18 @@ def _health_payload() -> dict:
     return {"status": "operational", "analysis": SIMULATED_NOTE, "risk_assessment": "none"}
 
 
-def simulated_text(purpose: Purpose, json_output: bool, blocks: list[EvidenceBlock] | None = None) -> str:
+def simulated_text(purpose: Purpose, json_output: bool, blocks: list[EvidenceBlock] | None = None,
+                   kb: list[dict] | None = None, query: str = "", response_schema: Any = None) -> str:
     """The material the simulator returns at the boundary, in the form the caller asked for."""
     name = purpose.value if hasattr(purpose, "value") else str(purpose)
     if not json_output and name not in ("investigation",):
         return FIXED_PREVIEW_RESPONSE
     if name == "investigation":
-        return json.dumps(_investigation_payload(blocks or []), ensure_ascii=False)
+        return json.dumps(_investigation_payload(blocks or [], kb), ensure_ascii=False)
+    if _EXPLANATION_FIELDS <= set(getattr(response_schema, "model_fields", None) or {}):
+        return json.dumps(_explanation_payload(kb, query), ensure_ascii=False)
     if name in ("ordinary_chat", "chat", "conversation", "assistant"):
-        return json.dumps(_chat_payload(blocks), ensure_ascii=False)
+        return json.dumps(_chat_payload(blocks, kb, query), ensure_ascii=False)
     if name in ("health", "health_check", "diagnostics"):
         return json.dumps(_health_payload(), ensure_ascii=False)
     return json.dumps({"analysis": FIXED_PREVIEW_RESPONSE}, ensure_ascii=False)
@@ -203,11 +269,20 @@ async def simulate_generate(
     trigger_source: str | None,
     payload_audit: dict,
 ):
-    """Return the fixed response as a successful provider result. No external call is made."""
+    """Answer from Apollo's knowledge base as a successful provider result. No external call is made."""
     from services.higgins.provider import GeminiResult  # local import: avoids a circular import
 
     started = time.monotonic()
-    text = simulated_text(purpose, json_output, evidence_blocks(contents))
+    blocks = evidence_blocks(contents)
+    name = purpose.value if hasattr(purpose, "value") else str(purpose)
+    query = query_text(name, blocks)
+    kb: list[dict] = []
+    if json_output and query and name in ("investigation", "ordinary_chat"):
+        try:
+            kb = await knowledge.related(query)
+        except Exception:  # noqa: BLE001 — the knowledge base can never break the simulator
+            kb = []
+    text = simulated_text(purpose, json_output, blocks, kb=kb, query=query, response_schema=response_schema)
     prompt_chars = (len(system) if system else 0) + int(payload_audit.get("total_text_chars") or 0)
     usage = {
         "prompt_token_count": _estimate_tokens(prompt_chars),
@@ -231,7 +306,7 @@ async def simulate_generate(
             usage_metadata=usage,
             duration_ms=duration_ms,
             extra={"payload_audit": payload_audit, "simulated": True, "trigger_source": trigger_source,
-                   "note": SIMULATED_NOTE},
+                   "note": SIMULATED_NOTE, "apollo_kb": [entry.get("kb_id") for entry in kb]},
         )
     except Exception:
         pass

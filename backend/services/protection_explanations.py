@@ -147,12 +147,13 @@ SYSTEM = ("You are Higgins, the security adviser inside the Apollo app. Explain 
           "settings paths. If you are not sure the protection exists as named, say what it most likely is and keep it general.")
 
 
-async def _generate(req: DeviceExplanationRequest, scope_label: str) -> ModelExplanation:
+async def _generate(req: DeviceExplanationRequest, scope_label: str) -> tuple[ModelExplanation, bool]:
+    """The explanation, and whether it came from the preview simulator instead of Gemini."""
     prompt = json.dumps({"protection": req.title, "platform": PLATFORM_NAME[req.platform], "applies_to": scope_label}, ensure_ascii=False)
     result = await provider.generate(SYSTEM, prompt, model=provider.CHAT_MODEL, capability="json", json_output=True,
                                      response_schema=ModelExplanation, purpose=provider.Purpose.ORDINARY_CHAT,
                                      correlation_id=f"protection-{req.protection_id[:40]}", trigger_source="protection_explanation_miss")
-    return ModelExplanation.model_validate_json(result.text)
+    return ModelExplanation.model_validate_json(result.text), bool(getattr(result, "simulated", False))
 
 
 def reviewed_device_explanation(protection_id: str) -> Optional[dict]:
@@ -182,10 +183,15 @@ async def device_explanation(owner: str, req: DeviceExplanationRequest) -> dict:
         if not await _claim(key, owner):
             return await _wait_for(key) or {"status": "generating", "protectionId": req.protection_id}
         try:
-            taught = await _generate(req, label)
+            taught, simulated = await _generate(req, label)
         except Exception:
             await db.protection_explanations.delete_one({"_id": key, "status": "generating"})
             raise
+        if simulated:
+            # Preview: shown once, labelled, and never stored as Higgins' explanation.
+            await db.protection_explanations.delete_one({"_id": key, "status": "generating"})
+            return {"protectionId": req.protection_id, "title": req.title, "explanation": _wire(taught.model_dump()),
+                    "source": "preview_simulator", "scope": scope, "scopeLabel": label}
         doc = {"protection_id": req.protection_id, "title": req.title, "platform": req.platform, "scope": scope, "scope_label": label,
                "explanation": taught.model_dump(), "status": "ready", "created_at": now_utc(), "model": provider.CHAT_MODEL}
         await db.protection_explanations.update_one({"_id": key}, {"$set": doc, "$unset": {"lease_until": ""}})

@@ -20,8 +20,9 @@ export interface ProtectionExplanation {
 
 export interface ExplanationResult {
   explanation: ProtectionExplanation;
-  /** apollo_reviewed = written once by Apollo; higgins_cached/new = taught once by Higgins and reused. */
-  source: "apollo_reviewed" | "higgins_cached" | "higgins_new";
+  /** apollo_reviewed = written once by Apollo; higgins_cached/new = taught once by Higgins and reused;
+   * preview_simulator = the preview's stand-in for Gemini (never kept). */
+  source: "apollo_reviewed" | "higgins_cached" | "higgins_new" | "preview_simulator";
   scopeLabel: string;
 }
 
@@ -36,6 +37,7 @@ async function cached(): Promise<Cached> {
 }
 
 async function remember(key: string, value: ExplanationResult): Promise<void> {
+  if (value.source === "preview_simulator") return; // a stand-in answer is never kept on the phone
   const all = await cached();
   await storage.setItem(CACHE, JSON.stringify({ ...all, [key]: { ...value, source: value.source === "higgins_new" ? "higgins_cached" : value.source } }));
 }

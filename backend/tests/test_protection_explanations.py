@@ -157,3 +157,14 @@ async def test_one_device_cannot_run_up_unlimited_misses(store, gemini, monkeypa
     limited = await pe.device_explanation("owner-a", request(protectionId="call:com.hiya.star", title="Hiya"))
     assert limited["status"] == "limited"
     gemini.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_preview_simulated_explanation_is_shown_but_never_stored(store, monkeypatch):
+    simulated = AsyncMock(return_value=SimpleNamespace(text=TAUGHT, simulated=True))
+    monkeypatch.setattr(pe.provider, "generate", simulated)
+    result = await pe.device_explanation("owner-a", request())
+    assert result["source"] == "preview_simulator"
+    assert result["explanation"]["what"].startswith("Samsung's caller ID")
+    simulated.assert_awaited_once()
+    assert store.docs == {}, "a stand-in answer must never become Higgins' cached explanation"

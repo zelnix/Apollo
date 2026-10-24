@@ -1,12 +1,13 @@
-"""The preview simulator can never run in production — only APOLLO_PREVIEW_SIMULATOR=on admits it.
+"""The preview simulator — the module ships with the project, but only the preview server installs it.
 
+Production is recognised by NOT being the preview server: no APOLLO_PREVIEW_SIMULATOR=on and no
+*.preview.emergentagent.com APP_URL (which only the Emergent preview workspace sets).
 APOLLO_ENV is deliberately not the switch: the deployment's secrets still hold an old "preview" value of it.
 
 Emergent deploys the whole project, `services/higgins/preview/` included, so the directory's presence
 proves nothing (it was the guard before, and production ended up answering from the simulator).
-The decision is now ONE explicit value: APOLLO_PREVIEW_SIMULATOR=on in the preview slot only. A missing,
-empty or any other value is production — `register_preview_handler()` refuses, `get_provider_mode()` answers
-"live" and `generate()` reaches live Gemini only.
+A missing, empty or unrecognised value is production — `register_preview_handler()` refuses,
+`get_provider_mode()` answers "live" and `generate()` reaches live Gemini only.
 
 Run: cd /app/backend && python -m pytest tests/test_provider_environment_guard.py -q
 """
@@ -32,6 +33,7 @@ async def _handler(*_args, **_kwargs):
 @pytest.mark.parametrize("value", [None, "", "off", "preview", "production", "true", "1", "yes", "onn"])
 def test_anything_but_preview_refuses_the_simulator_and_stays_live(monkeypatch, value):
     monkeypatch.setattr(provider, "_preview_generate", None)
+    monkeypatch.delenv("APP_URL", raising=False)
     if value is None:
         monkeypatch.delenv("APOLLO_PREVIEW_SIMULATOR", raising=False)
     else:
@@ -53,10 +55,36 @@ def test_explicit_preview_installs_the_simulator_and_blocks_the_live_client(monk
         provider.client()
 
 
+def test_the_preview_workspace_is_recognised_by_its_own_address(monkeypatch):
+    """The preview server runs the simulator with no setting to remember: the workspace's APP_URL says where it is."""
+    monkeypatch.setattr(provider, "_preview_generate", None)
+    monkeypatch.delenv("APOLLO_PREVIEW_SIMULATOR", raising=False)
+    monkeypatch.setenv("APP_URL", "https://c344520a-3bf7-4318-a5a2-68836b7a4140.preview.emergentagent.com")
+    assert provider.preview_environment() is True
+    provider.register_preview_handler(_handler)
+    assert provider.get_provider_mode() == "preview"
+    with pytest.raises(ProviderFailure):
+        provider.client()
+
+
+@pytest.mark.parametrize("url", ["https://threat-patrol-1.emergent.host", "https://apollo.example.com", "",
+                                 "https://x.preview.emergentagent.com.evil.example", "https://preview.emergentagent.com",
+                                 "not a url", "https://emergent.host/x.preview.emergentagent.com"])
+def test_the_published_app_and_lookalike_addresses_stay_live(monkeypatch, url):
+    monkeypatch.setattr(provider, "_preview_generate", None)
+    monkeypatch.delenv("APOLLO_PREVIEW_SIMULATOR", raising=False)
+    monkeypatch.setenv("APP_URL", url)
+    assert provider.preview_environment() is False
+    with pytest.raises(RuntimeError):
+        provider.register_preview_handler(_handler)
+    assert provider.get_provider_mode() == "live"
+
+
 def test_a_stale_apollo_env_preview_cannot_switch_production_to_the_simulator(monkeypatch):
     """The deployment still carries APOLLO_ENV=preview from an earlier design; it must decide nothing."""
     monkeypatch.setattr(provider, "_preview_generate", None)
     monkeypatch.delenv("APOLLO_PREVIEW_SIMULATOR", raising=False)
+    monkeypatch.delenv("APP_URL", raising=False)
     monkeypatch.setenv("APOLLO_ENV", "preview")
     monkeypatch.setenv("APOLLO_PROVIDER_MODE", "simulated")
     assert provider.preview_environment() is False
@@ -85,7 +113,7 @@ def test_production_startup_loads_no_simulation_module():
     import os
     import subprocess
     import sys
-    env = {k: v for k, v in os.environ.items() if k != "APOLLO_PREVIEW_SIMULATOR"}
+    env = {k: v for k, v in os.environ.items() if k not in ("APOLLO_PREVIEW_SIMULATOR", "APP_URL")}
     probe = ("import sys, server; "
              "loaded = sorted(m for m in sys.modules if m.startswith('services.higgins.preview') or m.endswith('preview_analysis')); "
              "print('LOADED=' + ','.join(loaded))")

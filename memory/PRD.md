@@ -1,3 +1,24 @@
+## Preview never calls live Gemini — the simulator answers from the Apollo KB (2026-10-24)
+**Why preview went live:** commit 6f025ec (23 Oct 00:59 UTC, an agent fix for production answering from the
+simulator) made the simulator depend on `APOLLO_PREVIEW_SIMULATOR=on` in the preview-only slot. That value was never
+set, so from 23 Oct 00:44 UTC the preview server ran `provider_mode=live` and billed Gemini.
+**Fix:** `provider.preview_environment()` = `APOLLO_PREVIEW_SIMULATOR=on` OR the Emergent preview workspace itself:
+`APP_URL` host ends with `.preview.emergentagent.com` (set by the workspace's supervisor, never in `.env`/deployment
+secrets; the published app is never served from that domain). Lookalikes/empty/other hosts → live. Startup log now
+`provider_mode=preview`; verified 0 live `gemini_usage` records after restart (only `extra.simulated=True`).
+**Owner directive:** "calls to gemini in preview should go to simulation gemini. Simulation gemini can use apollo kb as
+its information base." `knowledge.related()` / `related_share()` (same-subject match on titles; saved `gemini_answer`
+entries never used) feeds `preview_simulator.simulate_generate`:
+- Higgins chat miss → quotes up to 2 KB entries with publisher, provenance and link, or says the KB has nothing.
+- Investigation → real evidence-derived result + "From Apollo's knowledge base (general knowledge, not a finding…)"
+  in `explanationMarkdown` (never a finding, no source ids).
+- Device Protection explanation (`ModelExplanation` schema) → labelled SIMULATED, KB excerpt if any.
+- Usage records carry `extra.apollo_kb` (kb ids used).
+**Never stored as real:** chat skips `remember_gemini_answer` when `final.simulated`; `protection_explanations` returns
+`source: "preview_simulator"` without caching; the app never keeps it (`protectionExplanation.ts`) and labels it SIMULATED.
+Tests: `test_provider_environment_guard.py` (+workspace/lookalike cases), `test_preview_simulator_specifics.py` (+6),
+`test_protection_explanations.py` (+1); 80 related backend tests pass. Production unchanged (stays live) on next publish.
+
 ## Change banner: Higgins' "what to do now" line (2026-06)
 - `whatToDoNow(change)` in `src/domain/deviceProtectionChanges.ts`: one short, pre-written next step per change kind
   (USB debugging, Developer options, outside-store installs, other VPN, app scanning, screen lock, device admin,

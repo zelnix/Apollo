@@ -218,6 +218,40 @@ async def search(question: str, limit: int = 2) -> list[dict]:
     return picked
 
 
+def related_share(entry: dict, query_terms: list[str]) -> float:
+    """How strongly a sourced entry is ON THE SAME SUBJECT as the text: the share of its title found in the text.
+    0 when it isn't related. Looser than _accepts — it needn't answer a question word for word — and saved AI
+    answers never count, because they aren't sourced knowledge."""
+    if entry.get("kind") == "gemini_answer":
+        return 0.0
+    title_terms = terms(entry.get("title") or "")
+    if not title_terms:
+        return 0.0
+    wanted = set(query_terms)
+    shared = sum(1 for term in title_terms if term in wanted)
+    share = shared / len(title_terms)
+    if len(query_terms) <= 6:  # a question: it must share its subject words with the entry
+        return share if shared >= min(2, len(query_terms)) else 0.0
+    return share if shared >= 2 and share >= 0.5 else 0.0  # evidence: half the entry's title must be in it
+
+
+async def related(text: str, limit: int = 2) -> list[dict]:
+    """Sourced entries on the same subject as `text`, best first. Used by the preview simulator, which answers
+    from Apollo's own library instead of calling Gemini. Never raises: no index or no match means no entries."""
+    query_terms = terms(text)[:30]
+    if not query_terms:
+        return []
+    try:
+        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}, "kind": {"$ne": "gemini_answer"}},
+                                               {"_id": 0, "sketch": 0, "score": {"$meta": "textScore"}}
+                                               ).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
+    except Exception:  # noqa: BLE001
+        return []
+    scored = [(share, row["score"], row) for row in rows if (share := related_share(row, query_terms)) > 0]
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [row for _share, _score, row in scored[:limit]]
+
+
 def excerpt(body: str, query_terms: list[str], max_chars: int = 900) -> str:
     """The passages of the entry that best match the question, verbatim and in their original order."""
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n|\n", body or "") if len(p.strip()) > 1]

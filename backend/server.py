@@ -54,8 +54,8 @@ from services.seed_learning_images import router as seed_images_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # ── Preview provider ──────────────────────────────────────────────────
-    # The simulator is installed ONLY when APOLLO_PREVIEW_SIMULATOR=on. The preview/ directory is deployed
-    # with everything else, so its presence decides nothing; any other value means live Gemini.
+    # The simulator is installed ONLY on the preview server (see provider.preview_environment). The preview/
+    # directory is deployed with everything else, so its presence decides nothing; production stays live Gemini.
     from services.higgins.provider import get_provider_mode, preview_environment
     if preview_environment():
         from services.higgins.preview.dispatch import install_preview_provider

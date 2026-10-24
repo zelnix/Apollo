@@ -94,3 +94,73 @@ def test_the_brand_article_agrees_with_the_name():
     out = _result("ING: confirm your account at https://abc.net.au/ing")
     assert "an ING" in out["overview"]
     assert " a ING" not in out["overview"]
+
+
+# ── Apollo's knowledge base as the simulator's information base ─────────────
+
+from services.higgins.chat import ModelChatReply  # noqa: E402
+from services.higgins.knowledge import related_share, terms  # noqa: E402
+from services.higgins.preview.preview_simulator import query_text  # noqa: E402
+from services.protection_explanations import ModelExplanation  # noqa: E402
+
+KB_ENTRY = {"kb_id": "kb-1", "kind": "researched", "title": "Romance scams", "publisher": "Scamwatch",
+            "url": "https://www.scamwatch.gov.au/types-of-scams/romance-scams", "authority_tier": "tier_1_authoritative",
+            "jurisdiction": "AU", "provenance": {},
+            "body": "Romance scammers create fake profiles on dating sites and social media.\n\n"
+                    "They build trust quickly, then ask for money for an emergency or travel.\n\nNever send money to someone you haven't met."}
+
+
+def _chat(question: str, kb=None) -> dict:
+    blocks = evidence_blocks([types.Content(role="user", parts=[types.Part(text=json.dumps({"message": question}))])])
+    return json.loads(simulated_text(Purpose.ORDINARY_CHAT, True, blocks, kb=kb, query=question))
+
+
+def test_a_higgins_question_is_answered_from_the_knowledge_base_with_its_source():
+    reply = _chat("what is a romance scam", [KB_ENTRY])
+    ModelChatReply.model_validate(reply)  # the real chat validator accepts it
+    assert reply["answer"].startswith("SIMULATED — No Gemini API call was made")
+    assert "Scamwatch — “Romance scams”" in reply["answer"]
+    assert "fake profiles on dating sites" in reply["answer"]
+    assert "Read the original: https://www.scamwatch.gov.au/types-of-scams/romance-scams" in reply["answer"]
+    assert reply["evidenceBasis"] == ["preview_simulator", "apollo_kb"]
+
+
+def test_with_nothing_in_the_knowledge_base_it_says_so_and_invents_nothing():
+    reply = _chat("what is a romance scam", [])
+    ModelChatReply.model_validate(reply)
+    assert "knowledge base has nothing on this yet" in reply["answer"]
+    assert reply["evidenceBasis"] == ["preview_simulator"]
+
+
+def test_an_investigation_adds_knowledge_as_general_knowledge_never_as_a_finding():
+    result = json.loads(simulated_text(Purpose.INVESTIGATION, True, evidence_blocks(_contents(BANK_TEXT)), kb=[KB_ENTRY]))
+    assert "**From Apollo's knowledge base** (general knowledge, not a finding about what you sent)" in result["explanationMarkdown"]
+    assert "Scamwatch: “Romance scams”" in result["explanationMarkdown"]
+    assert all("Romance" not in f["text"] for f in result["findings"])
+    assert result["sourceIds"] == []
+
+
+def test_a_protection_explanation_has_the_real_shape_and_is_labelled_simulated():
+    blocks = evidence_blocks([types.Content(role="user", parts=[types.Part(text=json.dumps({"protection": "Samsung Smart Call"}))])])
+    query = query_text("ordinary_chat", blocks)
+    assert query == "Samsung Smart Call"
+    data = json.loads(simulated_text(Purpose.ORDINARY_CHAT, True, blocks, kb=[], query=query, response_schema=ModelExplanation))
+    explanation = ModelExplanation.model_validate(data)
+    assert explanation.what.startswith("SIMULATED") and "Samsung Smart Call" in explanation.what
+    assert "nothing on this protection yet" in explanation.why
+
+
+def test_the_lookup_uses_the_evidence_for_an_investigation_and_the_question_otherwise():
+    assert query_text("investigation", evidence_blocks(_contents(BANK_TEXT))).startswith("CommBank:")
+    assert query_text("ordinary_chat", evidence_blocks([types.Content(role="user", parts=[
+        types.Part(text=json.dumps({"message": "is this a romance scam\n\nApollo context: ..."}))])])) == "is this a romance scam"
+
+
+def test_only_sourced_entries_on_the_same_subject_count():
+    question = terms("how do romance scams work")
+    assert related_share(KB_ENTRY, question) == 1.0
+    assert related_share(KB_ENTRY, terms("how do investment scams work")) == 0.0
+    assert related_share({**KB_ENTRY, "kind": "gemini_answer"}, question) == 0.0, "saved AI answers are not sourced knowledge"
+    evidence = terms(BANK_TEXT)
+    assert related_share({**KB_ENTRY, "title": "CommBank NetBank password scam"}, evidence) > 0
+    assert related_share({**KB_ENTRY, "title": "Toll road text message scam"}, evidence) == 0.0

@@ -345,7 +345,9 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         parsed = ModelChatReply(answer="My answer came back in a form Apollo couldn't read, so I have nothing to show you for that question. "
                                        "Nothing has been made up in its place — please ask again.")
     else:
-        await knowledge.remember_gemini_answer(clean, parsed.answer)
+        # A simulated (preview) answer is never saved as if Gemini had written it.
+        if not final.simulated:
+            await knowledge.remember_gemini_answer(clean, parsed.answer)
     investigation_available = parsed.recommend_investigation or parsed.destination is not None
     actions = []
     if investigation_available:

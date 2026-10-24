@@ -9,14 +9,15 @@ NO-FALLBACK CONTRACT:
     substitute, no "try again with fake data" path. Higgins surfaces the honest
     failure to the person.
 
-PREVIEW vs PRODUCTION — decided by APOLLO_PREVIEW_SIMULATOR, nothing else:
-    Preview  — APOLLO_PREVIEW_SIMULATOR=on (set in the preview/test slot only). server.py
+PREVIEW vs PRODUCTION — decided by where this server runs:
+    Preview  — the Emergent preview workspace (its process manager sets APP_URL to a
+               *.preview.emergentagent.com address), or APOLLO_PREVIEW_SIMULATOR=on. server.py
                installs the simulator at startup. generate() routes through it. No Gemini calls.
-    Production — the variable is missing or holds anything other than "on".
-               _preview_generate stays None and cannot be installed. generate() calls
-               live Gemini.
+    Production — anything else. The published app is never served from the preview domain, and the
+               workspace's APP_URL is never copied into a deployment's settings. _preview_generate
+               stays None and cannot be installed. generate() calls live Gemini.
     The preview/ directory IS deployed with the rest of the project, so its presence
-    proves nothing; a missing or mistyped value always means live Gemini, never fake
+    proves nothing; a missing or unrecognised address always means live Gemini, never fake
     answers. (APOLLO_ENV is deliberately NOT used: an old "preview" value of it still
     sits in the deployment's secrets.)
 """
@@ -31,6 +32,7 @@ import uuid
 import logging as _logging
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from google import genai
@@ -49,9 +51,18 @@ _GEMINI_DEV_API_KEY = os.getenv("GEMINI_DEV_API_KEY", "").strip()
 _gateway_log = _logging.getLogger("apollo.gateway")
 _gateway_log.info("gemini_key_configured=%s", bool(GEMINI_API_KEY))
 
+_PREVIEW_HOST_SUFFIX = ".preview.emergentagent.com"
+
+
 def preview_environment() -> bool:
-    """True only when this server is explicitly the preview: APOLLO_PREVIEW_SIMULATOR=on."""
-    return os.getenv("APOLLO_PREVIEW_SIMULATOR", "").strip().lower() == "on"
+    """True only on the preview server: the Emergent preview workspace, or APOLLO_PREVIEW_SIMULATOR=on.
+
+    The workspace is recognised by APP_URL, which its own process manager sets to the preview address.
+    The published app is never served from *.preview.emergentagent.com, so production stays live."""
+    if os.getenv("APOLLO_PREVIEW_SIMULATOR", "").strip().lower() == "on":
+        return True
+    host = (urlparse(os.getenv("APP_URL", "").strip()).hostname or "").lower()
+    return host.endswith(_PREVIEW_HOST_SUFFIX)
 
 
 # ── Preview handler slot ────────────────────────────────────────────────────
@@ -71,7 +82,7 @@ def register_preview_handler(handler) -> None:
     Refuses outside an explicit preview environment, so the simulator can never answer in production."""
     global _preview_generate
     if not preview_environment():
-        raise RuntimeError("The preview simulator can only be installed when APOLLO_PREVIEW_SIMULATOR=on.")
+        raise RuntimeError("The preview simulator can only be installed on the preview server.")
     _preview_generate = handler
     _gateway_log.info("preview handler registered")
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
