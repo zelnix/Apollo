@@ -6,7 +6,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "protection_explanation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
@@ -25,6 +25,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // `deviceSnapshot` is the live reading of this phone's own Apollo state (protection
   // statuses, permission states, settings values, counts and headlines Apollo wrote).
   // It carries no message content, screenshots, files, links or secrets.
+  // A Device Protection explanation: the protection's name and how widely it applies — never its state on this device.
+  protection_explanation: new Set(["protectionId", "title", "platform", "osVersion", "oem", "model", "scope"]),
   higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId", "deviceSnapshot"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),

@@ -1,7 +1,7 @@
 /**
  * Shared contracts for everything in the Device area that protects the person.
  *
- * Both halves of the Device Capabilities engine speak this language:
+ * Both halves of the Device Protections engine speak this language:
  *   • `deviceCapabilities.ts`      — Apollo's own capabilities and the provider protections it reads.
  *   • `deviceSecurityCatalogue.ts` — every OS/OEM protection Apollo can usefully guide on.
  *
@@ -44,31 +44,70 @@ export type DeviceProtectionState =
   /** Apollo is not on the device itself (browser preview), so nothing could be read. */
   | "not_readable_here";
 
-export const PROTECTION_STATE_LABEL: Record<DeviceProtectionState, string> = {
-  active: "Active on your device",
-  as_recommended: "Set as recommended",
-  installed_not_default: "Installed, not active",
-  off: "Needs your attention",
-  out_of_date: "Out of date",
-  absent: "Not on this device",
-  unknown: "Apollo couldn’t check",
-  not_verifiable: "Apollo can’t verify this",
-  not_readable_here: "Can’t be read in this preview",
+/**
+ * The user-facing health of a protection — compared with the recommended state, never with what Apollo
+ * may access. Unknown and non-compliant stay distinct: an unreadable setting is "Check manually" or
+ * "Unable to check", never unsafe, and never protected.
+ */
+export type ProtectionHealth = "protected" | "review" | "action" | "check_manually" | "unable" | "not_available";
+
+export const PROTECTION_HEALTH_LABEL: Record<ProtectionHealth, string> = {
+  protected: "Protected",
+  review: "Review recommended",
+  action: "Action needed",
+  check_manually: "Check manually",
+  unable: "Unable to check",
+  not_available: "Not available",
 };
+
+/** Where a state came from. A person's own say-so is never Apollo verification. */
+export type ProtectionEvidence = "apollo_verified" | "check_manually" | "unable_to_check" | "not_checked" | "not_applicable";
+
+export const PROTECTION_EVIDENCE_LABEL: Record<ProtectionEvidence, string> = {
+  apollo_verified: "Apollo verified",
+  check_manually: "Check manually",
+  unable_to_check: "Unable to check",
+  not_checked: "Not checked",
+  not_applicable: "Not applicable",
+};
+
+const HEALTH_OF: Record<DeviceProtectionState, ProtectionHealth> = {
+  active: "protected", as_recommended: "protected", installed_not_default: "review", off: "action", out_of_date: "review",
+  absent: "not_available", unknown: "unable", not_verifiable: "check_manually", not_readable_here: "unable",
+};
+const EVIDENCE_OF: Record<DeviceProtectionState, ProtectionEvidence> = {
+  active: "apollo_verified", as_recommended: "apollo_verified", installed_not_default: "apollo_verified", off: "apollo_verified",
+  out_of_date: "apollo_verified", absent: "not_applicable", unknown: "unable_to_check", not_verifiable: "check_manually", not_readable_here: "not_checked",
+};
+
+export function healthFor(state: DeviceProtectionState, override?: ProtectionHealth): ProtectionHealth {
+  // Only a real read can move a state's health, and only between the read outcomes.
+  return override && EVIDENCE_OF[state] === "apollo_verified" ? override : HEALTH_OF[state];
+}
+export const evidenceFor = (state: DeviceProtectionState): ProtectionEvidence => EVIDENCE_OF[state];
+
+/** The label shown for a state: "Set as recommended" for a safe-when-off setting, otherwise the health label. */
+export function healthLabel(state: DeviceProtectionState, health: ProtectionHealth): string {
+  return state === "as_recommended" ? "Set as recommended" : PROTECTION_HEALTH_LABEL[health];
+}
 
 /** The categories the Device area groups protections by, in reading order. */
-export type ProtectionArea = "calls_messages" | "apps" | "web" | "access" | "updates" | "recovery";
+export type ProtectionArea = "calls_messages" | "apps" | "privacy" | "web" | "access" | "updates" | "recovery";
 
 export const PROTECTION_AREA_LABEL: Record<ProtectionArea, string> = {
-  calls_messages: "Calls and messages",
-  apps: "Apps on this device",
-  web: "Web and network",
-  access: "Who can get in",
-  updates: "Updates and system",
-  recovery: "If it is lost or stolen",
+  calls_messages: "Calls, messages and spam",
+  apps: "Apps and app privileges",
+  privacy: "Permissions and privacy",
+  web: "Browser, web and network",
+  access: "Device and account security",
+  updates: "Updates and system integrity",
+  recovery: "Anti-theft and find my device",
 };
 
-export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["calls_messages", "apps", "web", "access", "updates", "recovery"];
+export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["access", "apps", "privacy", "calls_messages", "web", "updates", "recovery"];
+
+/** How widely one explanation of a protection is true — the broadest accurate scope is used for reuse. */
+export type ExplanationScope = "os" | "os_version" | "oem" | "oem_os_version" | "model";
 
 /**
  * Rows grouped by category, in reading order. Empty categories are dropped.
@@ -105,15 +144,19 @@ export interface DeviceProtectionRow {
   /** Which category this protection belongs to on the Device screen. */
   area: ProtectionArea;
   state: DeviceProtectionState;
+  /** Health compared with the recommended state. */
+  health: ProtectionHealth;
+  /** Where the state came from — Apollo's read, or nothing Apollo could read. */
+  evidence: ProtectionEvidence;
   stateLabel: string;
   /** The honest sentence about this protection's state on this device. */
   detail: string;
   /** Who owns this protection. Apollo never substitutes its own name. */
   attributedTo: string;
-  /** What it is, in plain words. */
-  what: string;
-  /** How it helps protect the person. */
-  benefit: string;
+  /** Worth having for some people, not for everyone — never listed under "Needs checking". */
+  optional?: boolean;
+  /** How widely Higgins' explanation of this protection is true (what it is, why it matters). */
+  explanationScope: ExplanationScope;
   /** Provider rows only: whether Apollo may use the provider's classification as evidence. */
   classificationAccessible?: boolean;
   /** Provider rows only: the plain statement about that evidence. */
@@ -122,9 +165,69 @@ export interface DeviceProtectionRow {
   guidance?: ProtectionGuidance;
 }
 
-/** Rows worth acting on: not confirmed active, and something can actually be done about it. */
+/** Verified settings that don't meet the recommended state. Never an unread one. */
 export function protectionsNeedingAttention(rows: DeviceProtectionRow[]): DeviceProtectionRow[] {
-  return rows.filter((r) =>
-    r.state !== "active" && r.state !== "as_recommended" && r.state !== "absent"
-    && r.state !== "not_readable_here" && !!r.guidance);
+  return rows.filter((r) => r.health === "action" || r.health === "review");
+}
+
+export interface DeviceProtectionGroups {
+  /** Verified settings that do not meet the recommended protection state, most serious first. */
+  needsAttention: DeviceProtectionRow[];
+  /** Important protections Apollo cannot verify automatically. */
+  needsChecking: DeviceProtectionRow[];
+  /** Verified compliant — collapsed by default. */
+  protectedRows: DeviceProtectionRow[];
+  /** Worth it for some people only, whatever their state. */
+  optional: DeviceProtectionRow[];
+  notAvailable: DeviceProtectionRow[];
+}
+
+/** Exception-first grouping for the Device Protections screen. */
+export function groupDeviceProtections(rows: DeviceProtectionRow[]): DeviceProtectionGroups {
+  const optional = rows.filter((r) => r.optional && r.health !== "action" && r.health !== "review");
+  const core = rows.filter((r) => !optional.includes(r));
+  return {
+    needsAttention: [...core.filter((r) => r.health === "action"), ...core.filter((r) => r.health === "review")],
+    needsChecking: core.filter((r) => r.health === "check_manually" || r.health === "unable"),
+    protectedRows: core.filter((r) => r.health === "protected"),
+    optional,
+    notAvailable: core.filter((r) => r.health === "not_available"),
+  };
+}
+
+export type DeviceProtectionsOverall = "action" | "review" | "check" | "protected" | "unread";
+
+export interface DeviceProtectionsSummary { overall: DeviceProtectionsOverall; headline: string; detail: string }
+
+/** The one-line status for the screen header and Home. Counts only what was really read. */
+export function summariseDeviceProtections(groups: DeviceProtectionGroups, hasNativeHost: boolean): DeviceProtectionsSummary {
+  const attention = groups.needsAttention.length;
+  const checking = groups.needsChecking.length;
+  const ok = groups.protectedRows.length;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (!hasNativeHost) return { overall: "unread", headline: "Not checked here", detail: "Open Apollo on your device to check its own protections." };
+  const checkLine = checking ? `${plural(checking, "to check manually", "to check manually")}.` : "";
+  if (attention) {
+    const actions = groups.needsAttention.filter((r) => r.health === "action").length;
+    return { overall: actions ? "action" : "review", headline: `${plural(attention, "setting needs", "settings need")} attention`, detail: [ok ? `${ok} protected.` : "", checkLine].filter(Boolean).join(" ") };
+  }
+  if (ok) return { overall: checking ? "check" : "protected", headline: "Verified settings are as recommended", detail: [`${ok} protected.`, checkLine].filter(Boolean).join(" ") };
+  if (checking) return { overall: "check", headline: "Nothing verified needs attention", detail: `Apollo couldn't read these automatically — ${checkLine}` };
+  return { overall: "unread", headline: "Nothing read yet", detail: "Apollo hasn't been able to read this device's protections." };
+}
+
+/**
+ * Higgins' fixed sentence for a protection's current state — deterministic, from the evidence only.
+ * No Gemini call is ever needed to say "This is already set as recommended."
+ */
+export function protectionStatusLine(row: Pick<DeviceProtectionRow, "health" | "detail"> & { state?: DeviceProtectionState }): string {
+  if (row.state === "not_readable_here") return `Apollo couldn't read this here, so it isn't marked safe or unsafe. ${row.detail}`;
+  switch (row.health) {
+    case "protected": return `This is already set as recommended. ${row.detail}`;
+    case "review": return `Worth reviewing. ${row.detail}`;
+    case "action": return `This needs changing. ${row.detail}`;
+    case "check_manually": return `Apollo can't read this setting on this device, so it isn't marked safe or unsafe. ${row.detail}`;
+    case "unable": return `Apollo tried to read this and couldn't, so its state is unknown — not unsafe. ${row.detail}`;
+    default: return `This protection isn't available on this device. ${row.detail}`;
+  }
 }

@@ -61,6 +61,11 @@ const AREA_GATES: Record<ProtectionAreaId, GateId[]> = {
   device_internet: ["device", "network"],
 };
 
+/** Which protection area a Gate belongs to — used to open its details from a flat list. */
+export function areaOfGate(gateId: GateId): ProtectionAreaId {
+  return (Object.keys(AREA_GATES) as ProtectionAreaId[]).find((area) => AREA_GATES[area].includes(gateId)) ?? "device_internet";
+}
+
 /** Friendly capability labels per gate, used inside the area detail. */
 const CAPABILITY_LABELS: Record<GateId, string> = {
   site: "Website filtering",

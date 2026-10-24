@@ -22,6 +22,7 @@ import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
 import { MODAL_ROUTES } from "@/src/navigation/modalRoutes";
 import { ApolloProvider } from "@/src/store/ApolloContext";
 import { loadPersonalData } from "@/src/store/personalDataStore";
+import { startDeviceProtectionMonitor } from "@/src/store/deviceProtectionStore";
 import { useTheme } from "@/src/theme";
 
 // Production: suppress LogBox entirely. Development: keep it active for diagnosis.
@@ -74,6 +75,8 @@ export default function RootLayout() {
   useEffect(() => { if (loaded) void SplashScreen.hideAsync().catch(() => {}); }, [loaded]);
   // Pre-load the user's personal data into memory so the redaction engine can use it synchronously.
   useEffect(() => { void loadPersonalData().catch(() => undefined); }, []);
+  // Device Protections: read and compare this device's settings on open and on return to Apollo.
+  useEffect(() => { if (!SECURITY_BOOT_ERROR) startDeviceProtectionMonitor(); }, []);
 
   useEffect(() => {
     if (!Notifications || SECURITY_BOOT_ERROR) return;

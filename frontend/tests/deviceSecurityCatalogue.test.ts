@@ -36,15 +36,14 @@ test("the catalogue covers every protection area the objective names", () => {
 test("every entry answers the three questions and never claims a state it cannot read", () => {
   for (const platform of ["android", "ios"] as const) {
     for (const row of securityProtectionRows(platform, read(), NOW)) {
-      assert.ok(row.what.length > 20, `${row.id}: what it does`);
-      assert.ok(row.benefit.length > 20, `${row.id}: how it helps`);
       assert.ok(row.guidance, `${row.id}: must carry guidance even when unreadable`);
       assert.ok(row.guidance!.steps.length >= 2, `${row.id}: must have real steps`);
       assert.ok(row.guidance!.recommended.length > 20, `${row.id}: must state the recommended configuration`);
       assert.ok(row.attributedTo.length > 0, `${row.id}: must name an owner`);
       // With an empty read, nothing may be reported as on or off.
       assert.equal(row.state, "not_verifiable");
-      assert.equal(row.stateLabel, "Apollo can’t verify this");
+      assert.equal(row.stateLabel, "Check manually");
+      assert.equal(row.health, "check_manually");
       assert.equal(row.guidance!.selfCheck, true);
       assert.doesNotMatch(row.title, /verdict/i);
     }
@@ -62,7 +61,7 @@ test("screen lock reports exactly what the read said, including biometrics", () 
 
   const off = securityProtectionRows("android", read({ screenLockSecure: false }), NOW).find((r) => r.id === "screen_lock")!;
   assert.equal(off.state, "off");
-  assert.equal(off.stateLabel, "Needs your attention");
+  assert.equal(off.stateLabel, "Action needed");
 
   const noBio = securityProtectionRows("android", read({ screenLockSecure: true, biometricStatus: "none_enrolled" }), NOW).find((r) => r.id === "screen_lock")!;
   assert.match(noBio.detail, /none is set up yet/);
@@ -81,8 +80,13 @@ test("security patch age is a fact, and a stale patch is named as out of date", 
 
   const stale = securityProtectionRows("android", read({ securityPatch: "2025-06-01" }), NOW).find((r) => r.id === "os_updates")!;
   assert.equal(stale.state, "out_of_date");
-  assert.equal(stale.stateLabel, "Out of date");
+  // Over a year behind needs action; a few months behind is worth reviewing.
+  assert.equal(stale.health, "action");
+  assert.equal(stale.stateLabel, "Action needed");
   assert.match(stale.detail, /about 13 months old/);
+  const behind = securityProtectionRows("android", read({ securityPatch: "2025-12-01" }), NOW).find((r) => r.id === "os_updates")!;
+  assert.equal(behind.health, "review");
+  assert.equal(behind.stateLabel, "Review recommended");
 });
 
 test("the app scanner is attributed to whoever answered, not to Apollo", () => {

@@ -27,6 +27,7 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
+import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
 import { buildHeroLines, buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
 import { STATE_LABEL } from "@/src/domain/types";
@@ -38,12 +39,27 @@ import {
   formatDateTime,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
-import { capabilityHealth, type CapabilityHealth } from "@/src/domain/deviceCapabilities";
-import { readDeviceCapabilityState } from "@/src/security/deviceCapabilityState";
+import { ProtectionChangeBanner } from "@/src/components/device/ProtectionChangeBanner";
 import { getBaseline } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { useDeviceProtections } from "@/src/store/deviceProtectionStore";
+import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+
+/** Short chip for the Home protection cards. Counts only what a real read said. */
+type CardOverall = "action" | "review" | "check" | "protected" | "unread" | "checking";
+const CARD_CHIP: Record<CardOverall, string> = {
+  action: "Needs attention", review: "Review", check: "To check", protected: "Protected", unread: "Not checked", checking: "Checking",
+};
+function chipColors(overall: CardOverall, c: ThemeColors) {
+  switch (overall) {
+    case "action": return { dot: c.biting, bg: c.bitingTint, text: c.bitingText };
+    case "review": return { dot: c.growling, bg: c.growlingTint, text: c.growlingText };
+    case "check": return { dot: c.gold, bg: c.goldTint, text: c.onSurface };
+    case "protected": return { dot: c.resting, bg: c.restingTint, text: c.restingText };
+    default: return { dot: c.muted, bg: c.unknownTint, text: c.unknownText };
+  }
+}
 
 /** Apollo is an animated character — one state → one GIF.  Matches ApolloHero.tsx. */
 const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = {
@@ -253,18 +269,14 @@ export default function Home() {
     }, [])
   );
 
-  // Capability health for the Device card. Read on focus so a permission granted in Settings shows
-  // up on return. A failed or absent read produces no score — never a green light.
-  const [capHealth, setCapHealth] = React.useState<CapabilityHealth | null>(null);
-  useFocusEffect(
-    React.useCallback(() => {
-      let active = true;
-      void readDeviceCapabilityState()
-        .then((state) => { if (active) setCapHealth(capabilityHealth(state.view, state.hasNativeHost)); })
-        .catch(() => { if (active) setCapHealth(null); });
-      return () => { active = false; };
-    }, [])
+  // Exception-first summaries for the two protection cards. The Device read happens once per open
+  // (and on return to Apollo); a failed or absent read produces "Not checked" — never a green light.
+  const deviceProtections = useDeviceProtections();
+  const apolloSummary = React.useMemo(
+    () => summariseApolloProtections(groupApolloProtections(health.gates), health.checking),
+    [health.gates, health.checking],
   );
+  const deviceSummary = deviceProtections?.summary ?? null;
 
   // ── Auto-retrofit on first load ──
   const [showRetrofit, setShowRetrofit] = React.useState(false);
@@ -436,18 +448,21 @@ export default function Home() {
           </Pressable>
         </View>
 
+        {/* A Device Protection changed since the person last looked — stays until they open it. */}
+        <ProtectionChangeBanner style={{ marginHorizontal: spacing.xl, marginTop: spacing.sm }} testID="home-protection-change" />
+
         {/* Recovery banner */}
         <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
           <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
         </View>
 
-        {/* ── Two Side-by-Side Cards ── */}
+        {/* ── Two Side-by-Side Cards — what needs you first, healthy items as a count ── */}
         <View style={[s.twoCards, compact && { gap: spacing.sm, paddingHorizontal: spacing.lg }]}>
-          {/* Protection Status Card */}
+          {/* Apollo Protections Card */}
           <Pressable
             testID="home-protection-card"
             accessibilityRole="button"
-            accessibilityLabel="Protection Status"
+            accessibilityLabel={`Apollo Protections. ${apolloSummary.headline}. ${apolloSummary.detail}`}
             onPress={() => router.push("/(tabs)/protection")}
             style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
           >
@@ -455,19 +470,20 @@ export default function Home() {
               <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
                 <ShieldCheck size={compact ? 14 : 16} color={colors.brand} />
               </View>
-              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Protection</Text>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]} numberOfLines={2}>Apollo Protections</Text>
             </View>
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Gate health, limitations and action needed.</Text>
+            <HomeCardChip overall={apolloSummary.overall} label={apolloSummary.overall === "action" || apolloSummary.overall === "review" || apolloSummary.overall === "check" ? apolloSummary.headline : CARD_CHIP[apolloSummary.overall]} testID="home-protection-chip" />
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3} testID="home-protection-summary">{apolloSummary.detail}</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
               <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: colors.onBrand }]}>View</Text>
             </View>
           </Pressable>
 
-          {/* Device Protection Card */}
+          {/* Device Protections Card */}
           <Pressable
             testID="home-device-card"
             accessibilityRole="button"
-            accessibilityLabel="Device Protection"
+            accessibilityLabel={`Device Protections. ${deviceSummary ? `${deviceSummary.headline}. ${deviceSummary.detail}` : "Reading this device."}`}
             onPress={() => router.push("/device-protection")}
             style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
           >
@@ -475,25 +491,11 @@ export default function Home() {
               <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: colors.goldTint }]}>
                 <Smartphone size={compact ? 14 : 16} color={colors.gold} />
               </View>
-              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Device</Text>
-              {capHealth ? (() => {
-                const band = capHealth.band === "green"
-                  ? { dot: colors.resting, bg: colors.restingTint, text: colors.restingText }
-                  : capHealth.band === "amber"
-                    ? { dot: colors.growling, bg: colors.growlingTint, text: colors.growlingText }
-                    : capHealth.band === "red"
-                      ? { dot: colors.biting, bg: colors.bitingTint, text: colors.bitingText }
-                      : { dot: colors.muted, bg: colors.unknownTint, text: colors.unknownText };
-                return (
-                  <View style={[s.scoreChip, { backgroundColor: band.bg, borderColor: band.dot }]} testID="home-device-capability-score">
-                    <View style={[s.scoreDot, { backgroundColor: band.dot }]} />
-                    <Text style={[s.scoreText, { color: band.text }]} numberOfLines={1}>{capHealth.score !== null ? `${capHealth.score}%` : "Not read"}</Text>
-                  </View>
-                );
-              })() : null}
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]} numberOfLines={2}>Device Protections</Text>
             </View>
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>
-              {capHealth ? `${capHealth.score !== null ? `${capHealth.label}. ` : ""}${capHealth.detail}` : "Device capabilities, protection and check history."}
+            <HomeCardChip overall={deviceSummary?.overall ?? "checking"} label={CARD_CHIP[deviceSummary?.overall ?? "checking"]} testID="home-device-capability-score" />
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3} testID="home-device-summary">
+              {deviceSummary ? [deviceSummary.headline, deviceSummary.detail].filter(Boolean).join(". ").replace(/\.\./g, ".") : "Reading this device’s settings…"}
             </Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
               <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>View</Text>
@@ -612,6 +614,19 @@ export default function Home() {
 
       </ScrollView>
       <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} auto />
+    </View>
+  );
+}
+
+/** The status chip on a Home protection card. */
+function HomeCardChip({ overall, label, testID }: { overall: CardOverall; label: string; testID: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const palette = chipColors(overall, colors);
+  return (
+    <View style={[s.scoreChip, { backgroundColor: palette.bg, borderColor: palette.dot, alignSelf: "flex-start" }]} testID={testID}>
+      <View style={[s.scoreDot, { backgroundColor: palette.dot }]} />
+      <Text style={[s.scoreText, { color: palette.text }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }

@@ -42,8 +42,10 @@ import type { GateId, GatePresentation, GateStatusLabel } from "@/src/domain/gat
 import { gateTone } from "@/src/domain/gates";
 import { GATE_CONTENT } from "@/src/domain/gateContent";
 import { userActionRoute } from "@/src/domain/userActions";
+import { apolloProtectionExplanation, type ExplanationResult } from "@/src/higgins/protectionExplanation";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { useApollo } from "@/src/store/ApolloContext";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -831,6 +833,20 @@ export default function GateDetailsScreen() {
   const content = GATE_CONTENT[gateId];
   const Icon = GATE_ICONS[gateId] ?? ShieldCheck;
 
+  // Apollo's one fixed explanation of this protection — the same text for everyone, no AI call.
+  // Fetched once this install has its device identity (a cold deep link can arrive before it).
+  const { deviceId } = useApollo();
+  const [explanation, setExplanation] = useState<ExplanationResult | null>(null);
+  useEffect(() => {
+    if (!deviceId) return;
+    let cancelled = false;
+    setExplanation(null);
+    apolloProtectionExplanation(gateId)
+      .then((result) => { if (!cancelled) setExplanation(result); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [gateId, deviceId]);
+
   // Loading / not found
   if (health.checking || !gate) {
     return (
@@ -956,6 +972,23 @@ export default function GateDetailsScreen() {
           </View>
           <Text style={s.sectionBody}>{content.whatItDoes}</Text>
         </Card>
+
+        {/* Why it matters — Apollo's fixed explanation */}
+        {explanation ? (
+          <Card style={s.sectionCard} testID="gate-why-it-matters">
+            <View style={s.sectionHeader}>
+              <View style={[s.sectionIcon, { backgroundColor: colors.surfaceTertiary }]}>
+                <ShieldCheck size={18} color={colors.brand} />
+              </View>
+              <Text style={s.sectionTitle}>Why it matters</Text>
+            </View>
+            <Text style={s.sectionBody}>{explanation.explanation.why}</Text>
+            <Text style={[s.sectionBody, { marginTop: spacing.sm }]}>
+              <Text style={{ fontFamily: fonts.textSemibold, color: colors.onSurface }}>Protects you against: </Text>
+              {explanation.explanation.protectsAgainst}
+            </Text>
+          </Card>
+        ) : null}
 
         {/* How this Gate works */}
         <Card style={s.sectionCard} testID="gate-how-it-works">

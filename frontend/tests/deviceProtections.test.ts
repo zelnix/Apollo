@@ -1,0 +1,154 @@
+// Device Protections + Apollo Protections: exception-first grouping, change detection and the Home banner.
+// Run: node --test tests/deviceProtections.test.ts
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { apolloProtectionGroup, groupApolloProtections, summariseApolloProtections } from "../src/domain/apolloProtections.ts";
+import { changeBanner, diffProtectionSnapshots, protectionSnapshot, unseenChanges, type ProtectionChange } from "../src/domain/deviceProtectionChanges.ts";
+import { groupDeviceProtections, summariseDeviceProtections } from "../src/domain/deviceProtectionTypes.ts";
+import { EMPTY_SECURITY_READ, securityProtectionRows, type SecurityStateRead } from "../src/domain/deviceSecurityCatalogue.ts";
+import type { GatePresentation } from "../src/domain/gates";
+
+const NOW = Date.parse("2026-06-15T12:00:00.000Z");
+const read = (over: Partial<SecurityStateRead> = {}): SecurityStateRead => ({ ...EMPTY_SECURITY_READ, ...over });
+const rows = (over: Partial<SecurityStateRead> = {}) => securityProtectionRows("android", read(over), NOW, { manufacturer: "samsung", osVersion: "15", model: "SM-S921B" });
+const snap = (over: Partial<SecurityStateRead>, at: string) => protectionSnapshot(rows(over), read(over), at);
+
+// ── Exception-first grouping ──────────────────────────────────────
+
+test("verified deviations come first, unread settings need checking, healthy ones are protected", () => {
+  const groups = groupDeviceProtections(rows({ screenLockSecure: false, developerOptions: true, usbDebugging: false, userCertificateCount: 0, rootIndicators: [] }));
+  // Action before review: no screen lock (action) ahead of developer options on without USB debugging (review).
+  assert.deepEqual(groups.needsAttention.map((r) => r.id), ["screen_lock", "developer_options"]);
+  assert.deepEqual(groups.protectedRows.map((r) => r.id).sort(), ["system_integrity", "user_certificates"]);
+  assert.ok(groups.needsChecking.some((r) => r.id === "app_scanner"));
+  for (const row of groups.needsChecking) assert.equal(row.stateLabel, "Check manually");
+  // Optional protections (SIM PIN) never crowd "Needs checking".
+  assert.ok(groups.optional.some((r) => r.id === "sim_pin"));
+  assert.ok(!groups.needsChecking.some((r) => r.optional));
+  // Every row lands in exactly one group.
+  const all = [...groups.needsAttention, ...groups.needsChecking, ...groups.protectedRows, ...groups.optional, ...groups.notAvailable];
+  assert.equal(all.length, rows({ screenLockSecure: false, developerOptions: true, usbDebugging: false, userCertificateCount: 0, rootIndicators: [] }).length);
+  assert.equal(new Set(all.map((r) => r.id)).size, all.length);
+});
+
+test("maker-specific protections are only offered on that maker's devices", () => {
+  assert.ok(rows().some((r) => r.id === "samsung_auto_blocker"));
+  assert.ok(!securityProtectionRows("android", read(), NOW, { manufacturer: "google", osVersion: "15", model: "Pixel 9" }).some((r) => r.id === "samsung_auto_blocker"));
+});
+
+test("the summary counts only what was read, and says when nothing could be", () => {
+  const attention = summariseDeviceProtections(groupDeviceProtections(rows({ screenLockSecure: false })), true);
+  assert.equal(attention.overall, "action");
+  assert.equal(attention.headline, "1 setting needs attention");
+  assert.match(attention.detail, /to check manually/);
+  const calm = summariseDeviceProtections(groupDeviceProtections(rows({ screenLockSecure: true })), true);
+  assert.equal(calm.overall, "check");
+  assert.equal(calm.headline, "Verified settings are as recommended");
+  const preview = summariseDeviceProtections(groupDeviceProtections(rows()), false);
+  assert.equal(preview.overall, "unread");
+  assert.equal(preview.headline, "Not checked here");
+});
+
+// ── Change detection ──────────────────────────────────────────────
+
+test("USB debugging being switched on is reported as exactly that", () => {
+  const before = snap({ developerOptions: true, usbDebugging: false }, "2026-06-14T09:00:00.000Z");
+  const after = snap({ developerOptions: true, usbDebugging: true }, "2026-06-15T09:00:00.000Z");
+  const changes = diffProtectionSnapshots(before, after);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].protectionId, "developer_options");
+  assert.equal(changes[0].direction, "worse");
+  assert.equal(changes[0].text, "USB debugging was turned on.");
+  assert.equal(changes[0].at, "2026-06-15T09:00:00.000Z");
+});
+
+test("a setting Apollo couldn't read on either side is never a change", () => {
+  const before = snap({ usbDebugging: null, screenLockSecure: true }, "2026-06-14T09:00:00.000Z");
+  const after = snap({ usbDebugging: true, screenLockSecure: null }, "2026-06-15T09:00:00.000Z");
+  assert.deepEqual(diffProtectionSnapshots(before, after), []);
+});
+
+test("new privileges and a removed screen lock are named; fixing them is reported as better", () => {
+  const before = snap({ screenLockSecure: true, accessibilityServices: ["TalkBack"], userCertificateCount: 0 }, "2026-06-14T09:00:00.000Z");
+  const after = snap({ screenLockSecure: false, accessibilityServices: ["TalkBack", "QuickSupport"], userCertificateCount: 1 }, "2026-06-15T09:00:00.000Z");
+  const changes = diffProtectionSnapshots(before, after);
+  assert.ok(changes.some((c) => c.protectionId === "screen_lock" && c.direction === "worse" && /removed/.test(c.text)));
+  assert.ok(changes.some((c) => c.protectionId === "accessibility_apps" && /QuickSupport was given Accessibility access/.test(c.text)));
+  assert.ok(changes.some((c) => c.protectionId === "user_certificates" && /1 new hand-installed certificate appeared/.test(c.text)));
+  const fixed = diffProtectionSnapshots(after, snap({ screenLockSecure: true, accessibilityServices: ["TalkBack", "QuickSupport"], userCertificateCount: 1 }, "2026-06-16T09:00:00.000Z"));
+  assert.deepEqual(fixed.map((c) => [c.protectionId, c.direction]), [["screen_lock", "better"]]);
+});
+
+test("any other verified health move is reported once, by name", () => {
+  const before = snap({ securityPatch: "2026-05-01" }, "2026-06-14T09:00:00.000Z");
+  const after = protectionSnapshot(securityProtectionRows("android", read({ securityPatch: "2026-05-01" }), Date.parse("2027-07-01T00:00:00.000Z")), read({ securityPatch: "2026-05-01" }), "2027-07-01T00:00:00.000Z");
+  const changes = diffProtectionSnapshots(before, after);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].text, "Security updates changed from Protected to Action needed.");
+  assert.equal(changes[0].direction, "worse");
+});
+
+// ── "Changed" tag and Home banner ────────────────────────────────
+
+const change = (id: string, protectionId: string, direction: ProtectionChange["direction"], at: string, text = `${protectionId} changed.`): ProtectionChange =>
+  ({ id, protectionId, title: protectionId, direction, text, at });
+
+test("a change stays unopened until its protection is opened, and old ones fade", () => {
+  const changes = [
+    change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z"),
+    change("b", "screen_lock", "better", "2026-06-14T09:00:00.000Z"),
+    change("c", "other_vpn", "worse", "2026-05-01T09:00:00.000Z"),
+  ];
+  assert.deepEqual(unseenChanges(changes, [], NOW).map((c) => c.id), ["a", "b"]);
+  assert.deepEqual(unseenChanges(changes, ["a"], NOW).map((c) => c.id), ["b"]);
+});
+
+test("the Home banner opens the one changed protection, or the list when several changed", () => {
+  assert.equal(changeBanner([]), null);
+  const one = changeBanner([change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on.")])!;
+  assert.equal(one.protectionId, "developer_options");
+  assert.equal(one.worse, true);
+  assert.equal(one.text, "USB debugging was turned on.");
+  const better = changeBanner([change("b", "screen_lock", "better", "2026-06-15T09:00:00.000Z")])!;
+  assert.equal(better.worse, false);
+  assert.match(better.title, /back as recommended/);
+  const many = changeBanner([
+    change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on."),
+    change("b", "other_vpn", "worse", "2026-06-15T09:00:00.000Z", "Another VPN app started routing this phone's traffic."),
+    change("c", "notification_readers", "worse", "2026-06-15T09:00:00.000Z", "X can now read your notifications."),
+  ])!;
+  assert.equal(many.protectionId, null);
+  assert.equal(many.title, "3 device protections changed");
+  assert.match(many.text, /And 1 more\.$/);
+});
+
+// ── Apollo Protections ───────────────────────────────────────────
+
+const gate = (id: string, tone: GatePresentation["tone"], statusLabel: GatePresentation["statusLabel"]) =>
+  ({ id, title: id, tone, statusLabel }) as unknown as GatePresentation;
+
+test("every Gate lands in exactly one group, and unconfirmed is never protected", () => {
+  assert.equal(apolloProtectionGroup({ tone: "action", statusLabel: "Action needed" }), "needsAttention");
+  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Setup required" }), "needsAttention");
+  assert.equal(apolloProtectionGroup({ tone: "unverified", statusLabel: "Unable to verify" }), "needsChecking");
+  assert.equal(apolloProtectionGroup({ tone: "limited", statusLabel: "Limited" }), "needsChecking");
+  assert.equal(apolloProtectionGroup({ tone: "off", statusLabel: "Off" }), "needsChecking");
+  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Check in progress" }), "needsChecking");
+  assert.equal(apolloProtectionGroup({ tone: "good", statusLabel: "Watching" }), "protected");
+  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Manual check" }), "protected");
+  assert.equal(apolloProtectionGroup({ tone: "unavailable", statusLabel: "Unavailable" }), "notAvailable");
+});
+
+test("Apollo Protections summary leads with what needs the person", () => {
+  const gates = [gate("call", "neutral", "Setup required"), gate("site", "action", "Action needed"), gate("link", "neutral", "Manual check"), gate("network", "good", "Watching")];
+  const groups = groupApolloProtections(gates);
+  assert.deepEqual(groups.needsAttention.map((g) => g.id), ["site", "call"]);
+  const summary = summariseApolloProtections(groups, false);
+  assert.equal(summary.overall, "action");
+  assert.equal(summary.headline, "2 need attention");
+  assert.equal(summary.detail, "site, call. 2 protected.");
+  assert.equal(summariseApolloProtections(groupApolloProtections([gate("network", "good", "Watching")]), false).headline, "All protected");
+  assert.equal(summariseApolloProtections(groups, true).overall, "checking");
+});
+

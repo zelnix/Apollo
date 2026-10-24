@@ -31,7 +31,7 @@ export const APOLLO_DESTINATIONS: Record<string, string> = {
   "/app-check": "Check an app",
   "/account": "Check an account alert",
   "/device": "Check my device",
-  "/device-protection": "Device capabilities",
+  "/device-protection": "Device Protections",
   "/network": "Check my internet",
   "/vision": "Check a screenshot",
   "/text-guard": "Message screening",

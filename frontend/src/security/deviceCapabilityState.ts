@@ -1,4 +1,4 @@
-// One reader for this device's capability state, shared by the Device Capabilities screen, the
+// One reader for this device's protection and capability state, shared by the Device Protections screen, the
 // shareable report, and the live reading Higgins gets with every question — so all three can never
 // disagree about what Apollo can and cannot do here.
 //
@@ -13,8 +13,9 @@
 // The third feeds the Device Security Catalogue, which interprets it; nothing here infers a state.
 
 import { Platform } from "react-native";
+import * as Device from "expo-device";
 
-import { buildDeviceCapabilities, type CapabilityPlatform, type DeviceCapabilityView, type NativeProtectionRead } from "@/src/domain/deviceCapabilities";
+import { buildDeviceCapabilities, type CapabilityPlatform, type DeviceCapabilityView, type DeviceFacts, type NativeProtectionRead } from "@/src/domain/deviceCapabilities";
 import { EMPTY_SECURITY_READ, type SecurityStateRead } from "@/src/domain/deviceSecurityCatalogue";
 import { AppDeviceSdk, type AppDeviceCapabilities } from "@/src/security/appDeviceSdk";
 import { pickerDeclaredByBuild } from "@/src/security/phonePickers";
@@ -35,6 +36,8 @@ export interface DeviceCapabilityReading {
   nativeReadFailed: boolean;
   /** True when no OS/OEM settings read answered at all — those rows stay "can't verify". */
   securityReadFailed: boolean;
+  /** The raw settings facts the rows were built from — used to describe exactly what changed between checks. */
+  security: SecurityStateRead | null;
   readAt: string;
 }
 
@@ -73,6 +76,9 @@ function toSecurityRead(
     privateDnsActive: dnsRead ? dnsRead.privateDnsActive : null,
     privateDnsMode: dnsMode === "unknown" || dnsMode === "unsupported" ? null : dnsMode,
     privateDnsHost: dnsRead?.privateDnsServer ?? null,
+    accessibilityServices: posture?.accessibilityServices ?? null,
+    notificationListeners: posture?.notificationListeners ?? null,
+    otherVpnActive: posture ? posture.otherVpnActive : null,
     osUpdatesCurrent: signals?.osUpdatesCurrent ?? null,
     antivirusEnabled: signals?.antivirusEnabled ?? null,
     systemProtections: signals?.systemIntegrity?.protections ?? null,
@@ -82,6 +88,12 @@ function toSecurityRead(
   };
 }
 
+/** Maker, OS version and model as the OS reports them — never guessed. */
+export function deviceFacts(): DeviceFacts {
+  const maker = Device.manufacturer ?? (Platform.OS === "ios" ? "Apple" : null);
+  return { manufacturer: maker ? maker.toLowerCase() : null, osVersion: Device.osVersion ?? null, model: Device.modelName ?? null };
+}
+
 async function read(): Promise<DeviceCapabilityReading> {
   const platform = capabilityPlatform();
   // A desktop host (the Tauri shell) is the device itself, even though Platform.OS is "web" there.
@@ -89,7 +101,7 @@ async function read(): Promise<DeviceCapabilityReading> {
   if (!hasNativeHost) {
     return {
       view: buildDeviceCapabilities({ platform, caps: null, native: null, hostIsDevice: false }),
-      hasNativeHost: false, capsReadFailed: false, nativeReadFailed: false, securityReadFailed: false,
+      hasNativeHost: false, capsReadFailed: false, nativeReadFailed: false, securityReadFailed: false, security: null,
       readAt: new Date().toISOString(),
     };
   }
@@ -109,8 +121,10 @@ async function read(): Promise<DeviceCapabilityReading> {
   const signals = signalsResult.status === "fulfilled" ? signalsResult.value : null;
   const dns = dnsResult.status === "fulfilled" ? dnsResult.value : null;
 
+  const security = toSecurityRead(posture, signals, dns);
   return {
-    view: buildDeviceCapabilities({ platform, caps, native, security: toSecurityRead(posture, signals, dns), restrictedPickers: { callLog: pickerDeclaredByBuild("call_log"), sms: pickerDeclaredByBuild("sms") } }),
+    view: buildDeviceCapabilities({ platform, caps, native, device: deviceFacts(), security, restrictedPickers: { callLog: pickerDeclaredByBuild("call_log"), sms: pickerDeclaredByBuild("sms") } }),
+    security,
     hasNativeHost: true,
     capsReadFailed: caps === null,
     nativeReadFailed: native === null,

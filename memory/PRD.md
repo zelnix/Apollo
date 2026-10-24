@@ -1,3 +1,36 @@
+## Device Protections + Apollo Protections: exception-first, cached explanations, change detection (2026-06)
+**Owner's choices:** Apollo's own protections = "Written once as fixed text"; phone protections = "Pre-write the common
+ones" (Gemini only on a genuine miss); manual checks = "No, always 'Check manually'" (no mark-as-done); a change shows as
+"Banner on Home plus a 'Changed' tag on the item" until that protection is opened; "Protected" = "Folded, with a count".
+- **Names:** "Device Capabilities" → **Device Protections** (`/device-protection`, Home card, Higgins app map);
+  "Protection" tab/card → **Apollo Protections** (`/(tabs)/protection`).
+- **Store** `src/store/deviceProtectionStore.ts`: one assessment (reading + groups + summary + changes + `unseen`) shared
+  by Home, Device Protections and Protection Details. Started in `app/_layout.tsx` (`startDeviceProtectionMonitor`):
+  reassesses on open and on return to Apollo, at most once a minute; "Check again" forces it. Snapshot/changes/opened
+  ids in AsyncStorage (`apollo.deviceProtections.*`). `acknowledgeProtectionChanges(id)` runs when a protection opens.
+- **Change detection** `src/domain/deviceProtectionChanges.ts`: `diffProtectionSnapshots` (USB debugging, developer
+  options, side-loading, other VPN, app scanner off, screen lock, new device admins / accessibility / notification
+  readers, new certificates, any other verified health move); unread on either side is never a change.
+  `unseenChanges`, `changeBanner`. Native reads only — the browser preview never records changes.
+- **Apollo grouping** `src/domain/apolloProtections.ts`: action + Setup required → Needs attention; limited /
+  unverified / off / checking → Needs checking; Watching + Manual check → Protected; Unavailable → Not available.
+- **UI:** `src/components/ProtectionList.tsx` (`ProtectionGroup` with count + fold, `ProtectionListRow` with
+  "Changed" tag), `src/components/device/ProtectionChangeBanner.tsx` (Home). Device Protections screen: device card +
+  summary + "Check again" → Changed since you last looked → Needs attention → Needs checking → Protected (folded) →
+  Optional (folded) → What Apollo can use here (folded `CapabilityTables`). Preview: one folded catalogue list.
+  Apollo Protections screen: the three groups above "Browse by category". Home cards show chip + exception summary.
+- **Protection Details** (`app/capability/[id].tsx`): status line from the read (`protectionStatusLine`), evidence
+  label, "What changed", What it is / Why it matters / What it protects against from `deviceProtectionExplanation`,
+  recommendation, steps, and a fixed "stays Check manually" note. The "I've checked this myself" button and
+  `protectionChecklistStore.ts` were REMOVED. Gate details shows "Why it matters" from the fixed Apollo text.
+- **Backend:** new `GET /api/protections/device/{id}` = pre-written explanation only (404 otherwise; used by the
+  browser preview, never calls Gemini). `POST /api/protections/device/explanation` unchanged (seed → cache → one Gemini
+  call on a genuine miss). New egress endpoint `protection_explanation` (`protectionId,title,platform,osVersion,oem,model,scope`).
+  All 39 catalogue protections are pre-written; only provider rows (e.g. Samsung Smart Call) can reach Gemini.
+- Tests: `frontend/tests/deviceProtections.test.ts` (12 new), updated `deviceCapabilities` + `deviceSecurityCatalogue`;
+  frontend 926/926, tsc clean; backend `test_protection_explanations.py` 10 passed. No testing agent (owner's rule).
+- **Needs a real build:** the OS/OEM reads and change detection only run in an Android/iOS build, not Expo Go/preview.
+
 ## Remove unnecessary Gemini calls — Higgins presents what Apollo already knows (2026-06)
 **Owner's choices:** keep the ONE Gemini call for a general scam question nothing in Apollo answers; NEVER call
 Gemini on a follow-up to a finished investigation (even with a new link/email/number); health check = "Status from

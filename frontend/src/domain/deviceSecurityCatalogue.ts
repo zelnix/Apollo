@@ -19,9 +19,9 @@
  */
 
 import {
-  PROTECTION_STATE_LABEL,
+  evidenceFor, healthFor, healthLabel,
   type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow,
-  type DeviceProtectionState, type ProtectionArea, type ProtectionGuidance,
+  type DeviceProtectionState, type ExplanationScope, type ProtectionArea, type ProtectionGuidance, type ProtectionHealth,
 } from "./deviceProtectionTypes.ts";
 import type { PrivateDnsMode } from "./types.ts";
 
@@ -52,6 +52,10 @@ export interface SecurityStateRead {
   privateDnsHost: string | null;
   /** The OS's own scanner, e.g. Google Play Protect or Microsoft Defender. */
   osThreatReport: { source: string; status: string; protectionOff?: boolean | null } | null;
+  /** Android posture: other apps' accessibility services, apps reading all notifications, another VPN. */
+  accessibilityServices: string[] | null;
+  notificationListeners: string[] | null;
+  otherVpnActive: boolean | null;
   /** Desktop host reads. */
   firewallEnabled: boolean | null;
   osUpdatesCurrent: boolean | null;
@@ -67,6 +71,7 @@ export const EMPTY_SECURITY_READ: SecurityStateRead = {
   screenLockSecure: null, biometricStatus: null, developerOptions: null, usbDebugging: null,
   unknownSources: null, securityPatch: null, osVersion: null, deviceAdmins: null,
   userCertificateCount: null, rootIndicators: null, privateDnsActive: null, privateDnsMode: null, privateDnsHost: null, osThreatReport: null,
+  accessibilityServices: null, notificationListeners: null, otherVpnActive: null,
   firewallEnabled: null, osUpdatesCurrent: null, antivirusEnabled: null, systemProtections: null,
   defaultDialerPackage: null, defaultSmsPackage: null,
 };
@@ -76,7 +81,19 @@ interface Resolved {
   detail: string;
   /** Overrides the entry's owner when the read itself names who answered. */
   attributedTo?: string;
+  /** How serious a verified deviation is: "review" for things that can be legitimate, "action" otherwise. */
+  health?: ProtectionHealth;
 }
+
+/** What Apollo knows about the device itself — used to pick OEM/OS-specific protections and steps. */
+export interface DeviceFacts {
+  /** Lower-case maker, e.g. "samsung", "google", "apple". Null when unknown. */
+  manufacturer: string | null;
+  osVersion: string | null;
+  model: string | null;
+}
+
+export const UNKNOWN_DEVICE: DeviceFacts = { manufacturer: null, osVersion: null, model: null };
 
 interface SecurityDef {
   id: string;
@@ -84,17 +101,23 @@ interface SecurityDef {
   subtitle: string;
   area: ProtectionArea;
   platforms: CapabilityPlatform[];
+  /** Only on these makers (lower-case). Omitted = every maker. Unknown maker = not offered. */
+  oems?: string[];
+  /** Only from this OS major version. Unknown version = still offered. */
+  minOsMajor?: number;
+  /** Worth it for some people only — never listed under "Needs checking". */
+  optional?: boolean;
+  /** How widely Higgins' explanation is true. Default: the whole OS. */
+  explanationScope?: ExplanationScope;
   /** Who owns this protection when no read names someone more specific. */
   owner: string | ((platform: CapabilityPlatform) => string);
-  what: string;
-  benefit: string;
   /** The configuration Higgins recommends. Never phrased as if Apollo knows the current one. */
   recommended: string;
-  steps: (read: SecurityStateRead, platform: CapabilityPlatform) => string[];
+  steps: (read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts) => string[];
   action: (platform: CapabilityPlatform) => CapabilityAction;
   /** Apollo's honest line when nothing could read this. */
   unverified: string;
-  /** Returns a state only when a real read answered. `null` → "Apollo can't verify this". */
+  /** Returns a state only when a real read answered. `null` → "Check manually". */
   resolve?: (read: SecurityStateRead, now: number, platform: CapabilityPlatform) => Resolved | null;
 }
 
@@ -150,8 +173,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "access",
     platforms: ["android", "ios", "windows", "macos"],
     owner: "your device",
-    what: "The code or fingerprint your device asks for before it will unlock, and how quickly it locks itself when you walk away.",
-    benefit: "A lot of scams end with someone holding your device — a “courier” who collects it, a stranger who borrows it, a thief. A lock screen is the one setting that keeps your banking, email and codes out of their hands.",
     recommended: "Higgins recommends a 6-digit PIN at the very least, or a password, with fingerprint or face unlock on top so it isn’t a chore — and a short auto-lock so it doesn’t sit unlocked on a table.",
     steps: (_r, platform) => platform === "ios"
       ? ["Open Settings → Face ID & Passcode (or Touch ID & Passcode)", "Turn Passcode On if it is off", "Tap ‘Change Passcode’ → ‘Passcode Options’ for 6 digits or longer", "Turn on Face ID or Touch ID for day-to-day unlocking", "Set Settings → Display & Brightness → Auto-Lock to 2 minutes or less"]
@@ -186,8 +207,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "access",
     platforms: ["android"],
     owner: "Android",
-    what: "A hidden menu for app developers. USB debugging inside it lets a connected computer read and control the phone.",
-    benefit: "Scammers sometimes talk people through turning this on, because it hands a plugged-in computer far more control than any app would get. If you don’t build apps, it should be off.",
     recommended: "Higgins recommends keeping Developer options and USB debugging off unless you are developing apps yourself.",
     steps: () => [
       "Open Settings → System → ‘Developer options’",
@@ -203,7 +222,7 @@ const CATALOGUE: SecurityDef[] = [
       const usb = read.usbDebugging === true
         ? " USB debugging is on as well, which lets a connected computer read and control this phone."
         : read.usbDebugging === false ? " USB debugging itself is off." : "";
-      return { state: "off", detail: `Developer options are on.${usb} If you did not turn this on yourself, turn it off.`, attributedTo: "Android" };
+      return { state: "off", health: read.usbDebugging === true ? "action" : "review", detail: `Developer options are on.${usb} If you did not turn this on yourself, turn it off.`, attributedTo: "Android" };
     },
   },
   {
@@ -213,8 +232,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "access",
     platforms: ["android"],
     owner: "Android",
-    what: "Security certificates added by hand rather than shipped with the device. They tell it to trust someone it otherwise wouldn’t.",
-    benefit: "One of these can let somebody read traffic that should be private, including what you send your bank. They are occasionally installed for work — and occasionally talked onto a phone during a scam.",
     recommended: "Higgins recommends removing any certificate you did not install yourself for a reason you remember.",
     steps: () => [
       "Open Settings → Security → ‘Encryption & credentials’",
@@ -228,18 +245,17 @@ const CATALOGUE: SecurityDef[] = [
       if (count === null || count < 0) return null;
       return count === 0
         ? { state: "as_recommended", detail: "No hand-installed certificates are on this device.", attributedTo: "Android" }
-        : { state: "off", detail: `${count} hand-installed certificate${count === 1 ? " is" : "s are"} on this device. If your employer set this up, that is expected. If not, remove it.`, attributedTo: "Android" };
+        : { state: "off", health: "review", detail: `${count} hand-installed certificate${count === 1 ? " is" : "s are"} on this device. If your employer set this up, that is expected. If not, remove it.`, attributedTo: "Android" };
     },
   },
   {
     id: "lockdown_mode",
+    optional: true,
     title: "Lockdown Mode",
     subtitle: "Apple’s extreme protection for people who are personally targeted",
     area: "access",
     platforms: ["ios", "macos"],
     owner: "Apple",
-    what: "A mode that switches off many everyday features — most message attachments, some web technology, unknown FaceTime calls — to shrink what an attacker can reach.",
-    benefit: "It is powerful, and it is not for everyday scam protection. Higgins only suggests it if you have reason to believe you are being targeted personally.",
     recommended: "Higgins recommends leaving this off unless you believe you are being personally targeted. Read what it switches off before you turn it on.",
     steps: (_r, platform) => platform === "macos"
       ? ["Open System Settings → Privacy & Security", "Scroll to ‘Lockdown Mode’", "Read what it switches off before deciding"]
@@ -256,8 +272,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "apps",
     platforms: ["android"],
     owner: "Google Play Protect",
-    what: "The scan your phone runs over an app before you install it and again afterwards — Play Protect on most Android phones.",
-    benefit: "It covers ground Apollo cannot reach: the app’s code itself. If a scammer talks you into installing something, this is the check most likely to stop it before Apollo ever sees it.",
     recommended: "Higgins recommends leaving app scanning switched on, and running a scan now if you have installed anything during or after a suspicious call.",
     steps: () => [
       "Open the Play Store (or your phone’s own app store)",
@@ -284,8 +298,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "apps",
     platforms: ["windows", "macos"],
     owner: "your security software",
-    what: "The scanner watching files and programs as they arrive and run — Microsoft Defender on Windows, or whichever security product you installed.",
-    benefit: "Remote-access scams usually end with a file being downloaded and run. This is the layer that catches a known-bad one before it executes.",
     recommended: "Higgins recommends keeping real-time protection on, and letting it update itself. One scanner is enough — two fight each other.",
     steps: (_r, platform) => platform === "windows"
       ? ["Open Settings → Privacy & security → Windows Security", "Tap ‘Virus & threat protection’", "Check ‘Real-time protection’ is on under ‘Manage settings’", "Run a quick scan if you have downloaded anything you were unsure about"]
@@ -307,8 +319,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "apps",
     platforms: ["android"],
     owner: "Android",
-    what: "The permission that lets an app install other apps, bypassing the app store’s checks.",
-    benefit: "“Download this app so I can help you” is the backbone of remote-access scams. With side-loading off, that attempt stops at the first step.",
     recommended: "Higgins recommends keeping this off for every app except one you deliberately use to install software yourself.",
     steps: () => [
       "Open Settings → Apps → Special access → ‘Install unknown apps’",
@@ -321,7 +331,7 @@ const CATALOGUE: SecurityDef[] = [
     resolve: (read) => {
       if (read.unknownSources === null) return null;
       return read.unknownSources
-        ? { state: "off", detail: "Apollo itself is allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
+        ? { state: "off", health: "review", detail: "Apollo itself is allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
         : { state: "as_recommended", detail: "Apollo is not allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" };
     },
   },
@@ -332,8 +342,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "apps",
     platforms: ["android", "ios"],
     owner: (platform) => osName(platform),
-    what: "Apps you have given administrator rights to. Find My Device and work software use this legitimately.",
-    benefit: "An administrator app can lock you out, wipe the device, or stop you uninstalling it. One you don’t recognise is one of the most serious things that can be on a device.",
     recommended: "Higgins recommends removing admin rights from anything you do not recognise, and keeping them only for Find My Device and software your employer installed.",
     steps: (_r, platform) => platform === "ios"
       ? ["Open Settings → General → VPN & Device Management", "Read the list and remove any profile you do not recognise", "A work profile you expect is fine — anything else is not"]
@@ -344,7 +352,7 @@ const CATALOGUE: SecurityDef[] = [
       const admins = read.deviceAdmins;
       if (!admins) return null;
       if (!admins.length) return { state: "as_recommended", detail: "No other app holds device-admin rights on this device.", attributedTo: osName(platform) };
-      return { state: "off", detail: `${admins.length} app${admins.length === 1 ? "" : "s"} hold device-admin rights: ${admins.join(", ")}. Find My Device and work software are normal here. Anything else is worth removing.`, attributedTo: osName(platform) };
+      return { state: "off", health: "review", detail: `${admins.length} app${admins.length === 1 ? "" : "s"} hold device-admin rights: ${admins.join(", ")}. Find My Device and work software are normal here. Anything else is worth removing.`, attributedTo: osName(platform) };
     },
   },
 
@@ -356,8 +364,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "web",
     platforms: ["android", "ios", "windows", "macos"],
     owner: "your browser",
-    what: "The red warning page your browser shows when a link leads somewhere known to be dangerous.",
-    benefit: "Most scam texts and emails end in a link. Apollo checks links you give it, and this catches the ones you click without thinking — two different nets over the same risk.",
     recommended: "Higgins recommends leaving your browser’s dangerous-site warnings on, at the standard level or higher.",
     steps: (_r, platform) => isDesktop(platform)
       ? ["Open your browser (Chrome, Edge, Safari, Firefox…)", "Open its Settings → ‘Privacy and security’", "Find ‘Safe Browsing’, ‘Microsoft Defender SmartScreen’ or ‘Fraudulent Website Warning’", "Turn it on (choose ‘Standard’ or ‘Enhanced’ if offered)"]
@@ -372,8 +378,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "web",
     platforms: ["android"],
     owner: "Android",
-    what: "A setting that encrypts the “which address is this website?” lookups your phone makes, so they can’t be read or redirected on the network you are using.",
-    benefit: "On a hotel or café network, an unencrypted lookup can be pointed at a fake banking site. Private DNS on Automatic encrypts those lookups wherever the network supports it.",
     recommended: "Higgins recommends setting Private DNS to ‘Automatic’. Apollo’s website checks keep working alongside it. A provider hostname also encrypts lookups, but sends every one straight to that provider, past Apollo’s website checks.",
     steps: () => [
       "Open Settings → Network & internet → ‘Private DNS’ (Samsung: Settings → Connections → More connection settings → Private DNS)",
@@ -385,9 +389,9 @@ const CATALOGUE: SecurityDef[] = [
     resolve: (read) => {
       const mode = read.privateDnsMode ?? (read.privateDnsActive === null ? null : read.privateDnsActive ? "automatic" : "not_in_use");
       if (mode === "automatic") return { state: "as_recommended", detail: "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
-      if (mode === "hostname") return { state: "off", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
+      if (mode === "hostname") return { state: "off", health: "review", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
       if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this phone’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
-      if (mode === "not_in_use") return { state: "off", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell Apollo which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
+      if (mode === "not_in_use") return { state: "off", health: "review", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell Apollo which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
       return null;
     },
   },
@@ -398,8 +402,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "web",
     platforms: ["windows", "macos"],
     owner: (platform) => platform === "windows" ? "Windows" : "macOS",
-    what: "The screen that decides which incoming connections from the network are allowed to reach this computer.",
-    benefit: "On a shared or public network, a firewall is what stops another machine reaching services on yours. It is also commonly switched off during a “support” call.",
     recommended: "Higgins recommends keeping the firewall on for every network you join, especially public Wi-Fi.",
     steps: (_r, platform) => platform === "windows"
       ? ["Open Settings → Privacy & security → Windows Security", "Tap ‘Firewall & network protection’", "Check it says ‘Firewall is on’ for Domain, Private and Public networks", "Turn on any network showing as off"]
@@ -422,8 +424,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "updates",
     platforms: ["android", "ios", "windows", "macos"],
     owner: "your device’s maker",
-    what: "The security fixes your device’s maker publishes, and whether this device has them.",
-    benefit: "Scam links and malicious files lean on holes that were fixed months ago. An up-to-date device simply isn’t vulnerable to most of them.",
     recommended: "Higgins recommends installing security updates as soon as they appear, and turning on automatic updates so you don’t have to remember.",
     steps: (_r, platform) => platform === "windows"
       ? ["Open Settings → Windows Update", "Click ‘Check for updates’ and install everything offered", "Open ‘Advanced options’ and turn on ‘Receive updates for other Microsoft products’", "Restart when it asks — the fix isn’t applied until you do"]
@@ -447,7 +447,7 @@ const CATALOGUE: SecurityDef[] = [
       if (age <= 120) {
         return { state: "active", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months <= 1 ? "a month" : `${months} months`} old, which is current. Apollo cannot tell whether a newer one is waiting, so it is still worth checking.` };
       }
-      return { state: "out_of_date", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months} months old. That is behind, and the fixes released since then are not on this device.` };
+      return { state: "out_of_date", health: age > 365 ? "action" : "review", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months} months old. That is behind, and the fixes released since then are not on this device.` };
     },
   },
   {
@@ -457,8 +457,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "updates",
     platforms: ["android", "ios", "windows", "macos"],
     owner: "your device",
-    what: isDesktopDoc(),
-    benefit: "On a device whose protections have been switched off or bypassed, every other protection on this list can be walked around. Knowing it is intact is the floor everything else stands on.",
     recommended: "Higgins recommends leaving your device’s built-in protections exactly as the maker shipped them. If they were deliberately turned off, treat banking and email on this device as less safe.",
     steps: (_r, platform) => platform === "windows"
       ? ["Open Settings → Privacy & security → Windows Security → ‘Virus & threat protection’", "Open ‘Manage settings’ and check ‘Tamper Protection’ is on", "Check ‘Device security’ shows Core isolation and Secure boot as on", "If anything is off and you did not turn it off, turn it back on"]
@@ -484,7 +482,7 @@ const CATALOGUE: SecurityDef[] = [
       const indicators = read.rootIndicators;
       if (!indicators) return null;
       return indicators.length
-        ? { state: "off", detail: `Apollo found ${indicators.length} sign${indicators.length === 1 ? "" : "s"} that this device may be rooted or jailbroken. These are indicators, not proof — but they are worth understanding.`, attributedTo: "Apollo" }
+        ? { state: "off", health: "review", detail: `Apollo found ${indicators.length} sign${indicators.length === 1 ? "" : "s"} that this device may be rooted or jailbroken. These are indicators, not proof — but they are worth understanding.`, attributedTo: "Apollo" }
         : { state: "as_recommended", detail: "Apollo found no sign that this device has been rooted or jailbroken.", attributedTo: "Apollo" };
     },
   },
@@ -497,8 +495,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "calls_messages",
     platforms: ["android"],
     owner: "your phone app",
-    what: "The “Suspected spam” label your phone app can put on a call as it comes in.",
-    benefit: "It gives you the one thing a scam call needs to take from you: a moment to think before you pick up.",
     recommended: "Higgins recommends turning on caller ID and spam protection, and letting your phone app filter suspected spam calls if you are happy for them to go straight to voicemail.",
     steps: (read) => [
       `Open the ${dialerName(read)}`,
@@ -517,8 +513,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "calls_messages",
     platforms: ["android"],
     owner: "your messaging app",
-    what: "Your messaging app’s own filter for suspected spam and dangerous links.",
-    benefit: "It keeps a scam text from sitting in the same list as a real message from your bank, which is exactly the confusion these messages rely on.",
     recommended: "Higgins recommends turning spam protection on in your messaging app.",
     steps: (read) => [
       `Open ${smsName(read)}`,
@@ -536,8 +530,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "calls_messages",
     platforms: ["ios"],
     owner: "Apple",
-    what: "An iPhone setting that sends calls from numbers not in your contacts straight to voicemail.",
-    benefit: "Nearly every scam call comes from a number you have never saved. This removes the ringing phone, and with it the pressure to answer.",
     recommended: "Higgins recommends turning this on if you rarely get calls from new numbers. If you are expecting a delivery or a clinic, turn it off for the day.",
     steps: () => ["Open Settings → Apps → Phone", "Tap ‘Silence Unknown Callers’", "Turn it on"],
     action: () => ({ target: "apps", path: "Settings → Apps → Phone → Silence Unknown Callers", label: "Check Silence Unknown Callers" }),
@@ -550,8 +542,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "calls_messages",
     platforms: ["ios"],
     owner: "Apple",
-    what: "An iPhone setting that files messages from unknown senders into a separate list.",
-    benefit: "A scam text stops appearing next to the real message from your bank, which is what makes these messages work in the first place.",
     recommended: "Higgins recommends turning this on, and checking the ‘Unknown Senders’ list now and then for anything genuine.",
     steps: () => ["Open Settings → Apps → Messages", "Tap ‘Unknown & Spam’", "Turn on ‘Filter Unknown Senders’"],
     action: () => ({ target: "apps", path: "Settings → Apps → Messages → Unknown & Spam", label: "Check message filtering" }),
@@ -566,8 +556,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "recovery",
     platforms: ["android", "ios", "windows", "macos"],
     owner: "your device’s maker",
-    what: "The service that lets you find this device on a map, lock it, or erase it from somewhere else.",
-    benefit: "If it goes missing, this is the difference between losing a device and losing your accounts. It also lets you lock it the moment you realise something is wrong.",
     recommended: "Higgins recommends turning device tracking on and checking you know the account it reports to — that account’s password matters as much as the device’s.",
     steps: (_r, platform) => platform === "ios"
       ? ["Open Settings → your name → Find My", "Tap ‘Find My iPhone’ and turn it on", "Turn on ‘Find My network’ so it can be found while offline", "Turn on ‘Send Last Location’"]
@@ -594,8 +582,6 @@ const CATALOGUE: SecurityDef[] = [
     area: "recovery",
     platforms: ["windows", "macos"],
     owner: (platform) => platform === "windows" ? "BitLocker" : "FileVault",
-    what: "Encryption of the whole drive — BitLocker on Windows, FileVault on a Mac — so the files can’t be read by taking the drive out.",
-    benefit: "Without it, a password is only a locked front door on an unlocked safe: anyone with the machine can read your files. With it, a lost laptop is a lost laptop, not a data breach.",
     recommended: "Higgins recommends turning encryption on and storing the recovery key somewhere you can actually get to — not only on the computer itself.",
     steps: (_r, platform) => platform === "windows"
       ? ["Open Settings → Privacy & security → ‘Device encryption’ (or search for BitLocker)", "Turn device encryption on", "Save the recovery key to your Microsoft account AND somewhere offline", "Home editions may show ‘Device encryption’ rather than full BitLocker — that is fine"]
@@ -610,12 +596,304 @@ const CATALOGUE: SecurityDef[] = [
         : { state: "off", detail: `${osName(platform)} reports ${named.name} is off, so the files on this drive can be read by anyone who takes it.`, attributedTo: osName(platform) };
     },
   },
-];
 
-/** `what` for System protection reads differently per platform, so it is resolved at row time. */
-function isDesktopDoc(): string {
-  return "Whether the protections your device shipped with are still intact — root/jailbreak on a phone, and System Integrity Protection, Gatekeeper or tamper protection on a computer.";
-}
+  // ── Device and account security (manual checks — no OS lets an app read these) ──
+  {
+    id: "account_two_step",
+    title: "Two-step verification on your device account",
+    subtitle: "A second step beyond the password for the account this device signs in with",
+    area: "access",
+    platforms: ["android", "ios", "windows", "macos"],
+    owner: (platform) => platform === "android" ? "Google" : platform === "windows" ? "Microsoft" : "Apple",
+    recommended: "Higgins recommends turning on two-step verification for the account your device signs in with, using an authenticator app, passkey or trusted device rather than SMS where you can.",
+    steps: (_r, platform, device) => platform === "android"
+      ? ["Open Settings → Google → ‘Manage your Google Account’", "Tap ‘Security’", "Tap ‘2-Step Verification’ and follow the steps", ...(device.manufacturer === "samsung" ? ["Samsung account too: Settings → your name → Security and privacy → Two-step verification"] : [])]
+      : platform === "windows"
+        ? ["Open account.microsoft.com → Security", "Choose ‘Advanced security options’", "Turn on ‘Two-step verification’"]
+        : ["Open Settings → your name → ‘Sign-In & Security’", "Check ‘Two-Factor Authentication’ is On", "Add a trusted phone number you will keep"],
+    action: (platform) => ({ target: "security", path: platform === "android" ? "Settings → Google → Manage your Google Account → Security" : platform === "windows" ? "account.microsoft.com → Security" : "Settings → your name → Sign-In & Security", label: "Where to find it" }),
+    unverified: "No app is allowed to read your account's sign-in settings, so Apollo can't check this.",
+  },
+  {
+    id: "sim_pin",
+    title: "SIM PIN",
+    subtitle: "A PIN on the SIM card so a thief can't use your number elsewhere",
+    area: "access",
+    platforms: ["android", "ios"],
+    owner: "your mobile carrier",
+    optional: true,
+    recommended: "Higgins recommends a SIM PIN if your banking codes come by text. Use your carrier's default PIN to set your own — three wrong tries locks the SIM.",
+    steps: (_r, platform, device) => platform === "ios"
+      ? ["Open Settings → Mobile Service (or Cellular) → SIM PIN", "Turn on SIM PIN and enter your carrier's default PIN", "Tap ‘Change PIN’ and choose your own"]
+      : device.manufacturer === "samsung"
+        ? ["Open Settings → Security and privacy → More security settings → Set up SIM card lock", "Turn on ‘Lock SIM card’ with your carrier's default PIN", "Change it to your own PIN"]
+        : ["Open Settings and search for ‘SIM lock’ or ‘SIM card lock’", "Turn on ‘Lock SIM card’ with your carrier's default PIN", "Change it to your own PIN"],
+    action: () => ({ target: "security", path: "Settings → Security → SIM card lock", label: "Open security settings" }),
+    unverified: "Apps can't read whether a SIM PIN is set.",
+  },
+  {
+    id: "usb_restricted_mode",
+    title: "USB accessories when locked",
+    subtitle: "Blocking accessories plugged into a locked iPhone",
+    area: "access",
+    platforms: ["ios"],
+    owner: "Apple",
+    recommended: "Higgins recommends leaving ‘Accessories’ off under ‘Allow access when locked’, so a locked iPhone only charges from a cable.",
+    steps: () => ["Open Settings → Face ID & Passcode", "Scroll to ‘Allow Access When Locked’", "Turn ‘Accessories’ off"],
+    action: () => ({ target: "security", path: "Settings → Face ID & Passcode → Allow Access When Locked", label: "Open passcode settings" }),
+    unverified: "Apple does not let Apollo read this setting.",
+  },
+  {
+    id: "ios_developer_mode",
+    title: "Developer Mode",
+    subtitle: "Letting apps from outside the App Store run on this iPhone",
+    area: "access",
+    platforms: ["ios"],
+    minOsMajor: 16,
+    owner: "Apple",
+    recommended: "Higgins recommends keeping Developer Mode off unless you build apps yourself.",
+    steps: () => ["Open Settings → Privacy & Security", "Scroll to the bottom and tap ‘Developer Mode’ (if it isn't listed, it is off)", "Turn it off and restart when asked"],
+    action: () => ({ target: "security", path: "Settings → Privacy & Security → Developer Mode", label: "Open privacy settings" }),
+    unverified: "Apple does not let Apollo read whether Developer Mode is on.",
+  },
+  {
+    id: "uac",
+    title: "User Account Control",
+    subtitle: "Windows asking before a program makes system-wide changes",
+    area: "access",
+    platforms: ["windows"],
+    owner: "Windows",
+    recommended: "Higgins recommends keeping User Account Control at the default level or higher — never ‘Never notify’.",
+    steps: () => ["Open the Start menu and search for ‘User Account Control’", "Open ‘Change User Account Control settings’", "Set the slider to the default (second from the top) or higher"],
+    action: () => ({ target: "security", path: "Control Panel → User Accounts → Change User Account Control settings", label: "Where to find it" }),
+    unverified: "Apollo could not read the User Account Control level.",
+  },
+  {
+    id: "remote_access",
+    title: "Remote access to this computer",
+    subtitle: "Remote Desktop, Screen Sharing and Remote Login",
+    area: "access",
+    platforms: ["windows", "macos"],
+    owner: (platform) => osName(platform),
+    recommended: "Higgins recommends keeping remote access off unless you use it yourself — and never turning it on because a caller asked you to.",
+    steps: (_r, platform) => platform === "windows"
+      ? ["Open Settings → System → Remote Desktop", "Turn Remote Desktop off unless you use it", "Open Settings → System → ‘Remote Assistance’ (search for it) and untick ‘Allow Remote Assistance connections’"]
+      : ["Open System Settings → General → Sharing", "Turn off ‘Screen Sharing’, ‘Remote Login’ and ‘Remote Management’ unless you use them"],
+    action: (platform) => ({ target: "security", path: platform === "windows" ? "Settings → System → Remote Desktop" : "System Settings → General → Sharing", label: "Where to find it" }),
+    unverified: "Apollo could not read whether remote access is switched on.",
+  },
+  {
+    id: "auto_login",
+    title: "Automatic login",
+    subtitle: "Starting straight into your account without a password",
+    area: "access",
+    platforms: ["macos"],
+    owner: "macOS",
+    recommended: "Higgins recommends keeping automatic login off so the Mac always asks for your password at startup.",
+    steps: () => ["Open System Settings → Users & Groups", "Set ‘Automatically log in as’ to ‘Off’"],
+    action: () => ({ target: "security", path: "System Settings → Users & Groups → Automatically log in as", label: "Where to find it" }),
+    unverified: "Apollo could not read whether automatic login is on.",
+  },
+
+  // ── Apps and elevated privileges ──
+  {
+    id: "accessibility_apps",
+    title: "Apps that can control your screen",
+    subtitle: "Accessibility access held by other apps",
+    area: "apps",
+    platforms: ["android"],
+    owner: "Android",
+    recommended: "Higgins recommends Accessibility access only for apps you set up yourself for a reason you remember — remove it from anything else.",
+    steps: () => ["Open Settings → Accessibility", "Look under ‘Downloaded apps’ or ‘Installed apps’", "Turn off any app you don't recognise or no longer need"],
+    action: () => ({ target: "accessibility", path: "Settings → Accessibility → Installed apps", label: "Open Accessibility" }),
+    unverified: "Apollo could not read which apps hold Accessibility access.",
+    resolve: (read) => {
+      const apps = read.accessibilityServices;
+      if (!apps) return null;
+      return apps.length
+        ? { state: "off", health: "review", detail: `${apps.length} other app${apps.length === 1 ? " has" : "s have"} Accessibility access: ${apps.join(", ")}. That's fine for apps you set up yourself.`, attributedTo: "Android" }
+        : { state: "as_recommended", detail: "No other app has Accessibility access on this phone.", attributedTo: "Android" };
+    },
+  },
+  {
+    id: "notification_readers",
+    title: "Apps that can read your notifications",
+    subtitle: "Notification access, including message previews and codes",
+    area: "privacy",
+    platforms: ["android"],
+    owner: "Android",
+    recommended: "Higgins recommends notification access only for apps that need it — your watch, for example — and removing it from anything you don't recognise.",
+    steps: () => ["Open Settings → Apps → Special app access → ‘Notification access’ (Samsung: Settings → Notifications → Advanced settings)", "Turn off any app you don't recognise"],
+    action: () => ({ target: "notification_access", path: "Settings → Apps → Special access → Notification access", label: "Open notification access" }),
+    unverified: "Apollo could not read which apps can read your notifications.",
+    resolve: (read) => {
+      const apps = read.notificationListeners?.filter((name) => !/apollo/i.test(name)) ?? null;
+      if (!apps) return null;
+      return apps.length
+        ? { state: "off", health: "review", detail: `${apps.length} other app${apps.length === 1 ? " can" : "s can"} read your notifications: ${apps.join(", ")}.`, attributedTo: "Android" }
+        : { state: "as_recommended", detail: "No other app can read your notifications.", attributedTo: "Android" };
+    },
+  },
+  {
+    id: "samsung_auto_blocker",
+    title: "Auto Blocker",
+    subtitle: "Samsung's block on unauthorised installs and USB commands",
+    area: "apps",
+    platforms: ["android"],
+    oems: ["samsung"],
+    minOsMajor: 14,
+    explanationScope: "oem",
+    owner: "Samsung",
+    recommended: "Higgins recommends turning Auto Blocker on. You can still install apps from the Play Store and Galaxy Store.",
+    steps: () => ["Open Settings → Security and privacy", "Tap ‘Auto Blocker’", "Turn it on"],
+    action: () => ({ target: "security", path: "Settings → Security and privacy → Auto Blocker", label: "Open security settings" }),
+    unverified: "Samsung does not let Apollo read whether Auto Blocker is on.",
+  },
+  {
+    id: "ransomware_protection",
+    title: "Ransomware protection",
+    subtitle: "Controlled folder access for your documents and photos",
+    area: "apps",
+    platforms: ["windows"],
+    owner: "Microsoft Defender",
+    optional: true,
+    recommended: "Higgins suggests Controlled folder access if you keep important files only on this PC. Some older programs may need allowing.",
+    steps: () => ["Open Windows Security → Virus & threat protection", "Under ‘Ransomware protection’, tap ‘Manage ransomware protection’", "Turn on ‘Controlled folder access’"],
+    action: () => ({ target: "security", path: "Windows Security → Virus & threat protection → Ransomware protection", label: "Where to find it" }),
+    unverified: "Apollo could not read whether Controlled folder access is on.",
+  },
+
+  // ── Permissions and privacy ──
+  {
+    id: "permission_review",
+    title: "App permissions",
+    subtitle: "Which apps can use your camera, microphone, location and contacts",
+    area: "privacy",
+    platforms: ["android", "ios"],
+    owner: (platform) => osName(platform),
+    recommended: "Higgins recommends reviewing app permissions every few months and setting location to ‘While using the app’ or less.",
+    steps: (_r, platform) => platform === "ios"
+      ? ["Open Settings → Privacy & Security", "Go through Location Services, Camera, Microphone, Contacts and Photos", "Turn off anything an app doesn't need"]
+      : ["Open Settings → Security and privacy → Privacy → ‘Permission manager’ (or Settings → Apps → Permissions)", "Check Location, Camera, Microphone, Contacts and SMS", "Change anything an app doesn't need to ‘Don't allow’ or ‘Only while using’"],
+    action: (platform) => ({ target: platform === "ios" ? "security" : "apps", path: platform === "ios" ? "Settings → Privacy & Security" : "Settings → Privacy → Permission manager", label: "Open permissions" }),
+    unverified: "Your device doesn't let Apollo read every app's permissions, so please review them yourself.",
+  },
+  {
+    id: "lock_screen_privacy",
+    title: "Notification previews on the lock screen",
+    subtitle: "Whether codes and messages show before the device is unlocked",
+    area: "privacy",
+    platforms: ["android", "ios"],
+    owner: (platform) => osName(platform),
+    recommended: "Higgins recommends hiding notification content on the lock screen, so one-time codes only show once the device is unlocked.",
+    steps: (_r, platform) => platform === "ios"
+      ? ["Open Settings → Notifications", "Tap ‘Show Previews’", "Choose ‘When Unlocked’"]
+      : ["Open Settings → Notifications → ‘Notifications on lock screen’ (Samsung: Settings → Lock screen and AOD → Notifications)", "Choose ‘Hide sensitive content’ or ‘Icons only’"],
+    action: () => ({ target: "security", path: "Settings → Notifications → Lock screen", label: "Open notification settings" }),
+    unverified: "Apollo can't read your lock screen notification setting.",
+  },
+  {
+    id: "app_tracking",
+    title: "App tracking requests",
+    subtitle: "Apps asking to follow you across other apps and websites",
+    area: "privacy",
+    platforms: ["ios"],
+    owner: "Apple",
+    recommended: "Higgins recommends turning off ‘Allow Apps to Request to Track’ unless you want personalised ads.",
+    steps: () => ["Open Settings → Privacy & Security → Tracking", "Turn off ‘Allow Apps to Request to Track’"],
+    action: () => ({ target: "security", path: "Settings → Privacy & Security → Tracking", label: "Open privacy settings" }),
+    unverified: "Apple does not let Apollo read this setting.",
+  },
+  {
+    id: "safety_check",
+    title: "Safety Check",
+    subtitle: "Reviewing who you share your location and data with",
+    area: "privacy",
+    platforms: ["ios"],
+    minOsMajor: 16,
+    owner: "Apple",
+    optional: true,
+    recommended: "Higgins suggests running Safety Check if you're worried someone you know can see your location or data.",
+    steps: () => ["Open Settings → Privacy & Security → Safety Check", "Choose ‘Manage Sharing & Access’ to review, or ‘Emergency Reset’ to stop all sharing at once"],
+    action: () => ({ target: "security", path: "Settings → Privacy & Security → Safety Check", label: "Open Safety Check" }),
+    unverified: "This is a review only you can do.",
+  },
+  {
+    id: "advanced_data_protection",
+    title: "Advanced Data Protection",
+    subtitle: "End-to-end encryption for most of your iCloud data",
+    area: "privacy",
+    platforms: ["ios", "macos"],
+    owner: "Apple",
+    optional: true,
+    recommended: "Higgins suggests it if you want the strongest protection for iCloud — set up a recovery contact or key first, because Apple can't help you recover.",
+    steps: (_r, platform) => [platform === "macos" ? "Open System Settings → your name → iCloud" : "Open Settings → your name → iCloud", "Tap ‘Advanced Data Protection’", "Set up account recovery, then turn it on"],
+    action: (platform) => ({ target: "security", path: platform === "macos" ? "System Settings → your name → iCloud → Advanced Data Protection" : "Settings → your name → iCloud → Advanced Data Protection", label: "Where to find it" }),
+    unverified: "Apple does not let Apollo read this setting.",
+  },
+
+  // ── Browser, web and network ──
+  {
+    id: "other_vpn",
+    title: "Another VPN on this phone",
+    subtitle: "Whether a different VPN app is routing your traffic",
+    area: "web",
+    platforms: ["android"],
+    owner: "Android",
+    recommended: "Higgins recommends only running a VPN you chose yourself and recognise.",
+    steps: () => ["Open Settings → Network & internet → VPN (Samsung: Settings → Connections → More connection settings → VPN)", "Check which VPN is connected", "Remove any you didn't set up"],
+    action: () => ({ target: "vpn", path: "Settings → Network & internet → VPN", label: "Open VPN settings" }),
+    unverified: "Apollo could not read whether another VPN is running.",
+    resolve: (read) => {
+      if (read.otherVpnActive === null) return null;
+      return read.otherVpnActive
+        ? { state: "off", health: "review", detail: "Another VPN app is routing this phone's traffic. That's fine if you set it up yourself.", attributedTo: "Android" }
+        : { state: "as_recommended", detail: "No other VPN app is running on this phone.", attributedTo: "Android" };
+    },
+  },
+  {
+    id: "smartscreen",
+    title: "Reputation-based protection",
+    subtitle: "SmartScreen warnings before unrecognised apps and sites",
+    area: "web",
+    platforms: ["windows"],
+    owner: "Microsoft Defender",
+    recommended: "Higgins recommends keeping every reputation-based protection switch on, including ‘Check apps and files’ and ‘SmartScreen for Microsoft Edge’.",
+    steps: () => ["Open Windows Security → App & browser control", "Tap ‘Reputation-based protection settings’", "Turn on every switch on the page"],
+    action: () => ({ target: "security", path: "Windows Security → App & browser control → Reputation-based protection", label: "Where to find it" }),
+    unverified: "Apollo could not read your SmartScreen settings.",
+  },
+
+  // ── Anti-theft ──
+  {
+    id: "theft_protection",
+    title: "Theft protection",
+    subtitle: "Locking the screen if the phone is snatched or kept offline",
+    area: "recovery",
+    platforms: ["android"],
+    minOsMajor: 10,
+    owner: "Google",
+    recommended: "Higgins recommends turning on Theft Detection Lock and Offline Device Lock where your phone offers them.",
+    steps: (_r, _p, device) => device.manufacturer === "samsung"
+      ? ["Open Settings → Security and privacy → ‘Lost device protection’", "Tap ‘Theft protection’", "Turn on ‘Theft Detection Lock’ and ‘Offline Device Lock’"]
+      : ["Open Settings → Google → All services → ‘Theft protection’ (or search Settings for ‘Theft’)", "Turn on ‘Theft Detection Lock’", "Turn on ‘Offline Device Lock’"],
+    action: () => ({ target: "security", path: "Settings → Google → Theft protection", label: "Open security settings" }),
+    unverified: "Android does not let Apollo read the theft protection switches.",
+  },
+  {
+    id: "stolen_device_protection",
+    title: "Stolen Device Protection",
+    subtitle: "Face ID needed for sensitive changes away from familiar places",
+    area: "recovery",
+    platforms: ["ios"],
+    minOsMajor: 17,
+    owner: "Apple",
+    recommended: "Higgins recommends turning Stolen Device Protection on, set to ‘Always’ for the strongest cover.",
+    steps: () => ["Open Settings → Face ID & Passcode", "Tap ‘Stolen Device Protection’", "Turn it on and set ‘Require Security Delay’ to ‘Always’"],
+    action: () => ({ target: "security", path: "Settings → Face ID & Passcode → Stolen Device Protection", label: "Open passcode settings" }),
+    unverified: "Apple does not let Apollo read whether this is on.",
+  },
+];
 
 // ────────────────────────────────────────────────────────────────────
 // Resolution
@@ -625,59 +903,74 @@ function ownerOf(def: SecurityDef, platform: CapabilityPlatform): string {
   return typeof def.owner === "function" ? def.owner(platform) : def.owner;
 }
 
-function guidance(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, selfCheck: boolean): ProtectionGuidance {
-  return { recommended: def.recommended, steps: def.steps(read, platform), action: def.action(platform), selfCheck };
+function guidance(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts, selfCheck: boolean): ProtectionGuidance {
+  return { recommended: def.recommended, steps: def.steps(read, platform, device), action: def.action(platform), selfCheck };
 }
 
-function toRow(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, state: DeviceProtectionState, detail: string, attributedTo: string): DeviceProtectionRow {
+function toRow(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts, resolved: Resolved, attributedTo: string): DeviceProtectionRow {
+  const health = healthFor(resolved.state, resolved.health);
   return {
     id: def.id,
     title: def.title,
     subtitle: def.subtitle,
     kind: "device",
     area: def.area,
-    state,
-    stateLabel: PROTECTION_STATE_LABEL[state],
-    detail,
+    state: resolved.state,
+    health,
+    evidence: evidenceFor(resolved.state),
+    stateLabel: healthLabel(resolved.state, health),
+    detail: resolved.detail,
     attributedTo,
-    what: def.what,
-    benefit: def.benefit,
-    guidance: guidance(def, read, platform, state === "not_verifiable" || state === "not_readable_here"),
+    optional: def.optional,
+    explanationScope: def.explanationScope ?? "os",
+    guidance: guidance(def, read, platform, device, resolved.state === "not_verifiable" || resolved.state === "not_readable_here"),
   };
 }
 
+const osMajor = (version: string | null): number | null => {
+  const match = /^\s*(\d{1,3})/.exec(version ?? "");
+  return match ? Number(match[1]) : null;
+};
+
+/** Whether this protection exists on this device: its OS, its maker (when maker-specific) and its OS version. */
+function appliesTo(def: SecurityDef, platform: CapabilityPlatform, device: DeviceFacts): boolean {
+  if (!def.platforms.includes(platform)) return false;
+  if (def.oems && !(device.manufacturer && def.oems.includes(device.manufacturer.toLowerCase()))) return false;
+  const major = osMajor(device.osVersion);
+  return !(def.minOsMajor && major !== null && major < def.minOsMajor);
+}
+
 /**
- * Every protection this platform has, resolved against the real reads.
+ * Every protection this device has — its OS, maker and OS version — resolved against the real reads.
  *
- * A read that answered produces a state. Everything else produces `not_verifiable` with the honest
- * sentence and full instructions — guidance is never withheld just because Apollo cannot see.
+ * A read that answered produces a state. Everything else produces `not_verifiable` ("Check manually")
+ * with the honest sentence and full instructions — guidance is never withheld because Apollo can't see.
  */
 export function securityProtectionRows(
   platform: CapabilityPlatform,
   read: SecurityStateRead,
   now: number,
+  device: DeviceFacts = UNKNOWN_DEVICE,
 ): DeviceProtectionRow[] {
-  return CATALOGUE.filter((def) => def.platforms.includes(platform)).map((def) => {
-    const resolved = def.resolve?.(read, now, platform) ?? null;
-    const state: DeviceProtectionState = resolved?.state ?? "not_verifiable";
-    const detail = resolved?.detail ?? `${def.unverified} It is still worth checking — Higgins has the steps.`;
-    return toRow(def, read, platform, state, detail, resolved?.attributedTo ?? ownerOf(def, platform));
+  return CATALOGUE.filter((def) => appliesTo(def, platform, device)).map((def) => {
+    const resolved = def.resolve?.(read, now, platform) ?? { state: "not_verifiable" as const, detail: `${def.unverified} Please check it yourself — Higgins has the steps.` };
+    return toRow(def, read, platform, device, resolved, resolved.attributedTo ?? ownerOf(def, platform));
   });
 }
 
 /**
  * The whole catalogue, for a host that is not the device itself (a browser preview).
  *
- * Nothing here was read, so every row says exactly that. The wording, the recommended configuration
- * and the steps are all still readable — the person simply cannot be told a state Apollo never read.
+ * Nothing here was read, so every row says exactly that ("Unable to check"). The wording, the
+ * recommended configuration and the steps are all still readable — never a state Apollo didn't read.
  */
 export function previewProtectionRows(read: SecurityStateRead = EMPTY_SECURITY_READ): DeviceProtectionRow[] {
   return CATALOGUE.map((def) => {
     const platform: CapabilityPlatform = def.platforms[0];
     const where = def.platforms.map((p) => osName(p)).join(", ");
     return toRow(
-      def, read, platform, "not_readable_here",
-      `Apollo is not running on the device itself here, so it could not read this. On ${where}, open Apollo on the device to see the real state.`,
+      def, read, platform, UNKNOWN_DEVICE,
+      { state: "not_readable_here", detail: `Apollo is not running on the device itself here, so it could not read this. On ${where}, open Apollo on the device to see the real state.` },
       ownerOf(def, platform),
     );
   });

@@ -1,4 +1,4 @@
-// Device Capabilities + native classification evidence. Run: yarn test:device-capabilities
+// Device Protections + native classification evidence. Run: yarn test:device-capabilities
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -6,17 +6,17 @@ import {
   allCapabilityRows,
   buildDeviceCapabilities,
   capabilityAdvice,
-  capabilityHealth,
   capabilitySnapshotLines,
   CAPABILITY_CLASS_LABEL,
   PROTECTION_AREA_ORDER,
   protectionsByArea,
-  PROTECTION_STATE_LABEL,
+  PROTECTION_HEALTH_LABEL,
   type DeviceCapabilityInput,
   type NativeCapabilityReads,
   type NativeProtectionRead,
   type ProviderRead,
 } from "../src/domain/deviceCapabilities.ts";
+import { EMPTY_SECURITY_READ } from "../src/domain/deviceSecurityCatalogue.ts";
 import {
   nativeClassificationAttribution,
   nativeClassificationHigginsLine,
@@ -64,9 +64,10 @@ test("the capability classes are exactly the declared states, in plain English",
   assert.ok(!Object.values(CAPABILITY_CLASS_LABEL).includes("Not on this device"));
   // Nothing user-facing calls a provider's classification a "verdict".
   for (const label of Object.values(CAPABILITY_CLASS_LABEL)) assert.doesNotMatch(label, /verdict/i);
-  assert.equal(PROTECTION_STATE_LABEL.active, "Active on your device");
-  assert.equal(PROTECTION_STATE_LABEL.as_recommended, "Set as recommended");
-  assert.equal(PROTECTION_STATE_LABEL.not_verifiable, "Apollo can’t verify this");
+  // Protection health is compared with the recommended state; unknown stays distinct from unsafe.
+  assert.deepEqual(Object.values(PROTECTION_HEALTH_LABEL), [
+    "Protected", "Review recommended", "Action needed", "Check manually", "Unable to check", "Not available",
+  ]);
 });
 
 test("a browser preview reports every capability as unreadable, never as absent", () => {
@@ -182,52 +183,6 @@ test("no recognised protection present means there is no classification to use",
   assert.ok(v.unavailable.some((r) => r.id === "native_call_verdict"));
 });
 
-// ── Capability health score (Home's Device card) ──────────────────
-
-test("capability health scores only what the person can change, never platform facts", () => {
-  // A build that declares the restricted call-log / SMS pickers (approved switch on).
-  const v = buildDeviceCapabilities(input({ restrictedPickers: { callLog: true, sms: true } }));
-  const h = capabilityHealth(v, true);
-  // 6 available, 3 awaiting permission → 9 obtainable. The 4 the OS/provider keeps are NOT counted.
-  assert.equal(h.available, 6);
-  assert.equal(h.obtainable, 9);
-  assert.equal(h.score, 67);
-  assert.equal(h.band, "amber");
-  assert.equal(h.label, "6 of 9 ready");
-  assert.match(h.detail, /3 need your permission/);
-});
-
-test("the default (Play) build never scores the call-log / inbox pickers it doesn't declare", () => {
-  const h = capabilityHealth(buildDeviceCapabilities(input()), true);
-  // Same phone, but READ_CALL_LOG / READ_SMS are absent: they are not obtainable, so not counted.
-  assert.equal(h.available, 6);
-  assert.equal(h.obtainable, 7);
-  assert.equal(h.label, "6 of 7 ready");
-  assert.match(h.detail, /1 needs? your permission/);
-});
-
-test("green only when Apollo has everything this phone can give it", () => {
-  const granted = buildDeviceCapabilities(input({ caps: { ...ALL, notificationAccess: "supported" }, platform: "android" }));
-  const h = capabilityHealth({ ...granted, needsPermission: [], unknown: [] }, true);
-  assert.equal(h.band, "green");
-  assert.equal(h.score, 100);
-  assert.match(h.detail, /everything this phone can give it/);
-});
-
-test("a failed read drags the score down and is named, never ignored", () => {
-  const h = capabilityHealth(buildDeviceCapabilities(input({ caps: null })), true);
-  assert.equal(h.band, "red");
-  assert.ok(h.score !== null && h.score < 60);
-  assert.match(h.detail, /couldn’t be checked/);
-});
-
-test("no score at all when Apollo is not on the phone", () => {
-  const h = capabilityHealth(buildDeviceCapabilities({ platform: "web", caps: null, native: null, hostIsDevice: false }), false);
-  assert.equal(h.band, "unknown");
-  assert.equal(h.score, null);
-  assert.match(h.detail, /Open Apollo on your phone/);
-});
-
 // ── iOS boundaries ─────────────────────────────────────────────────
 
 test("iOS keeps call history, messages and the app list private, with Apple named as the reason", () => {
@@ -257,21 +212,23 @@ test("an unreadable protection says so plainly and still carries full guidance",
   assert.equal(scanner!.guidance!.selfCheck, true);
   assert.ok(scanner!.guidance!.steps.length > 0);
   for (const row of v.deviceProtects) {
-    assert.ok(row.what.length > 20, `${row.id} must say what it does`);
-    assert.ok(row.benefit.length > 20, `${row.id} must say how it helps`);
-    // Nothing unreadable may be described as on or off.
-    if (row.state === "not_verifiable") assert.match(row.detail, /cannot read|does not let Apollo read|could not read|could not inspect|cannot tell/i);
+    // Nothing unreadable may be described as on or off, and it stays "Check manually".
+    if (row.state === "not_verifiable") assert.equal(row.stateLabel, "Check manually");
+    if (row.state === "not_verifiable") assert.match(row.detail, /cannot read|does not let Apollo read|doesn't let Apollo read|could not read|could not inspect|cannot tell|can't read|can't check|only you can/i);
   }
 });
 
-test("everything worth checking is an index into the same rows, never a second list", () => {
-  const v = buildDeviceCapabilities(input());
-  assert.ok(v.recommendations.length >= 5);
+test("needs-attention is an index into the same rows, and only ever holds verified deviations", () => {
+  const security = { ...EMPTY_SECURITY_READ, screenLockSecure: false, developerOptions: true, usbDebugging: true, userCertificateCount: 2 };
+  const v = buildDeviceCapabilities(input({ security }));
+  assert.deepEqual(v.recommendations.map((r) => r.id).sort(), ["developer_options", "screen_lock", "user_certificates"]);
   for (const rec of v.recommendations) {
     assert.ok(v.deviceProtects.some((r) => r.id === rec.id), `${rec.id} must be one of the protection rows`);
     assert.ok(rec.guidance, `${rec.id} must carry guidance`);
-    assert.notEqual(rec.state, "active");
+    assert.equal(rec.evidence, "apollo_verified");
   }
+  // With nothing read, nothing "needs attention" — unread settings need checking, not fixing.
+  assert.equal(buildDeviceCapabilities(input()).recommendations.length, 0);
 });
 
 test("Samsung handlers get Samsung wording, Google handlers get Google wording", () => {
@@ -341,7 +298,7 @@ test("Higgins receives every capability with its exact state", () => {
 
 test("Higgins is told who owns each protection on the device", () => {
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
-  assert.equal(lines.protections[0], "Samsung Smart Call — Caller ID & spam filtering — Active on your device (per Samsung Smart Call) — does not share its classification with Apollo");
+  assert.ok(lines.protections.includes("Samsung Smart Call — Caller ID & spam filtering — Protected (per Samsung Smart Call) — does not share its classification with Apollo"));
   // Every OS/OEM protection reaches Higgins too, each with its owner and its exact state.
   assert.ok(lines.protections.length >= 13);
   assert.ok(lines.protections.some((l) => l.startsWith("Screen lock —") && l.includes("(per your device)")));
@@ -353,7 +310,7 @@ test("Higgins is told which settings Apollo cannot read, with the recommended co
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
   const scanner = lines.recommended.find((l) => l.startsWith("App scanning"));
   assert.ok(scanner, "Higgins must be told app scanning is unverifiable");
-  assert.match(scanner!, /Apollo can’t verify this/);
+  assert.match(scanner!, /Check manually/);
   assert.match(scanner!, /Higgins recommends leaving app scanning switched on/);
 });
 

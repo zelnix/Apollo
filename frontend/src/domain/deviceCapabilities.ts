@@ -1,4 +1,4 @@
-// Device Capabilities — the honest map behind the Device area.
+// Device Protections — the honest map behind the Device area (formerly "Device Capabilities").
 //
 // It answers exactly four questions for the person, in their order:
 //   1. What does my device already protect?          → deviceProtects[]  (attribution preserved)
@@ -18,18 +18,19 @@
 // Pure and unit-tested (tests/deviceCapabilities.test.ts). No React, no native imports.
 
 import {
-  PROTECTION_STATE_LABEL, protectionsNeedingAttention,
+  evidenceFor, groupDeviceProtections, healthFor, healthLabel, protectionsNeedingAttention,
   type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow, type DeviceProtectionState,
   type ProtectionArea, type ProtectionGuidance,
 } from "./deviceProtectionTypes.ts";
-import { EMPTY_SECURITY_READ, previewProtectionRows, securityProtectionRows, type SecurityStateRead } from "./deviceSecurityCatalogue.ts";
+import { EMPTY_SECURITY_READ, previewProtectionRows, securityProtectionRows, type DeviceFacts, type SecurityStateRead } from "./deviceSecurityCatalogue.ts";
 
 export {
-  PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER, PROTECTION_STATE_LABEL,
-  protectionsByArea, protectionsNeedingAttention,
-  type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow,
-  type DeviceProtectionState, type ProtectionArea, type ProtectionGuidance,
+  PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER, PROTECTION_EVIDENCE_LABEL, PROTECTION_HEALTH_LABEL,
+  groupDeviceProtections, protectionsByArea, protectionsNeedingAttention, protectionStatusLine, summariseDeviceProtections,
+  type CapabilityAction, type CapabilityPlatform, type DeviceProtectionGroups, type DeviceProtectionRow,
+  type DeviceProtectionState, type DeviceProtectionsSummary, type ProtectionArea, type ProtectionGuidance, type ProtectionHealth,
 } from "./deviceProtectionTypes.ts";
+export type { DeviceFacts } from "./deviceSecurityCatalogue.ts";
 
 // ────────────────────────────────────────────────────────────────────
 // The five declared classes (+ one honest "couldn't tell")
@@ -110,6 +111,8 @@ export interface DeviceCapabilityInput {
   hostIsDevice?: boolean;
   /** The existing device-posture / device-signal reads, interpreted by the security catalogue. */
   security?: SecurityStateRead | null;
+  /** Maker, OS version and model, so maker- and version-specific protections are offered where they exist. */
+  device?: DeviceFacts;
   /** Which Google Play restricted pickers this build declares (READ_CALL_LOG / READ_SMS). Absent = neither. */
   restrictedPickers?: { callLog: boolean; sms: boolean };
   /** Clock, injected so patch-age stays testable. */
@@ -150,7 +153,7 @@ export interface DeviceCapabilityView {
   unknown: CapabilityRow[];
   /** Apollo isn't on the phone here, so nothing could be read. Never "absent". */
   notReadableHere: CapabilityRow[];
-  /** The subset of deviceProtects worth acting on — a short index, not a second list. */
+  /** Verified settings that don't meet the recommended state — an index into deviceProtects, not a second list. */
   recommendations: DeviceProtectionRow[];
   /** One honest sentence about coverage — counts only, no grading. */
   summary: string;
@@ -163,60 +166,6 @@ export function allCapabilityRows(view: DeviceCapabilityView): CapabilityRow[] {
     ...view.unknown, ...view.notReadableHere, ...view.unavailable,
   ];
 }
-
-export type CapabilityHealthBand = "green" | "amber" | "red" | "unknown";
-
-export interface CapabilityHealth {
-  band: CapabilityHealthBand;
-  /** Share of the capabilities this phone CAN give Apollo that Apollo actually has, or null. */
-  score: number | null;
-  available: number;
-  /** Available + still to be granted + not readable. Platform facts are deliberately excluded. */
-  obtainable: number;
-  /** Short chip text for a card, e.g. "6 of 9 ready". */
-  label: string;
-  /** One honest sentence about what is holding the rest back. */
-  detail: string;
-}
-
-/**
- * Capability health — how much of what this phone CAN give Apollo, Apollo actually has.
- *
- * Only capabilities the person can change count: granted, awaiting permission, or unreadable because
- * a read failed. Capabilities the OS or a provider keeps to itself, and capabilities this phone
- * simply does not have, are platform facts and are NEVER scored as failures — scoring them would
- * mark an iPhone down for being an iPhone. When Apollo isn't on the phone there is no score at all.
- */
-export function capabilityHealth(view: DeviceCapabilityView, hasNativeHost: boolean): CapabilityHealth {
-  const available = view.apolloCanUse.length;
-  const pending = view.needsPermission.length;
-  const unreadable = view.unknown.length;
-  const obtainable = available + pending + unreadable;
-
-  if (!hasNativeHost || view.notReadableHere.length) {
-    return { band: "unknown", score: null, available: 0, obtainable: 0, label: "Not read here", detail: "Open Apollo on your phone to see what it can use." };
-  }
-  if (obtainable === 0) {
-    return { band: "unknown", score: null, available: 0, obtainable: 0, label: "Nothing to score", detail: "This phone exposes none of these capabilities to any app." };
-  }
-
-  const score = Math.round((available / obtainable) * 100);
-  const band: CapabilityHealthBand = score === 100 ? "green" : score >= 60 ? "amber" : "red";
-  const parts: string[] = [];
-  if (pending) parts.push(`${pending} need${pending === 1 ? "s" : ""} your permission`);
-  if (unreadable) parts.push(`${unreadable} couldn’t be checked`);
-  return {
-    band,
-    score,
-    available,
-    obtainable,
-    label: `${available} of ${obtainable} ready`,
-    detail: parts.length
-      ? `${parts.join(", ")}. The rest is in place.`
-      : "Apollo has everything this phone can give it.",
-  };
-}
-
 
 /**
  * The one thing Higgins recommends for a capability in its current state, or null when there is
@@ -421,15 +370,6 @@ const CATALOGUE: CapabilityDef[] = [
 // Provider rows — the call/message protection this device itself runs
 // ────────────────────────────────────────────────────────────────────
 
-const PROVIDER_WHAT: Record<"call" | "message", string> = {
-  call: "Your phone’s own check on an incoming call, run by the app that handles your calls.",
-  message: "Your messaging app’s own check on an incoming text, run by the app that handles your messages.",
-};
-const PROVIDER_BENEFIT: Record<"call" | "message", string> = {
-  call: "It can label a suspected scam call before you answer, which buys you the one thing these calls try to take: a moment to think.",
-  message: "It can move a scam text out of your inbox so it never sits next to a real message from your bank.",
-};
-
 /** A provider that is installed but isn’t the active handler can be switched on by the person. */
 function defaultHandlerGuidance(p: ProviderRead, kind: "call" | "message"): ProtectionGuidance {
   const app = kind === "call" ? "phone app" : "messaging app";
@@ -472,6 +412,7 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
   const evidenceLine = p.classificationAccessible
     ? `${p.provider} shares its classification with Apollo. When it flags something, Apollo records it as ${p.provider}’s finding and opens its own investigation from there.`
     : p.note;
+  const health = healthFor(state);
   return {
     id: `${kind}:${p.packageName}`,
     title: p.provider,
@@ -479,11 +420,13 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
     kind,
     area: "calls_messages",
     state,
-    stateLabel: PROTECTION_STATE_LABEL[state],
+    health,
+    evidence: evidenceFor(state),
+    stateLabel: healthLabel(state, health),
     detail,
     attributedTo: p.provider,
-    what: PROVIDER_WHAT[kind],
-    benefit: PROVIDER_BENEFIT[kind],
+    // A maker's own app (Samsung Smart Call) is explained once per maker; a Google or carrier app once for Android.
+    explanationScope: p.packageName.startsWith("com.samsung.") ? "oem" : "os",
     classificationAccessible: p.classificationAccessible,
     evidenceLine,
     guidance: state === "installed_not_default" ? defaultHandlerGuidance(p, kind) : undefined,
@@ -621,6 +564,7 @@ export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCap
         input.platform,
         { ...EMPTY_SECURITY_READ, ...(input.security ?? {}), defaultDialerPackage: input.native?.defaultDialerPackage ?? null, defaultSmsPackage: input.native?.defaultSmsPackage ?? null },
         input.now ?? Date.now(),
+        input.device,
       );
 
   const deviceProtects = [...providerRows, ...securityRows];
@@ -669,7 +613,10 @@ export interface CapabilitySnapshotLines {
  */
 export function capabilitySnapshotLines(reading: CapabilityReadingLike): CapabilitySnapshotLines {
   const { view } = reading;
-  const protections = view.deviceProtects.map((p) => {
+  // Exceptions first, so the lines Higgins keeps are the ones that matter.
+  const groups = groupDeviceProtections(view.deviceProtects);
+  const ordered = [...groups.needsAttention, ...groups.needsChecking, ...groups.protectedRows, ...groups.optional, ...groups.notAvailable];
+  const protections = ordered.map((p) => {
     const evidence = p.kind === "device"
       ? ""
       : ` — ${p.classificationAccessible ? "shares its classification with Apollo" : "does not share its classification with Apollo"}`;
@@ -677,7 +624,8 @@ export function capabilitySnapshotLines(reading: CapabilityReadingLike): Capabil
   });
   const capabilities = allCapabilityRows(view)
     .map((row) => `${row.title}: ${CAPABILITY_CLASS_LABEL[row.klass]}${row.attributedTo !== "Apollo" ? ` (per ${row.attributedTo})` : ""}`);
-  const recommended = view.recommendations.map((r) =>
+  // What Apollo can't read, with the recommended configuration — "please check these yourself".
+  const recommended = groups.needsChecking.map((r) =>
     `${r.title} — ${r.stateLabel} — ${r.guidance?.recommended ?? ""}`.trim());
   const summary = !reading.hasNativeHost
     ? "Apollo is not running on the device itself right now, so it cannot read this device's capabilities or its built-in protection."

@@ -1,15 +1,8 @@
 /**
- * Device Capabilities, as tables grouped by category.
+ * Apollo's own capabilities on this device, as tables grouped by category (Calls and messages, Apps…).
  *
- * One table per category — Calls and messages, Apps on this device, Web and network, Who can get in,
- * Updates and system, If it is lost or stolen — each holding everything that covers that ground:
- *   • the protections this device runs itself (the provider owns the row, so its name and its state
- *     label are printed verbatim), then
- *   • the capabilities Apollo looks for there, with the one status a real read produced. A failed
- *     read stays "Apollo couldn't check"; it is never shown as clear.
- *
- * Every row is a link into Capability Details, which answers what it is, how it helps, and whether
- * anything needs doing.
+ * Each capability shows the one status a real read produced. A failed read stays "Apollo couldn't
+ * check"; it is never shown as clear. Every row is a link into its details.
  */
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -20,8 +13,6 @@ import {
   CAPABILITY_CLASS_LABEL, PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER,
   type CapabilityClass,
   type CapabilityRow,
-  type DeviceProtectionRow,
-  type DeviceProtectionState,
 } from "@/src/domain/deviceCapabilities";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 
@@ -51,19 +42,6 @@ function capabilityTone(klass: CapabilityClass, c: ThemeColors): Tone {
   switch (klass) {
     case "apollo_can_use": return { dot: c.resting, text: c.restingText };
     case "permission_required": return { dot: c.gold, text: c.onSurface };
-    case "unknown": return { dot: c.growling, text: c.growlingText };
-    default: return { dot: c.muted, text: c.unknownText };
-  }
-}
-
-function protectionTone(state: DeviceProtectionState, c: ThemeColors): Tone {
-  switch (state) {
-    case "active": return { dot: c.resting, text: c.restingText };
-    case "as_recommended": return { dot: c.resting, text: c.restingText };
-    case "installed_not_default": return { dot: c.gold, text: c.onSurface };
-    case "off": return { dot: c.biting, text: c.bitingText };
-    case "not_readable_here": return { dot: c.muted, text: c.unknownText };
-    case "out_of_date": return { dot: c.growling, text: c.growlingText };
     case "unknown": return { dot: c.growling, text: c.growlingText };
     default: return { dot: c.muted, text: c.unknownText };
   }
@@ -136,14 +114,8 @@ interface AreaItem {
   hint: string;
 }
 
-/**
- * One table per category, each holding everything in that category: the protections the device runs
- * itself, then the capabilities Apollo looks for there. A protection keeps its owner's state label,
- * a capability keeps its class — the two vocabularies stay distinct inside one list.
- */
-export function DeviceAreaTables({
-  protections, capabilities, testID,
-}: { protections: DeviceProtectionRow[]; capabilities: CapabilityRow[]; testID: string }) {
+/** One table per category, each holding the capabilities Apollo looks for there, then a legend. */
+export function CapabilityTables({ capabilities, testID }: { capabilities: CapabilityRow[]; testID: string }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
@@ -151,18 +123,11 @@ export function DeviceAreaTables({
   const groups = PROTECTION_AREA_ORDER.map((area) => ({
     area,
     label: PROTECTION_AREA_LABEL[area],
-    items: [
-      ...protections.filter((p) => p.area === area).map<AreaItem>((p) => ({
-        id: p.id, name: p.title, sub: p.subtitle, statusLabel: p.stateLabel,
-        tone: protectionTone(p.state, colors),
-        hint: "Opens what this is, how it helps you, and how to check it",
-      })),
-      ...capabilities.filter((c) => c.area === area).map<AreaItem>((c) => ({
-        id: c.id, name: c.title, statusLabel: CAPABILITY_CLASS_LABEL[c.klass],
-        tone: capabilityTone(c.klass, colors),
-        hint: "Opens what this is, how it helps you, and anything you need to do",
-      })),
-    ],
+    items: capabilities.filter((c) => c.area === area).map<AreaItem>((c) => ({
+      id: c.id, name: c.title, statusLabel: CAPABILITY_CLASS_LABEL[c.klass],
+      tone: capabilityTone(c.klass, colors),
+      hint: "Opens what this is, how it helps you, and anything you need to do",
+    })),
   })).filter((group) => group.items.length > 0);
 
   const classes = CLASS_ORDER.filter((k) => capabilities.some((c) => c.klass === k));

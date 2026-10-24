@@ -26,8 +26,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppMenuButton } from "@/src/components/AppMenu";
+import { FitTitle } from "@/src/components/FitTitle";
+import { ProtectionGroup, ProtectionListRow, type RowTone } from "@/src/components/ProtectionList";
 
+import { groupApolloProtections } from "@/src/domain/apolloProtections";
+import type { GatePresentation } from "@/src/domain/gates";
 import {
+  areaOfGate,
   buildProtectionAreas,
   type ProtectionArea,
   type ProtectionAreaId,
@@ -69,6 +74,56 @@ const AREA_ICON_COLORS: Record<
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+function gateRowTone(gate: GatePresentation): RowTone {
+  if (gate.tone === "action") return "attention";
+  if (gate.statusLabel === "Setup required") return "review";
+  if (gate.tone === "good" || gate.statusLabel === "Manual check") return "protected";
+  if (gate.tone === "unavailable") return "muted";
+  return "check";
+}
+
+/** Exception-first list of Apollo's own Gates: what needs the person first, healthy ones folded. */
+function ApolloProtectionLists({ gates }: { gates: GatePresentation[] }) {
+  const router = useRouter();
+  const groups = groupApolloProtections(gates);
+  const rows = (list: GatePresentation[], prefix: string) => list.map((gate, i) => (
+    <ProtectionListRow
+      key={gate.id}
+      first={i === 0}
+      title={gate.title}
+      subtitle={gate.currentHelp}
+      statusLabel={gate.statusLabel}
+      tone={gateRowTone(gate)}
+      onPress={() => router.push(`/gate-details?gate=${gate.id}&category=${areaOfGate(gate.id)}` as never)}
+      testID={`${prefix}-${gate.id}`}
+    />
+  ));
+  return (
+    <>
+      {groups.needsAttention.length ? (
+        <ProtectionGroup title="Needs attention" intro="These have stopped or aren't set up yet, so they aren't protecting you." count={groups.needsAttention.length} testID="apollo-prot-attention">
+          {rows(groups.needsAttention, "apollo-prot-attention-row")}
+        </ProtectionGroup>
+      ) : null}
+      {groups.needsChecking.length ? (
+        <ProtectionGroup title="Needs checking" intro="Limited, switched off, or Apollo couldn't confirm them. Unconfirmed isn't the same as broken." count={groups.needsChecking.length} testID="apollo-prot-checking">
+          {rows(groups.needsChecking, "apollo-prot-checking-row")}
+        </ProtectionGroup>
+      ) : null}
+      {groups.protectedGates.length ? (
+        <ProtectionGroup title="Protected" count={groups.protectedGates.length} collapsible testID="apollo-prot-protected">
+          {rows(groups.protectedGates, "apollo-prot-protected-row")}
+        </ProtectionGroup>
+      ) : null}
+      {groups.notAvailable.length ? (
+        <ProtectionGroup title="Not available here" count={groups.notAvailable.length} collapsible testID="apollo-prot-unavailable">
+          {rows(groups.notAvailable, "apollo-prot-unavailable-row")}
+        </ProtectionGroup>
+      ) : null}
+    </>
+  );
+}
 
 function toneColor(tone: string): string {
   switch (tone) {
@@ -336,9 +391,7 @@ export default function ProtectionScreen() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
-            Protections
-          </Text>
+          <FitTitle text="Apollo Protections" style={[styles.headerTitle, { color: colors.onSurface }]} maxSize={26} minSize={20} testID="protection-title" />
           <AppMenuButton testID="protection-menu" />
         </View>
       </View>
@@ -355,7 +408,7 @@ export default function ProtectionScreen() {
         <Text
           style={[styles.subtitle, { color: colors.onSurfaceSecondary }]}
         >
-          See your protection categories and the Gates inside each one.
+          Apollo&apos;s own protections. Anything that needs you is listed first.
         </Text>
 
         {/* ── Failed check banner ──
@@ -387,12 +440,21 @@ export default function ProtectionScreen() {
         {/* Phone settings that decide whether website protection works (Android only). */}
         <WebsiteProtectionNotices protection={health.protection} testID="protection-site-notices" />
 
+        {/* ── Exception-first: what needs the person, then the healthy ones folded ── */}
+        {health.checking ? (
+          <Text style={[styles.subtitle, { color: colors.onSurfaceSecondary }]} testID="protection-checking">
+            Checking the state of each protection…
+          </Text>
+        ) : (
+          <ApolloProtectionLists gates={health.gates} />
+        )}
+
         {/* ── Section header ── */}
         <View style={styles.sectionHeader}>
           <Text
             style={[styles.sectionTitle, { color: colors.onSurface }]}
           >
-            Protection categories
+            Browse by category
           </Text>
           <Text
             style={[
