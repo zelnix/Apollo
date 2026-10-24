@@ -68,6 +68,8 @@ async def lifespan(_: FastAPI):
     await system_health_jobs.ensure_indexes()
     await higgins_context.ensure_indexes()
     await government_alerts.ensure_indexes()
+    from services.higgins import knowledge as higgins_knowledge
+    await higgins_knowledge.ensure_indexes()
     await learning.ensure_indexes()
     try:
         # Sources first (article citations are checked against them), then the same Learn library in every
@@ -79,6 +81,11 @@ async def lifespan(_: FastAPI):
         await _feeds.purge_listing_page_links()
     except Exception:  # noqa: BLE001 — seeding must never block startup
         logger.warning("learning catalogue seed failed", exc_info=True)
+    try:
+        from services import apollo_kb
+        await apollo_kb.ensure_indexes()
+    except Exception:  # noqa: BLE001 — the knowledge base must never block startup
+        logger.warning("apollo kb setup failed", exc_info=True)
     await capability_registry.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     # Legacy retention migration removed — server no longer retains completed investigations
@@ -230,7 +237,25 @@ async def lifespan(_: FastAPI):
 
     learn_publish_task = asyncio.create_task(learn_weekly_publish_loop(), name="apollo-learn-weekly-publish")
 
+    # 8. apollo_kb_loop — Tavily maintains the Apollo Knowledge Base once a week (admin console has a
+    #    refresh button). Hourly it only asks whether a weekly run is due; the schedule lives in the DB.
+    async def apollo_kb_loop():
+        from services import apollo_kb
+        await asyncio.sleep(120)  # let startup settle first
+        while True:
+            try:
+                if await apollo_kb.due():
+                    await apollo_kb.run("scheduled")
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("apollo kb loop failed")
+            await asyncio.sleep(3600)
+
+    apollo_kb_task = asyncio.create_task(apollo_kb_loop(), name="apollo-kb")
+
     yield
+    apollo_kb_task.cancel()
     learn_publish_task.cancel()
     maintenance_task.cancel()
     quiet_hold_task.cancel()
@@ -238,7 +263,7 @@ async def lifespan(_: FastAPI):
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(apollo_kb_task, learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

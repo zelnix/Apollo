@@ -6,17 +6,12 @@ via services/higgins/coordinator.py, not the removed legacy investigation engine
 """
 from __future__ import annotations
 
-import io
 import sys
 from pathlib import Path
 
-import pytest
-from fastapi import UploadFile
-from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routers import analysis
 from services.investigation import deterministic_entities, purpose_limited_url
 
 
@@ -46,21 +41,3 @@ def test_unsupported_observation_cannot_become_a_finding():
     assert response is None and any("observation" in e for e in errors)
 
 
-@pytest.mark.asyncio
-async def test_screenshot_upload_is_closed_after_success(monkeypatch):
-    image = Image.new("RGB", (700, 300), "white"); draw = ImageDraw.Draw(image)
-    draw.rectangle((10, 10, 690, 290), outline="black", width=3); draw.text((30, 80), "Review this payment", fill="black")
-    raw = io.BytesIO(); image.save(raw, "PNG"); file = UploadFile(filename="message.png", file=io.BytesIO(raw.getvalue()), headers={"content-type": "image/png"})
-
-    async def fake_extract(_data: bytes):
-        return {"sender": "", "text": "Review this payment", "urls": [], "source": "sms",
-                "processing": {"raw_retained_by_apollo": False}}
-
-    monkeypatch.setattr(analysis, "extract_message_screenshot", fake_extract)
-    import hashlib
-    image_bytes = raw.getvalue()
-    digest = hashlib.sha256(image_bytes).hexdigest()
-    response = await analysis.message_extract(
-        device_id="purpose-test", file=file)
-    assert response["processing"]["raw_retained_by_apollo"] is False
-    assert file.file.closed

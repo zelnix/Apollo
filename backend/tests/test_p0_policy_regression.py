@@ -95,7 +95,6 @@ def _valid_evidence(evidence_id: str, observed_at: str, domain: str = "evil.exam
     "path,payload",
     [
         ("/page/crawl", {}),
-        ("/message/extract", {}),
         ("/account/breach", {}),
         ("/call/risk-check", {}),
     ],

@@ -39,8 +39,13 @@ async def refresh_all() -> None:
     await learning_feeds.refresh_due()
     try:
         from services import scam_analysis
-        await scam_analysis.analyze_pending(limit=25)
+        await scam_analysis.analyze_pending()
     except Exception:  # noqa: BLE001 — analysis is best-effort; ingestion must never fail because of it
+        pass
+    try:
+        from services.higgins import knowledge
+        await knowledge.refresh()
+    except Exception:  # noqa: BLE001 — the knowledge base catches up on the next cycle
         pass
 
 
@@ -131,6 +136,16 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
         "australianRelevance": relevance, "australianRelevanceReason": analysis.get("australianRelevanceReason") or "",
         "growling": growling, "higgins": higgins,
     }
+
+
+async def alert_by_url(url: str) -> dict | None:
+    """One analysed alert/advisory by its official URL, in the same consumer shape as the feed."""
+    row = await db.learning_feed_items.find_one({"url": url, "scam_analysis.analysisVersion": scam_analysis.ANALYSIS_VERSION},
+                                                {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0})
+    if not row:
+        return None
+    source = await db.learning_sources.find_one({"source_id": row["source_id"]}, {"_id": 0}) or {}
+    return _alert(row, source, row["scam_analysis"], now_utc())
 
 
 async def snapshot(limit: int = 50) -> dict:

@@ -35,6 +35,8 @@ class ChatRequest(Wire):
     # Live reading of this phone's own Apollo state, so Higgins answers from what is
     # actually true rather than from what he can infer. State only — never content.
     device_snapshot: chat.DeviceSnapshot | None = None
+    # The official alert the person opened, so Higgins explains it from the source's own words.
+    selected_scam_alert_url: str | None = Field(default=None, max_length=600)
 
 
 @router.post("/higgins/chat", response_model=chat.ChatReply)
@@ -42,7 +44,7 @@ async def higgins_chat(body: ChatRequest, request: Request):
     owner = request.state.device["device_id"]
     try:
         result = await chat.reply(owner, body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
-                                  body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot)
+                                  body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
     except chat.provider.ProviderFailure as exc:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="Higgins is temporarily unavailable. No investigation was started.") from exc
@@ -53,7 +55,7 @@ async def higgins_chat(body: ChatRequest, request: Request):
 async def ask_stream(body: ChatRequest, request: Request):
     """Compatibility SSE transport with ordinary-chat semantics and no case side effect."""
     result = await chat.reply(request.state.device["device_id"], body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
-                              body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot)
+                              body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
     async def events():
         yield f"data: {json.dumps({'delta': result.answer, 'clarification': result.clarification, 'suggested_actions': [a.wire() for a in result.suggested_actions], 'investigative_work_started': result.investigative_work_started, 'pipeline_case_id': result.pipeline_case_id})}\n\n"
         yield f"data: {json.dumps({'done': True, 'provider_complete': True, 'finish_reason': 'STOP', 'investigative_work_started': result.investigative_work_started})}\n\n"

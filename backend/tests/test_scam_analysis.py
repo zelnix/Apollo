@@ -1,28 +1,33 @@
-# Deterministic parts of the AI-grounded scam analysis: output coercion (can never fabricate a High
-# alert from a malformed model reply), the free pre-filter, JSON parsing, and the growl rule.
+# Deterministic scam analysis: fixed rules on the source's own words (no AI), the free pre-filter and the growl rule.
 import services.scam_analysis as sa
 from services import government_alerts as ga
 
 
-class TestCoerce:
-    def test_malformed_falls_back_to_safe_education(self):
-        out = sa._coerce({"tier": "nonsense", "severity": "EXTREME"})
-        assert out["tier"] == "general_education" and out["severity"] == "LOW"  # unknown tier can't stay EXTREME
-        assert out["confidence"] == "low" and out["analysisVersion"] == sa.ANALYSIS_VERSION
+class TestDeterministicAnalysis:
+    def test_unclear_item_is_safe_education(self):
+        out = sa.analyse({"title": "Annual report", "summary": "Statistics on reports received."})
+        assert out["tier"] == "general_education" and out["severity"] == "LOW"
+        assert out["method"] == "deterministic_source_rules" and out["analysisVersion"] == sa.ANALYSIS_VERSION
 
-    def test_education_tier_forces_low_severity(self):
-        out = sa._coerce({"tier": "general_education", "severity": "HIGH"})
-        assert out["severity"] == "LOW"
+    def test_organisation_advisory_is_never_a_consumer_alert(self):
+        out = sa.analyse({"title": "Critical vulnerability in VPN firmware", "summary": "Threat actors exploit CVE-2026-1234; patch now."})
+        assert out["audience"] == "organisation" and out["tier"] == "general_education"
 
-    def test_specific_scam_keeps_valid_severity_and_fields(self):
-        out = sa._coerce({"tier": "specific_scam", "severity": "HIGH", "severityReason": "names ATO + money loss",
-                          "australianRelevance": "confirmed", "facts": {"who": "ATO"}, "sections": {"whatHappened": "x"}})
+    def test_active_consumer_warning_quotes_the_source(self):
+        out = sa.analyse({"title": "Scam alert: fake toll texts", "summary": "Scammers are actively sending fake toll text messages to Australians.",
+                          "_source_name": "Scamwatch", "_source_region": "AU"})
         assert out["tier"] == "specific_scam" and out["severity"] == "HIGH"
-        assert out["facts"]["who"] == "ATO" and out["sections"]["whatHappened"] == "x"
-        assert out["australianRelevance"] == "confirmed"
+        assert "actively" in out["severityReason"] and out["australianRelevance"] == "confirmed"
 
-    def test_unknown_relevance_defaults(self):
-        assert sa._coerce({"tier": "specific_scam", "severity": "HIGH", "australianRelevance": "mars"})["australianRelevance"] == "unknown"
+    def test_sections_only_hold_the_sources_own_sentences(self):
+        article = ("Scammers pretend to be from your bank and ask you to move money. "
+                   "Never share your one-time code with anyone who calls you. Report it to Scamwatch if you lost money.")
+        title = "Bank impersonation scam warning"
+        out = sa.analyse({"title": title, "summary": ""}, article)
+        source_words = f"{title}. {article}"
+        for text in (out["sections"]["whatHappened"], out["sections"]["whatToWatch"], out["sections"]["whatToDo"]):
+            for line in filter(None, text.split("\n")):
+                assert line in source_words
 
 
 class TestPreFilter:
@@ -34,14 +39,6 @@ class TestPreFilter:
 
     def test_real_alert_titles_pass(self):
         assert not sa._obviously_not_an_alert({"url": "https://x/news-and-alerts/ato-impersonation", "title": "Scam alert: ATO and myGov impersonation"})
-
-
-class TestParseJson:
-    def test_plain_and_fenced_and_embedded(self):
-        assert sa._parse_json('{"a": 1}')["a"] == 1
-        assert sa._parse_json('```json\n{"a": 2}\n```')["a"] == 2
-        assert sa._parse_json('Here it is: {"a": 3} done')["a"] == 3
-        assert sa._parse_json("not json") is None
 
 
 def _analysis(tier, severity, relevance):

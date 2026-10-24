@@ -115,11 +115,10 @@ async def test_relayed_refresh_stores_only_official_links_and_records_the_copy_t
 @pytest.mark.anyio
 async def test_relayed_items_are_analysed_without_trying_the_blocked_article_page(monkeypatch):
     async def must_not_fetch(url): raise AssertionError("blocked source must not be fetched")
-    async def model(prompt): return {"tier": "general_education", "audience": "organisation"}
     monkeypatch.setattr(scam_analysis, "_fetch_article_text", must_not_fetch)
-    monkeypatch.setattr(scam_analysis, "_run_model", model)
-    analysis = await scam_analysis.analyze_item({"title": "t", "summary": "s", "url": FEED, "_article_unreachable": True})
-    assert analysis["tier"] == "general_education"
+    analysis = await scam_analysis.analyze_item({"title": "Critical vulnerabilities in Fortinet products", "summary": "Patch now.",
+                                                 "url": FEED, "_article_unreachable": True})
+    assert analysis["tier"] == "general_education" and analysis["method"] == "deterministic_source_rules"
 
 
 def test_catalogue_reads_acsc_rss_through_the_archive():

@@ -70,16 +70,14 @@ console.log("\n[Test 3] Email screenshot — sender retained, password redacted"
   assert(!redacted.includes("Abc123secret"), "Password redacted");
 }
 
-// TEST 4: Egress boundary — message_extract
-console.log("\n[Test 4] Egress boundary — message_extract needs no approval metadata");
+// TEST 4: Screenshot text is read on the device — there is no server-side extraction endpoint any more
+console.log("\n[Test 4] Egress boundary — no message_extract endpoint");
 {
   const { enforceEgress } = await import("../src/domain/privacy.ts");
-  const payload = { device_id: "dev-123" };
   let threwError = false;
-  let egressed;
-  try { egressed = enforceEgress("message_extract", payload); }
-  catch (e) { threwError = true; console.log("    Error: " + e.message); }
-  assert(!threwError && egressed?.device_id === "dev-123", "message_extract accepts a plain image submission");
+  try { enforceEgress("message_extract", { device_id: "dev-123" }); }
+  catch { threwError = true; }
+  assert(threwError, "message_extract is no longer an allowed egress endpoint");
 }
 
 // TEST 5: Egress boundary — page_extract

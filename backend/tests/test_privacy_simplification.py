@@ -99,6 +99,6 @@ def test_submitted_image_needs_no_approval_ceremony():
     """Submitting an image authorises its analysis: the screenshot endpoints take no status/digest fields."""
     import inspect
     from routers import analysis
-    for fn in (analysis.message_extract, analysis.page_extract):
+    for fn in (analysis.page_extract, analysis.vision_investigate):
         params = inspect.signature(fn).parameters
         assert "sanitization_status" not in params and "sanitization_digest" not in params

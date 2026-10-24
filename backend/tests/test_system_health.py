@@ -58,34 +58,42 @@ async def test_readiness_maps_only_bounded_codes(monkeypatch):
     assert next(row for row in stale["components"] if row["id"] == "maintenance")["status"] == "degraded"
 
 
-FAKE_RESPONSE = {
-    "overview": "A fictional reminder cannot confirm the condition of any real device.",
-    "explanationMarkdown": "A routine reminder may mean batteries need attention, but this is not a device observation.",
-    "assessment": "uncertain", "attention": "none", "attentionReason": None,
-    "findings": [{"text": "The fictional reminder alone cannot establish safety.", "basis": "inference", "confidence": "low",
-                  "evidenceIds": [], "sourceIds": [], "supersedesFindingIds": []}],
-    "uncertainties": ["No real device has been checked."], "scope": "Synthetic practice appliance only.",
-    "sourceIds": [], "remainingEvidenceIds": [],
-    "actions": [{"kind": "instruction", "label": "Check the manual", "instruction": "Read the fictional appliance's instructions.",
-                 "capabilityId": None, "sourceIds": [], "desiredField": None, "desiredValue": None}],
-    "recommendedActionIndex": 0, "question": None, "completion": "complete",
-}
+
+
+class _Cursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def sort(self, *_args):
+        return self
+
+    def limit(self, *_args):
+        return self
+
+    async def to_list(self, _length):
+        return self.rows
 
 
 @pytest.mark.asyncio
-async def test_synthetic_provider_uses_one_existing_higgins_call_and_strict_validation(monkeypatch):
-    fake = AsyncMock(return_value=SimpleNamespace(text=json.dumps(FAKE_RESPONSE), finish_reason="STOP"))
+@pytest.mark.parametrize("rows, healthy", [
+    ([], True),
+    ([{"success": True}, {"success": False, "failure_code": "rate_limited"}], True),
+    ([{"success": False, "failure_code": "provider_configuration"}], False),
+    ([{"success": False, "failure_code": "provider_unavailable"}] * 5, False),
+])
+async def test_health_check_is_deterministic_and_never_calls_gemini(monkeypatch, rows, healthy):
+    fake = AsyncMock(side_effect=AssertionError("the health check must never call Gemini"))
     monkeypatch.setattr(provider, "generate", fake)
     monkeypatch.setattr(health_check, "GEMINI_API_KEY", "test-only-fixture")
-    result = await health_check.investigate()
-    assert result["completion"] == "complete" and result["assessment"] == "uncertain"
-    fake.assert_awaited_once()
-    assert "fictional" in fake.call_args.args[1][0].parts[0].text.lower()
-    for invalid in ({**FAKE_RESPONSE, "uncertainties": []},
-                    {**FAKE_RESPONSE, "explanationMarkdown": "Visit https://secret.example"}):
+    monkeypatch.setattr(health_check, "db", SimpleNamespace(gemini_usage=SimpleNamespace(find=lambda *_a, **_k: _Cursor(rows))))
+    if healthy:
+        result = await health_check.investigate()
+        assert result["assessment"] == "uncertain" and "No AI call was made" in result["explanationMarkdown"]
+    else:
         with pytest.raises(health_check.HealthFailure) as exc:
-            health_check._validate_synthetic(invalid, provider_complete=True)
-        assert exc.value.code == "invalid_provider_response"
+            await health_check.investigate()
+        assert exc.value.code == "provider_unavailable"
+    fake.assert_not_awaited()
 
 
 class _Collection:
@@ -118,7 +126,7 @@ async def test_synthetic_report_uses_normal_encryption_and_is_deleted(monkeypatc
     collection = _Collection()
     monkeypatch.setattr(report_store, "db", SimpleNamespace(health_report_artifacts=collection))
     try:
-        response = health_check._validate_synthetic(FAKE_RESPONSE, provider_complete=True)
+        response = dict(health_check.FIXED_RESPONSE)
         exported = await health_check.report_round_trip("owner", "check-id", response, now_utc() + timedelta(minutes=15))
         assert exported["historical"] is False and exported["reportId"] == "check-id"
         assert not collection.rows and collection.delete_one.await_count == 1
@@ -145,7 +153,7 @@ async def test_failed_report_read_is_cleaned_even_on_error(monkeypatch, tmp_path
     monkeypatch.setattr(report_store, "read", corrupt)
     try:
         with pytest.raises(health_check.HealthFailure) as exc:
-            response = health_check._validate_synthetic(FAKE_RESPONSE, provider_complete=True)
+            response = dict(health_check.FIXED_RESPONSE)
             await health_check.report_round_trip("owner", "check-id", response, now_utc() + timedelta(minutes=15))
         assert exc.value.code == "report_read_failed"
         assert collection.rows == []

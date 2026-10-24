@@ -1,3 +1,38 @@
+## Phases 3–4: screenshot checks read on the phone, cost dashboard verified, resubmit note on Ask Higgins (2026-06)
+**Owner's choices:** screenshot checks = "Phone reads the text, then Apollo checks it" (the picture never leaves the
+phone; Gemini only via Magnum DI's one call if Triage escalates). No readable text = say so, no check, pick another
+image or type. Resubmit reminder = "Only on the Ask screen" (a note, no pop-up elsewhere).
+- **Earlier in this phase (previous session):** Tavily-maintained Apollo KB (`services/apollo_kb.py`, `kb_sources.py`,
+  `tavily_client.py`, admin `/api/admin/knowledge` + Refresh now, weekly loop in `server.py`); deterministic Higgins
+  (`services/higgins/presenter.py`, `knowledge.py`, `chat.py`); scam-alert analysis now deterministic
+  (`scam_analysis.py`, `method: deterministic_source_rules`, no Gemini); `/message/extract` + `extract_message_screenshot`
+  DELETED (backend test asserts 401/404); account screenshot check reads text on the device.
+- **Message screenshot check (`app/message.tsx`):** `screenImage(uri, "message_screenshot")` → redacted
+  `extractedText` + `detectedSender` → the ordinary `checkMessage` (text box opened so the person sees what was
+  checked). The old "Before you upload" modal (`ImageUploadPrep`) and the "sent copy" image evidence were removed from
+  this screen — nothing is uploaded, so neither was true any more. Empty read → `message-screenshot-error` card
+  ("Choose another screenshot" / "Type or paste the message"); wording differs for preview, no recogniser, and no
+  text found. Preview only: "Use a preview sample screenshot" (`message-sample-picker`) registers a sample's known
+  text, so the success path can be seen in the preview. Verified: bank-SMS sample → read → Triage → Magnum DI answer.
+- **Cost dashboard** (`/api/admin/investigations-cost`) screenshotted: cases, Gemini calls, calls per investigation,
+  est. cost per investigation, banner "One investigation = one Gemini call" (first call / one retry / over the limit,
+  plus Gemini calls outside investigations). Today: 307 cases, 1.00 call each, 0 over the limit.
+- **Resubmit note:** `src/investigation/resubmit.ts` `StoppedCase {caseId, jobId, resubmitAt, expiresAt, status}`,
+  `dueReminder` (pause over, not dismissed, not expired, not the case on screen), `withStopped` (same pause keeps a
+  dismissal; a new pause re-arms). `src/store/resubmitReminderStore.ts` (AsyncStorage key `…resubmitReminders.v2`, ids
+  and times only). `caseStore.useInvestigation` remembers a failed + resubmittable case with `resubmitAt` and forgets
+  it on working/answered/waiting_user or `remove()`. `attach(caseId, stoppedJobId?)` now restores a stopped job
+  (`getJob` → phase failed + failure + job) — before, a reopened stopped case (status `partial`, no active job) showed
+  as idle with no Resubmit. `src/components/ResubmitReminder.tsx` = inline gold note above the Ask conversation
+  (Open / dismiss). Ask's generic "Retry" button now only shows when no case opened (the case's own Resubmit, with its
+  countdown, covers the rest). Verified in preview: note → dismiss persists; Open → "Resubmit" → finished; note cleared.
+- **Found while verifying:** from ~05:20 to ~07:18 UTC every Gemini call failed with HTTP 402 "prepayment credits are
+  depleted" (Google AI Studio billing); calls succeed again from 07:22. Apollo classifies 402 as
+  `provider_configuration` ("isn't configured correctly") — wording could name the billing cause (not changed).
+- Tests: `tests/resubmit.test.ts` 9 (4 new). Frontend 914/914 + all `test_*.mjs`, tsc + ESLint clean; backend
+  `test_gate2_message + test_one_gemini_call + test_apollo_kb` 22 passed.
+
+
 ## Magnum DI: one investigation = one Gemini call (2026-06)
 **Owner directive:** each investigation makes exactly one Gemini call — no multi-round loops, no nested research
 calls, no second call by Higgins to present the answer. Owner's retry rule: "only 1 additional retry then ask user to

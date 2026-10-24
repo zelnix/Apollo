@@ -1,31 +1,29 @@
-"""AI-grounded scam-report analysis.
+"""Deterministic scam-report analysis — no AI.
 
-Reads the FULL text of a single official advisory (fetched from its own source URL) and asks
-Gemini 3.1 Pro to (1) classify it into one of three tiers, (2) extract only the facts that are
-literally present in the source, (3) assign an evidence-backed severity with a cited reason, and
-(4) write plain-English, scam-specific sections for Higgins. The model is told, hard, to never use
-outside knowledge or invent any detail — missing facts come back empty, and thin/vague reports are
-downgraded to general education. Each item is analysed once and the result cached on the feed item.
+Reads one official advisory (its headline, summary and, where reachable, the full article from its own
+source URL) and applies fixed, reviewable rules to the source's own words:
+  1. audience and tier (consumer scam warning, emerging pattern or general education);
+  2. urgency from words the source itself uses ("urgent", "active", "warning", ...) or the source's own
+     severity — the reason always quotes the sentence that triggered it;
+  3. Australian relevance from the source's region or an explicit mention of Australia;
+  4. Higgins' sections: every sentence is copied verbatim from the source. A section the source doesn't
+     support stays empty, so the app says the source doesn't cover it rather than filling the gap.
+Nothing is invented, summarised or rewritten, and no model is called. Each item is analysed once and the
+result is cached on the feed item.
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
+from datetime import datetime, timezone
 from html.parser import HTMLParser
-from pathlib import Path
-
-from dotenv import load_dotenv
 
 from core.db import db, now_utc
 from services.outbound import OutboundBlocked, public_get
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 logger = logging.getLogger("apollo")
 
-ANALYSIS_VERSION = 5
-# Model is now configured via GEMINI_ADVISORY_MODEL env var in provider.py
+ANALYSIS_VERSION = 6  # 6 = deterministic rules on the source's own words (no Gemini)
 _MAX_ARTICLE_CHARS = 14000
 
 TIERS = {"specific_scam", "emerging_pattern", "general_education"}
@@ -33,50 +31,23 @@ SEVERITIES = {"LOW", "MODERATE", "HIGH", "EXTREME"}
 RELEVANCES = {"confirmed", "potential", "overseas_only", "unknown"}
 AUDIENCES = {"consumer", "organisation"}
 
-SYSTEM = (
-    "You classify scam/fraud alerts for Apollo, which protects ordinary people on their phones. "
-    "You receive ONE article from an approved government/official cyber-security source. "
-    "Extract ONLY facts explicitly stated in the supplied text.\n\n"
-    "RULES:\n"
-    "- Text-only: never use outside knowledge. Never invent names, dates, numbers, places, URLs or claims not in the text. Empty string if absent.\n"
-    "- No filler: every sentence must be specific to THIS article. No generic advice.\n"
-    "- Full names: write organisation names in full on first use, e.g. 'National Cyber Security Centre (NCSC)'. Never an unexplained acronym.\n\n"
-    "AUDIENCE — set 'audience':\n"
-    "- 'consumer': affects everyday people (phishing, impersonation, fake offers, investment/romance/job/refund scams, account-takeover, data breaches of consumer services, current scam trends).\n"
-    "- 'organisation': enterprise/technical/infrastructure/national-security only — software patches, APT/state-sponsored activity, targeted surveillance of specific individuals. NOT consumer scams.\n"
-    "Only 'consumer' items may be 'specific_scam' or 'emerging_pattern'. 'organisation' → 'general_education'.\n\n"
-    "TIER — exactly one:\n"
-    "- 'specific_scam': consumer warning about a scam, fraud, breach or threat. Any current consumer warning from a trusted source qualifies.\n"
-    "- 'emerging_pattern': consumer-facing trend or rising pattern, not one specific incident.\n"
-    "- 'general_education': NOT a current consumer threat — background tips, organisation-audience reports, nav/index pages, unrelated news. When uncertain vs 'emerging_pattern', prefer 'emerging_pattern'.\n\n"
-    "SEVERITY (evidence-based only):\n"
-    "- EXTREME: active + serious harm + explicit urgency/scale signals in text.\n"
-    "- HIGH: active campaign or current warning with serious potential harm.\n"
-    "- MODERATE: credible threat, limited evidence of severe/urgent harm.\n"
-    "- LOW: general_education only.\n"
-    "Do NOT assign HIGH/EXTREME from broad category alone. 'severityReason' must cite specific text evidence.\n\n"
-    "AUSTRALIAN RELEVANCE: 'confirmed' (text names Australia or Australian source), 'potential' (technique could reach AU), 'overseas_only', or 'unknown'.\n\n"
-    "Return a SINGLE JSON object:\n"
-    "{\n"
-    '  "tier": "specific_scam|emerging_pattern|general_education",\n'
-    '  "audience": "consumer|organisation",\n'
-    '  "severity": "LOW|MODERATE|HIGH|EXTREME",\n'
-    '  "severityReason": "specific text evidence",\n'
-    '  "confidence": "high|medium|low",\n'
-    '  "australianRelevance": "confirmed|potential|overseas_only|unknown",\n'
-    '  "australianRelevanceReason": "",\n'
-    '  "reportedDate": "YYYY-MM-DD or YYYY-MM from text; empty if unstated",\n'
-    '  "facts": {"who":"","what":"","how":"","where":"","when":"","whatCriminalsWant":"","evidence":""},\n'
-    '  "sections": {\n'
-    '     "whatHappened": "the reported fraudulent activity with identifiable details",\n'
-    '     "whereHappening": "verified locations/dates from text only",\n'
-    '     "whatItMeansForYou": "how this affects the reader; distinguish confirmed local vs possible overseas",\n'
-    '     "whatToWatch": "exact messages/requests/sites/impersonations/warning signs from this report",\n'
-    '     "whatToDo": "actions specific to this scam, incl. recovery steps if text provides them"\n'
-    "  }\n"
-    "}\n"
-    "Plain Australian English. If the report lacks detail for a section, say so honestly — never generic filler."
-)
+# ── Fixed vocabularies (small and legible on purpose) ─────────────────────────
+_CONSUMER = re.compile(r"\b(scams?|scammers?|fraud|fraudsters?|phishing|smishing|vishing|impersonat\w*|fake|text messages?|sms|romance|investment|cryptocurrency|crypto|refund|parcel|deliver(?:y|ies)|toll|myGov|identity theft|gift cards?|remote access|tech support|sextortion|job (?:offers?|scams?)|online shopping|data breach(?:es)?|hacked|account takeover)\b", re.I)
+_ORGANISATION = re.compile(r"\b(vulnerabilit(?:y|ies)|CVE-\d{4}-\d+|patch(?:es|ing)?|exploit(?:ed|ation)?|APT\d*|state[- ]sponsored|network defenders|critical infrastructure|zero[- ]day|indicators of compromise|IOCs?|TTPs|firmware|enterprise|operational technology|threat actors? targeting (?:organisations|networks|businesses))\b", re.I)
+_TREND = re.compile(r"\b(on the rise|rise in|rising|increase in|increasing|surge|trends?|trending|growing|spike)\b", re.I)
+_EDUCATION = re.compile(r"\b(tips?|how to|guide|guidance|learn|awareness week|basics|explained|what is|steps to|protect yourself|annual report|statistics|data shows?)\b", re.I)
+_ALERT = re.compile(r"\b(warn(?:s|ing|ings)?|alert|beware|be on the lookout)\b", re.I)
+_ACTIVE = re.compile(r"\b(active(?:ly)?|ongoing|currently|right now|circulating|targeting|being sent|being used)\b", re.I)
+_URGENT = re.compile(r"\b(urgent(?:ly)?|immediately|critical|serious harm|significant losses)\b", re.I)
+_AUSTRALIA = re.compile(r"\b(Australia|Australians?|New South Wales|NSW|Victoria|Queensland|Tasmania|South Australia|Western Australia|Northern Territory|myGov|Medicare|Centrelink|Scamwatch)\b")
+_PLACES = re.compile(r"\b(Australia|New South Wales|NSW|Victoria|Queensland|Tasmania|South Australia|Western Australia|Northern Territory|Canberra|Sydney|Melbourne|Brisbane|Perth|Adelaide|Hobart|Darwin|United States|USA|United Kingdom|England|Scotland|Wales|Europe|European Union|New Zealand|Canada)\b")
+_WATCH = re.compile(r"\b(be wary|beware|watch (?:out )?for|look out|be suspicious|signs? of|red flags?|may (?:claim|say|ask|pretend|appear)|pretend(?:s|ing)? to be|pos(?:e|es|ing) as|impersonat\w+|claim(?:s|ing)? to be|asks? you to|will ask|might ask|unexpected|out of the blue|too good to be true)\b", re.I)
+_DO = re.compile(r"^(?:do not|don't|never|always|report|contact|call|visit|check|block|delete|change|stop|hang up|go to|if you(?:'ve| have| think| are)|protect|keep|use|turn on|enable|update|ignore|verify)\b|\b(you should|we recommend|we encourage|we urge|make sure)\b", re.I)
+_SOURCE_SEVERITY = {"critical": "EXTREME", "extreme": "EXTREME", "high": "HIGH", "medium": "MODERATE", "moderate": "MODERATE", "low": "LOW"}
+_MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"], 1)}
+_DAY_DATE = re.compile(r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (20\d\d)\b")
+_MONTH_DATE = re.compile(r"\b(January|February|March|April|May|June|July|August|September|October|November|December) (20\d\d)\b")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'‘“(])")
 
 
 class _TextExtractor(HTMLParser):
@@ -119,109 +90,115 @@ async def _fetch_article_text(url: str) -> str:
         return ""
 
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}(-\d{2})?$")
+def _sentences(text: str) -> list[str]:
+    """The source's sentences, verbatim (whitespace normalised). Fragments and menu runs are skipped."""
+    return [part.strip() for part in _SENTENCE_END.split(re.sub(r"\s+", " ", text or "")) if 25 <= len(part.strip()) <= 400]
 
 
-def _clean_date(value) -> str:
-    value = str(value or "").strip()[:10]
-    return value if _DATE_RE.match(value) else ""
+def _first(pattern: re.Pattern, sentences: list[str]) -> str:
+    return next((sentence for sentence in sentences if pattern.search(sentence)), "")
 
 
-def _coerce(parsed: dict) -> dict:
-    """Validate and clamp the model output to Apollo's contract. Anything out of range falls back to the
-    safest honest value so a malformed response can never fabricate a High-severity alert."""
-    tier = parsed.get("tier") if parsed.get("tier") in TIERS else "general_education"
-    audience = parsed.get("audience") if parsed.get("audience") in AUDIENCES else "consumer"
-    # Apollo only surfaces consumer scams. An organisation-audience report (company data breach,
-    # vulnerability advisory, enterprise incident) can never be a specific/emerging alert.
-    if audience != "consumer":
-        tier = "general_education"
-    severity = parsed.get("severity") if parsed.get("severity") in SEVERITIES else "LOW"
+def _matching(pattern: re.Pattern, sentences: list[str], limit: int, exclude: set[str]) -> list[str]:
+    picked: list[str] = []
+    for sentence in sentences:
+        if sentence not in exclude and sentence not in picked and pattern.search(sentence):
+            picked.append(sentence)
+            if len(picked) == limit:
+                break
+    return picked
+
+
+def _reported_date(published, text: str) -> str:
+    if isinstance(published, datetime):
+        return published.astimezone(timezone.utc).strftime("%Y-%m-%d") if published.tzinfo else published.strftime("%Y-%m-%d")
+    day = _DAY_DATE.search(text)
+    if day:
+        return f"{day.group(3)}-{_MONTHS[day.group(2).lower()]:02d}-{int(day.group(1)):02d}"
+    month = _MONTH_DATE.search(text)
+    return f"{month.group(2)}-{_MONTHS[month.group(1).lower()]:02d}" if month else ""
+
+
+def _classify(head: str, content_type: str | None) -> tuple[str, str]:
+    consumer = len(_CONSUMER.findall(head))
+    organisation = len(_ORGANISATION.findall(head))
+    audience = "organisation" if organisation and organisation >= consumer else "consumer"
+    if audience != "consumer" or not consumer:
+        return audience, "general_education"
+    if _TREND.search(head):
+        return audience, "emerging_pattern"
+    if not _ALERT.search(head) and (_EDUCATION.search(head) or content_type == "official_advice"):
+        return audience, "general_education"
+    return audience, "specific_scam"
+
+
+_LABEL = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "LOW": "Low"}
+
+
+def _severity(tier: str, sentences: list[str], source_severity: str | None) -> tuple[str, str]:
+    """Fixed rules on the source's own words; the reason quotes the sentence that triggered the rating."""
     if tier == "general_education":
-        severity = "LOW"
-    relevance = parsed.get("australianRelevance") if parsed.get("australianRelevance") in RELEVANCES else "unknown"
-    facts_in = parsed.get("facts") or {}
-    facts = {k: str(facts_in.get(k, "") or "")[:600] for k in ("who", "what", "how", "where", "when", "whatCriminalsWant", "evidence")}
-    sec_in = parsed.get("sections") or {}
-    sections = {k: str(sec_in.get(k, "") or "")[:900] for k in ("whatHappened", "whereHappening", "whatItMeansForYou", "whatToWatch", "whatToDo")}
+        return "LOW", "This is general guidance from the source, not a warning about a current scam."
+    mapped = _SOURCE_SEVERITY.get(str(source_severity or "").strip().lower())
+    if mapped:
+        return mapped, f'The source itself rates this "{source_severity}".'
+    urgent, active, alert = _first(_URGENT, sentences), _first(_ACTIVE, sentences), _first(_ALERT, sentences)
+    if tier == "specific_scam" and urgent and active:
+        quoted = f'"{urgent}"' + (f' and "{active}"' if active != urgent else "")
+        return "EXTREME", f"Rated Extreme because the source says {quoted}"
+    if tier == "specific_scam" and (active or alert):
+        return "HIGH", f'Rated High because the source says "{active or alert}"'
+    return "MODERATE", "Rated Moderate: the source describes a scam but doesn't say it is active or urgent."
+
+
+def analyse(item: dict, article: str = "") -> dict:
+    """Deterministic analysis of one feed item. Every section sentence is a verbatim quote from the source."""
+    title, summary = str(item.get("title") or "").strip(), str(item.get("summary") or "").strip()
+    head = f"{title}. {summary}"
+    sentences = _sentences(f"{head} {article}")
+    source_name = item.get("_source_name") or item.get("source_id") or "the source"
+    region = item.get("_source_region") or ""
+    audience, tier = _classify(head, item.get("content_type"))
+    severity, severity_reason = _severity(tier, sentences, item.get("source_severity"))
+    australia = _first(_AUSTRALIA, sentences)
+    if region == "AU":
+        relevance, relevance_reason = "confirmed", f"Published by {source_name}, an Australian authority."
+    elif australia:
+        relevance, relevance_reason = "confirmed", f'The source says "{australia}"'
+    elif tier != "general_education":
+        relevance, relevance_reason = "potential", f"Reported overseas by {source_name}; it doesn't mention Australia."
+    else:
+        relevance, relevance_reason = "unknown", ""
+    what_happened = summary or " ".join(sentences[:2])
+    used = {what_happened}
+    where = _matching(_PLACES, sentences, 2, used)
+    watch = _matching(_WATCH, sentences, 4, used | set(where))
+    todo = _matching(_DO, sentences, 4, used | set(where) | set(watch))
+    if tier == "general_education":
+        means = ""
+    elif relevance == "confirmed":
+        means = f"{source_name} has reported this for people in Australia."
+    else:
+        means = f"{source_name} reported this overseas. It doesn't say whether it has reached Australia."
+    reported = _reported_date(item.get("published_at"), f"{head} {article}")
     return {
-        "tier": tier,
-        "audience": audience,
-        "severity": severity,
-        "severityReason": str(parsed.get("severityReason", "") or "")[:600],
-        "confidence": parsed.get("confidence") if parsed.get("confidence") in ("high", "medium", "low") else "low",
-        "australianRelevance": relevance,
-        "australianRelevanceReason": str(parsed.get("australianRelevanceReason", "") or "")[:600],
-        "reportedDate": _clean_date(parsed.get("reportedDate")),
-        "facts": facts,
-        "sections": sections,
-        "analysisVersion": ANALYSIS_VERSION,
-        "analyzedAt": now_utc(),
+        "tier": tier, "audience": audience, "severity": severity, "severityReason": severity_reason,
+        "confidence": "high" if article else ("medium" if summary else "low"),
+        "australianRelevance": relevance, "australianRelevanceReason": relevance_reason, "reportedDate": reported,
+        "facts": {"who": "", "what": what_happened[:600], "how": "", "where": " ".join(where)[:600], "when": reported,
+                  "whatCriminalsWant": "", "evidence": ""},
+        "sections": {"whatHappened": what_happened[:900], "whereHappening": " ".join(where)[:900], "whatItMeansForYou": means,
+                     "whatToWatch": "\n".join(watch)[:900], "whatToDo": "\n".join(todo)[:900]},
+        "method": "deterministic_source_rules", "analysisVersion": ANALYSIS_VERSION, "analyzedAt": now_utc(),
     }
 
 
-def _parse_json(text: str) -> dict | None:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.S)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                return None
-        return None
-
-
-async def _run_model(prompt: str) -> dict | None:
-    """Route through Apollo's single authoritative Gemini gateway (provider.py).
-
-    Uses the owner-managed GEMINI_API_KEY via provider.generate_json with explicit
-    purpose=PUBLIC_ADVISORY_ANALYSIS. Privacy boundary enforcement (credential stripping,
-    third-party PII controls) is applied by the gateway before transmission.
-    """
-    from services.higgins.provider import ProviderFailure, generate_json, ADVISORY_MODEL
-    from services.higgins.llm_boundary import Purpose
-    try:
-        result, _metadata = await generate_json(
-            SYSTEM, prompt,
-            model=ADVISORY_MODEL,
-            capability="text",
-            purpose=Purpose.PUBLIC_ADVISORY_ANALYSIS,
-            correlation_id="scam-analysis",
-            trigger_source="scam_analysis",
-        )
-        return result
-    except ProviderFailure as exc:
-        logger.warning("scam_analysis: provider call failed (%s)", exc.code)
-        return None
-    except Exception as exc:  # noqa: BLE001 — provider/transport errors leave the item unanalysed for retry
-        logger.warning("scam_analysis: model call failed (%s)", type(exc).__name__)
-        return None
-
-
-async def analyze_item(item: dict) -> dict | None:
-    """Fetch + analyse one feed item. Returns the cached-shape analysis dict, or None if the model was
-    unreachable (so the item stays unanalysed and is retried next cycle)."""
+async def analyze_item(item: dict) -> dict:
+    """Fetch the article (when its source lets Apollo read it) and analyse it deterministically."""
     # Items from a relayed feed come from a source that blocks Apollo's servers; trying its article page
     # would only burn ~30 s of timeouts per item, so analysis uses the headline and summary.
     article = "" if item.get("_article_unreachable") else await _fetch_article_text(item.get("url") or "")
-    source_region = item.get("_source_region") or ""
-    prompt = (
-        f"SOURCE: {item.get('_source_name') or item.get('source_id')} ({source_region})\n"
-        f"PUBLISHED: {item.get('published_at') or 'unknown'}\n"
-        f"HEADLINE: {item.get('title') or ''}\n"
-        f"SUMMARY: {item.get('summary') or ''}\n\n"
-        f"ARTICLE TEXT (verbatim from the source; may be empty if the page could not be read):\n"
-        f"{article or '(the full article could not be retrieved — rely only on the headline and summary above)'}"
-    )
-    parsed = await _run_model(prompt)
-    if parsed is None:
-        return None
-    return _coerce(parsed)
+    return analyse(item, article)
 
 
 _NOT_ALERT_TITLE = re.compile(r"\b(skip to (navigation|content|main)|browse news|news and alerts|search|sign in|log in|home page|menu|current page|next page|previous page|first page|last page|page \d+)\b|^[»«›‹\s\d]+$", re.I)
@@ -244,11 +221,11 @@ _SKIPPED_ANALYSIS = {
     "confidence": "high", "australianRelevance": "unknown", "australianRelevanceReason": "", "reportedDate": "",
     "facts": {k: "" for k in ("who", "what", "how", "where", "when", "whatCriminalsWant", "evidence")},
     "sections": {k: "" for k in ("whatHappened", "whereHappening", "whatItMeansForYou", "whatToWatch", "whatToDo")},
-    "analysisVersion": ANALYSIS_VERSION,
+    "method": "deterministic_source_rules", "analysisVersion": ANALYSIS_VERSION,
 }
 
 
-async def analyze_pending(limit: int = 8) -> int:
+async def analyze_pending(limit: int = 60) -> int:
     """Analyse up to `limit` feed items that have no current analysis, caching the result on each item.
     Safe to call repeatedly; it only touches items missing ANALYSIS_VERSION."""
     query = {"$or": [{"scam_analysis": {"$exists": False}}, {"scam_analysis.analysisVersion": {"$ne": ANALYSIS_VERSION}}]}
@@ -263,14 +240,12 @@ async def analyze_pending(limit: int = 8) -> int:
     for row in rows:
         if _obviously_not_an_alert(row):
             await db.learning_feed_items.update_one({"fingerprint": row["fingerprint"]}, {"$set": {"scam_analysis": {**_SKIPPED_ANALYSIS, "analyzedAt": now_utc()}}})
-            continue  # free classification; does not count against the AI budget for this cycle
+            continue  # navigation link: classified without fetching anything
         src = sources.get(row["source_id"], {})
         row["_source_name"] = src.get("name") or row["source_id"]
         row["_source_region"] = scam_intel.region_for(row["source_id"])
         row["_article_unreachable"] = row.get("feed_id") in relayed
         analysis = await analyze_item(row)
-        if analysis is None:
-            continue
         await db.learning_feed_items.update_one({"fingerprint": row["fingerprint"]}, {"$set": {"scam_analysis": analysis}})
         done += 1
         if done >= limit:

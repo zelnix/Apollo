@@ -8,7 +8,7 @@ Current response model (MessageAnalyseOut):
 These tests verify:
   1. Suspicious messages get investigation linkage (investigation_case_id).
   2. Genuine messages don't falsely claim blocks.
-  3. Screenshot upload rejects non-image MIME types.
+  3. Screenshot text is read on the device (no server-side extraction call).
   4. Patrol events can be created and listed.
 """
 import io
@@ -92,35 +92,13 @@ class TestMessageAnalyse:
                     f"Genuine message URL incorrectly marked malicious: {url_result}"
 
 
-class TestMessageExtract:
-    def test_screenshot_upload_rejects_non_image(self):
-        r = requests.post(f"{API}/message/extract",
-                          data={"device_id": "gate2test0001", "sanitization_status": "approved",
-                                "sanitization_digest": "a" * 64},
-                          files={"file": ("message.txt", b"not an image", "text/plain")}, timeout=15)
-        assert r.status_code == 415, r.text
-
-    def test_screenshot_upload_is_not_blocked_for_missing_approval(self):
-        """Submitting an image authorises analysis — no privacy-gate approval field is required."""
+class TestMessageScreenshot:
+    def test_screenshot_text_is_read_on_the_device_not_by_a_server_call(self):
+        """The old Gemini text-extraction endpoint is gone: a screenshot's text is read on the phone, and only
+        Magnum DI's one investigation call may ever send it to Gemini."""
         r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
                           files={"file": ("message.png", b"fake-png", "image/png")}, timeout=15)
-        assert "privacy gate" not in r.text.lower(), r.text
-
-    @pytest.mark.credentialed_integration
-    def test_realistic_screenshot_is_extracted_request_scoped(self):
-        from PIL import Image, ImageDraw
-        image = Image.new("RGB", (1000, 420), "white")
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((20, 20, 980, 400), outline="black", width=4)
-        draw.text((55, 70), "CommBank Alert", fill="black")
-        draw.text((55, 150), "A $4,820 payment was detected.", fill="black")
-        draw.text((55, 230), "Visit commbank-secure-verify.xyz now", fill="black")
-        buf = io.BytesIO(); image.save(buf, format="PNG")
-        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001", "sanitization_status": "approved"},
-                          files={"file": ("message.png", buf.getvalue(), "image/png")}, timeout=90)
-        assert r.status_code == 200, r.text
-        data = r.json()
-        assert "CommBank" in data["text"] or "commbank" in " ".join(data["urls"]).lower()
+        assert r.status_code in (401, 404), r.text
 
 
 class TestPatrolEventsGate2:

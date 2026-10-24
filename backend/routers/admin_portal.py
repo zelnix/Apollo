@@ -51,6 +51,7 @@ NAV = [
     ("Usage & Costs",   "/api/admin/usage",            "&#128176;"),
     ("Investigations",  "/api/admin/investigations-cost", "&#128200;"),
     ("Triage",          "/api/admin/triage",           "&#9878;"),
+    ("Knowledge Base",  "/api/admin/knowledge",        "&#128218;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
@@ -1778,12 +1779,25 @@ async def investigations_cost_report(request: Request):
             return f"{n / 1_000:.1f}K"
         return str(n)
 
+    # One investigation = one Gemini call (one retry allowed after a failed call).
+    retried = sum(1 for r in report_rows if r["calls"] == 2)
+    over_limit = sum(1 for r in report_rows if r["calls"] > 2)
+    avg_calls = total_calls / total_investigations if total_investigations else 0.0
+    avg_cost = total_cost / total_investigations if total_investigations else 0.0
     summary_html = f"""
     <div class="stats-grid">
         {_stat_card(f'{total_investigations:,}', 'Investigation Cases')}
         {_stat_card(f'{total_calls:,}', 'Gemini API Calls')}
+        {_stat_card(f'{avg_calls:.2f}', 'Calls per Investigation')}
+        {_stat_card(f'${avg_cost:.4f}', 'Est. Cost per Investigation')}
         {_stat_card(_fmt_tokens(total_tokens_sum), 'Total Tokens')}
         {_stat_card(f'${total_cost:.4f}', 'Estimated Cost')}
+    </div>
+    <div class="alert {'alert-critical' if over_limit else 'alert-ok'}">
+        <strong>One investigation = one Gemini call.</strong>
+        {total_investigations - retried - over_limit:,} answered on the first call &middot; {retried:,} needed the one allowed retry &middot;
+        {over_limit:,} over the limit{' — investigate these cases' if over_limit else ''}.
+        Gemini calls outside investigations this period: {unattr_calls:,} (${unattr_cost:.4f}).
     </div>
     """
 
@@ -2546,6 +2560,87 @@ async def system_page(request: Request):
     </table>
     """
     return _shell("System", "/api/admin/system", body, admin=adm)
+
+
+# ── Knowledge Base (Tavily maintenance) ──────────────────────────────────────
+
+def _kb_when(value) -> str:
+    return _to_local(value.replace(tzinfo=timezone.utc) if isinstance(value, datetime) and value.tzinfo is None else value) if value else "—"
+
+
+@router.get("/admin/knowledge", response_class=HTMLResponse)
+async def knowledge_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import apollo_kb
+    from services.kb_sources import TIER_LABEL
+    state = await apollo_kb.status()
+    esc = html_mod.escape
+    total = sum(row["entries"] for row in state["breakdown"])
+    by_kind: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    for row in state["breakdown"]:
+        by_kind[row.get("kind") or "?"] = by_kind.get(row.get("kind") or "?", 0) + row["entries"]
+        by_status[row.get("status") or "current"] = by_status.get(row.get("status") or "current", 0) + row["entries"]
+    rows = "".join(f"<tr><td>{esc(str(r.get('kind')))}</td><td>{esc(TIER_LABEL.get(r.get('tier') or '', r.get('tier') or '—'))}</td>"
+                   f"<td>{esc(str(r.get('category') or '—'))}</td><td>{esc(str(r.get('status') or 'current'))}</td>"
+                   f"<td style='text-align:right;'>{r['entries']:,}</td><td style='text-align:right;'>{r['hits']:,}</td></tr>" for r in state["breakdown"])
+    runs = "".join(
+        f"<tr><td>{_kb_when(r.get('started_at'))}</td><td>{esc(r.get('trigger', ''))}</td>"
+        f"<td>{esc(r.get('status', ''))}{(' — ' + esc(r['error'])) if r.get('error') else ''}</td>"
+        f"<td style='text-align:right;'>{r.get('searches', 0)}</td><td>{esc(', '.join(f'{k} {v}' for k, v in (r.get('counts') or {}).items()) or '—')}</td>"
+        f"<td style='text-align:right;'>{r.get('alerts_published', 0)}</td><td style='text-align:right;'>{r.get('learn_published', 0)} new / {r.get('learn_updated', 0)} updated</td>"
+        f"<td>{esc(', '.join(f'{k} {v}' for k, v in (r.get('rejections') or {}).items()) or '—')}</td></tr>" for r in state["runs"])
+    rejected = "".join(f"<tr><td>{_kb_when(r.get('at'))}</td><td>{esc(r.get('reason', ''))}</td><td style='word-break:break-all;'>{esc(r.get('url', ''))}</td></tr>"
+                       for r in state["rejections"])
+    notice = {"started": '<div class="alert alert-ok">Refresh started. Reload this page in a few minutes to see the run.</div>',
+              "busy": '<div class="alert alert-warning">A refresh is already running.</div>'}.get(request.query_params.get("refresh", ""), "")
+    configured = '<span style="color:var(--green);">Tavily key set</span>' if state["configured"] else '<span style="color:var(--red);">Tavily key missing</span>'
+    body = f"""
+    <h2>Apollo Knowledge Base</h2>
+    {notice}
+    <p style="font-size:0.9em;color:var(--muted);">Tavily finds and re-reads pages on trusted sources once a week. Each page keeps its source, authority tier,
+    jurisdiction and dates; changed pages are versioned (old versions kept as Superseded) and pages a source stops serving become Historical.
+    New material goes live after the automatic checks. Tavily is never used by Magnum DI or for live questions.</p>
+    <div class="stats-grid">
+        {_stat_card(f"{total:,}", "KB entries")}
+        {_stat_card(f"{by_kind.get('researched', 0):,}", "Researched pages")}
+        {_stat_card(f"{state['history']:,}", "Superseded versions")}
+        {_stat_card(f"{by_status.get('historical', 0):,}", "Historical")}
+        {_stat_card(f"{state['tavilyCalls30d']:,}", "Tavily calls (30 days)")}
+    </div>
+    <div class="topbar-row">
+        <div style="font-size:0.88em;">{configured} &middot; Next weekly run: {_kb_when(state['nextRunAt'])}</div>
+        <form method="post" action="/api/admin/knowledge/refresh" style="margin:0;"><button class="btn">Refresh now</button></form>
+    </div>
+    <h2>What the KB holds</h2>
+    <table><tr><th>Kind</th><th>Authority</th><th>Category</th><th>Status</th><th>Entries</th><th>Times used by Higgins</th></tr>{rows or '<tr><td colspan="6">Empty</td></tr>'}</table>
+    <h2>Recent runs</h2>
+    <table><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Searches</th><th>Pages</th><th>Scam Alerts</th><th>Learn articles</th><th>Rejected</th></tr>{runs or '<tr><td colspan="8">No runs yet</td></tr>'}</table>
+    <h2>Recently rejected by the automatic checks</h2>
+    <table><tr><th>When</th><th>Reason</th><th>Page</th></tr>{rejected or '<tr><td colspan="3">None</td></tr>'}</table>
+    """
+    return _shell("Knowledge Base", "/api/admin/knowledge", body, admin=adm)
+
+
+_KB_TASKS: set = set()  # keeps a manual refresh alive until it finishes
+
+
+@router.post("/admin/knowledge/refresh")
+async def knowledge_refresh(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    import asyncio
+    from services import apollo_kb
+    busy = await db.apollo_kb_state.find_one({"_id": "lock", "held_until": {"$gt": now_utc()}}, {"_id": 1})
+    if not busy:
+        task = asyncio.create_task(apollo_kb.run("manual"))
+        _KB_TASKS.add(task)
+        task.add_done_callback(_KB_TASKS.discard)
+        await _audit_log(adm.get("email", ""), "knowledge_refresh", "manual Apollo KB refresh")
+    return RedirectResponse(f"/api/admin/knowledge?refresh={'busy' if busy else 'started'}", status_code=303)
 
 
 # ── Releases ─────────────────────────────────────────────────────────────────

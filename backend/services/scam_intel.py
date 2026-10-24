@@ -16,7 +16,10 @@ SOURCE_REGION = {
     "europol": "EU", "enisa": "EU",
     "ncsc_uk": "UK",
 }
-REGION_LABEL = {"AU": "Australia", "US": "United States", "UK": "United Kingdom", "EU": "European Union", "GLOBAL": "Global"}
+# Tier 1 publishers the Apollo Knowledge Base adds (services/kb_sources.py), e.g. "kb-asic" → AU.
+from services.kb_sources import source_regions as _kb_regions  # noqa: E402
+SOURCE_REGION.update(_kb_regions())
+REGION_LABEL = {"AU": "Australia", "US": "United States", "UK": "United Kingdom", "EU": "European Union", "NZ": "New Zealand", "CA": "Canada", "GLOBAL": "Global"}
 
 Severity = str  # "LOW" | "MODERATE" | "HIGH" | "EXTREME"
 Relevance = str  # "confirmed" | "potential" | "overseas_only" | "unknown"

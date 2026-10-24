@@ -8,6 +8,8 @@ import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendin
 import { deleteImageEvidenceFor } from "@/src/store/imageEvidence";
 import { deleteReportProgress } from "@/src/store/reportProgress";
 import { deleteOriginalSource } from "@/src/store/originalSource";
+import { forgetStopped, rememberStopped } from "@/src/store/resubmitReminderStore";
+import { canResubmit } from "./resubmit";
 import * as api from "./client";
 import { safeUUID } from "./client";
 import { observe } from "./deviceBroker";
@@ -272,14 +274,18 @@ export function useInvestigation(boundOperationId?: string | null) {
   }, [state, refresh, follow]);
   useEffect(() => { cancelAction.current = cancel; }, [cancel]);
 
-  const attach = useCallback(async (caseId: string) => {
+  /** Open an existing case. `stoppedJobId` reopens a stopped turn so its Resubmit (and its pause) come back with it. */
+  const attach = useCallback(async (caseId: string, stoppedJobId?: string) => {
     stream.current?.abort(); pending.current = null; generation.current += 1; followed.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current); caseRef.current = { id: caseId } as InvestigationCase;
     setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted, operationId: operationRef.current, phase: "creating", progress: ["Opening the investigation."] }));
     void flushPendingDeletions(); const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseId;
     try {
       const caseData = await refresh(caseId, gen); if (!live()) return null; armExpiry(caseData);
+      const stopped = !caseData.activeJobId && stoppedJobId ? (await api.getJob(caseId, stoppedJobId)).job : null;
+      if (!live()) return null;
       if (caseData.activeJobId) { const { job } = await api.getJob(caseId, caseData.activeJobId); if (live()) follow(caseId, job); }
+      else if (stopped?.status === "failed") update({ phase: "failed", job: stopped, failure: stopped.failure, error: stopped.failure?.message ?? null });
       else update({ phase: caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle" });
       return caseData;
     } catch (error: unknown) {
@@ -317,6 +323,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted }));
     if (caseData) {
       // Remove from all local stores (device investigation + supplementary stores)
+      void forgetStopped(caseData.id);
       await deleteInvestigation(caseData.id);
       await forgetCase(caseData.id);
       void deleteImageEvidenceFor(caseData.id);
@@ -331,6 +338,16 @@ export function useInvestigation(boundOperationId?: string | null) {
     try { await api.deleteCase(id); await forgetDeletion(id); update({ undeleted: null, error: null }); }
     catch (error: unknown) { if (error instanceof ApiError && (error.status === 404 || error.status === 410)) { await forgetDeletion(id); update({ undeleted: null, error: null }); } }
   }, [state.undeleted]);
+
+  // Quiet reminder on Ask Higgins: a stopped case is remembered until it is resubmitted, answered or removed.
+  const stoppedCaseId = state.caseData?.id; const stoppedJobId = state.job?.id; const resubmitAt = state.failure?.resubmitAt;
+  const caseExpiresAt = state.caseData?.expiresAt; const resubmittable = canResubmit(state.failure);
+  useEffect(() => {
+    if (!stoppedCaseId) return;
+    if (state.phase === "failed" && resubmitAt && stoppedJobId && caseExpiresAt && resubmittable) {
+      void rememberStopped({ caseId: stoppedCaseId, jobId: stoppedJobId, resubmitAt, expiresAt: caseExpiresAt });
+    } else if (state.phase === "working" || state.phase === "answered" || state.phase === "waiting_user") void forgetStopped(stoppedCaseId);
+  }, [state.phase, stoppedCaseId, stoppedJobId, resubmitAt, caseExpiresAt, resubmittable]);
 
   useEffect(() => () => { stream.current?.abort(); if (expiryTimer.current) clearTimeout(expiryTimer.current); }, []);
   return { state, start, ask, continueWith, retry, cancel, remove, attach, retryDelete };

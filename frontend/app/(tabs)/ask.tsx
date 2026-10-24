@@ -13,6 +13,8 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InvestigationView } from "@/src/components/InvestigationView";
+import { ResubmitReminder } from "@/src/components/ResubmitReminder";
+import type { StoppedCase } from "@/src/investigation/resubmit";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { FitTitle } from "@/src/components/FitTitle";
@@ -439,6 +441,12 @@ export default function Ask() {
   const deleteInvestigation = async () => { clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
   const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; setActiveContext(null); setInvestigationMode(false); void remove(); };
+  // The quiet note above the conversation reopens a stopped investigation with its Resubmit ready.
+  const openStopped = (stopped: StoppedCase) => {
+    if (busy) return;
+    setActiveContext(null); setRouteError(null); setChatError(null); setLastAction(null); setInvestigationMode(true);
+    void attach(stopped.caseId, stopped.jobId);
+  };
 
   // ── Higgins check flow handlers ─────────────────────────────────────────
   const handleCheckCategorySelect = useCallback((category: HigginsCheckCategory) => {
@@ -538,6 +546,7 @@ export default function Ask() {
 
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       {activeContext ? <Card style={s.context} testID="ask-active-issue"><Pill tone={activeContext.assessment_state} label={`${activeContext.gate.toUpperCase()} GATE`} testID="ask-active-gate" /><Body testID="ask-active-summary">{activeContext.issue_summary}</Body>{state.caseData ? <Body testID="ask-handoff-reference">Case reference: {state.caseData.id.slice(0, 8)}</Body> : null}<Button testID="ask-new-conversation" variant="ghost" label="Back to chat" onPress={newQuestion} disabled={busy} /></Card> : null}
+      <ResubmitReminder openCaseId={investigationMode ? caseId ?? null : null} disabled={busy} onOpen={openStopped} />
 
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll}
         onLayout={(e) => { viewportH.current = e.nativeEvent.layout.height; refreshSpacer(); }}
@@ -585,7 +594,8 @@ export default function Ask() {
 
         {investigationMode ? <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation" onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} /> : null}
         {routeError ? <Card style={s.context} testID="ask-error-card"><Text style={s.errorText} testID="ask-error">{routeError}</Text></Card> : null}
-        {investigationMode && state.phase === "failed" ? <Button testID="ask-retry-button" label={caseBusy ? "Retrying…" : "Retry"} disabled={caseBusy} onPress={() => void retry()} style={{ marginTop: spacing.md }} /> : null}
+        {/* A stopped case already shows its own Resubmit (with Magnum DI's pause); this covers a case that never opened. */}
+        {investigationMode && state.phase === "failed" && !state.caseData ? <Button testID="ask-retry-button" label={caseBusy ? "Retrying…" : "Retry"} disabled={caseBusy} onPress={() => void retry()} style={{ marginTop: spacing.md }} /> : null}
         {investigationMode && state.undeleted ? <Button testID="ask-retry-delete" variant="ghost" label="Try deleting again" onPress={() => void retryDelete()} /> : null}
         {investigationMode ? <Button testID="ask-clear-temporary-history" label="Clear this investigation" variant="ghost" onPress={() => void deleteInvestigation()} /> : null}
         {investigationMode ? <Text testID="ask-processing-state" style={[s.subtitle, { paddingHorizontal: spacing.lg, paddingTop: spacing.xs }]}>{caseStatus}</Text> : null}

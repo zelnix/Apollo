@@ -15,19 +15,14 @@ These are inputs/observations, not separate investigations.
 from __future__ import annotations
 
 import re
-import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import phonenumbers
-from google.genai import types
 from pydantic import BaseModel, Field
 
-from core.redaction import redact_investigation_secrets
-from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
-from services.higgins.llm_boundary import Purpose
 
 logger = logging.getLogger("apollo.investigation")
 
@@ -142,39 +137,3 @@ def deterministic_entities(sender: str, text: str, urls: list[str],
         callback_details=callback_phones,
         links=list(dict.fromkeys(urls)),
     )
-
-
-# ── Screenshot / image text extraction ───────────────────────────────────────
-
-async def extract_message_screenshot(image_bytes: bytes) -> dict:
-    """Extract text content from a screenshot/image using Gemini Vision.
-
-    This is a text extraction observation, not an investigation.
-    The extracted text may be supplied as evidence to Magnum DI.
-    """
-    prompt = (
-        "Extract all visible text from this screenshot. Return JSON:\n"
-        '{"text": "all visible text", "sender": "sender name/number if visible", '
-        '"app": "messaging app name if identifiable", "timestamp": "message timestamp if visible"}\n'
-        "Include ALL visible text. If a field is not visible, use empty string."
-    )
-    try:
-        # The gateway takes one contents list: the instruction and the image travel together, the same
-        # shape the page-screenshot reader uses. (An `images=` keyword is not part of the gateway and made
-        # this path fail before Gemini was ever reached.)
-        data, _meta = await generate_json(
-            "You extract text from screenshots accurately and completely.",
-            [types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"), types.Part(text=prompt)],
-            model=VISION_MODEL, capability="vision", purpose=Purpose.PAGE_SIGNAL_EXTRACTION,
-            correlation_id="screenshot-extract",
-            trigger_source="vision_extract",
-        )
-        return {
-            "text": redact_investigation_secrets(str(data.get("text", ""))),
-            "sender": redact_investigation_secrets(str(data.get("sender", ""))),
-            "app": str(data.get("app", "")),
-            "timestamp": str(data.get("timestamp", "")),
-            "extraction_status": "ok",
-        }
-    except ProviderFailure:
-        return {"text": "", "sender": "", "app": "", "timestamp": "", "extraction_status": "failed"}

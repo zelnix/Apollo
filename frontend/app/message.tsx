@@ -3,6 +3,7 @@
 // typed/pasted text, gold Check message CTA, and the permission-free ways in (Text Guard, Share where offered).
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { Asset } from "expo-asset";
 import { Image as ExpoImage } from "expo-image";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -21,19 +22,16 @@ import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
-import { ImageUploadPrep, type PreparedImage, type UploadSubmissionState } from "@/src/components/ImageUploadPrep";
-import { saveImageEvidence } from "@/src/store/imageEvidence";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
-import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
+import { screenImage } from "@/src/domain/imagePrivacy";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
-import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
@@ -139,12 +137,15 @@ export default function CheckMessage() {
   const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
   const [messagePicker, setMessagePicker] = useState(false);
+  const [samplePicker, setSamplePicker] = useState(false);
   const [text, setText] = useState(String(sharedText));
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The screenshot had no message text Apollo could read — no check was run. */
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
   const isEmail = params.source === "email";
   // The inbox picker needs READ_SMS, which a build only declares under the approved switch (off by default).
@@ -181,30 +182,51 @@ export default function CheckMessage() {
   };
   useEffect(() => { if (sharedText && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedText), params.sender ? String(params.sender) : ""); } }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const readScreenshot = async (uri: string, name: string, type: string) => {
-    if (!deviceId) throw new Error("Apollo is still preparing this device.");
-    setBusy("reading"); setError(null); setResult(null); setScreenshotUri(uri);
+  /** The phone reads the screenshot's text (credentials removed) and the ordinary message check runs on that
+   *  text. The picture itself never leaves the phone; only Magnum DI's one investigation call may follow. */
+  const readScreenshot = async (uri: string) => {
+    setBusy("reading"); setError(null); setScreenshotError(null); setResult(null); setScreenshotUri(uri);
     try {
-      // ── On-device privacy screening before any transmission ──
       const screening = await screenImage(uri, "message_screenshot");
-      // Warn before upload; detected credentials are blacked out on the analysis copy.
-      setGateScreening(screening);
-      setPendingScreenshot({ uri, name, type });
+      const read = screening.extractedText.trim();
+      if (!read) {
+        setBusy("idle");
+        setScreenshotError(screening.previewNotice
+          ? "This preview can’t run on-device text recognition, so no text was read from this screenshot and nothing was checked. On a phone build Apollo reads it on your device. Try a preview sample screenshot, or type or paste the message."
+          : screening.status === "ocr_unavailable"
+          ? "Apollo can’t read text from screenshots here because on-device text recognition isn’t available. Nothing was checked. Type or paste the message instead."
+          : "Apollo couldn’t find any message text in this screenshot, so nothing was checked. Try a clearer screenshot, or type or paste the message.");
+        return;
+      }
+      const from = screening.detectedSender ?? "";
+      setSender(from); setText(read); setManualOpen(true);
+      await run(read, from);
+    } catch {
       setBusy("idle");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not screen that screenshot.");
-      setBusy("idle");
+      setScreenshotError("Apollo couldn’t read that screenshot, so nothing was checked. Try another screenshot, or type or paste the message.");
     }
   };
   const launchScreenshotPicker = async () => {
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
-      if (picked.canceled) return;
-      const asset = picked.assets[0];
-      await readScreenshot(asset.uri, asset.fileName ?? "message-screenshot.jpg", asset.mimeType ?? "image/jpeg");
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not read that screenshot."); setBusy("idle"); }
+      if (picked.canceled || !picked.assets[0]) return;
+      await readScreenshot(picked.assets[0].uri);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not open your screenshots."); setBusy("idle"); }
   };
   const photoAccess = useScreenshotAccess(launchScreenshotPicker);
+  // Preview only: a sample screenshot whose text is known stands in for the phone's text recogniser.
+  const checkSampleScreenshot = async (id: string) => {
+    setSamplePicker(false);
+    const sample = simulation.screenshots.find((x) => x.id === id);
+    if (!sample) return;
+    try {
+      const asset = Asset.fromModule(sample.asset);
+      await asset.downloadAsync();
+      const uri = asset.localUri ?? asset.uri;
+      simulation.registerImage(uri, sample.id);
+      await readScreenshot(uri);
+    } catch { setScreenshotError("Apollo couldn’t open that sample screenshot. Try another one."); }
+  };
   useEffect(() => {
     if (params.openScreenshot !== "1" || !ready || !setupDone || autoPicker.current) return;
     autoPicker.current = true; void photoAccess.start();
@@ -213,67 +235,10 @@ export default function CheckMessage() {
   useEffect(() => {
     if (!sharedImage || !deviceId || autoImage.current) return;
     autoImage.current = true;
-    const uri = String(sharedImage);
-    const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
-    const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-    void readScreenshot(uri, `shared-message.${ext || "jpg"}`, type).catch((e) => { setError(e instanceof Error ? e.message : "Could not read that screenshot."); setBusy("idle"); });
+    void readScreenshot(String(sharedImage));
   }, [sharedImage, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [historyKey, setHistoryKey] = useState(0);
-  // ── Image upload state ──
-  const [gateScreening, setGateScreening] = useState<ScreeningResult | null>(null);
-  const [pendingScreenshot, setPendingScreenshot] = useState<{ uri: string; name: string; type: string } | null>(null);
-  /** Keeps the warning open while sending and on failure. */
-  const [gateSubmission, setGateSubmission] = useState<UploadSubmissionState>({ phase: "idle" });
-  /** Last prepared image, for retry. */
-  const lastGateResult = useRef<PreparedImage | null>(null);
-
-  /** Upload the analysis copy (credentials blacked out); the original is never modified. */
-  const executeGateUpload = async (result: PreparedImage) => {
-    const file = pendingScreenshot;
-    if (!deviceId || !file) return;
-    setGateSubmission({ phase: "sending" });
-    try {
-      const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
-        { device_id: deviceId },
-        { uri: result.imageUri, name: file.name, type: file.type });
-      // ── SUCCESS — dismiss gate, proceed with investigation ──
-      setGateScreening(null);
-      setPendingScreenshot(null);
-      setGateSubmission({ phase: "idle" });
-      const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
-      setSender(extracted.sender); setText(combined);
-      const outcome = await run(combined, extracted.sender);
-      if (outcome?.event) await saveImageEvidence(result, [outcome.event.event_id]);
-    } catch (e) {
-      setGateSubmission({
-        phase: "error",
-        errorMessage: e instanceof Error ? e.message : "Apollo couldn't send the image. Nothing was sent.",
-      });
-      setBusy("idle");
-    }
-  };
-
-  const handleGateComplete = async (result: PreparedImage) => {
-    lastGateResult.current = result;
-    await executeGateUpload(result);
-  };
-
-  /** Retry the last gate upload after a submission error. */
-  const handleRetrySubmission = useCallback(() => {
-    if (lastGateResult.current) {
-      setGateSubmission({ phase: "idle" });
-      void executeGateUpload(lastGateResult.current);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleGateCancel = () => {
-    setGateScreening(null);
-    setPendingScreenshot(null);
-    setGateSubmission({ phase: "idle" });
-    setScreenshotUri(null);
-    lastGateResult.current = null;
-  };
 
   useEffect(() => { if (result?.analysis) { void recordCheck("message", { at: new Date().toISOString(), state: result.analysis.state, summary: result.analysis.scenarioTitle }); setHistoryKey((k) => k + 1); } }, [result]);
 
@@ -402,9 +367,21 @@ export default function CheckMessage() {
               <Text style={s.actionCardTitle}>Take a screenshot</Text>
               <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
+            <Text style={s.actionCardSub}>Choose a screenshot of the message. Apollo reads its text on this phone — the picture itself isn’t sent.</Text>
           </Pressable>
+          {simulation.included ? (
+            <Button testID="message-sample-screenshot" variant="ghost" label="Use a preview sample screenshot" disabled={busy !== "idle"} onPress={() => setSamplePicker(true)} />
+          ) : null}
         </View>
+
+        {/* ── Screenshot with no readable text: nothing was checked; pick another or type it ── */}
+        {screenshotError ? (
+          <View style={s.errorCard} testID="message-screenshot-error">
+            <Text style={s.errorText}>{screenshotError}</Text>
+            <Button testID="message-screenshot-again" variant="secondary" label="Choose another screenshot" onPress={() => void photoAccess.start()} />
+            <Button testID="message-type-instead" variant="ghost" label="Type or paste the message" onPress={() => { setScreenshotError(null); setScreenshotUri(null); setManualOpen(true); }} />
+          </View>
+        ) : null}
 
         {/* ── Enter message text (expandable) ── */}
         <Pressable
@@ -562,18 +539,17 @@ export default function CheckMessage() {
         testID="message-source-picker"
       />
 
-      {/* ── Upload warning — credentials are blacked out on the analysis copy ── */}
-      {gateScreening && (
-        <ImageUploadPrep
-          visible={!!gateScreening}
-          screening={gateScreening}
-          onComplete={(r) => void handleGateComplete(r)}
-          onCancel={handleGateCancel}
-          submissionState={gateSubmission}
-          onRetrySubmission={handleRetrySubmission}
-          purpose="message_screenshot"
-        />
-      )}
+      <SourcePickerSheet
+        visible={samplePicker}
+        title="Sample screenshots"
+        note="Apollo reads the text each sample is known to show, then runs the real message check on it."
+        preview
+        items={simulation.screenshots.map((x) => ({ id: x.id, primary: x.label, meta: x.probes }))}
+        emptyText="There are no sample screenshots here."
+        onSelect={(id: string) => void checkSampleScreenshot(id)}
+        onClose={() => setSamplePicker(false)}
+        testID="message-sample-picker"
+      />
 
       {/* ── Checking overlay modal ── */}
       <CheckingModal

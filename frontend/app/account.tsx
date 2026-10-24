@@ -13,7 +13,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
-import { apiPost, apiUpload } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { InvestigationCheckScreen } from "@/src/components/InvestigationCheckScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
@@ -24,6 +24,7 @@ import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { type PatrolEvent, STATE_NAME } from "@/src/domain/types";
 import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
+import { screenImage } from "@/src/domain/imagePrivacy";
 import { buildAccountCheckResult } from "@/src/domain/accountCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
@@ -58,6 +59,8 @@ const useStyles = makeStyles((c) => ({
   statTitle: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface },
   preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
 }));
+
+const UNREADABLE_SCREENSHOT = "Apollo couldn’t read the text in that screenshot. Try a clearer image, or type or paste what it says.";
 
 export default function CheckAccount() {
   const s = useStyles();
@@ -98,12 +101,14 @@ export default function CheckAccount() {
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
       if (picked.canceled || !picked.assets[0]) return;
-      if (!deviceId) throw new Error("Apollo is still preparing this device.");
       const asset = picked.assets[0]; setScreenshotUri(asset.uri); setEvidenceBusy(true);
-      const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract", { device_id: deviceId }, { uri: asset.uri, name: asset.fileName ?? "account-alert.jpg", type: asset.mimeType ?? "image/jpeg" });
-      const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
-      setText(combined); setSender(extracted.sender); inspectEvidence(combined, extracted.sender);
-    } catch (error) { setEvidenceError(error instanceof Error ? error.message : "Apollo could not read that screenshot. Try another image or paste a description."); }
+      // The screenshot's text is read on this phone (credentials removed); the image itself is never sent.
+      const screening = await screenImage(asset.uri, "message_screenshot");
+      const read = screening.extractedText.trim();
+      if (!read) throw new Error(UNREADABLE_SCREENSHOT);
+      const from = screening.detectedSender ?? "";
+      setText(read); setSender(from); inspectEvidence(read, from);
+    } catch (error) { setEvidenceError(error instanceof Error ? error.message : UNREADABLE_SCREENSHOT); }
     finally { setEvidenceBusy(false); }
   };
   const photoAccess = useScreenshotAccess(launchScreenshotPicker);

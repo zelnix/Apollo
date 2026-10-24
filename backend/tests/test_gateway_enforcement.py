@@ -226,13 +226,11 @@ class TestTextEnforcement:
 class TestScamAnalysisGateway:
     """Verify scam_analysis.py uses the single Gemini gateway."""
 
-    def test_scam_analysis_imports_provider(self):
-        """scam_analysis._run_model must import from services.higgins.provider."""
-        import inspect
-        from services.scam_analysis import _run_model
-        source = inspect.getsource(_run_model)
-        assert "generate_json" in source, "_run_model must use generate_json from provider"
-        assert "Purpose.PUBLIC_ADVISORY_ANALYSIS" in source, "_run_model must use PUBLIC_ADVISORY_ANALYSIS purpose"
+    def test_scam_analysis_never_calls_gemini(self):
+        """Scam alerts are read by fixed rules on the source's own words — no Gemini call at all."""
+        from services import scam_analysis
+        source = Path(scam_analysis.__file__).read_text()
+        assert "services.higgins.provider" not in source and "generate_json" not in source
 
     def test_scam_analysis_does_not_import_emergentintegrations(self):
         """scam_analysis module must NOT import emergentintegrations at module level."""

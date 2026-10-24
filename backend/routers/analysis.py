@@ -22,8 +22,8 @@ from core.redaction import redact_investigation_secrets
 from services.intel import assess_indicator, run_intel_check, sanitize_url
 from services.breach_check import active_provider, scan_email, source_label
 from services.webcrawl import CrawlBlocked, fetch_page
-from services.investigation import extract_message_screenshot, purpose_limited_url
-from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
+from services.investigation import purpose_limited_url
+from services.higgins.provider import VISION_MODEL, generate_json
 from services.higgins.llm_boundary import Purpose
 from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
 from services.higgins import evidence as ev, repository as invest_repo
@@ -245,47 +245,6 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
                              job=job if isinstance(job, dict) else None,
                              investigation_error=investigation_error)
 
-
-
-@router.post("/message/extract")
-@bounded_analysis
-async def message_extract(device_id: str = Form(min_length=8, max_length=64),
-                          file: UploadFile = File(...)):
-    """Request-scoped screenshot OCR. Upload spooling is closed/deleted in every exit path."""
-    del device_id  # anonymous device authorises this one disclosed assessment; never persisted here
-    if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
-        await file.close()
-        raise HTTPException(415, "Choose a PNG, JPEG or WebP screenshot.")
-    try:
-        data = await file.read(6_000_001)
-        if len(data) > 6_000_000:
-            raise HTTPException(413, "Screenshot is larger than 6 MB.")
-        if len(data) < 64:
-            raise HTTPException(422, "That screenshot is empty or unreadable.")
-        from PIL import Image
-        with Image.open(io.BytesIO(data)) as image:
-            image.verify()
-            if image.width * image.height > 24_000_000:
-                raise HTTPException(413, "Screenshot dimensions are too large.")
-        with Image.open(io.BytesIO(data)) as image:
-            image.load()
-            image.thumbnail((2048, 2048))
-            rendered = io.BytesIO()
-            image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
-            processed = rendered.getvalue()
-        return await extract_message_screenshot(processed)
-    except HTTPException:
-        raise
-    except ProviderFailure as exc:
-        raise HTTPException(503 if exc.code == 'provider_configuration' else 502,
-                            f'Higgins screenshot processing did not complete ({exc.code}). The image was not assessed.') from exc
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("message screenshot extraction failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image or paste the text.") from exc
-    finally:
-        data = b"" if "data" in locals() else b""
-        processed = b"" if "processed" in locals() else b""
-        await file.close()
 
 
 # --------------------------------------------------------------------------- Gate 3 Phase B: page screenshot signals

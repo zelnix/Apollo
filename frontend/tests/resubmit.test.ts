@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { canResubmit, formatWait, resubmitLabels, resubmitWaitSeconds } from "../src/investigation/resubmit.ts";
+import { canResubmit, dueReminder, formatWait, resubmitLabels, resubmitWaitSeconds, type StoppedCase, withStopped } from "../src/investigation/resubmit.ts";
 
 const NOW = Date.parse("2026-06-10T12:00:00Z");
 
@@ -37,4 +37,38 @@ test("a failure another attempt cannot fix offers no Resubmit", () => {
   assert.equal(canResubmit({ retryable: false }), false);
   assert.equal(canResubmit({ retryable: true }), true);
   assert.equal(canResubmit(null), true);
+});
+
+// ── Quiet reminder on Ask Higgins ────────────────────────────────────────────
+const at = (ms: number) => new Date(NOW + ms).toISOString();
+const stopped = (over: Partial<StoppedCase> = {}): Omit<StoppedCase, "status"> =>
+  ({ caseId: "case-a", jobId: "job-a", resubmitAt: at(300_000), expiresAt: at(900_000), ...over });
+
+test("the note appears only once the pause is over, and never after the case expires", () => {
+  const items = withStopped([], stopped(), NOW);
+  assert.equal(dueReminder(items, NOW, null), null, "still in Magnum DI's pause");
+  assert.equal(dueReminder(items, NOW + 300_000, null)?.caseId, "case-a", "ready to resubmit");
+  assert.equal(dueReminder(items, NOW + 900_000, null), null, "the case itself has expired");
+});
+
+test("no note for the investigation already on screen, or one the person dismissed", () => {
+  const items = withStopped([], stopped(), NOW);
+  assert.equal(dueReminder(items, NOW + 400_000, "case-a"), null);
+  const dismissed = items.map((item) => ({ ...item, status: "dismissed" as const }));
+  assert.equal(dueReminder(dismissed, NOW + 400_000, null), null);
+});
+
+test("remembering the same pause keeps a dismissal; a new pause brings the note back", () => {
+  const dismissed = withStopped([], stopped(), NOW).map((item) => ({ ...item, status: "dismissed" as const }));
+  assert.equal(withStopped(dismissed, stopped(), NOW)[0].status, "dismissed");
+  const again = withStopped(dismissed, stopped({ resubmitAt: at(600_000) }), NOW);
+  assert.equal(again.length, 1);
+  assert.equal(again[0].status, "waiting");
+});
+
+test("expired cases are dropped and malformed times never remind", () => {
+  const old = withStopped([], stopped({ caseId: "old", expiresAt: at(-1) }), NOW - 10_000);
+  assert.deepEqual(withStopped(old, stopped(), NOW).map((item) => item.caseId), ["case-a"]);
+  const bad = withStopped([], stopped({ resubmitAt: "not a date" }), NOW);
+  assert.equal(dueReminder(bad, NOW + 400_000, null), null);
 });
