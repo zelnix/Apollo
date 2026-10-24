@@ -91,7 +91,7 @@ export function useInvestigation(boundOperationId?: string | null) {
       if (!live() || event.caseId !== caseId || event.jobId !== job.id) return;
       if (event.type === "progress") update((previous) => ({ progress: [...previous.progress.slice(-6), event.payload.message] }));
       else if (event.type === "response") update({ response: event.payload.response, sources: event.payload.sources, question: event.payload.response.question });
-      else if (event.type === "retry_scheduled") update((previous) => ({ progress: [...previous.progress.slice(-6), event.payload.failure.message], phase: "reconnecting" }));
+      else if (event.type === "retry_scheduled") update((previous) => ({ progress: [...previous.progress.slice(-6), event.payload.failure.message], phase: "working" }));
       else if (event.type === "device_request") {
         update({ phase: "waiting_device" });
         const consumed = event.sequence;

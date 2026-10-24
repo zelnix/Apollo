@@ -28,10 +28,9 @@ from services.higgins import jobs
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
-from services.higgins import tools as toolbox
 from services.higgins.capacity import ITEMS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
-                                        RecheckRequest, RecheckResult, SettingsPlan, SettingsPlanRequest, Submission, SubmitTurn,
+                                        RecheckRequest, RecheckResult, RetryAttempt, SettingsPlan, SettingsPlanRequest, Submission, SubmitTurn,
                                         UUID_PATTERN, UploadMetadata, Wire)
 from services.higgins.encryption import cipher, decrypt, encrypt
 from services.higgins.repository import http
@@ -171,8 +170,8 @@ async def _pregather_specialist_evidence(gate: str | None, submissions: list) ->
     Magnum DI with established facts so it doesn't re-query the same providers.
 
     Returns a dict matching the triage_engine.provider_evidence structure that
-    can be stored as ``triage_provider_evidence`` on the case document for
-    tool-level deduplication by ``lookup_reputation`` / ``lookup_breach``."""
+    can be stored as ``triage_provider_evidence`` on the case document and is
+    sent to Magnum DI as evidence in its one Gemini call."""
     from services.triage_engine import gather_provider_evidence, _extract_indicators
 
     evidence: dict = {}
@@ -981,9 +980,22 @@ async def resume_job(case_id: str, job_id: str, body: ExpectedRevision, request:
         await repo.get_evidence(owner, case_id, evidence_id)
     if case.get("active_job_id") and case["active_job_id"] != job_id:
         raise http(409, "conflict", "Another turn is active.")
+    # Both Gemini attempts were used: Magnum DI asked for a short pause before the person resubmits.
+    resubmit_at = repo.utc(job["resubmit_at"]) if job.get("resubmit_at") else None
+    if resubmit_at and resubmit_at > now_utc():
+        wait = int((resubmit_at - now_utc()).total_seconds()) + 1
+        minutes = max(1, round(wait / 60))
+        raise http(429, "rate_limited", f"Magnum DI needs a short pause before trying again. You can resubmit in about {minutes} minute{'s' if minutes != 1 else ''}.",
+                   retryable=True, retry_after=wait)
     deadline = min(repo.utc(case["expires_at"]), now_utc() + timedelta(seconds=policy()["workSeconds"]))
+    resubmitted = RetryAttempt(attempt=len(job.get("retry_history") or []) + 1, kind="manual_retry",
+                               failure_code=(job.get("failure") or {}).get("code"), failure_message="Resubmitted by the person",
+                               timestamp=now_utc().isoformat(), outcome="retrying").wire()
+    # A resubmission is a new attempt at the same investigation, with the same evidence: one Gemini call plus one retry.
     await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job_id}, {"$set": {"status": "queued", "failure": None, "lease_until": None, "fence": None,
-                                                                                            "deadline_at": deadline, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "retry_at": None}})
+                                                                                            "deadline_at": deadline, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "retry_at": None,
+                                                                                            "gemini_calls": 0, "resubmit_at": None},
+                                                                                   "$push": {"retry_history": resubmitted}})
     await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {"status": "queued", "active_job_id": job_id, "active_turn_id": job["turn_id"]}}, bump=False)
     jobs.launch(owner, case_id, job_id)
     return JSONResponse({"job": repo.job_view(await repo.get_job(owner, case_id, job_id)).wire(), "caseRevision": case["revision"]}, status_code=202, headers=NO_STORE)
@@ -1266,20 +1278,18 @@ async def settings_plan(case_id: str, body: SettingsPlanRequest, request: Reques
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id)
     _revision_check(case, body.expected_revision)
-    ctx = toolbox.ToolContext(owner, case, {"job_id": "settings"}, body.device.wire())
-    research = await toolbox.research_settings(ctx, {"target": body.target})
-    if research.get("status") != "ok":
-        raise http(503, "provider_unavailable", "Settings research is unavailable right now; the investigation text remains usable.", retryable=True)
+    # No research call: the steps are Magnum DI's own action from the investigation's one Gemini call
+    # (the target text). The plan only binds that action to an observable expectation for the recheck.
     capability = body.capability_id if body.capability_id in body.device.capability_ids else None
     settings_capability = _settings_descriptor_for(body.target, body.device.capability_ids)
     mode = "permission_request" if capability and capability.startswith("permission.") else ("settings_link" if settings_capability else "instructions")
-    steps = [line.strip("-• ").strip() for line in research["answer"].splitlines() if line.strip() and not line.lower().startswith("limitations")]
-    plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match=research["match"], mode=mode, instructions=steps,
-                        source_ids=[s["sourceId"] for s in research.get("sources", [])], execution_descriptor_id=capability or settings_capability,
+    steps = [line.strip("-• ").strip() for line in re.split(r"(?<=[.!?])\s+", body.target) if line.strip()]
+    plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match="unresolved", mode=mode, instructions=steps,
+                        source_ids=[], execution_descriptor_id=capability or settings_capability,
                         expected_observation=ExpectedObservation(capability_id=capability, field=body.expected_field, expected_value=body.expected_value) if capability and body.expected_value is not None else None)
     await db.investigation_settings_plans.insert_one({"owner_id": owner, "case_id": case_id, "plan_id": plan.id, "plan_ciphertext": repo.enc_json(plan.wire()), "created_at": now_utc(),
                                                       "expires_at": repo.utc(case["expires_at"])})
-    return JSONResponse({"plan": plan.wire(), "researchNote": research.get("note")}, headers=NO_STORE)
+    return JSONResponse({"plan": plan.wire(), "researchNote": None}, headers=NO_STORE)
 
 
 @router.post("/investigations/{case_id}/settings-plan/{plan_id}/recheck")

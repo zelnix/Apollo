@@ -1,13 +1,18 @@
 """Durable job execution: leases, fencing, events, retry classification, cancellation and recovery (spec §5, §12).
 
 Work starts after a 202 and runs in-process; a crashed or restarted server recovers abandoned jobs once their lease expires.
+
+RETRY POLICY (one investigation = one Gemini call): when the call fails in a way another try could
+fix, Magnum DI tries exactly once more after a short pause. If that fails too, the investigation
+stops and the person is asked to resubmit in about five minutes — the case keeps everything they
+submitted, so resubmitting is one tap. There is no automatic resume: only the person resubmits.
 """
 from __future__ import annotations
 
 import asyncio
 import random
 import time as _time
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
 from core.config import logger
@@ -16,36 +21,41 @@ from core.redaction import redact_investigation_secrets
 from services.higgins import coordinator, provider
 from services.higgins import repository as repo
 from services.higgins.evidence import EVIDENCE_WORD_LIMIT
-from services.higgins.capacity import WORK_SECONDS
 from services.higgins.contracts import DiagnosticDetail, Failure, RetryAttempt
 
-MAX_TRANSIENT_RETRIES = 3
-MAX_AUTO_RESUME = 2   # bounded auto-resume after initial job failure
+RETRY_DELAY_SECONDS = 4          # pause before the one retry
+RESUBMIT_AFTER_SECONDS = 300     # after both attempts: "please resubmit in about 5 minutes"
 _tasks: set[asyncio.Task] = set()
 
-# ── Higgins explanation messages keyed by failure classification ──
-# Each maps a FailureCode to a Higgins-style user-facing explanation.
-HIGGINS_EXPLANATIONS: dict[str, str] = {
-    "rate_limited": "Magnum DI has temporarily reached the analysis service's request limit. It's waiting briefly before trying again.",
-    "provider_unavailable": "Magnum DI's analysis service took longer than expected to respond. It's automatically trying again, so you don't need to do anything just yet.",
-    "provider_configuration": "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.",
-    "incomplete_output": "Magnum DI stopped before completing the answer. It's attempting to continue using the information already collected.",
-    "response_invalid": "Magnum DI's answer didn't pass Apollo's validation. No investigation conclusion has been substituted.",
-    "budget_exhausted": "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.",
-    "transport_interrupted": "The investigation connection was interrupted before results could be committed.",
-    "evidence_expired": "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.",
+# Shown while the one retry is pending, keyed by failure code.
+HIGGINS_RETRYING: dict[str, str] = {
+    "rate_limited": "The analysis service is busy right now, so Magnum DI is trying once more in a few seconds. You don't need to do anything.",
+    "provider_unavailable": "The analysis service didn't answer in time, so Magnum DI is trying once more in a few seconds. You don't need to do anything.",
+    "response_invalid": "Magnum DI's answer didn't pass Apollo's checks, so it wasn't used. Magnum DI is trying once more in a few seconds.",
+}
+HIGGINS_RETRYING_DEFAULT = "Magnum DI hit a temporary problem and is trying once more in a few seconds."
+
+# Why the investigation stopped, for the resubmit message.
+_RESUBMIT_REASONS: dict[str, str] = {
+    "rate_limited": "the analysis service was too busy to answer",
+    "provider_unavailable": "the analysis service didn't answer in time",
+    "incomplete_output": "the answer stopped before it was complete",
+    "response_invalid": "the answer didn't pass Apollo's checks (Gemini's actual reply is kept in the technical details)",
+    "budget_exhausted": "the investigation ran out of time before it could finish",
+    "transport_interrupted": "the connection dropped before the answer arrived",
+    "call_limit": "both of its attempts were already used",
 }
 
-# Terminal message variants when automatic retries are exhausted.
-HIGGINS_EXHAUSTED: dict[str, str] = {
-    "rate_limited": "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.",
-    "provider_unavailable": "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.",
-    "provider_configuration": "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.",
-    "incomplete_output": "Magnum DI couldn't produce a complete answer after several attempts. I'll show you the available findings.",
-    "response_invalid": "Magnum DI couldn't complete the investigation. Gemini returned a response Apollo couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is kept in the technical details.",
-    "budget_exhausted": "Magnum DI ran out of processing time. I'll show you any findings already collected and the technical details so we can identify what needs fixing.",
-    "evidence_expired": "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence is needed.",
-}
+PROVIDER_CONFIGURATION_MESSAGE = ("Magnum DI couldn't access one of its analysis services because it isn't configured correctly. "
+                                  "This needs a technical fix rather than another attempt.")
+
+
+def resubmit_message(reason: str, calls_made: int) -> str:
+    """Higgins says plainly why the investigation stopped and when to resubmit. Nothing is substituted."""
+    why = _RESUBMIT_REASONS.get(reason, "something interrupted the investigation")
+    opening = f"Magnum DI tried twice, but {why}" if calls_made >= coordinator.MAX_GEMINI_CALLS else f"Magnum DI stopped because {why}"
+    return (f"{opening}. No conclusion has been made up in its place. Please resubmit in about "
+            f"{RESUBMIT_AFTER_SECONDS // 60} minutes — everything you submitted is kept, so it's one tap.")
 
 
 def evidence_too_large_message(words: int) -> str:
@@ -59,9 +69,6 @@ def evidence_too_large_message(words: int) -> str:
         "device — where you can work through the whole document yourself. "
         "If you'd like Apollo to investigate, remove some of the material from this case and run the check again."
     )
-
-# Fallback for unknown codes
-HIGGINS_UNKNOWN = "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing."
 
 
 def launch(owner: str, case_id: str, job_id: str) -> None:
@@ -116,13 +123,26 @@ async def _fail(owner: str, case: dict, job: dict, failure: Failure, *, partial:
         failure.retry_history = merged + failure.retry_history
 
     await repo.set_job(owner, job["job_id"], job.get("fence"), {
-        "$set": {"status": "failed", "failure": failure.wire(), "lease_until": None,
+        "$set": {"status": "failed", "failure": failure.wire(), "lease_until": None, "resubmit_at": failure.resubmit_at,
                  "retry_history": [h.wire() if hasattr(h, 'wire') else h for h in failure.retry_history]}})
     await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
                    {"$set": {"status": "partial" if partial or case.get("response_ciphertext") else "failed", "active_job_id": None, "active_turn_id": None, "lease_fence": None}}, bump=False)
     if partial:
         await _emit(owner, case, job, "partial", {"responseRevision": case.get("response_revision"), "reason": failure.wire(), "canContinue": failure.retryable or failure.code != "provider_configuration"})
     await _emit(owner, case, job, "failed", failure.wire())
+
+
+async def _fail_resubmit(owner: str, case: dict, job: dict, code: str, diag: Optional[DiagnosticDetail],
+                         history: list[RetryAttempt], *, reason: Optional[str] = None) -> None:
+    """Stop the investigation and ask the person to resubmit in about five minutes. The case keeps
+    every evidence item, so resubmitting (the resume endpoint) sends the same material again."""
+    calls = await repo.gemini_calls_made(owner, job["job_id"])
+    if diag:
+        diag.final_status = "exhausted" if calls >= coordinator.MAX_GEMINI_CALLS else "failed"
+    await _fail(owner, case, job, Failure(code=code, message=resubmit_message(reason or code, calls), retryable=True,
+                                          retry_after_seconds=RESUBMIT_AFTER_SECONDS,
+                                          resubmit_at=now_utc() + timedelta(seconds=RESUBMIT_AFTER_SECONDS),
+                                          diagnostics=diag, retry_history=history), partial=True)
 
 
 async def run(owner: str, case_id: str, job_id: str) -> None:
@@ -161,12 +181,33 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
         await _emit(owner, case, job, "progress", {"phase": phase, "message": message})
 
     beat = asyncio.create_task(heartbeat())
-    transient = 0
+    # This run's own retry history; _fail() prepends what the job document already recorded.
     retry_history: list[RetryAttempt] = []
-    # Recover any existing retry history from the job document
-    for rh in job.get("retry_history", []):
-        retry_history.append(RetryAttempt(**rh) if isinstance(rh, dict) else rh)
     job_start = _time.monotonic()
+
+    async def retry_once(code: str, message: Optional[str], duration_ms: Optional[int], remaining: float) -> bool:
+        """The single retry: only while this investigation has used fewer than MAX_GEMINI_CALLS."""
+        if await repo.gemini_calls_made(owner, job_id) >= coordinator.MAX_GEMINI_CALLS:
+            return False
+        delay = min(remaining - 5, RETRY_DELAY_SECONDS + random.uniform(0, 1.5))
+        if delay <= 0:
+            return False
+        retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry", failure_code=code,
+                                          failure_message=message, timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="retrying"))
+        retry_at = now_utc() + timedelta(seconds=delay)
+        failure = Failure(code=code, message=HIGGINS_RETRYING.get(code, HIGGINS_RETRYING_DEFAULT), retryable=True,
+                          retry_after_seconds=max(1, int(delay)), retry_history=retry_history)
+        history = [*job.get("retry_history", []), *(h.wire() for h in retry_history)]
+        await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "retry_wait", "retry_at": retry_at, "failure": failure.wire(), "retry_history": history}})
+        await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "retry_wait"}}, bump=False)
+        await _emit(owner, case, job, "retry_scheduled", {"retryAt": retry_at.isoformat(), "failure": failure.wire()})
+        await asyncio.sleep(delay)
+        if stop.is_set():
+            raise asyncio.CancelledError()
+        await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "investigating", "retry_at": None}})
+        await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "investigating"}}, bump=False)
+        return True
+
     try:
         while True:
             remaining = (repo.utc(job["deadline_at"]) - now_utc()).total_seconds()
@@ -175,11 +216,8 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
                     component="magnum_di", service="Investigation Engine", operation="investigation",
                     original_error_code="deadline_exceeded",
                     original_message=f"Investigation deadline reached after {int(_time.monotonic() - job_start)}s processing.",
-                    timestamp=now_utc().isoformat(), duration_ms=int((_time.monotonic() - job_start) * 1000),
-                    final_status="exhausted" if transient >= MAX_TRANSIENT_RETRIES else "failed")
-                await _fail(owner, case, job, Failure(code="budget_exhausted",
-                    message=HIGGINS_EXPLANATIONS["budget_exhausted"], retryable=True,
-                    diagnostics=diag, retry_history=retry_history), partial=True)
+                    timestamp=now_utc().isoformat(), duration_ms=int((_time.monotonic() - job_start) * 1000))
+                await _fail_resubmit(owner, case, job, "budget_exhausted", diag, retry_history)
                 return
             turn_start = _time.monotonic()
             try:
@@ -190,14 +228,11 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
                     component="magnum_di", service="Investigation Engine", operation="investigation",
                     original_error_code="investigation_deadline_exceeded",
                     original_message=f"Investigation turn timed out after {duration_ms}ms (deadline: {int(remaining)}s remaining).",
-                    timestamp=now_utc().isoformat(), duration_ms=duration_ms,
-                    final_status="failed")
-                retry_history.append(RetryAttempt(attempt=transient + 1, kind="provider_retry",
+                    timestamp=now_utc().isoformat(), duration_ms=duration_ms)
+                retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry",
                     failure_code="investigation_deadline", failure_message="Turn exceeded remaining deadline",
                     timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="failed"))
-                await _fail(owner, case, job, Failure(code="provider_unavailable",
-                    message=HIGGINS_EXPLANATIONS["provider_unavailable"], retryable=True,
-                    diagnostics=diag, retry_history=retry_history), partial=True)
+                await _fail_resubmit(owner, case, job, "provider_unavailable", diag, retry_history)
                 return
             except provider.ProviderFailure as exc:
                 duration_ms = int((_time.monotonic() - turn_start) * 1000)
@@ -208,46 +243,32 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
                     original_message=exc.original_message,
                     exception_type=exc.exception_type,
                     timestamp=now_utc().isoformat(), duration_ms=duration_ms)
-                if exc.retryable and transient < MAX_TRANSIENT_RETRIES:
-                    transient += 1
-                    delay = min(remaining - 5, (2 ** transient) + random.uniform(0, 1.5))
-                    if delay <= 0:
-                        diag.final_status = "exhausted"
-                        retry_history.append(RetryAttempt(attempt=transient, kind="provider_retry",
-                            failure_code=exc.code, failure_message=exc.original_message,
-                            timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="exhausted"))
-                        msg = HIGGINS_EXHAUSTED.get(exc.code, HIGGINS_UNKNOWN)
-                        await _fail(owner, case, job, Failure(code=exc.code, message=msg, retryable=True,
-                            diagnostics=diag, retry_history=retry_history), partial=True)
-                        return
-                    retry_history.append(RetryAttempt(attempt=transient, kind="provider_retry",
-                        failure_code=exc.code, failure_message=exc.original_message,
-                        timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="retrying"))
-                    retry_at = now_utc() + timedelta(seconds=delay)
-                    explanation = HIGGINS_EXPLANATIONS.get(exc.code, HIGGINS_UNKNOWN)
-                    failure = Failure(code=exc.code, message=explanation, retryable=True,
-                        retry_after_seconds=int(delay), diagnostics=diag, retry_history=retry_history)
-                    await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "retry_wait", "retry_at": retry_at, "failure": failure.wire(),
-                        "retry_history": [h.wire() if hasattr(h, 'wire') else h for h in retry_history]}})
-                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "retry_wait"}}, bump=False)
-                    await _emit(owner, case, job, "retry_scheduled", {"retryAt": retry_at.isoformat(), "failure": failure.wire()})
-                    await asyncio.sleep(delay)
-                    if stop.is_set():
-                        return
-                    await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "investigating", "retry_at": None}})
-                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "investigating"}}, bump=False)
+                if exc.code == "provider_configuration":
+                    # Another attempt cannot help until the configuration is fixed.
+                    diag.final_status = "failed"
+                    retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry", failure_code=exc.code,
+                        failure_message=exc.original_message, timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="failed"))
+                    await _fail(owner, case, job, Failure(code="provider_configuration", message=PROVIDER_CONFIGURATION_MESSAGE,
+                        retryable=False, diagnostics=diag, retry_history=retry_history), partial=True)
+                    return
+                if exc.retryable and await retry_once(exc.code, exc.original_message, duration_ms, remaining):
                     continue
-                # Non-retryable or retries exhausted
-                code = exc.code if exc.code in HIGGINS_EXHAUSTED else "provider_unavailable"
-                diag.final_status = "failed"
-                retry_history.append(RetryAttempt(attempt=transient + 1, kind="provider_retry",
-                    failure_code=exc.code, failure_message=exc.original_message,
-                    timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="failed"))
-                msg = HIGGINS_EXHAUSTED.get(code, HIGGINS_UNKNOWN)
-                await _fail(owner, case, job, Failure(code=code, message=msg, retryable=exc.retryable,
-                    diagnostics=diag, retry_history=retry_history), partial=True)
+                retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry", failure_code=exc.code,
+                    failure_message=exc.original_message, timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="failed"))
+                code = exc.code if exc.code in _RESUBMIT_REASONS else "provider_unavailable"
+                await _fail_resubmit(owner, case, job, code, diag, retry_history)
                 return
+            if outcome.kind == "invalid" and await retry_once("response_invalid", "; ".join(outcome.errors)[:200] or None,
+                                                              int((_time.monotonic() - turn_start) * 1000), remaining):
+                continue
             break
+        if outcome.kind == "call_limit_reached":
+            # Both Gemini attempts were already used (e.g. a recovered job): nothing more is sent.
+            diag = DiagnosticDetail(component="magnum_di", service="Apollo", operation="gemini_call_limit",
+                original_error_code="call_limit_reached", original_message="; ".join(outcome.errors)[:400],
+                timestamp=now_utc().isoformat())
+            await _fail_resubmit(owner, case, job, "provider_unavailable", diag, retry_history, reason="call_limit")
+            return
         if outcome.kind == "waiting_device":
             await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "waiting_device", "lease_until": None}})
             await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id},
@@ -266,10 +287,10 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
                 provider_response=provider_response,
                 provider_model=outcome.model,
                 provider_finish_reason=outcome.finish_reason,
-                timestamp=now_utc().isoformat(), final_status="failed")
-            await _fail(owner, case, job, Failure(code="response_invalid",
-                message=HIGGINS_EXHAUSTED["response_invalid"],
-                retryable=True, diagnostics=diag, retry_history=retry_history), partial=True)
+                timestamp=now_utc().isoformat())
+            retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry", failure_code="response_invalid",
+                failure_message="; ".join(outcome.errors)[:200] or None, timestamp=now_utc().isoformat(), outcome="failed"))
+            await _fail_resubmit(owner, case, job, "response_invalid", diag, retry_history)
             return
         if outcome.kind == "evidence_too_large":
             # Deliberate stop before any Gemini call: the evidence exceeds Apollo's word limit.
@@ -306,15 +327,12 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             original_error_code=type(_exc).__name__,
             original_message=provider._sanitise_diagnostic(str(_exc)) if str(_exc) else None,
             exception_type=type(_exc).__name__,
-            timestamp=now_utc().isoformat(), duration_ms=duration_ms,
-            final_status="failed")
-        retry_history.append(RetryAttempt(attempt=transient + 1, kind="provider_retry",
+            timestamp=now_utc().isoformat(), duration_ms=duration_ms)
+        retry_history.append(RetryAttempt(attempt=len(retry_history) + 1, kind="provider_retry",
             failure_code=type(_exc).__name__, failure_message=provider._sanitise_diagnostic(str(_exc)[:200]) if str(_exc) else "Unknown internal error",
             timestamp=now_utc().isoformat(), duration_ms=duration_ms, outcome="failed"))
         try:
-            await _fail(owner, case, job, Failure(code="provider_unavailable",
-                message=HIGGINS_UNKNOWN, retryable=True,
-                diagnostics=diag, retry_history=retry_history), partial=True)
+            await _fail_resubmit(owner, case, job, "provider_unavailable", diag, retry_history, reason="unknown")
         except Exception:  # noqa: BLE001
             pass
     finally:
@@ -327,9 +345,10 @@ async def recover() -> None:
     An accepted turn is authoritative: a job whose turn was already accepted is repaired (via run()), never failed for a passed deadline.
     
     COST SAFETY: Stale mailbox-monitor jobs older than STALE_AUTO_JOB_HOURS are failed rather than relaunched
-    to prevent billing-restoration backlog explosions.
+    to prevent billing-restoration backlog explosions. A failed job is never resumed automatically — only the
+    person resubmits — and a relaunched job can only use the Gemini call slots it has left.
     """
-    from services.gemini_usage import check_automated_budget, AUTOMATED_SOURCES, TriggerSource
+    from services.gemini_usage import check_automated_budget, AUTOMATED_SOURCES
     STALE_AUTO_JOB_HOURS = 2  # Mailbox-monitor jobs older than this are considered stale
 
     now = now_utc()
@@ -343,7 +362,7 @@ async def recover() -> None:
         if await repo.accepted_commit_for(job["owner_id"], case, job["turn_id"]):
             launch(job["owner_id"], job["case_id"], job["job_id"])  # run() repairs projections from the accepted commit
             continue
-        await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Magnum DI finished. Retry to continue from the last completed step.", retryable=True), partial=True)
+        await _fail_resubmit(job["owner_id"], case, job, "budget_exhausted", None, [])
     # Device submissions interrupted after the claim (crash before storage or before resume): finish them idempotently.
     # "storing"/"resuming" are the fenced in-flight sub-states `_claim_submission_stage` uses for renewable ownership;
     # a submission stuck there past its staleness window is taken over by the same call, never left stranded.
@@ -397,64 +416,6 @@ async def recover() -> None:
                 continue  # leave in current state, don't relaunch
 
         launch(job["owner_id"], job["case_id"], job["job_id"])
-
-    # ── Phase 2: Auto-resume failed retryable jobs that haven't exhausted their resume allowance ──
-    # Only resume jobs that: (1) are marked failed with retryable=True, (2) haven't exceeded MAX_AUTO_RESUME,
-    # (3) belong to non-expired, non-deleted, non-complete cases, (4) aren't config/auth failures.
-    NON_RESUMABLE_CODES = {"provider_configuration", "evidence_expired"}
-    async for job in db.investigation_jobs.find(
-        {"status": "failed", "failure.retryable": True,
-         "auto_resume_count": {"$lt": MAX_AUTO_RESUME},
-         "deadline_at": {"$gt": now}},
-        {"_id": 0}
-    ):
-        if job.get("failure", {}).get("code") in NON_RESUMABLE_CODES:
-            continue
-
-        job_source = job.get("source", "user_initiated")
-        job_created = job.get("created_at", now)
-
-        # Stale automated jobs: skip auto-resume
-        if job_source in AUTOMATED_SOURCES and job_created < stale_cutoff:
-            logger.info("stale_auto_job_skip_resume job=%s source=%s", job["job_id"], job_source)
-            continue
-
-        # Budget check for automated auto-resume
-        if job_source in AUTOMATED_SOURCES:
-            budget_ok, spent, limit = await check_automated_budget()
-            if not budget_ok:
-                logger.warning("auto_budget_skip_resume job=%s spent=$%.2f limit=$%.2f", job["job_id"], spent, limit)
-                continue
-
-        case = await db.investigation_cases.find_one(
-            {"owner_id": job["owner_id"], "case_id": job["case_id"], "deleted": False},
-            {"_id": 0, "case_id": 1, "status": 1, "expires_at": 1, "epoch": 1})
-        if not case or case["status"] in ("complete", "cancelled") or repo.utc(case["expires_at"]) <= now:
-            continue
-        # Extend the deadline for the resume attempt
-        new_deadline = now + timedelta(seconds=WORK_SECONDS)
-        # Record source as recovery_resume for resumed jobs
-        resume_source = TriggerSource.RECOVERY_RESUME if job_source in AUTOMATED_SOURCES else job_source
-        await db.investigation_jobs.update_one(
-            {"owner_id": job["owner_id"], "job_id": job["job_id"], "status": "failed"},
-            {"$set": {"status": "queued", "deadline_at": new_deadline, "lease_until": None, "failure": None, "source": resume_source},
-             "$inc": {"auto_resume_count": 1}})
-        # Record the resume in retry history
-        existing_history = job.get("retry_history", [])
-        existing_history.append(RetryAttempt(
-            attempt=len(existing_history) + 1, kind="job_resume",
-            failure_code=job.get("failure", {}).get("code"),
-            failure_message="Automatic resume after failed attempt",
-            timestamp=now.isoformat(), outcome="retrying").wire())
-        await db.investigation_jobs.update_one(
-            {"owner_id": job["owner_id"], "job_id": job["job_id"]},
-            {"$set": {"retry_history": existing_history}})
-        # Re-activate the case
-        await db.investigation_cases.update_one(
-            {"owner_id": job["owner_id"], "case_id": job["case_id"], "status": {"$in": ["partial", "failed"]}},
-            {"$set": {"status": "queued", "active_job_id": job["job_id"]}})
-        launch(job["owner_id"], job["case_id"], job["job_id"])
-        logger.info("auto_resume job=%s case=%s source=%s resume_count=%d", job["job_id"], job["case_id"], resume_source, job.get("auto_resume_count", 0) + 1)
 
 
 async def sweep_loop() -> None:

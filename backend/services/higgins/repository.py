@@ -600,9 +600,26 @@ async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payl
            "expires_at": utc(case["expires_at"]),
            "auto_resume_count": 0,
            "retry_history": [],
+           # Gemini calls this investigation has made (the one call + at most one retry).
+           "gemini_calls": 0,
            "source": source}
     await db.investigation_jobs.insert_one(dict(doc))
     return doc
+
+
+async def claim_gemini_call(owner: str, job_id: str, limit: int) -> Optional[int]:
+    """Atomically take one of the job's Gemini call slots. Returns the call number (1-based), or None
+    when the job has already made `limit` calls — the caller must then not call Gemini at all."""
+    claimed = await db.investigation_jobs.find_one_and_update(
+        {"owner_id": owner, "job_id": job_id,
+         "$or": [{"gemini_calls": {"$exists": False}}, {"gemini_calls": {"$lt": limit}}]},
+        {"$inc": {"gemini_calls": 1}}, projection={"_id": 0, "gemini_calls": 1}, return_document=ReturnDocument.AFTER)
+    return claimed["gemini_calls"] if claimed else None
+
+
+async def gemini_calls_made(owner: str, job_id: str) -> int:
+    doc = await db.investigation_jobs.find_one({"owner_id": owner, "job_id": job_id}, {"_id": 0, "gemini_calls": 1})
+    return int((doc or {}).get("gemini_calls") or 0)
 
 
 async def get_job(owner: str, case_id: str, job_id: str) -> dict:

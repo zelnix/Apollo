@@ -1,3 +1,33 @@
+## Magnum DI: one investigation = one Gemini call (2026-06)
+**Owner directive:** each investigation makes exactly one Gemini call — no multi-round loops, no nested research
+calls, no second call by Higgins to present the answer. Owner's retry rule: "only 1 additional retry then ask user to
+submit again in an appropriate time" → about 5 minutes; the failed case keeps everything submitted + Resubmit button.
+- **Enforcement point:** `repo.claim_gemini_call(owner, job_id, MAX_GEMINI_CALLS=2)` — atomic `$inc` on the job's new
+  `gemini_calls` field, taken in `coordinator.run_turn` right before the only `provider.generate`. Refused ⇒ outcome
+  `call_limit_reached`, nothing sent. Crash recovery / duplicate workers can never make a third call.
+- **jobs.py:** one retry (4 s pause) for retryable provider failures and `response_invalid`; `provider_configuration`
+  never retried. Then `_fail_resubmit`: `retryable=True`, `retryAfterSeconds=300`, new `Failure.resubmitAt`, job
+  `resubmit_at`; message from `resubmit_message()` ("Magnum DI tried twice, but … Please resubmit in about 5 minutes —
+  everything you submitted is kept, so it's one tap."). Old 3 transient retries and the sweeper's Phase-2 auto-resume
+  (up to 2 resumes × 4 calls) are DELETED — only the person resubmits.
+- **Resubmit = `POST /investigations/{id}/jobs/{job}/resume`:** 429 (`rate_limited`, retryAfter) before `resubmit_at`;
+  afterwards resets `gemini_calls` to 0 and records a `manual_retry` in retry history.
+- **Nested research removed:** `tools.py` lost the function-calling `DECLARATIONS`/`execute`, `_grounded` research,
+  `research_settings`, `research_application`, `lookup_*`, `ask_user` (all unreachable or Gemini-calling). The
+  settings-plan endpoint no longer runs a research call — its steps are Magnum DI's own action text.
+- **Vision Gate:** `/vision/investigate` no longer pre-analyses the image with Gemini (that was a 2nd call per image
+  investigation). The privacy-screened image + device-recognised text go to Magnum DI as evidence for its one call;
+  the immediate result is Apollo's own deterministic checks. `VISION_INVESTIGATE_PROMPT` deleted.
+- **Higgins:** already presents Magnum DI's response verbatim (no presentation call); chat routes investigation
+  intent to the pipeline without a Gemini call.
+- **Frontend:** `src/investigation/resubmit.ts` (wait/labels, pure) → `InvestigationView` "Resubmit in 4:32" (disabled,
+  live countdown) → "Resubmit"; hidden when `retryable:false`. `retry_scheduled` now shows as working, not "reconnecting".
+- **Still 2 calls (not changed, owner to decide):** screenshot message/account checks call `/message/extract` (Gemini
+  text extraction) before the check, which may then escalate to Magnum DI.
+- Tests: `backend/tests/test_one_gemini_call.py` (10), `frontend/tests/resubmit.test.ts` (5). Full suites: backend 977
+  passed, frontend 910/910, tsc + ESLint clean.
+- Owner (2026-06): proxy setup DROPPED — no proxy URL will be provided; ACSC stays on the Internet Archive relay.
+
 ## Hamburger menu on every full screen + title icons + junk drafts purge (2026-06)
 - `src/components/AppMenu.tsx` `AppMenuButton`: hamburger (Settings, About, Privacy, Support) — always the LAST
   (far-right) header icon on full screens: Home, Threats, Scam Alerts, Ask Higgins, Learn, Protection/guard,

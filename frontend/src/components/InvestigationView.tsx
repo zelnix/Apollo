@@ -35,6 +35,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
 import { listLocalReports, saveLocalReport, deleteLocalReport } from "@/src/investigation/localReports";
+import { canResubmit, resubmitLabels, resubmitWaitSeconds } from "@/src/investigation/resubmit";
 import type { ActionProposal, Attention, EvidenceItem, Gate, SourceReference } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
@@ -662,6 +663,22 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     // Safety: reset after 6s in case retry returns silently (e.g., expired operation)
     setTimeout(() => setRetrying(false), 6000);
   }, [onRetry]);
+
+  // Resubmit waits out the server's pause (about five minutes after Magnum DI's second try failed).
+  const [waitSeconds, setWaitSeconds] = useState(() => resubmitWaitSeconds(failure));
+  useEffect(() => {
+    setWaitSeconds(resubmitWaitSeconds(failure));
+    if (phase !== "failed" || !resubmitWaitSeconds(failure)) return;
+    const timer = setInterval(() => {
+      const left = resubmitWaitSeconds(failure);
+      setWaitSeconds(left);
+      if (!left) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [failure, phase]);
+  const showResubmit = phase === "failed" && canResubmit(failure);
+  const resubmit = resubmitLabels(waitSeconds, retrying);
+  const resubmitDisabled = retrying || waitSeconds > 0;
   const usedSources = sources.filter((src) => response?.sourceIds.includes(src.id));
   const inventory = caseData?.inventory;
   const showTabs = !!(response || (failure && caseData && !working));
@@ -790,15 +807,16 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           {/* What you can do */}
           <Text style={s.sectionHeader}>What you can do</Text>
           <View style={{ gap: spacing.sm }}>
-            {/* Retry investigation — when failed */}
-            {(phase === "failed" && caseData) ? (
-              <Pressable style={[s.actionCard, retrying && { opacity: 0.6 }]} disabled={retrying} onPress={handleRetry} testID="inv-retry">
-                <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}>{retrying ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <RefreshCw size={20} color={colors.brandPrimary} />}</View>
+            {/* Resubmit — when Magnum DI's one call and its one retry both failed */}
+            {(showResubmit && caseData) ? (
+              <Pressable style={[s.actionCard, resubmitDisabled && { opacity: 0.6 }]} disabled={resubmitDisabled} onPress={handleRetry} testID="inv-retry"
+                accessibilityRole="button" accessibilityState={{ disabled: resubmitDisabled }}>
+                <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}>{retrying ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : waitSeconds > 0 ? <Clock size={20} color={colors.brandPrimary} /> : <RefreshCw size={20} color={colors.brandPrimary} />}</View>
                 <View style={s.actionContent}>
-                  <Text style={s.actionTitle}>{retrying ? "Retrying investigation…" : "Retry investigation"}</Text>
-                  <Text style={s.actionDescription}>{retrying ? "Magnum DI is reconnecting" : "Magnum DI will run the checks again"}</Text>
+                  <Text style={s.actionTitle} testID="inv-retry-title">{resubmit.title}</Text>
+                  <Text style={s.actionDescription}>{resubmit.description}</Text>
                 </View>
-                {!retrying ? <ChevronRight size={18} color={colors.muted} /> : null}
+                {!resubmitDisabled ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>
             ) : null}
 
@@ -1006,7 +1024,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <Text style={s.higginsExplainText}>{failure ? higginsExplanation(failure as unknown as Record<string, unknown> | null, false) : error}</Text>
       </View>
       <TechnicalErrorDetails failure={failure as unknown as Record<string, unknown> | null} caseId={caseData?.id} s={s} />
-      {phase === "failed" ? <Button testID="inv-retry" label={retrying ? "Retrying…" : "Retry investigation"} disabled={retrying} onPress={handleRetry} /> : null}
+      {showResubmit ? <Button testID="inv-retry" label={resubmit.title} disabled={resubmitDisabled} onPress={handleRetry} /> : null}
     </Card> : null}
 
     {/* ── Partial failure indicator (outside tabs) ── */}

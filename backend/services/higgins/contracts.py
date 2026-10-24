@@ -231,6 +231,8 @@ class Failure(Wire):
     message: str
     retryable: bool = False
     retry_after_seconds: Optional[int] = None
+    # Set when both Gemini attempts were used: the person may resubmit from this moment.
+    resubmit_at: Optional[datetime] = None
     missing_evidence_ids: list[str] = Field(default_factory=list)
     diagnostics: Optional[DiagnosticDetail] = None
     retry_history: list[RetryAttempt] = Field(default_factory=list)

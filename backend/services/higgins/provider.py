@@ -1,7 +1,7 @@
 """The only AI transport: Google's supported SDK with the owner's Gemini key.
 
 No prompt/response logging, hidden-reasoning display, implicit model switches or SDK retries.
-Public research must be called with an explicitly minimised query, never a private prompt.
+A Magnum DI investigation makes exactly one call through this gateway (see coordinator.py).
 
 NO-FALLBACK CONTRACT:
     In production every Gemini failure is reported exactly as-is — the error code,

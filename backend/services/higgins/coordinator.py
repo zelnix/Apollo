@@ -8,6 +8,11 @@ The request sent to Gemini contains exactly three things:
 There is no system prompt, no investigation framework, no Higgins instruction and no Apollo
 explanation in the request, and no summarised or duplicated representation of evidence Apollo is
 already supplying. Google Search stays attached as a tool, which adds no prompt text.
+
+ONE INVESTIGATION = ONE GEMINI CALL. There are no tool rounds, no nested research calls and no
+second call to present the answer: Higgins shows what this one call returned. The only exception is
+a single retry after a failed call (`MAX_GEMINI_CALLS`), enforced atomically on the job record, so
+no code path — a retry loop, a crash recovery or a duplicate worker — can make a third call.
 """
 from __future__ import annotations
 
@@ -30,6 +35,9 @@ from services.higgins.validation import validate
 # evidence collected for this case. It is registered as evidence, verbatim, so it is sent whole and
 # can be cited — never summarised into the prompt.
 TRIAGE_EVIDENCE_ITEM_ID = "apollo-triage-intelligence"
+
+# The investigation's one Gemini call, plus at most one retry if that call fails.
+MAX_GEMINI_CALLS = 2
 
 
 async def _register_triage_evidence(owner: str, case: dict) -> None:
@@ -83,8 +91,9 @@ class Outcome:
 async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     """One Gemini call: question + complete evidence + response schema, with Google Search attached.
 
-    Flow: register triage intelligence as evidence → send question and evidence → validate the
-    schema-shaped response → commit. No autonomous tool rounds, reassessment cycles or repair loops.
+    Flow: register triage intelligence as evidence → claim the call slot → send question and evidence
+    → validate the schema-shaped response → commit. No autonomous tool rounds, reassessment cycles or
+    repair loops; a retry is the caller's (jobs.py) single decision and claims its own slot.
     """
     payload = repo.dec_json(job["payload_ciphertext"])
     device = repo.device_profile(case)
@@ -105,6 +114,11 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                        errors=[f"written evidence is {evidence_words} words; Apollo's limit for one investigation is {ev.EVIDENCE_WORD_LIMIT}"])
 
     contents = [types.Content(role="user", parts=[types.Part(text=payload["message"]), *evidence_parts])]
+
+    # Take a Gemini call slot before anything is sent. Refused = both attempts are already used:
+    # nothing is sent and the person is asked to resubmit later.
+    if await repo.claim_gemini_call(owner, job["job_id"], MAX_GEMINI_CALLS) is None:
+        return Outcome("call_limit_reached", errors=[f"this investigation already made {MAX_GEMINI_CALLS} Gemini calls"])
 
     # Mark evidence as examined now that it has been sent to Gemini
     for evidence_id, start, end, total in pending_marks:

@@ -721,37 +721,8 @@ async def account_monitor_scan(body: MonitorScanIn):
 
 
 # --------------------------------------------------------------------------- Vision Gate
-# Photograph/upload → visual recognition + indicator extraction → existing gate routing.
-# Reuses PAGE_EXTRACT_PROMPT-style vision, plus existing link/message/account engines.
+# Photograph/upload → device-recognised indicators → existing gate routing → Magnum DI (one Gemini call).
 # --------------------------------------------------------------------------- 
-
-VISION_INVESTIGATE_PROMPT = """You are analysing a photograph or uploaded image for a consumer security app called Apollo.
-The user showed Apollo something suspicious. Your job is to describe what you see and extract security-relevant indicators.
-
-Return ONLY JSON:
-{"image_type": "<letter|notice|sms|email|website|app_screen|qr_code|advertisement|invoice|login_screen|security_warning|delivery_notice|payment_request|other>",
- "description": "<2-3 sentences describing what appears to be in the image, written for a worried non-technical person>",
- "claimed_brand": "<organisation/brand the content presents as (logo, name, letterhead), else empty>",
- "urls": ["<any URLs, web addresses or domains visible in the image>"],
- "phone_numbers": ["<any phone numbers visible>"],
- "email_addresses": ["<any email addresses visible>"],
- "qr_code_present": <true|false>,
- "asks_user_to": ["<any of: visit_url, call_number, send_money, provide_credentials, install_app, download_file, scan_qr, reply_message, open_attachment, provide_personal_info, make_payment, transfer_funds>"],
- "urgency_or_threat_text": "<short quote of urgent/threatening wording if present, else empty>",
- "payment_details": {"present": <true|false>, "method": "<bank transfer|card|crypto|gift card|other|empty>", "changed_details_warning": <true if payment details appear modified or different from expected>},
- "suspicious_indicators": ["<list specific observations that could indicate a scam or security threat — e.g. 'sender address doesn't match claimed brand', 'unusual payment method requested', 'urgency pressure tactics'>"],
- "legitimate_indicators": ["<list specific observations that suggest legitimacy — e.g. 'official letterhead matches known format', 'ABN number present'>"],
- "text_content": "<key text visible in the image, up to 200 words>",
- "confidence": "<high|medium|low> — how clearly you can read and interpret the content"}
-
-Rules:
-- Report ONLY what you actually see. Never fabricate or guess content.
-- If text is partially readable, say so. Do not complete words or numbers you cannot read.
-- Extract ALL visible URLs, phone numbers and email addresses exactly as printed.
-- Note visual quality issues (blurry, partial, dark) that limit interpretation.
-- Do not declare verdicts. Apollo's security engines will investigate the extracted indicators.
-- Your observations are INPUT to Apollo's investigation, not the final assessment."""
-
 
 class VisionInvestigateOut(BaseModel):
     """Unified vision investigation result: what was seen, checked, found, and what couldn't be verified."""
@@ -792,21 +763,18 @@ async def vision_investigate(
     extracted_text: str = Form(default=""),
     file: Optional[UploadFile] = File(default=None),
 ):
-    """Vision Gate investigation: photograph/upload → visual recognition → gate routing.
-    
+    """Vision Gate investigation: photograph/upload → Apollo's own checks → one Magnum DI investigation.
+
     Accepts either:
-    - A privacy-screened image (with sanitisation receipt) for Gemini visual analysis
+    - A privacy-screened image, stored as case evidence for Magnum DI's single Gemini call
     - Extracted text only (from on-device OCR, image withheld)
     - Both image and text
-    
-    Routes extracted indicators to existing security engines and combines results.
+
+    No Gemini call is made here: the image is examined once, inside the investigation.
     """
     _owner_id = device_id  # Preserve for coordinator case creation below
     del device_id  # anonymous device authorises this disclosed assessment
 
-    vision_data: dict[str, Any] = {}
-    provider_metadata: dict[str, Any] = {}
-    gemini_used = False
     limitations: list[str] = []
     # Set by the image branch below; a text-only request (image withheld on the device) has none.
     _redacted_image_bytes: bytes = b""
@@ -814,100 +782,41 @@ async def vision_investigate(
     _raw_upload_digest: Optional[str] = None
     _processed_digest: Optional[str] = None
 
-    # ── Step 1: Visual analysis via Gemini (if image provided with valid receipt) ──
-    # Submitting the image authorises its analysis; credentials were handled on the device before upload.
+    # ── Step 1: Prepare the image as evidence — no Gemini call here ──
+    # One investigation = one Gemini call: the privacy-screened image goes to Magnum DI as evidence and
+    # is examined in the investigation's single call. Apollo does not run a separate visual pre-analysis.
     if file and file.content_type in {"image/png", "image/jpeg", "image/webp"}:
-        if not GEMINI_API_KEY:
-            limitations.append("Visual analysis is not configured. Using text extraction only.")
-        else:
-            try:
-                raw_image = await file.read(6_000_001)
-                if len(raw_image) > 6_000_000:
-                    raise HTTPException(413, "Image is larger than 6 MB.")
-
-                raw_upload_digest = hashlib.sha256(raw_image).hexdigest()
-
-                from PIL import Image as PILImage
-                with PILImage.open(io.BytesIO(raw_image)) as image:
-                    image.load()
-                    if image.width * image.height > 24_000_000:
-                        raise HTTPException(413, "Image dimensions are too large.")
-                    image.thumbnail((2048, 2048))
-                    rendered = io.BytesIO()
-                    image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
-                    processed = rendered.getvalue()
-
-                # Record both the raw upload digest and the processed image digest
-                _raw_upload_digest = raw_upload_digest
-                _processed_digest = hashlib.sha256(processed).hexdigest()
-
-                parts = [
-                    types.Part.from_bytes(data=processed, mime_type="image/jpeg"),
-                    types.Part(text="Analyse this image for security indicators. The user showed Apollo something they find suspicious."),
-                ]
-                if extracted_text:
-                    parts.append(types.Part(text=f"On-device OCR also extracted this text: {extracted_text[:2000]}"))
-                vision_data, provider_metadata = await generate_json(
-                    VISION_INVESTIGATE_PROMPT, parts,
-                    model=VISION_MODEL, capability="vision",
-                    purpose=Purpose.VISION_INVESTIGATION,
-                    correlation_id="vision-investigate",
-                )
-                gemini_used = True
-            except HTTPException:
-                raise
-            except ProviderFailure as exc:
-                limitations.append(f"Visual analysis unavailable ({exc.code}). Using text extraction only.")
-            except Exception as exc:
-                logger.warning("vision investigate failed: %s", type(exc).__name__)
-                limitations.append("Visual analysis failed. Using text extraction only.")
-            finally:
-                # Preserve redacted image bytes for evidentiary chain before wiping
-                _redacted_image_bytes = processed if "processed" in locals() else b""
-                _redacted_image_hash = hashlib.sha256(_redacted_image_bytes).hexdigest() if _redacted_image_bytes else None
-                _raw_upload_digest = _raw_upload_digest if "_raw_upload_digest" in dir() else None
-                _processed_digest = _processed_digest if "_processed_digest" in dir() else None
-                raw_image = b""
-                processed = b"" if "processed" in locals() else b""
-                if file: await file.close()
+        try:
+            raw_image = await file.read(6_000_001)
+            if len(raw_image) > 6_000_000:
+                raise HTTPException(413, "Image is larger than 6 MB.")
+            _raw_upload_digest = hashlib.sha256(raw_image).hexdigest()
+            from PIL import Image as PILImage
+            with PILImage.open(io.BytesIO(raw_image)) as image:
+                image.load()
+                if image.width * image.height > 24_000_000:
+                    raise HTTPException(413, "Image dimensions are too large.")
+                image.thumbnail((2048, 2048))
+                rendered = io.BytesIO()
+                image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
+            _redacted_image_bytes = rendered.getvalue()
+            _processed_digest = _redacted_image_hash = hashlib.sha256(_redacted_image_bytes).hexdigest()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("vision image preparation failed: %s", type(exc).__name__)
+            limitations.append("The image could not be read. Using the text recognised on your device only.")
+        finally:
+            raw_image = b""
+            await file.close()
     elif file:
         await file.close()
 
-    # ── Step 2: Extract indicators from vision data + OCR text ──
-    def s_(k: str, n: int = 500) -> str:
-        return str(vision_data.get(k) or "")[:n]
-    def l_(k: str) -> list[str]:
-        v = vision_data.get(k) or []
-        return [str(x)[:500] for x in v][:20] if isinstance(v, list) else []
-    def b_(k: str) -> bool:
-        return bool(vision_data.get(k)) and str(vision_data.get(k)).lower() not in ("false", "0", "")
-
-    image_type = s_("image_type", 40)
-    description = s_("description", 500)
-    claimed_brand = s_("claimed_brand", 60)
-    confidence = s_("confidence", 10) or "low"
-    
-    # Combine URLs from vision + OCR text
-    urls_from_vision = l_("urls")
-    urls_from_text = _extract_urls(extracted_text) if extracted_text else []
-    all_urls = list(dict.fromkeys(urls_from_vision + urls_from_text))[:10]
-
-    phone_numbers = l_("phone_numbers")
-    email_addresses = l_("email_addresses")
-    qr_code_present = b_("qr_code_present")
-    asks_user_to = l_("asks_user_to")
-    suspicious_indicators = l_("suspicious_indicators")
-    legitimate_indicators = l_("legitimate_indicators")
-    text_content = s_("text_content", 500) or extracted_text[:500]
-    
-    payment_raw = vision_data.get("payment_details")
-    payment_details = None
-    if isinstance(payment_raw, dict) and payment_raw.get("present"):
-        payment_details = {
-            "present": True,
-            "method": str(payment_raw.get("method", ""))[:40],
-            "changed_details_warning": bool(payment_raw.get("changed_details_warning")),
-        }
+    # ── Step 2: Indicators from the text recognised on the device ──
+    image_type = "image" if _redacted_image_bytes else ""
+    all_urls = _extract_urls(extracted_text)[:10] if extracted_text else []
+    email_addresses = list(dict.fromkeys(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", extracted_text or "")))[:5]
+    text_content = (extracted_text or "")[:500]
 
     # ── Step 3: Route indicators to existing security engines ──
     checks_performed: list[dict[str, Any]] = []
@@ -963,73 +872,37 @@ async def vision_investigate(
                         "detail": "Breach lookup is not configured.",
                     })
 
-    # 3c) Phone numbers noted for Call Gate (no automated calling)
-    if phone_numbers:
-        for phone in phone_numbers[:3]:
-            checks_performed.append({"gate": "Messages & Calls", "type": "phone", "indicator": phone})
-            findings.append({
-                "gate": "Messages & Calls",
-                "type": "phone_noted",
-                "indicator": phone,
-                "detail": "Phone number extracted. Apollo does not call numbers automatically.",
-            })
-
     # 3d) Text content noted — Magnum DI investigates via the coordinator case (step 4)
-    text_for_analysis = text_content or extracted_text
-    if text_for_analysis and len(text_for_analysis) > 20:
+    if text_content and len(text_content) > 20:
         checks_performed.append({"gate": "Messages & Calls", "type": "text_noted", "detail": "Text content forwarded to Magnum DI investigation."})
 
-    if not gemini_used and not extracted_text:
+    if not _redacted_image_bytes and not extracted_text:
         limitations.append("No image or text was available for analysis.")
-    if not all_urls and not email_addresses and not phone_numbers and not text_for_analysis:
+    if not all_urls and not email_addresses and not text_content:
         limitations.append("No security indicators were extracted from this image.")
 
-    # ── Step 4: Build Higgins recommendation ──
+    # ── Step 4: Build Higgins recommendation (deterministic, from Apollo's own checks) ──
     higgins = _build_vision_higgins(
-        image_type=image_type, description=description,
-        claimed_brand=claimed_brand, confidence=confidence,
-        findings=findings, suspicious_indicators=suspicious_indicators,
-        legitimate_indicators=legitimate_indicators,
-        limitations=limitations, asks_user_to=asks_user_to,
-        payment_details=payment_details,
+        image_type=image_type, description="", claimed_brand="", confidence="high" if extracted_text else "low",
+        findings=findings, suspicious_indicators=[], legitimate_indicators=[],
+        limitations=limitations, asks_user_to=[], payment_details=None,
     )
 
-    # ── Step 4: Optionally create a Magnum DI investigation case ──────────────
-    # When the vision analysis found substantial investigatable content (URLs, claims,
-    # payment details, brand claims), create a coordinator case for async research and
-    # corroboration. The immediate vision result is returned; the investigation enriches
-    # the findings asynchronously via the existing case-polling flow.
+    # ── Step 4: Create the Magnum DI investigation case ───────────────────────
+    # The image (when sent) and the device-recognised text are the evidence; Magnum DI examines them
+    # in its one Gemini call. The immediate result above is Apollo's own checks only.
     investigation_case_id = None
     try:
-        has_urls = len(all_urls) > 0
-        has_claims = bool(claimed_brand) or bool(payment_details)
-        has_suspicious = len(suspicious_indicators) > 0
-        has_image_evidence = _redacted_image_bytes is not None and len(_redacted_image_bytes) > 0
-        if has_urls or has_claims or has_suspicious or has_image_evidence:
-            # Build the investigation question from extracted evidence
-            inv_parts = [f"Investigate this {image_type or 'image'}"]
-            if claimed_brand:
-                inv_parts.append(f"claiming to be from {claimed_brand}")
-            inv_parts.append(".")
-            if text_content:
-                inv_parts.append(f"\n\nExtracted text:\n{text_content[:4000]}")
-            if asks_user_to:
-                inv_parts.append(f"\n\nIt asks the user to: {', '.join(asks_user_to[:10])}")
-            if suspicious_indicators:
-                inv_parts.append(f"\n\nSuspicious indicators: {'; '.join(suspicious_indicators[:10])}")
-            if legitimate_indicators:
-                inv_parts.append(f"\n\nLegitimate indicators: {'; '.join(legitimate_indicators[:10])}")
-            if findings:
-                summary = "; ".join(f.get("summary", f.get("finding", "")) for f in findings[:10])
-                inv_parts.append(f"\n\nSecurity check findings: {summary}")
-            inv_question = " ".join(inv_parts[:2]) + "".join(inv_parts[2:])
+        if all_urls or _redacted_image_bytes:
+            inv_question = (f"Investigate this {'image' if _redacted_image_bytes else 'text from an image'} for scams or fraud. "
+                            "It is something the person found suspicious.")
 
             # Create submissions from extracted evidence
             submissions: list[dict] = []
             for i, u in enumerate(all_urls[:5]):
                 submissions.append({"client_item_id": f"vision-url-{i}", "kind": "url", "value": u, "label": "URL from image"})
-            if text_content:
-                submissions.append({"client_item_id": "vision-text", "kind": "text", "value": text_content[:8000], "label": "Text extracted from image"})
+            if extracted_text:
+                submissions.append({"client_item_id": "vision-text", "kind": "text", "value": extracted_text[:8000], "label": "Text recognised on the device"})
 
             owner = _owner_id
             case = await invest_repo.create_case(owner, "vision", None)
@@ -1100,23 +973,17 @@ async def vision_investigate(
         limitations.append("Extended investigation could not be started. Findings are based on local analysis only.")
 
     return VisionInvestigateOut(
-        image_type=image_type, description=description,
-        claimed_brand=claimed_brand, confidence=confidence,
-        urls_found=all_urls, phone_numbers_found=phone_numbers,
+        image_type=image_type,
+        urls_found=all_urls,
         email_addresses_found=email_addresses,
-        qr_code_present=qr_code_present,
-        asks_user_to=asks_user_to,
-        suspicious_indicators=suspicious_indicators,
-        legitimate_indicators=legitimate_indicators,
-        payment_details=payment_details,
         text_content=text_content,
         checks_performed=checks_performed,
         findings=findings,
         limitations=limitations,
         higgins=higgins,
         investigation_case_id=investigation_case_id,
-        gemini_used=gemini_used,
-        processing={"raw_retained_by_apollo": False, **provider_metadata},
+        gemini_used=False,
+        processing={"raw_retained_by_apollo": False},
     )
 
 
