@@ -1,3 +1,15 @@
+## ENISA feed fixed + listing-page parser (2026-06)
+- ENISA retired its RSS (old and documented URLs both 404). `enisa-news` in `content/learning_catalogue_au.json`
+  now reads `https://www.enisa.europa.eu/news` as an `approved_listing_page` limited to `/news/` (re-seeded at
+  startup, so production picks it up on redeploy). First live sync: 11 articles, Healthy.
+- `learning_feeds._html_items`: filters by the feed's allowed path BEFORE the 100-item cap (ENISA's articles sat
+  after 100+ menu links), trims hrefs, keeps repeated links once, drops links back to the listing page itself
+  (Scamwatch "Skip to content" junk). Tests: `tests/test_learning_feed_listing.py`.
+- Feed Health wording: `fetch_failed` now reads "The source never answered Apollo's server…" (was wrongly
+  "safety checks refused"). ACSC (cyber.gov.au) times out from the pod on every fingerprint since 24 Sep —
+  needs `OUTBOUND_PROXIES` (http/https proxy URL, ideally Australian residential/ISP IP; socks5 would need
+  `socksio`). Setting it routes ALL public fetches (feeds, page crawls) through the proxy.
+
 ## Feed Health screen + old test fix (2026-06)
 
 **Feed Health** — Settings > Diagnostics > Feed health (`/settings/feed-health`), visible to everyone.

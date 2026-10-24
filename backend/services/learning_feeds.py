@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse
 
 from defusedxml import ElementTree as ET
 
@@ -61,7 +61,7 @@ class _ListingParser(HTMLParser):
         super().__init__(); self.base_url = base_url; self.current: str | None = None; self.text: list[str] = []; self.items: list[dict] = []
     def handle_starttag(self, tag: str, attrs):
         if tag == "a":
-            href = dict(attrs).get("href")
+            href = (dict(attrs).get("href") or "").strip()  # some CMSs emit trailing spaces inside href
             if href: self.current = urljoin(self.base_url, href); self.text = []
     def handle_data(self, data: str):
         if self.current: self.text.append(data)
@@ -72,8 +72,19 @@ class _ListingParser(HTMLParser):
             self.current = None; self.text = []
 
 
-def _html_items(raw: bytes, base_url: str) -> list[dict]:
-    parser = _ListingParser(base_url); parser.feed(raw.decode("utf-8", errors="replace")); return parser.items[:MAX_ITEMS]
+def _html_items(raw: bytes, base_url: str, path_prefixes: list[str] | None = None) -> list[dict]:
+    """Article links from an approved listing page. Menu/footer links are dropped by path BEFORE the item cap
+    (a page with 100+ navigation links would otherwise push every article out), and repeats (a featured
+    block plus the full list) are kept once."""
+    parser = _ListingParser(base_url); parser.feed(raw.decode("utf-8", errors="replace"))
+    page = base_url.rstrip("/")
+    seen: set[str] = set(); items: list[dict] = []
+    for item in parser.items:
+        path = urlparse(item["url"]).path
+        if urldefrag(item["url"]).url.rstrip("/") == page: continue  # "Skip to content" etc. point back at this page
+        if item["url"] in seen or (path_prefixes and not any(path.startswith(prefix) for prefix in path_prefixes)): continue
+        seen.add(item["url"]); items.append(item)
+    return items[:MAX_ITEMS]
 
 
 async def refresh(feed: dict, source: dict) -> dict:
@@ -90,7 +101,7 @@ async def refresh(feed: dict, source: dict) -> dict:
         allowed_types = {"application/feed+json", "application/json"} if feed["format"] == "json" else {"text/html", "application/xhtml+xml"} if feed["format"] == "html" else {"application/rss+xml", "application/atom+xml", "application/xml", "text/xml", "application/octet-stream"}
         if response.status_code != 200 or len(response.content) > MAX_BYTES or content_type not in allowed_types: raise ValueError("feed response rejected")
         if feed["format"] == "html" and feed.get("parser") != "approved_listing_page": raise ValueError("HTML source was not explicitly approved")
-        rows = _json_items(response.content) if feed["format"] == "json" else _html_items(response.content, feed["url"]) if feed["format"] == "html" else _xml_items(response.content)
+        rows = _json_items(response.content) if feed["format"] == "json" else _html_items(response.content, feed["url"], feed.get("allowed_path_prefixes")) if feed["format"] == "html" else _xml_items(response.content)
         run["fetched"] = len(rows)
         for row in rows:
             url = row["url"][:1500]; parsed = urlparse(url)

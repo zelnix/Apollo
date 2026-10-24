@@ -222,10 +222,14 @@
     {
       "feedId": "enisa-news",
       "sourceId": "enisa",
-      "url": "https://www.enisa.europa.eu/news/enisa-news/RSS",
-      "format": "rss",
+      "url": "https://www.enisa.europa.eu/news",
+      "format": "html",
       "contentType": "live_alert",
       "language": "en",
+      "parser": "approved_listing_page",
+      "allowedPathPrefixes": [
+        "/news/"
+      ],
       "refreshIntervalMinutes": 240,
       "reviewQueuePolicy": "always_review",
       "enabled": true
