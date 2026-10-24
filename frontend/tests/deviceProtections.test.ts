@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { apolloProtectionGroup, groupApolloProtections, summariseApolloProtections } from "../src/domain/apolloProtections.ts";
-import { changeBanner, diffProtectionSnapshots, protectionSnapshot, unseenChanges, type ProtectionChange } from "../src/domain/deviceProtectionChanges.ts";
+import { changeBanner, diffProtectionSnapshots, protectionSnapshot, unseenChanges, whatToDoNow, type ProtectionChange } from "../src/domain/deviceProtectionChanges.ts";
 import { groupDeviceProtections, summariseDeviceProtections } from "../src/domain/deviceProtectionTypes.ts";
 import { EMPTY_SECURITY_READ, securityProtectionRows, type SecurityStateRead } from "../src/domain/deviceSecurityCatalogue.ts";
 import type { GatePresentation } from "../src/domain/gates";
@@ -61,6 +61,9 @@ test("USB debugging being switched on is reported as exactly that", () => {
   assert.equal(changes[0].direction, "worse");
   assert.equal(changes[0].text, "USB debugging was turned on.");
   assert.equal(changes[0].at, "2026-06-15T09:00:00.000Z");
+  // Higgins' next step names the exact switch, not just "Developer options".
+  assert.equal(changes[0].kind, "usb_debugging");
+  assert.match(whatToDoNow(changes[0]), /^Turn USB debugging off unless you switched it on yourself/);
 });
 
 test("a setting Apollo couldn't read on either side is never a change", () => {
@@ -91,8 +94,20 @@ test("any other verified health move is reported once, by name", () => {
 
 // ── "Changed" tag and Home banner ────────────────────────────────
 
-const change = (id: string, protectionId: string, direction: ProtectionChange["direction"], at: string, text = `${protectionId} changed.`): ProtectionChange =>
-  ({ id, protectionId, title: protectionId, direction, text, at });
+const change = (id: string, protectionId: string, direction: ProtectionChange["direction"], at: string, text = `${protectionId} changed.`, kind?: string): ProtectionChange =>
+  ({ id, protectionId, title: protectionId, direction, text, at, ...(kind ? { kind } : {}) });
+
+test("every change carries one short pre-written next step; a fix needs nothing", () => {
+  const worseIds = ["developer_options", "unknown_sources", "other_vpn", "app_scanner", "screen_lock", "device_admin_apps", "accessibility_apps", "notification_readers", "user_certificates"];
+  for (const id of worseIds) {
+    const todo = whatToDoNow({ protectionId: id, direction: "worse" });
+    assert.ok(todo.length > 10 && todo.length <= 110, `${id}: short next step (${todo.length})`);
+    assert.notEqual(todo, "Open it to see what Higgins recommends.", `${id}: must be specific`);
+  }
+  assert.match(whatToDoNow({ protectionId: "developer_options", direction: "worse", kind: "usb_debugging" }), /USB debugging/);
+  assert.equal(whatToDoNow({ protectionId: "os_updates", direction: "worse" }), "Open it to see what Higgins recommends.");
+  assert.equal(whatToDoNow({ protectionId: "screen_lock", direction: "better" }), "Nothing to do — it's back as recommended.");
+});
 
 test("a change stays unopened until its protection is opened, and old ones fade", () => {
   const changes = [
@@ -106,21 +121,30 @@ test("a change stays unopened until its protection is opened, and old ones fade"
 
 test("the Home banner opens the one changed protection, or the list when several changed", () => {
   assert.equal(changeBanner([]), null);
-  const one = changeBanner([change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on.")])!;
+  const one = changeBanner([change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on.", "usb_debugging")])!;
   assert.equal(one.protectionId, "developer_options");
   assert.equal(one.worse, true);
   assert.equal(one.text, "USB debugging was turned on.");
+  assert.match(one.todo, /^Turn USB debugging off/);
   const better = changeBanner([change("b", "screen_lock", "better", "2026-06-15T09:00:00.000Z")])!;
   assert.equal(better.worse, false);
   assert.match(better.title, /back as recommended/);
+  assert.match(better.todo, /^Nothing to do/);
   const many = changeBanner([
-    change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on."),
-    change("b", "other_vpn", "worse", "2026-06-15T09:00:00.000Z", "Another VPN app started routing this phone's traffic."),
+    change("b", "screen_lock", "better", "2026-06-15T09:00:00.000Z", "A secure screen lock was set."),
+    change("a", "developer_options", "worse", "2026-06-15T09:00:00.000Z", "USB debugging was turned on.", "usb_debugging"),
     change("c", "notification_readers", "worse", "2026-06-15T09:00:00.000Z", "X can now read your notifications."),
   ])!;
   assert.equal(many.protectionId, null);
   assert.equal(many.title, "3 device protections changed");
   assert.match(many.text, /And 1 more\.$/);
+  // With several, Higgins leads with the first change that needs doing — never the good news.
+  assert.match(many.todo, /^First: Turn USB debugging off/);
+  const allFixed = changeBanner([
+    change("b", "screen_lock", "better", "2026-06-15T09:00:00.000Z"),
+    change("d", "other_vpn", "better", "2026-06-15T09:00:00.000Z"),
+  ])!;
+  assert.match(allFixed.todo, /^Nothing to do/);
 });
 
 // ── Apollo Protections ───────────────────────────────────────────

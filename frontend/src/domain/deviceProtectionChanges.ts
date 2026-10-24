@@ -37,6 +37,8 @@ export interface ProtectionChange {
   direction: "worse" | "better";
   text: string;
   at: string;
+  /** Which switch changed, when one protection covers several (USB debugging inside Developer options). */
+  kind?: string;
 }
 
 const READ_HEALTH: ProtectionHealth[] = ["protected", "review", "action"];
@@ -63,10 +65,10 @@ export function protectionSnapshot(rows: DeviceProtectionRow[], read: SecuritySt
   };
 }
 
-type Flag = { key: keyof ProtectionFacts; protectionId: string; title: string; on: string; off: string };
+type Flag = { key: keyof ProtectionFacts; protectionId: string; kind?: string; title: string; on: string; off: string };
 // A switch whose RISKY value is `true`, except screenLockSecure where the risky value is `false` (inverted).
 const FLAGS: Flag[] = [
-  { key: "usbDebugging", protectionId: "developer_options", title: "USB debugging", on: "USB debugging was turned on.", off: "USB debugging was turned off." },
+  { key: "usbDebugging", protectionId: "developer_options", kind: "usb_debugging", title: "USB debugging", on: "USB debugging was turned on.", off: "USB debugging was turned off." },
   { key: "developerOptions", protectionId: "developer_options", title: "Developer options", on: "Developer options were turned on.", off: "Developer options were turned off." },
   { key: "unknownSources", protectionId: "unknown_sources", title: "Installing apps from outside the store", on: "Installing apps from outside the store was allowed.", off: "Installing apps from outside the store is no longer allowed." },
   { key: "otherVpnActive", protectionId: "other_vpn", title: "Another VPN", on: "Another VPN app started routing this phone's traffic.", off: "The other VPN app is no longer routing this phone's traffic." },
@@ -82,8 +84,8 @@ function newNames(before: string[] | null, after: string[] | null): string[] {
 export function diffProtectionSnapshots(prev: ProtectionSnapshot, next: ProtectionSnapshot): ProtectionChange[] {
   const changes: Omit<ProtectionChange, "id" | "at">[] = [];
   const covered = new Set<string>();
-  const add = (protectionId: string, title: string, direction: ProtectionChange["direction"], text: string) => {
-    changes.push({ protectionId, title, direction, text });
+  const add = (protectionId: string, title: string, direction: ProtectionChange["direction"], text: string, kind?: string) => {
+    changes.push(kind ? { protectionId, title, direction, text, kind } : { protectionId, title, direction, text });
     covered.add(protectionId);
   };
   const a = prev.facts, b = next.facts;
@@ -91,7 +93,7 @@ export function diffProtectionSnapshots(prev: ProtectionSnapshot, next: Protecti
   for (const flag of FLAGS) {
     const before = a[flag.key], after = b[flag.key];
     if (typeof before !== "boolean" || typeof after !== "boolean" || before === after) continue;
-    add(flag.protectionId, flag.title, after ? "worse" : "better", after ? flag.on : flag.off);
+    add(flag.protectionId, flag.title, after ? "worse" : "better", after ? flag.on : flag.off, flag.kind);
   }
   if (typeof a.screenLockSecure === "boolean" && typeof b.screenLockSecure === "boolean" && a.screenLockSecure !== b.screenLockSecure) {
     add("screen_lock", "Screen lock", b.screenLockSecure ? "better" : "worse", b.screenLockSecure ? "A secure screen lock was set." : "The secure screen lock was removed.");
@@ -126,9 +128,34 @@ export function unseenChanges(changes: ProtectionChange[], seen: Iterable<string
   return recentChanges(changes, now, days).filter((c) => !opened.has(c.id));
 }
 
+// Higgins' "what to do now" line for each kind of change — written once, the same for everyone, never
+// generated. Short on purpose: the protection itself holds the device-specific steps.
+const WHAT_TO_DO: Record<string, string> = {
+  usb_debugging: "Turn USB debugging off unless you switched it on yourself — never because a caller asked you to.",
+  developer_options: "If you don't use Developer options, turn them off.",
+  unknown_sources: "If you didn't mean to allow this, turn it off again.",
+  other_vpn: "If you don't recognise this VPN, disconnect it and remove the app.",
+  app_scanner: "Turn app scanning back on so harmful apps are caught.",
+  screen_lock: "Set a PIN, password or pattern now.",
+  device_admin_apps: "If you don't recognise this app, remove its device-admin control, then uninstall it.",
+  accessibility_apps: "If you don't recognise this app, turn its Accessibility access off now.",
+  notification_readers: "If you don't recognise this app, turn its notification access off — it could read your codes.",
+  user_certificates: "If you didn't add it for work or school, remove it.",
+};
+const WHAT_TO_DO_OTHER = "Open it to see what Higgins recommends.";
+const NOTHING_TO_DO = "Nothing to do — it's back as recommended.";
+
+/** The one short next step for a change. A move back to the recommended state needs nothing. */
+export function whatToDoNow(change: Pick<ProtectionChange, "protectionId" | "direction" | "kind">): string {
+  if (change.direction === "better") return NOTHING_TO_DO;
+  return WHAT_TO_DO[change.kind ?? change.protectionId] ?? WHAT_TO_DO_OTHER;
+}
+
 export interface ChangeBanner {
   title: string;
   text: string;
+  /** Higgins' next step — for the most urgent change when several happened. */
+  todo: string;
   /** True when any change moved away from the recommended state. */
   worse: boolean;
   /** The one protection to open, or null when several changed (open the list instead). */
@@ -139,17 +166,25 @@ export interface ChangeBanner {
 export function changeBanner(unseen: ProtectionChange[]): ChangeBanner | null {
   if (!unseen.length) return null;
   const ids = [...new Set(unseen.map((c) => c.protectionId))];
-  const worse = unseen.some((c) => c.direction === "worse");
+  const firstWorse = unseen.find((c) => c.direction === "worse");
+  const worse = firstWorse !== undefined;
   if (ids.length === 1) {
     const more = unseen.length - 1;
     return {
       title: worse ? "A device protection changed" : "A device protection is back as recommended",
       text: more ? `${unseen[0].text} (${more} more change${more === 1 ? "" : "s"} to the same setting.)` : unseen[0].text,
+      todo: whatToDoNow(unseen[0]),
       worse,
       protectionId: ids[0],
     };
   }
   const shown = unseen.slice(0, 2).map((c) => c.text).join(" ");
   const rest = unseen.length - 2;
-  return { title: `${ids.length} device protections changed`, text: rest > 0 ? `${shown} And ${rest} more.` : shown, worse, protectionId: null };
+  return {
+    title: `${ids.length} device protections changed`,
+    text: rest > 0 ? `${shown} And ${rest} more.` : shown,
+    todo: firstWorse ? `First: ${whatToDoNow(firstWorse)}` : "Nothing to do — they're all back as recommended.",
+    worse,
+    protectionId: null,
+  };
 }

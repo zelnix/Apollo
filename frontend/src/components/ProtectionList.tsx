@@ -49,6 +49,8 @@ const useStyles = makeStyles((c) => ({
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexWrap: "wrap" },
   rowTitle: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 19, color: c.onSurface, flexShrink: 1 },
   rowSub: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 2 },
+  rowNote: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurface, marginTop: 4 },
+  rowNoteLabel: { fontFamily: fonts.textSemibold },
   status: { width: 112, flexDirection: "row", alignItems: "center", gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontFamily: fonts.textMedium, fontSize: 11.5, lineHeight: 15, flex: 1 },
@@ -66,9 +68,12 @@ export function ChangedTag({ testID }: { testID?: string }) {
 }
 
 export function ProtectionListRow({
-  title, subtitle, statusLabel, tone, changed, first, onPress, testID,
+  title, subtitle, higgins, statusLabel, tone, changed, first, onPress, testID,
 }: {
-  title: string; subtitle?: string; statusLabel: string; tone: RowTone; changed?: boolean; first?: boolean;
+  title: string; subtitle?: string;
+  /** Higgins' short next step, shown under the subtitle. */
+  higgins?: string;
+  statusLabel: string; tone: RowTone; changed?: boolean; first?: boolean;
   onPress: () => void; testID: string;
 }) {
   const s = useStyles();
@@ -77,7 +82,7 @@ export function ProtectionListRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}. ${statusLabel}.${changed ? " Changed since you last looked." : ""}`}
+      accessibilityLabel={`${title}. ${statusLabel}.${changed ? " Changed since you last looked." : ""}${higgins ? ` Higgins says: ${higgins}` : ""}`}
       accessibilityHint="Opens what this is, why it matters and what to do"
       onPress={onPress}
       style={({ pressed }) => [s.row, !first && s.rowDivider, { backgroundColor: pressed ? colors.surfaceTertiary : "transparent" }]}
@@ -89,6 +94,11 @@ export function ProtectionListRow({
           {changed ? <ChangedTag testID={`${testID}-changed`} /> : null}
         </View>
         {subtitle ? <Text style={s.rowSub} numberOfLines={2}>{subtitle}</Text> : null}
+        {higgins ? (
+          <Text style={s.rowNote} numberOfLines={3} testID={`${testID}-higgins`}>
+            <Text style={s.rowNoteLabel}>Higgins: </Text>{higgins}
+          </Text>
+        ) : null}
       </View>
       <View style={s.status}>
         <View style={[s.dot, { backgroundColor: palette.dot }]} />

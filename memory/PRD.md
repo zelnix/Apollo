@@ -1,3 +1,14 @@
+## Change banner: Higgins' "what to do now" line (2026-06)
+- `whatToDoNow(change)` in `src/domain/deviceProtectionChanges.ts`: one short, pre-written next step per change kind
+  (USB debugging, Developer options, outside-store installs, other VPN, app scanning, screen lock, device admin,
+  Accessibility, notification access, certificates; anything else → "Open it to see what Higgins recommends.";
+  any move back → "Nothing to do — it's back as recommended."). Never generated — no Gemini call.
+- `ProtectionChange.kind` (optional) separates USB debugging from Developer options under the same protection.
+- `changeBanner().todo`: the one change's step, or "First: …" for the first change that needs doing when several did.
+- Shown as "Higgins: …" on the Home banner (`home-protection-change-todo`), the "Changed since you last looked" rows
+  (`ProtectionListRow` `higgins` prop → `device-prot-change-N-higgins`) and each entry in Protection Details "What changed".
+- Tests: `tests/deviceProtections.test.ts` (+1 test, banner assertions extended). Native-build only to see live.
+
 ## Device Protections + Apollo Protections: exception-first, cached explanations, change detection (2026-06)
 **Owner's choices:** Apollo's own protections = "Written once as fixed text"; phone protections = "Pre-write the common
 ones" (Gemini only on a genuine miss); manual checks = "No, always 'Check manually'" (no mark-as-done); a change shows as

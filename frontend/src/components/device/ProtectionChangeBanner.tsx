@@ -17,6 +17,8 @@ const useStyles = makeStyles((c) => ({
   banner: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, minHeight: 56 },
   title: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   text: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary, marginTop: 2 },
+  todo: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurface, marginTop: spacing.xs },
+  todoLabel: { fontFamily: fonts.textSemibold },
 }));
 
 export function ProtectionChangeBanner({ style, testID }: { style?: StyleProp<ViewStyle>; testID: string }) {
@@ -30,7 +32,7 @@ export function ProtectionChangeBanner({ style, testID }: { style?: StyleProp<Vi
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${banner.title}. ${banner.text}`}
+      accessibilityLabel={`${banner.title}. ${banner.text} Higgins says: ${banner.todo}`}
       accessibilityHint={banner.protectionId ? "Opens that protection" : "Opens Device Protections"}
       onPress={() => banner.protectionId
         ? router.push({ pathname: "/capability/[id]", params: { id: banner.protectionId } })
@@ -46,6 +48,9 @@ export function ProtectionChangeBanner({ style, testID }: { style?: StyleProp<Vi
       <View style={{ flex: 1 }}>
         <Text style={s.title} testID={`${testID}-title`}>{banner.title}</Text>
         <Text style={s.text} numberOfLines={3} testID={`${testID}-text`}>{banner.text}</Text>
+        <Text style={s.todo} numberOfLines={3} testID={`${testID}-todo`}>
+          <Text style={s.todoLabel}>Higgins: </Text>{banner.todo}
+        </Text>
       </View>
       <ChevronRight size={16} color={colors.muted} />
     </Pressable>

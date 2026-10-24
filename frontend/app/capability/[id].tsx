@@ -24,7 +24,7 @@ import {
   allCapabilityRows, capabilityAdvice, CAPABILITY_CLASS_LABEL, PROTECTION_EVIDENCE_LABEL, protectionStatusLine,
   type DeviceProtectionRow, type ProtectionHealth,
 } from "@/src/domain/deviceCapabilities";
-import { recentChanges } from "@/src/domain/deviceProtectionChanges";
+import { recentChanges, whatToDoNow } from "@/src/domain/deviceProtectionChanges";
 import { deviceProtectionExplanation, ExplanationPending, type ExplanationResult } from "@/src/higgins/protectionExplanation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { acknowledgeProtectionChanges, useDeviceProtections } from "@/src/store/deviceProtectionStore";
@@ -160,7 +160,12 @@ export default function CapabilityDetailScreen() {
               <View style={s.section} testID="capability-changes">
                 <Text style={s.sectionTitle}>What changed</Text>
                 {changes.map((change) => (
-                  <Text key={change.id} style={s.text}>{dayLabel(change.at)} — {change.text}</Text>
+                  <View key={change.id} style={{ gap: 2 }}>
+                    <Text style={s.text}>{dayLabel(change.at)} — {change.text}</Text>
+                    <Text style={s.text} testID={`capability-change-todo-${change.id}`}>
+                      <Text style={{ fontFamily: fonts.textSemibold }}>Higgins: </Text>{whatToDoNow(change)}
+                    </Text>
+                  </View>
                 ))}
                 <Text style={s.attr}>Apollo reports what it saw change on this device, not who changed it or why.</Text>
               </View>

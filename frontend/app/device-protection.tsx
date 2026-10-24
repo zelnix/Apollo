@@ -24,6 +24,7 @@ import { ProtectionGroup, ProtectionListRow, healthRowTone } from "@/src/compone
 import { Body, Pill, type Tone } from "@/src/components/ui";
 import { allCapabilityRows, type DeviceProtectionRow } from "@/src/domain/deviceCapabilities";
 import type { DeviceProtectionsOverall } from "@/src/domain/deviceProtectionTypes";
+import { whatToDoNow } from "@/src/domain/deviceProtectionChanges";
 import { assessDeviceProtections, useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -177,6 +178,7 @@ export default function DeviceProtectionsScreen() {
                     first={i === 0}
                     title={change.title}
                     subtitle={change.text}
+                    higgins={whatToDoNow(change)}
                     statusLabel={change.direction === "worse" ? "Changed" : "Improved"}
                     tone={change.direction === "worse" ? "attention" : "protected"}
                     onPress={() => open(change.protectionId)}
