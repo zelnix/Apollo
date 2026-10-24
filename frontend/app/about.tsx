@@ -3,6 +3,8 @@ import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { AppMenuButton } from "@/src/components/AppMenu";
 import { Image } from "expo-image";
 
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -38,6 +40,7 @@ export default function About() {
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
           <Text style={s.headerTitle}>About Apollo</Text>
+          <AppMenuButton testID="about-menu" />
         </View>
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: spacing["3xl"], gap: spacing.lg }}>

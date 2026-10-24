@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { FeedHealthRow } from "@/src/components/FeedHealthRow";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
@@ -69,6 +71,7 @@ export default function FeedHealthScreen() {
       </Pressable>
       <Text style={s.title} testID="feed-health-title">Feed health</Text>
       <InfoButton info={INFO} testID="feed-health-info" />
+      <AppMenuButton testID="feed-health-menu" />
     </View>
     <ScrollView
       contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}

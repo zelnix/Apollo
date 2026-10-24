@@ -25,6 +25,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import {
   buildProtectionAreas,
   type ProtectionArea,
@@ -337,6 +339,7 @@ export default function ProtectionScreen() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
             Protections
           </Text>
+          <AppMenuButton testID="protection-menu" />
         </View>
       </View>
 

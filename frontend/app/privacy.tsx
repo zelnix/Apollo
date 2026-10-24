@@ -5,6 +5,8 @@ import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -50,6 +52,7 @@ export default function Privacy() {
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
           <Text style={s.headerTitle}>Privacy</Text>
+          <AppMenuButton testID="privacy-menu" />
         </View>
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: spacing["3xl"] }}>

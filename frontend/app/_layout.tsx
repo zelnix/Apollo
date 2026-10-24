@@ -19,6 +19,7 @@ import { ensureNotificationChannels, loadNotifications } from "@/src/push/notifi
 import { queryClient } from "@/src/query-client";
 import { getSecurityBootError } from "@/src/security/securityBoot";
 import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
+import { MODAL_ROUTES } from "@/src/navigation/modalRoutes";
 import { ApolloProvider } from "@/src/store/ApolloContext";
 import { loadPersonalData } from "@/src/store/personalDataStore";
 import { useTheme } from "@/src/theme";
@@ -107,36 +108,13 @@ export default function RootLayout() {
                   <Stack.Screen name="setup-gates" />
                   <Stack.Screen name="first-check" />
                   <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="settings/index" options={{ presentation: "modal" }} />
                   <Stack.Screen name="higgins/history" />
                   <Stack.Screen name="higgins/learning" />
                   <Stack.Screen name="higgins/learning/[slug]" />
                   <Stack.Screen name="higgins/scams" />
                   <Stack.Screen name="higgins/scam/[id]" />
                   <Stack.Screen name="gates" />
-                  <Stack.Screen name="check" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="message" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="call" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="scan" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="file" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="app-check" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="device" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="recheck" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="network" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="account" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="email" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="share" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="patrol/scent/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="privacy-data" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="notification-check" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="protection-details" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="support" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="digest" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="family" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="family/alert/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="family/incident/[id]" options={{ presentation: "modal" }} />
+                  {MODAL_ROUTES.map((name) => <Stack.Screen key={name} name={name} options={{ presentation: "modal" }} />)}
                 </Stack>
                 </View>
                 <ShareIntakeListener />

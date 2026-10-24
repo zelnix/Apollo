@@ -15,6 +15,8 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
 import type { GovernmentAlert } from "@/src/higgins/hubClient";
 import { alertIcon, findAlert, RELEVANCE_LABEL, SEVERITY_TONE, severityLabel, shareScamAlert, shareScamAlertWithFamily, toBullets } from "@/src/higgins/scamAlertUi";
@@ -156,7 +158,10 @@ export default function ScamAlertDetailScreen() {
     <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
       <Pressable testID="scam-detail-back" accessibilityRole="button" accessibilityLabel="Back to Scam Alerts" onPress={() => goBackOrHome(router)} style={s.iconBtn}><ChevronLeft size={24} color={colors.onSurface} /></Pressable>
       <Text style={s.headerTitle}>Scam Alert</Text>
-      {alert ? <Pressable testID="scam-detail-share" accessibilityRole="button" accessibilityLabel="Share this scam alert" onPress={() => void shareScamAlert(alert)} style={s.iconBtn}><Share2 size={22} color={colors.onSurface} /></Pressable> : <View style={s.iconBtn} />}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {alert ? <Pressable testID="scam-detail-share" accessibilityRole="button" accessibilityLabel="Share this scam alert" onPress={() => void shareScamAlert(alert)} style={s.iconBtn}><Share2 size={22} color={colors.onSurface} /></Pressable> : <View style={s.iconBtn} />}
+        <AppMenuButton testID="scam-detail-menu" />
+      </View>
     </View>
   );
   if (state !== "ready" || !alert) {

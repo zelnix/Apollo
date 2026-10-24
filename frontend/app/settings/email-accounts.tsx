@@ -22,6 +22,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { getDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { Body, Card, SectionTitle } from "@/src/components/ui";
@@ -331,6 +333,7 @@ export default function EmailAccountsScreen() {
           <ChevronLeft size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={s.title}>Email accounts</Text>
+        <AppMenuButton testID="email-accounts-menu" />
       </View>
 
       <ScrollView

@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InvestigationView } from "@/src/components/InvestigationView";
 import { AlertsButton } from "@/src/components/AlertsButton";
+import { AppMenuButton } from "@/src/components/AppMenu";
+import { FitTitle } from "@/src/components/FitTitle";
 import { HigginsCheckSheet, type HigginsCheckCategory } from "@/src/components/HigginsCheckSheet";
 import { HigginsArtifactInput, type ArtifactResult } from "@/src/components/HigginsArtifactInput";
 import type { PreparedImage } from "@/src/components/ImageUploadPrep";
@@ -520,13 +522,14 @@ export default function Ask() {
           <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
           <View style={s.headerText}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <Text style={s.name}>Ask Higgins</Text>
+              <FitTitle text="Ask Higgins" style={s.name} />
             </View>
           </View>
           <View style={s.headerActions}>
             <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={15} color={colors.onSurface} /></Pressable>
             <AlertsButton testID="higgins-alerts" />
             <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={s.menuBtn} onPress={() => setAboutOpen(true)}><Info size={17} color={colors.onSurface} /></Pressable>
+            <AppMenuButton testID="higgins-app-menu" />
           </View>
         </View>
         <Text style={s.subtitle}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>

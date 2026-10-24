@@ -29,6 +29,8 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
@@ -458,6 +460,7 @@ export default function CheckItScreen() {
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
           <Text style={s.screenTitle}>Check</Text>
+          <AppMenuButton testID="check-it-menu" />
         </View>
 
         {/* ── Hero Card ── */}

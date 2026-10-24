@@ -6,7 +6,9 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Tex
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
+import { HeaderIconTile } from "@/src/components/HeaderIconTile";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import Megaphone from "lucide-react-native/icons/megaphone";
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
 import { alertFreshness } from "@/src/domain/alertFreshness";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
@@ -118,12 +120,13 @@ export default function GovernmentScamsScreen() {
   const shown = useMemo(() => arrange(alerts), [alerts, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownEmerging = useMemo(() => arrange(emerging), [emerging, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
   const info = { title: "About Scam Alerts", body: [coverage || "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself.", "Emerging patterns are techniques appearing across several reports with no single named campaign yet."] };
+  const titleIcon = <HeaderIconTile icon={Megaphone} color={colors.growling} fg={colors.onBrand} testID="higgins-scams-title-icon" />;
 
   return (
     <View style={s.root} testID="higgins-scams-screen">
       {isTab
-        ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} /></View>
-        : <ChildScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} />}
+        ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} leading={titleIcon} /></View>
+        : <ChildScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} leading={titleIcon} />}
       <FlatList
         testID="higgins-scams-list" data={shown} keyExtractor={(item) => item.url}
         contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]}

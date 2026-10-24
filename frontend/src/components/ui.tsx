@@ -5,6 +5,7 @@ import React from "react";
 import { Platform, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import type { ApolloState, CapabilityStatus } from "@/src/domain/types";
+import { FitTitle } from "@/src/components/FitTitle";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 
 export type Tone = ApolloState | "neutral" | "unknown";
@@ -130,9 +131,9 @@ export function ScreenHeader({ title, right, leading, testID }: { title: string;
   const s = useStyles();
   return (
     <View style={s.header} testID={testID}>
-      <View style={s.headerTitleGroup}>
+      <View style={[s.headerTitleGroup, { flex: 1 }]}>
         {leading}
-        <Text style={[s.h1, { flexShrink: 1 }]}>{title}</Text>
+        <FitTitle text={title} style={s.h1} />
       </View>
       {right}
     </View>

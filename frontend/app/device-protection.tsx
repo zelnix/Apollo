@@ -21,6 +21,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { DeviceAreaTables } from "@/src/components/device/CapabilityTable";
 import { Body, Pill } from "@/src/components/ui";
@@ -145,6 +147,7 @@ export default function DeviceCapabilitiesScreen() {
           </Pressable>
           <Text style={s.headerTitle}>Device Capabilities</Text>
           <AlertsButton testID="device-prot-alerts" />
+          <AppMenuButton testID="device-prot-menu" />
         </View>
         <View style={s.lastCheck} testID="device-prot-last-check">
           <Clock size={14} color={colors.muted} />

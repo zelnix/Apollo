@@ -7,6 +7,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, spacing, useTheme } from "@/src/theme";
@@ -50,11 +51,9 @@ export function CheckToolHeader({
         {title}
       </Text>
 
-      {info ? (
-        <InfoButton info={info} testID={`${testID}-info`} />
-      ) : (
-        <View style={styles.spacer} />
-      )}
+      {info ? <InfoButton info={info} testID={`${testID}-info`} /> : null}
+      {/* Far right on full screens; renders nothing on pop-up check tools. */}
+      <AppMenuButton testID={`${testID}-menu`} />
     </View>
   );
 }
@@ -79,8 +78,5 @@ const styles = StyleSheet.create({
     fontFamily: fonts.displayBold,
     fontSize: 22,
     letterSpacing: -0.3,
-  },
-  spacer: {
-    width: 44,
   },
 });

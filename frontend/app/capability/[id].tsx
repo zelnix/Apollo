@@ -19,6 +19,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { Body, Button, Pill } from "@/src/components/ui";
 import {
@@ -117,6 +119,7 @@ export default function CapabilityDetailScreen() {
           </Pressable>
           <Text style={s.headerTitle} numberOfLines={1}>{protectionRow ? "Device protection" : "Device capability"}</Text>
           <AlertsButton testID="capability-alerts" />
+          <AppMenuButton testID="capability-menu" />
         </View>
       </View>
 

@@ -45,6 +45,9 @@ import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import type { PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { AlertsButton } from "@/src/components/AlertsButton";
+import { AppMenuButton } from "@/src/components/AppMenu";
+import { HeaderIconTile } from "@/src/components/HeaderIconTile";
+import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import { subjectRowLabel } from "@/src/domain/threatSubject";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -266,10 +269,14 @@ export default function ThreatsScreen() {
     <View style={s.root} testID="threats-screen">
       {/* Title */}
       <View style={[s.titleRow, { paddingTop: insets.top + spacing.sm }]}>
-        <Text style={[s.titleText, { flex: 1 }]}>Threats</Text>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <HeaderIconTile icon={ShieldAlert} color={colors.barking} fg={colors.onBrand} testID="threats-title-icon" />
+          <Text style={[s.titleText, { flexShrink: 1 }]}>Threats</Text>
+        </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
           <AlertsButton testID="threats-alerts" />
           <InfoButton info={THREATS_INFO} testID="threats-info" />
+          <AppMenuButton testID="threats-menu" />
         </View>
       </View>
       <Text style={s.subtitleText} testID="threats-last-check">

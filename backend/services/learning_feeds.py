@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 from defusedxml import ElementTree as ET
 
@@ -90,11 +90,12 @@ def _html_items(raw: bytes, base_url: str, path_prefixes: list[str] | None = Non
     (a page with 100+ navigation links would otherwise push every article out), and repeats (a featured
     block plus the full list) are kept once."""
     parser = _ListingParser(base_url); parser.feed(raw.decode("utf-8", errors="replace"))
-    page = base_url.rstrip("/")
+    listing = urlparse(base_url)
     seen: set[str] = set(); items: list[dict] = []
     for item in parser.items:
-        path = urlparse(item["url"]).path
-        if urldefrag(item["url"]).url.rstrip("/") == page: continue  # "Skip to content" etc. point back at this page
+        parsed = urlparse(item["url"]); path = parsed.path
+        # Links back to the listing page itself — "Skip to content", ?page=2, year/category filters — aren't articles.
+        if (parsed.hostname, path.rstrip("/")) == (listing.hostname, listing.path.rstrip("/")): continue
         if item["url"] in seen or (path_prefixes and not any(path.startswith(prefix) for prefix in path_prefixes)): continue
         seen.add(item["url"]); items.append(item)
     return items[:MAX_ITEMS]
@@ -194,6 +195,26 @@ async def refresh_due() -> None:
                 await db.learning_feed_state.update_one({"feed_id": feed["feed_id"]}, {"$set": {"feed_id": feed["feed_id"], "last_checked_at": now, "status": "unavailable", "error": "FeedRefreshFailure"}}, upsert=True)
             except Exception:
                 continue
+
+
+async def purge_listing_page_links() -> dict:
+    """Remove items that were links back to a listing page itself (year/category filters, ?page=N, "Skip to …").
+
+    Before _html_items ignored them, Scamwatch's listing page turned 46 such links into feed items, candidates
+    and auto-drafted Learn "articles" titled "2006", "Page 2", "Skip to content". Runs at startup so every
+    environment is cleaned the same way; only automated feed content is touched, never curated articles."""
+    removed = {"articles": 0, "candidates": 0, "feed_items": 0}
+    async for feed in db.learning_feeds.find({"format": "html"}, {"_id": 0, "feed_id": 1, "url": 1}):
+        listing = urlparse(feed["url"])
+        pattern = {"$regex": f"^https://{re.escape(listing.hostname or '')}{re.escape(listing.path.rstrip('/'))}/?([?#].*)?$"}
+        slugs = [row["slug"] async for row in db.learning_articles.find({"source_type": "automated_feed", "citations.url": pattern}, {"_id": 0, "slug": 1})]
+        if slugs:
+            removed["articles"] += (await db.learning_articles.delete_many({"slug": {"$in": slugs}})).deleted_count
+            await db.learning_article_versions.delete_many({"slug": {"$in": slugs}})
+        removed["candidates"] += (await db.learning_candidates.delete_many({"feed_id": feed["feed_id"], "url": pattern})).deleted_count
+        removed["feed_items"] += (await db.learning_feed_items.delete_many({"feed_id": feed["feed_id"], "url": pattern})).deleted_count
+    return removed
+
 
 
 async def weekly_publish() -> dict:

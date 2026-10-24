@@ -34,6 +34,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { Card, Pill } from "@/src/components/ui";
 import { WebsiteProtectionNotices } from "@/src/components/WebsiteProtectionNotices";
 import type { GateId, GatePresentation, GateStatusLabel } from "@/src/domain/gates";
@@ -845,6 +847,7 @@ export default function GateDetailsScreen() {
               <ChevronLeft size={24} color={colors.onSurface} />
             </Pressable>
             <Text style={s.headerTitle}>Gate Details</Text>
+            <AppMenuButton testID="gate-details-menu" />
           </View>
         </View>
         <View
@@ -903,6 +906,7 @@ export default function GateDetailsScreen() {
           <Text style={s.headerTitle}>
             {gate.title}
           </Text>
+          <AppMenuButton testID="gate-details-menu" />
         </View>
 
         {/* Status + mode */}

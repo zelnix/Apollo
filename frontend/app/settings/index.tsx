@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
 import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
+import { AppMenuButton } from "@/src/components/AppMenu";
 import { RetrofitModal } from "@/src/components/RetrofitModal";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
@@ -113,6 +114,7 @@ export default function SettingsScreen() {
       </Pressable>
       <Text style={[s.title, { flex: 1 }]} testID="settings-title">Settings</Text>
       <InfoButton info={SETTINGS_INFO} testID="settings-info" />
+      <AppMenuButton testID="settings-menu" />
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="settings-scroll">
 

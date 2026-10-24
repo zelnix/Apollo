@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from services.learning_feeds import MAX_ITEMS, _html_items
 
 BASE = "https://www.enisa.europa.eu/news"
@@ -46,12 +48,44 @@ def test_without_prefixes_every_linked_text_is_returned():
 
 
 def test_links_back_to_the_listing_page_itself_are_dropped():
-    # Scamwatch's listing page sits inside its own allowed path, so "Skip to content" links matched it.
+    # Scamwatch's listing page sits inside its own allowed path, so "Skip to content", year/category filters and
+    # pagination links matched it and became drafts titled "2006", "Page 2", "Skip to content".
     listing = "https://www.scamwatch.gov.au/about-us/news-and-alerts/browse-news-and-alerts"
     page = (b'<a href="#main-content-skip">Skip to content</a><a href="/about-us/news-and-alerts/browse-news-and-alerts#edit-query">Skip to search</a>'
+            b'<a href="/about-us/news-and-alerts/browse-news-and-alerts?f%5B0%5D=date%3A2006">2006</a>'
+            b'<a href="/about-us/news-and-alerts/browse-news-and-alerts?page=1">Page 2</a>'
+            b'<a href="/about-us/news-and-alerts/browse-news-and-alerts/">Browse</a>'
             b'<a href="/about-us/news-and-alerts/real-alert">Real alert</a>')
     items = _html_items(page, listing, ["/about-us/news-and-alerts/"])
     assert [item["title"] for item in items] == ["Real alert"]
+
+
+@pytest.mark.anyio
+async def test_startup_purge_removes_listing_self_links_but_keeps_real_alerts():
+    import uuid
+    from core.db import db
+    from services.learning_feeds import purge_listing_page_links
+    tag = uuid.uuid4().hex[:8]; feed_id = f"purge-{tag}"
+    listing = f"https://www.scamwatch.gov.au/purge-{tag}/browse"
+    junk, real = f"{listing}?f%5B0%5D=date%3A2006", f"https://www.scamwatch.gov.au/purge-{tag}/scam-alert-real"
+    await db.learning_feeds.insert_one({"feed_id": feed_id, "format": "html", "url": listing, "enabled": True})
+    for url, slug in ((junk, f"junk-{tag}"), (real, f"real-{tag}")):
+        await db.learning_feed_items.insert_one({"feed_id": feed_id, "url": url, "fingerprint": slug})
+        await db.learning_candidates.insert_one({"feed_id": feed_id, "url": url, "fingerprint": slug})
+        await db.learning_articles.insert_one({"slug": slug, "source_type": "automated_feed", "status": "in_review", "citations": [{"url": url}]})
+    await db.learning_articles.insert_one({"slug": f"curated-{tag}", "source_type": "owner_curated", "status": "published", "citations": [{"url": junk}]})
+    try:
+        removed = await purge_listing_page_links()
+        assert removed["articles"] >= 1 and removed["candidates"] >= 1 and removed["feed_items"] >= 1
+        assert await db.learning_articles.count_documents({"slug": {"$in": [f"real-{tag}", f"curated-{tag}"]}}) == 2
+        assert await db.learning_articles.count_documents({"slug": f"junk-{tag}"}) == 0
+        assert await db.learning_feed_items.count_documents({"feed_id": feed_id}) == 1
+        assert await db.learning_candidates.count_documents({"feed_id": feed_id}) == 1
+    finally:
+        await db.learning_feeds.delete_many({"feed_id": feed_id})
+        for collection in ("learning_feed_items", "learning_candidates"):
+            await db[collection].delete_many({"feed_id": feed_id})
+        await db.learning_articles.delete_many({"slug": {"$regex": f"-{tag}$"}})
 
 
 def test_catalogue_points_enisa_at_its_listing_page():

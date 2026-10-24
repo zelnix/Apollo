@@ -17,6 +17,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { apiUpload } from "@/src/api/client";
 import { getDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { ImageUploadPrep, type PreparedImage, type UploadSubmissionState } from "@/src/components/ImageUploadPrep";
@@ -306,7 +308,7 @@ export default function VisionScreen() {
 
   return (
     <View style={s.root} testID="vision-screen">
-      <View style={{ paddingTop: insets.top }}>
+      <View style={{ paddingTop: insets.top, flexDirection: "row", alignItems: "center", paddingRight: spacing.sm }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -317,6 +319,7 @@ export default function VisionScreen() {
           <ChevronLeft size={20} color={colors.brand} />
           <Text style={s.backText}>{(stage === "result" || stage === "error") ? "New check" : "Back"}</Text>
         </Pressable>
+        <AppMenuButton testID="vision-menu" />
       </View>
 
       {/* Privacy Gate modal */}

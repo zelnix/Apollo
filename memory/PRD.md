@@ -1,3 +1,19 @@
+## Hamburger menu on every full screen + title icons + junk drafts purge (2026-06)
+- `src/components/AppMenu.tsx` `AppMenuButton`: hamburger (Settings, About, Privacy, Support) — always the LAST
+  (far-right) header icon on full screens: Home, Threats, Scam Alerts, Ask Higgins, Learn, Protection/guard,
+  Check, Protections, Settings (tab), About, Privacy, capability, device-protection, gate-details, email accounts,
+  Feed Health, vision, article, scam detail, and CheckToolHeader non-modal tools (account-monitor, call-guard,
+  patrol history, saved-checks). Hidden on pop-ups: `src/navigation/modalRoutes.ts` MODAL_ROUTES drives BOTH the
+  root Stack's `presentation: "modal"` and the menu's self-hiding. Screens closed with an X (ChildScreenHeader,
+  CloseButton screens, Family Help) never include it. Visual 34pt + hitSlop (44pt target).
+- Threats + Scam Alerts titles lead with `HeaderIconTile` (red ShieldAlert / orange Megaphone, 42pt).
+- `FitTitle` (+ `src/utils/fitTitle.ts`) keeps header titles on one line (28→min 20) — ScreenHeader + Ask Higgins.
+- Junk Learn drafts: `learning_feeds.purge_listing_page_links()` at startup deletes automated articles/candidates/
+  feed items that are links back to a listing page itself (year/category filters, ?page=, "Skip to…"); preview:
+  45 articles (44 drafts + 1 published) + 46 items/candidates removed; 10 real in-review alerts kept.
+  `_html_items` now drops any link to the listing page path (ignoring query/fragment).
+- Tests: `tests/appMenu.test.ts`, `backend/tests/test_learning_feed_listing.py`.
+
 ## Preview ≠ production: root causes fixed + parity check (2026-06)
 **Owner complaint:** production Learn showed 6 articles, preview ~57. Root causes (all verified against the live production API):
 1. The 43 curated en-AU articles (`content/learning_catalogue_au.json`) only ever reached the PREVIEW DB via the

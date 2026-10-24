@@ -23,6 +23,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppMenuButton } from "@/src/components/AppMenu";
+
 import { Body, Button, Card } from "@/src/components/ui";
 import { learningArticle, type LearningArticle, type LearningSection } from "@/src/higgins/hubClient";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -375,6 +377,7 @@ export default function LearningArticleScreen() {
             <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.headerBtn}>
               <ChevronLeft size={24} color={colors.onSurface} />
             </Pressable>
+            <AppMenuButton testID="article-menu" />
           </View>
         </View>
         <View style={s.centerWrap}>
@@ -392,6 +395,7 @@ export default function LearningArticleScreen() {
             <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.headerBtn}>
               <ChevronLeft size={24} color={colors.onSurface} />
             </Pressable>
+            <AppMenuButton testID="article-menu" />
           </View>
         </View>
         <View style={s.centerWrap}>
@@ -425,6 +429,7 @@ export default function LearningArticleScreen() {
             >
               <Share2 size={22} color={colors.onSurface} />
             </Pressable>
+            <AppMenuButton testID="article-menu" />
           </View>
         </View>
       </View>
