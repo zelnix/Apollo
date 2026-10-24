@@ -62,7 +62,8 @@ import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
-import { investigatorName, looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
+import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
@@ -317,6 +318,13 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
         </View>
         <View style={s.report} testID="tc-overview-alert">
           <Text style={s.reportSubject} testID="tc-overview-subject">{subjectLine}</Text>
+          {/* The investigation's result, in the same words as everywhere else, with what it means. */}
+          {investigation?.response?.outcome && outcomeLabel(investigation.response.outcome) ? (
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: spacing.md }} testID="tc-overview-outcome">
+              <Pill label={outcomeLabel(investigation.response.outcome)!} tone={outcomeTone(investigation.response.outcome)} />
+              <OutcomeExplainerLink outcome={investigation.response.outcome} testID="tc-overview-outcome-explainer" />
+            </View>
+          ) : null}
           {evidenceSummary.map((para, i) => (
             <Text key={i} style={s.reportBody} testID={`tc-overview-summary-${i}`}>{para}</Text>
           ))}

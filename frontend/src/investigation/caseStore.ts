@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
 import { forgetCase } from "./caseIndex";
-import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendingConfirmCommits, deleteInvestigation, type DeviceInvestigation } from "./deviceStore";
+import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendingConfirmCommits, deleteInvestigation, getInvestigation, type DeviceInvestigation } from "./deviceStore";
 import { deleteImageEvidenceFor } from "@/src/store/imageEvidence";
 import { deleteReportProgress } from "@/src/store/reportProgress";
 import { deleteOriginalSource } from "@/src/store/originalSource";
@@ -39,6 +39,34 @@ function finishedWithNewMaterial(response: HigginsResponse, sources: SourceRefer
     ? `${investigatorName(answeredBy)}'s investigation is finished, so the new material wasn't added to it or checked. To have it checked, start a new check.\n\n` : "";
   return { ...answer, question: input.question, answer: `${note}${answer.answer}` };
 }
+
+/** Device-local commit handshake: a finished investigation (not one waiting for the person's answer) is
+ *  committed to permanent device storage, then the server is told to purge its copy. Idempotent. Also
+ *  runs when the app attaches to a case that was already answered — Teddy FlyBy often settles a case
+ *  before the app starts following it, and without this the result would never reach the device. */
+async function commitAnswered(caseId: string, caseData: InvestigationCase, question: string): Promise<void> {
+  if (!caseData.response || caseData.response.question || caseData.status === "failed") return;
+  try {
+    // Already on this device at this revision: nothing new to keep.
+    if ((await getInvestigation(caseId).catch(() => null))?.response?.revision === caseData.response.revision) return;
+    const [turnsData, sourcesData] = await Promise.all([api.listTurns(caseId), api.listSources(caseId)]);
+    let evidenceItems: import("./types").EvidenceItem[] = [];
+    try { evidenceItems = (await api.listEvidence(caseId)).items; } catch { /* evidence metadata is optional */ }
+    const snapshot: DeviceInvestigation = {
+      caseId, gates: caseData.gates ?? [], status: caseData.status,
+      createdAt: caseData.createdAt, completedAt: caseData.updatedAt,
+      question,
+      response: caseData.response, sources: sourcesData.items,
+      turns: turnsData.items, evidenceItems,
+      patrolEventId: null, committedAt: new Date().toISOString(), answeredBy: caseData.answeredBy ?? null,
+    };
+    await commitInvestigation(snapshot);
+    // Tell the server to purge — failures are queued for retry
+    try { await api.confirmCommit(caseId); }
+    catch { await enqueueConfirmCommit(caseId); }
+  } catch { /* local commit failed — server data remains as recovery fallback */ }
+}
+
 const UNDELETED_KEY = "apollo.investigation.undeleted";
 
 async function pendingDeletions(): Promise<string[]> {
@@ -120,27 +148,8 @@ export function useInvestigation(boundOperationId?: string | null) {
           const phase = event.payload.completion === "waiting_user" ? "waiting_user" : "answered";
           update({ phase, failure: null, caseData });
           if (operationId) settleManagedOperation(operationId, caseId, caseData, { ...job, status: event.payload.caseStatus });
-          // ── Device-local commit handshake ──
-          // Only commit completed (not waiting_user) investigations to permanent device storage.
-          if (phase === "answered" && caseData.response) {
-            try {
-              const [turnsData, sourcesData] = await Promise.all([api.listTurns(caseId), api.listSources(caseId)]);
-              let evidenceItems: import("./types").EvidenceItem[] = [];
-              try { evidenceItems = (await api.listEvidence(caseId)).items; } catch { /* evidence metadata is optional */ }
-              const snapshot: DeviceInvestigation = {
-                caseId, gates: caseData.gates ?? [], status: caseData.status,
-                createdAt: caseData.createdAt, completedAt: caseData.updatedAt,
-                question: pending.current?.message ?? "",
-                response: caseData.response, sources: sourcesData.items,
-                turns: turnsData.items, evidenceItems,
-                patrolEventId: null, committedAt: new Date().toISOString(), answeredBy: caseData.answeredBy ?? null,
-              };
-              await commitInvestigation(snapshot);
-              // Tell the server to purge — failures are queued for retry
-              try { await api.confirmCommit(caseId); }
-              catch { await enqueueConfirmCommit(caseId); }
-            } catch { /* local commit failed — server data remains as recovery fallback */ }
-          }
+          // Only completed (not waiting_user) investigations are committed to permanent device storage.
+          if (phase === "answered") await commitAnswered(caseId, caseData, pending.current?.message ?? "");
         }).catch(() => undefined);
       } else if (event.type === "partial") update({ failure: event.payload.reason });
       else if (event.type === "failed") {
@@ -321,7 +330,11 @@ export function useInvestigation(boundOperationId?: string | null) {
       if (!live()) return null;
       if (caseData.activeJobId) { const { job } = await api.getJob(caseId, caseData.activeJobId); if (live()) follow(caseId, job); }
       else if (stopped?.status === "failed") update({ phase: "failed", job: stopped, failure: stopped.failure, error: stopped.failure?.message ?? null });
-      else update({ phase: caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle" });
+      else {
+        update({ phase: caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle" });
+        // Already answered before the app attached (Teddy FlyBy is quick): keep the result on this device too.
+        void commitAnswered(caseId, caseData, "");
+      }
       return caseData;
     } catch (error: unknown) {
       if (!live()) return null;

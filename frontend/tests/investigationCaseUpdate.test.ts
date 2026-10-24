@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { bodyFrom, headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
-import { STATUS_LABELS, threatCaseStatus } from "../src/domain/threatCase.ts";
+import { STATUS_LABELS, settledBy, threatCaseStatus } from "../src/domain/threatCase.ts";
 
 const placeholder = {
   event_id: "ev1", device_id: "d1", category: "message", state: "sniffing", status: "active",
@@ -110,4 +110,16 @@ test("the case stops saying 'Investigating' once Magnum DI has answered", () => 
     overview: "Nothing in this needs action.",
   }))!;
   assert.equal(threatCaseStatus(clear), "no_threat");
+});
+
+test("a finished case records who settled it, for the Threats list badge — never guessed", () => {
+  const teddy = investigationPatch(placeholder, { ...(investigation() as object), answeredBy: "teddy_kb" } as never)!;
+  assert.equal(teddy.investigation_answered_by, "teddy_kb");
+  assert.equal(settledBy(teddy), "Teddy FlyBy");
+  assert.equal(settledBy(investigationPatch(placeholder, { ...(investigation() as object), answeredBy: "magnum_di" } as never)!), "Magnum DI");
+  assert.equal(settledBy(investigationPatch(placeholder, investigation())!), null, "not recorded: no badge");
+  assert.equal(settledBy(placeholder), null, "still investigating: no badge");
+  // A case patched before the record existed picks it up once the stored result has it.
+  const before = investigationPatch(placeholder, investigation())!;
+  assert.equal(investigationPatch(before, { ...(investigation() as object), answeredBy: "teddy_search" } as never)!.investigation_answered_by, "teddy_search");
 });

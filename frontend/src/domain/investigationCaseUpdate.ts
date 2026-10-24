@@ -66,7 +66,8 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     && JSON.stringify(event.why ?? []) === JSON.stringify(findings)
     && event.what_to_do === whatToDo
     && event.state === state
-    && event.investigation_completed_at === inv.committedAt;
+    && event.investigation_completed_at === inv.committedAt
+    && (event.investigation_answered_by ?? null) === (inv.answeredBy ?? event.investigation_answered_by ?? null);
   if (unchanged) return null;
 
   return {
@@ -82,7 +83,9 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     // The result is held on this device; it is this device's own record.
     evidence_provenance: "local_device",
     investigation_case_id: event.investigation_case_id ?? inv.caseId,
-    // Magnum DI has answered — the case is no longer "investigating".
+    // The investigation has answered — the case is no longer "investigating".
     investigation_completed_at: inv.committedAt,
+    // Who settled it (Teddy FlyBy or Magnum DI), when the committed result recorded it — never guessed.
+    investigation_answered_by: inv.answeredBy ?? event.investigation_answered_by ?? null,
   };
 }

@@ -1,6 +1,6 @@
 // "How Apollo checks" — the rules every part of Apollo works under, in plain English, in the order a check
 // moves through them, plus what each of the five results means. Content: src/domain/howApolloChecks.ts.
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ListChecks from "lucide-react-native/icons/list-checks";
 import MessageCircle from "lucide-react-native/icons/message-circle";
@@ -8,7 +8,7 @@ import ScanSearch from "lucide-react-native/icons/scan-search";
 import Shield from "lucide-react-native/icons/shield";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Zap from "lucide-react-native/icons/zap";
-import React from "react";
+import React, { useCallback, useRef } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,7 +25,8 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.xs },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface, flex: 1 },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.xl },
+  content: { paddingHorizontal: spacing.lg },
+  sections: { gap: spacing.xl },
   intro: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   step: { flexDirection: "row", gap: spacing.md },
   rail: { alignItems: "center", width: 40 },
@@ -40,6 +41,9 @@ const useStyles = makeStyles((c) => ({
   ruleText: { flex: 1, fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface },
   outcomeRow: { gap: spacing.xs, paddingVertical: spacing.sm, borderBottomWidth: 0.5, borderBottomColor: c.divider },
   outcomeMeaning: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurfaceSecondary },
+  // The result the person came here to understand.
+  outcomeFocus: { backgroundColor: c.goldTint, borderRadius: radius.md, borderBottomWidth: 0, paddingHorizontal: spacing.sm, marginHorizontal: -spacing.sm },
+  focusNote: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.onSurface },
   promiseRow: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start", paddingVertical: spacing.xs },
 }));
 
@@ -48,6 +52,18 @@ export default function HowApolloChecks() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Opened from "What does this mean?" beside a result: go straight to the results, with that one highlighted.
+  const { outcome: focus } = useLocalSearchParams<{ outcome?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const outcomesRef = useRef<View>(null);
+  const userScrolled = useRef(false);
+  // Re-measured whenever the content above changes height (fonts loading, text wrapping), until the
+  // person scrolls themselves.
+  const goToFocus = useCallback(() => {
+    if (!focus || userScrolled.current || !outcomesRef.current || !contentRef.current) return;
+    outcomesRef.current.measureLayout(contentRef.current, (_x, y) => scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.md), animated: false }), () => undefined);
+  }, [focus]);
 
   return (
     <View style={s.root} testID="how-checks-screen">
@@ -61,7 +77,9 @@ export default function HowApolloChecks() {
           <AppMenuButton testID="how-checks-menu" />
         </View>
       </View>
-      <ScrollView contentContainerStyle={[s.content, { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing["3xl"] }]} testID="how-checks-scroll">
+      <ScrollView ref={scrollRef} contentContainerStyle={[s.content, { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing["3xl"] }]} testID="how-checks-scroll"
+        onContentSizeChange={goToFocus} onScrollBeginDrag={() => { userScrolled.current = true; }}>
+        <View ref={contentRef} collapsable={false} style={s.sections}>
         <Text style={s.intro} testID="how-checks-intro">{HOW_INTRO}</Text>
 
         <View>
@@ -93,13 +111,15 @@ export default function HowApolloChecks() {
           })}
         </View>
 
-        <View testID="how-checks-outcomes">
+        <View testID="how-checks-outcomes" ref={outcomesRef} collapsable={false} onLayout={goToFocus}>
           <SectionTitle>What the results mean</SectionTitle>
           <Card style={{ paddingVertical: spacing.sm }}>
             {OUTCOME_GUIDE.map((item, i) => (
-              <View key={item.outcome} style={[s.outcomeRow, i === OUTCOME_GUIDE.length - 1 && { borderBottomWidth: 0 }]} testID={`how-checks-outcome-${item.outcome}`}>
+              <View key={item.outcome} style={[s.outcomeRow, i === OUTCOME_GUIDE.length - 1 && { borderBottomWidth: 0 }, item.outcome === focus && s.outcomeFocus]}
+                testID={`how-checks-outcome-${item.outcome}`} accessibilityState={{ selected: item.outcome === focus }}>
                 <Pill label={outcomeLabel(item.outcome) ?? ""} tone={outcomeTone(item.outcome)} />
                 <Text style={s.outcomeMeaning}>{item.meaning}</Text>
+                {item.outcome === focus ? <Text style={s.focusNote} testID="how-checks-outcome-focus">This is the result you were looking at.</Text> : null}
               </View>
             ))}
           </Card>
@@ -113,6 +133,7 @@ export default function HowApolloChecks() {
               <Text style={s.ruleText}>{promise}</Text>
             </View>
           ))}
+        </View>
         </View>
       </ScrollView>
     </View>

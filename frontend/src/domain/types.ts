@@ -188,6 +188,9 @@ export interface PatrolEvent {
    *  the device holds the result, so only it can say the investigation has finished. While this is
    *  absent the case is genuinely still being investigated. */
   investigation_completed_at?: string | null;
+  /** Who settled that investigation: "magnum_di" or a Teddy FlyBy route ("teddy_official", "teddy_kb",
+   *  "teddy_search"). Device-local, copied from the committed result; absent when not recorded. */
+  investigation_answered_by?: string | null;
   /** Server-owned correlation: links a background-intake submission to its projected Patrol event.
    * Set by the investigation projector; the frontend sets it on local placeholder events for
    * reconciliation. When the server supplies a value, it is authoritative and supersedes the local
