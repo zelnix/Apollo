@@ -33,7 +33,7 @@ def test_triage_extracts_entities_and_plans_relevant_checks():
     text = ("Dear investor, Apex Horizon Capital Pty Ltd (ABN 51 824 753 556, AFSL 123456) offers guaranteed returns of 12% per month. "
             "Mr John Carter, our senior adviser, will call you on 0412 345 678. Join at https://apex-horizon.io/join or email "
             "support@apex-horizon.io. Reference 2026-06-05.")
-    plan = triage.plan("Is this investment real?", [text], unreadable=[])
+    plan = triage.plan("Is this investment real?", [text])
     ent = plan.entities
     assert ent.hosts == ["apex-horizon.io"] and ent.emails == ["support@apex-horizon.io"]
     assert ent.abns == ["51824753556"] and ent.licences == [("AFSL", "123456")]
@@ -53,9 +53,9 @@ def test_registration_number_check_digits():
 
 
 def test_a_general_question_is_not_material_to_check():
-    assert triage.plan("What is a PayID scam?", ["What is a PayID scam?"], unreadable=[]).general
-    assert not triage.plan("I got a text from my bank, is it real?", ["I got a text from my bank, is it real?"], unreadable=[]).general
-    assert not triage.plan("Check this", ["Pay $2.99 at https://auspost-redeliver.top now"], unreadable=[]).general
+    assert triage.plan("What is a PayID scam?", ["What is a PayID scam?"]).general
+    assert not triage.plan("I got a text from my bank, is it real?", ["I got a text from my bank, is it real?"]).general
+    assert not triage.plan("Check this", ["Pay $2.99 at https://auspost-redeliver.top now"]).general
 
 
 # ── Harness ──────────────────────────────────────────────────────────────────
@@ -97,6 +97,43 @@ async def _case(items: list[tuple[str, str]], *, message="Is this real?", pregat
     response = next((e["payload"]["response"] for e in events if e["type"] == "response"), None)
     stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0})
     return owner, stored, response, events
+
+
+PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc"
+       b"\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+async def _files_case(files: list[tuple[dict, bytes]], *, message="Is this real?"):
+    """A case built from uploaded files (screenshots, documents), run through the real job."""
+    owner = f"teddy-file-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "vision", None)
+    for meta, data in files:
+        await ev.ingest_file(owner, case, meta, data)
+    case = await repo.get_case(owner, case["case_id"])
+    turn_id = str(uuid.uuid4())
+    job = await repo.create_job(owner, case, turn_id, repo.digest(turn_id), repo.digest("p"), "turn", {"message": message, "turnId": turn_id})
+    await repo.cas(owner, case["case_id"], {"revision": case["revision"]}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id, "status": "queued"}})
+    await jobs.run(owner, case["case_id"], job["job_id"])
+    events = await repo.events_after(owner, job["job_id"], 0)
+    response = next((e["payload"]["response"] for e in events if e["type"] == "response"), None)
+    stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0})
+    return owner, stored, response
+
+
+def _spy(monkeypatch) -> list:
+    """Captures what Magnum DI is sent (on top of _gateway)."""
+    captured: list = []
+    original = provider.generate
+
+    async def spy(system, contents, **kwargs):
+        if kwargs["purpose"] == Purpose.INVESTIGATION:
+            captured.append([p for p in contents[0].parts])
+        return await original(system, contents, **kwargs)
+
+    monkeypatch.setattr(provider, "generate", spy)
+    return captured
 
 
 def _lookups(monkeypatch, *, verdict="clean", threats=(), age_days=4000):
@@ -192,69 +229,105 @@ async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
 
 
 # ── Magnum DI receives only the unresolved slice ────────────────────────────
-SLIDES = "Hi, it's Sarah from the conference. Here are the slides you asked for: https://slides-deck.net/deck"
+INVOICE = ("Hi, it's Sarah from Brightline Accounts. Our bank details have changed, so please pay invoice 4471 ($1,240) to "
+           "BSB 062-000 account 1234 5678 today. The invoice is at https://brightline-docs.net/inv/4471")
 
 
-async def test_magnum_gets_the_material_and_teddys_brief_with_search_off(monkeypatch):
+async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_search_off(monkeypatch):
     monkeypatch.setattr(search, "run", REAL_SEARCH)
     await db.teddy_search_cache.delete_many({})
     text, grounding = _grounded(
-        ["Q1 | NO_WARNING_FOUND | No scam or security warning names slides-deck.net."],
+        ["Q1 | NO_WARNING_FOUND | No scam or security warning names brightline-docs.net."],
         [("https://vertexaisearch.cloud.google.com/grounding-api-redirect/x", "example.com")])
     calls = _gateway(monkeypatch, text, grounding)
-    _lookups(monkeypatch, age_days=6)
-    captured: list = []
-    original = provider.generate
-
-    async def spy(system, contents, **kwargs):
-        if kwargs["purpose"] == Purpose.INVESTIGATION:
-            captured.append(contents)
-        return await original(system, contents, **kwargs)
-
-    monkeypatch.setattr(provider, "generate", spy)
-    pregathered = {"safe_browsing": {"urls": {"https://slides-deck.net/deck": {"verdict": "clean", "status": "ok", "queried_at": "2026-06-05"}}},
+    _lookups(monkeypatch)
+    captured = _spy(monkeypatch)
+    pregathered = {"safe_browsing": {"urls": {"https://brightline-docs.net/inv/4471": {"verdict": "clean", "status": "ok", "queried_at": "2026-06-05"}}},
                    "_summary": {"providers_consulted": ["safe_browsing"], "total_lookups": 1}}
-    _owner, case, response, _ = await _case([("text", SLIDES)], pregathered=pregathered)
+    _owner, case, response, _ = await _case([("text", INVOICE)], pregathered=pregathered)
     purposes = [c["purpose"] for c in calls]
     assert purposes == [Purpose.TEDDY_SEARCH, Purpose.INVESTIGATION], "Teddy's one search, then Magnum DI's one call"
     magnum = calls[1]
     assert magnum["tools"] is None, "Teddy already has the external facts, so Magnum's Google Search is off"
     assert magnum["model"] == provider.TEXT_MODEL, "the existing configured model — no escalation"
     assert "outcome" in magnum["response_schema"].required, "Magnum DI feeds the same outcome system"
-    sent = [p.text for p in captured[0][0].parts if p.text]
-    assert any("Teddy DI fly-by results" in t and "registered on 2026-06-01" in t for t in sent), "the new-domain signal is handed on"
-    assert any("Message and deception analysis" in t for t in sent), "only the unresolved part: the message itself"
+    sent = [p.text for p in captured[0] if p.text]
+    assert any("Teddy DI fly-by results" in t and "For Magnum DI to settle" in t for t in sent)
+    assert any("(reasoning) Message and deception analysis" in t and "payment details change" in t for t in sent), "only the unresolved issue"
     assert not any("apollo-triage-intelligence" in t or '"safe_browsing"' in t for t in sent), "raw lookups Teddy settled are not resent"
-    assert any("Here are the slides you asked for" in t for t in sent), "the material itself is sent in full"
+    assert any("please pay invoice 4471" in t for t in sent), "the material the issue is about is sent in full"
+    teddy = case["routing"]["teddy"]
+    assert [i["capability"] for i in teddy["issues"]] == ["reasoning"]
+    assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "needs_reasoning"
     assert case["routing"]["answeredBy"] == "magnum_di" and case["routing"]["magnum"]["search"] is False
     assert response is not None and response["outcome"] and case["routing"]["outcome"] == response["outcome"]
 
 
+async def test_a_newly_registered_link_is_concerning_at_teddy_without_magnum(monkeypatch):
+    """No fixed list sends a message to Magnum DI: an established warning sign settles what to do."""
+    calls = _gateway(monkeypatch)
+    _lookups(monkeypatch, age_days=6)
+    _owner, case, response, _ = await _case([("text", "Hi, it's Sarah from the conference. Here are the slides you asked for: https://slides-deck.net/deck")])
+    assert calls == [], "Magnum DI couldn't change the finding or what to do"
+    assert response["outcome"] == "concerning" and "registered on 2026-06-01" in response["overview"]
+    assert case["routing"]["teddy"]["issues"] == [] and case["routing"]["teddy"]["basis"] == "signals"
+
+
+async def test_a_plain_message_asking_nothing_is_settled_without_magnum(monkeypatch):
+    calls = _gateway(monkeypatch)
+    _owner, case, response, _ = await _case([("text", "Hey, are we still on for dinner on Friday? Let me know what time suits.")])
+    assert calls == []
+    assert response["outcome"] == "no_scam_indicators" and response["assessment"] == "no_concern_found_within_scope"
+    assert "isn't proof it's genuine" in response["overview"] and "safe" not in response["overview"].lower()
+    teddy = case["routing"]["teddy"]
+    assert teddy["resolved"] is True and teddy["issues"] == []
+    assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "not_needed"
+
+
+async def test_a_screenshot_is_investigated_through_the_text_triage_extracted(monkeypatch):
+    calls = _gateway(monkeypatch)
+    meta = {"clientItemId": "shot", "filename": "shot.png", "mediaType": "image/png", "kind": "image",
+            "deviceExtractedText": "Hi Mum, I dropped my phone in the pool so this is my new number. Can you transfer $300 for the repair today?"}
+    owner, case, response = await _files_case([(meta, PNG)])
+    assert calls == [], "Triage extracted the screenshot's text; a full KB pattern match settles it"
+    assert response["outcome"] == "likely_scam" and response["completion"] == "complete"
+    teddy = case["routing"]["teddy"]
+    assert teddy["gaps"] == [] and teddy["pattern"] == {"key": "family_new_number", "stage": "full"}
+    image = next(r for r in await repo.list_evidence(owner, case["case_id"]) if r["kind"] == "image")
+    assert image["coverage"]["status"] == "examined", "the image was examined through the text read from it"
+
+
+async def test_a_document_is_investigated_through_its_text_layer(monkeypatch):
+    import io
+    import docx
+    calls = _gateway(monkeypatch)
+    document = docx.Document()
+    document.add_paragraph("Hi Mum, I lost my phone so this is my new number. Could you please send $450 for the rent today?")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    meta = {"clientItemId": "letter", "filename": "letter.docx", "mediaType": DOCX, "kind": "document"}
+    _owner, case, response = await _files_case([(meta, buffer.getvalue())])
+    assert calls == [] and response["outcome"] == "likely_scam"
+    assert case["routing"]["teddy"]["gaps"] == []
+
+
 async def test_an_image_teddy_cannot_read_goes_to_magnum_with_search_on(monkeypatch):
     calls = _gateway(monkeypatch)
-    owner = f"teddy-img-{uuid.uuid4().hex[:8]}"
-    await repo.ensure_indexes()
-    case = await repo.create_case(owner, "vision", None)
-    png = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc"
-           b"\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
-    await ev.ingest_file(owner, case, {"clientItemId": "shot", "filename": "shot.png", "mediaType": "image/png", "kind": "image"}, png)
-    case = await repo.get_case(owner, case["case_id"])
-    turn_id = str(uuid.uuid4())
-    job = await repo.create_job(owner, case, turn_id, repo.digest(turn_id), repo.digest("p"), "turn", {"message": "Is this real?", "turnId": turn_id})
-    await repo.cas(owner, case["case_id"], {"revision": case["revision"]}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id, "status": "queued"}})
-    await jobs.run(owner, case["case_id"], job["job_id"])
-    stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing": 1})
+    captured = _spy(monkeypatch)
+    _owner, case, _response = await _files_case([({"clientItemId": "shot", "filename": "shot.png", "mediaType": "image/png", "kind": "image"}, PNG)])
     assert [c["purpose"] for c in calls] == [Purpose.INVESTIGATION]
-    assert calls[0]["tools"], "Teddy couldn't read the screenshot, so external facts may be missing: Search on"
-    assert stored["routing"]["teddy"]["magnumSearch"] is True
+    assert calls[0]["tools"], "Magnum DI reads the image for the first time, so external facts may be missing: Search on"
+    teddy = case["routing"]["teddy"]
+    assert teddy["magnumSearch"] is True and [i["capability"] for i in teddy["issues"]] == ["reading"]
+    assert any(p.inline_data for p in captured[0]), "the image itself is what Magnum DI receives"
 
 
 async def test_a_magnum_retry_reuses_teddys_record(monkeypatch):
     from services.higgins import teddy
-    _lookups(monkeypatch, age_days=6)
+    _lookups(monkeypatch)
     owner = f"teddy-retry-{uuid.uuid4().hex[:8]}"
     case = await repo.create_case(owner, "text", None)
-    await ev.ingest_text(owner, case, "m", SLIDES, kind="text", origin="user_submission")
+    await ev.ingest_text(owner, case, "m", INVOICE, kind="text", origin="user_submission")
     case = await repo.get_case(owner, case["case_id"])
     job = {"job_id": "j", "source": "user_initiated"}
 
@@ -351,12 +424,39 @@ async def test_an_unclear_pattern_match_goes_to_magnum(monkeypatch):
     assert response["outcome"]
 
 
-async def test_official_links_contradicting_a_pattern_go_to_magnum(monkeypatch):
+async def test_a_pattern_contradicted_by_official_links_is_settled_by_the_deciding_test(monkeypatch):
     calls = _gateway(monkeypatch)
     _lookups(monkeypatch)
-    _owner, case, _response, _ = await _case([("text", "AusPost: your parcel is held. Pay the $2.50 redelivery fee at https://auspost.com.au/redeliver")])
-    assert [c["purpose"] for c in calls] == [Purpose.INVESTIGATION], "the pattern says impersonation, the link is AusPost's own: Magnum DI weighs it"
-    assert case["routing"]["teddy"]["pattern"]["key"] == "delivery_toll"
+    _owner, case, response, _ = await _case([("text", "AusPost: your parcel is held. Pay the $2.50 redelivery fee at https://auspost.com.au/redeliver")])
+    assert calls == [], "the request goes to AusPost's own domain: nothing Magnum DI could add changes what to do"
+    assert response["outcome"] == "no_scam_indicators"
+    pattern = case["routing"]["teddy"]["pattern"]
+    assert pattern == {"key": "delivery_toll", "stage": "partial"}, "an impersonation pattern needs a link that isn't the organisation's own"
+
+    calls.clear()   # the same wording, but the money goes somewhere nobody verified: Magnum DI's analysis could change the action
+    _owner, case, _response, _ = await _case([("text", "AusPost: your parcel is held. Pay the $2.50 redelivery fee by PayID to 0412 345 678. "
+                                                       "Track it at https://auspost.com.au/redeliver")])
+    assert [c["purpose"] for c in calls] == [Purpose.INVESTIGATION]
+    assert [i["capability"] for i in case["routing"]["teddy"]["issues"]] == ["reasoning"]
+
+
+async def test_isolated_keywords_never_make_a_pattern_match():
+    from services.higgins.teddy import patterns
+    assert await patterns.best("Your parcel delivery is booked for Tuesday. Toll roads may be busy, so pay attention.", has_link=False,
+                               has_brand=False, offsite=None) is None
+    negated = await patterns.best("CommBank will never ask you to log in via a link to verify your account details. Your account is suspended "
+                                  "only if you tell us.", has_link=True, has_brand=True, offsite=True)
+    assert negated is None or negated.stage != "full", "a negated request is not a request"
+    full = await patterns.best("Hi Dad, I broke my phone, this is my new number. Can you send me $200?", has_link=False, has_brand=False, offsite=None)
+    assert full.stage == "full" and full.entry["pattern"]["key"] == "family_new_number"
+
+
+async def test_a_lookalike_bare_link_follows_the_same_rule(monkeypatch):
+    calls = _gateway(monkeypatch)
+    _lookups(monkeypatch)
+    _owner, case, response, _ = await _case([("url", "https://commbank-secure-login.net/")], message="Is this link safe?")
+    assert calls == [] and response["outcome"] == "concerning"
+    assert "carries CommBank's name" in response["overview"]
 
 
 async def test_a_bare_link_ends_concerning_or_unable_to_determine_without_gemini(monkeypatch):

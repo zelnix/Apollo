@@ -6,11 +6,14 @@ do). They are Apollo knowledge-base entries (kind "scam_pattern") like any other
 authority tier, and Teddy DI reads the markers from the KB entry itself.
 
 Teddy DI compares the submitted material with them deterministically — no AI, no cost:
-  full     every hallmark and the ask are in the material            → supports "Likely scam"
-  opening  every hallmark, no ask yet (where the pattern starts so)  → supports "Concerning"
-  partial  some of it                                                → unclear: Magnum DI decides
-A match supports Apollo's assessment. It is general knowledge applied to the material, never proof that
-this particular sender is a scammer.
+  full     every defining indicator and the ask are present           → supports "Likely scam"
+  opening  every defining indicator, no ask yet (family pattern only) → supports "Concerning"
+  partial  some of it                                                 → not established on its own
+Each indicator is a phrase-level construction (a request bound to what it asks for, a claim bound to its
+subject), never a lone keyword, and a negated one ("we will never ask for your password") doesn't count.
+Impersonation patterns also need the evidence-based indicator Teddy DI established: the link isn't the
+organisation's own. A match supports Apollo's assessment. It is general knowledge applied to the material,
+never proof of the identity or intent of this particular sender.
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ import re
 from dataclasses import dataclass
 
 from core.db import db
+from services.higgins.teddy.triage import NEGATION
 from services.kb_sources import TIER_1
 
 log = logging.getLogger("apollo.teddy.patterns")
@@ -40,12 +44,15 @@ PATTERNS: tuple[dict, ...] = (
                  "you have found yourself.”"),
         "hallmarks": [
             ["says it's from a family member", r"\b(?:hi|hey|hello|hiya)\s+(?:mum|mom|mam|dad|mother|father|nan|nana|nanna|grandma|grandpa|gran)\b"
-                                               r"|\bit'?s\s+your\s+(?:son|daughter|child|grandson|granddaughter)\b"],
-            ["says they have a new or lost phone", r"\bnew\s+(?:phone\s+)?(?:number|mobile|phone)\b|\b(?:lost|broke|dropped|smashed|cracked|damaged)\s+my\s+phone\b"
-                                                   r"|\bmy\s+(?:old\s+)?phone\s+(?:is\s+)?(?:broken|died|dead|lost|smashed)\b|\b(?:temporary|temp)\s+number\b"],
+                                               r"|\bit'?s\s+(?:me\s*,?\s*)?your\s+(?:son|daughter|child|grandson|granddaughter)\b"],
+            ["says they have a new or lost phone", r"\bnew\s+(?:phone\s+)?(?:number|mobile|phone)\b|\b(?:lost|broke|dropped|smashed|cracked|damaged)\s+my\s+(?:old\s+)?phone\b"
+                                                   r"|\bmy\s+(?:old\s+)?phone\s+(?:is\s+)?(?:broken|died|dead|lost|smashed|stolen)\b|\b(?:temporary|temp)\s+(?:number|phone)\b"],
         ],
-        "ask": ["asks for money", r"\b(?:send|transfer|pay|lend|loan|borrow|need|owe)\b[^.?!\n]{0,60}?(?:\$\s?\d[\d,]*|\bmoney\b|\bcash\b|\bbills?\b|\bpayment\b|\brent\b|\bfunds\b)"
-                                  r"|\$\s?\d[\d,]*"],
+        "ask": ["asks for money", r"\b(?:can|could|would)\s+you\s+(?:please\s+)?(?:send|transfer|pay|lend|loan|cover)\b[^.?!\n]{0,50}?(?:\$\s?\d[\d,]*|\bmoney\b"
+                                  r"|\bcash\b|\bbills?\b|\bpayment\b|\brent\b|\bfunds\b|\bit\b|\bme\b)"
+                                  r"|\b(?:please\s+)?(?:send|transfer|pay)\s+(?:me\s+)?\$\s?\d[\d,]*"
+                                  r"|\bi\s+need\s+(?:you\s+to\s+(?:send|transfer|pay)\s+(?:me\s+)?)?(?:\$\s?\d[\d,]*|money|cash)\b"
+                                  r"|\b(?:pay|transfer)\s+(?:this|the|a)\s+(?:bill|invoice|account)\b"],
         "opening": True,
         "requires": [],
         "impersonates_organisation": False,
@@ -70,12 +77,14 @@ PATTERNS: tuple[dict, ...] = (
              r"|\b(?:account|card|access)\b[^.?!\n]{0,30}\b(?:suspended|locked|blocked|restricted|on hold|disabled|frozen|compromised)\b"
              r"|\bunusual\s+(?:sign[- ]?in|log[- ]?in|activity|transaction)s?\b|\bsecurity\s+(?:alert|notice|warning)\b"],
         ],
-        "ask": ["asks for your login, codes or card details through a link",
-                r"\b(?:password|passcode|pin|one[- ]time\s+(?:code|password|passcode)|otp|verification\s+code|security\s+code|card\s+(?:number|details)|cvv"
-                r"|log\s?in|sign\s?in|login|account\s+details|personal\s+details|banking\s+details)\b"
-                r"|\b(?:click|tap|visit|go to|follow)\b[^.?!\n]{0,30}(?:\blink\b|\bhere\b|\bbelow\b|https?://)"],
+        "ask": ["asks you to log in, verify or enter details through the link",
+                r"\b(?:log\s?in|sign\s?in|verify|confirm|update|enter|provide|re-?enter)\b[^.?!\n]{0,40}?\b(?:password|passcode|pin|one[- ]time\s+(?:code|password|passcode)"
+                r"|otp|verification\s+code|security\s+code|card\s+(?:number|details)|cvv|account\s+details|personal\s+details|banking\s+details|details|identity|account)\b"
+                r"[^.?!\n]{0,40}?(?:https?://|\blink\b|\bhere\b|\bbelow\b|\bat\b)"
+                r"|\b(?:click|tap|visit|go to|follow|open)\b[^.?!\n]{0,30}?(?:https?://|\blink\b|\bhere\b|\bbelow\b)[^.?!\n]{0,60}?\b(?:verify|confirm|log\s?in|sign\s?in|update|restore|unlock|secure)\b"
+                r"|\b(?:verify|confirm|log\s?in|sign\s?in|update|restore|unlock|secure)\b[^.?!\n]{0,40}?(?:https?://|\bvia\s+the\s+link\b|\busing\s+the\s+link\b|\bat\s+the\s+link\b)"],
         "opening": False,
-        "requires": ["brand", "link"],
+        "requires": ["brand", "link", "offsite_link"],
         "impersonates_organisation": True,
         "advice": [["Don't use the link", "Don't open the link and don't enter any passwords, codes or card details."],
                    ["Contact them yourself", "Go to the organisation through its official app or a website address you type yourself, or call the number on your card or statement."],
@@ -92,13 +101,16 @@ PATTERNS: tuple[dict, ...] = (
                  "to “make a payment or transfer money” or “click on a link or call a number provided in the message”. “Scammers can steal "
                  "any personal information entered on these scam websites and use it to take your money or commit fraud in your name.”"),
         "hallmarks": [
-            ["is about a parcel, delivery or toll", r"\b(?:parcel|package|delivery|deliver|redeliver(?:y)?|shipment|courier|toll|tolls|linkt|e-?toll|e-?tag)\b"],
-            ["says something is held, failed or unpaid", r"\b(?:held|on hold|failed|unsuccessful|unpaid|overdue|outstanding|missed|could not be delivered|couldn'?t be delivered"
-                                                         r"|unable to deliver|incomplete address|address (?:is )?incomplete|returned to sender)\b"],
+            ["says a parcel, delivery or toll has a problem", r"\b(?:parcel|package|delivery|shipment|item|order|toll|tolls|e-?toll|linkt)\b[^.?!\n]{0,50}?\b(?:held|on hold|failed"
+                                                              r"|unsuccessful|unpaid|overdue|outstanding|missed|could not be delivered|couldn'?t be delivered|unable to be delivered|returned)\b"
+                                                              r"|\b(?:unpaid|overdue|outstanding)\s+(?:road\s+)?(?:toll|tolls|e-?toll|fee)s?\b|\b(?:failed|missed|unsuccessful)\s+delivery\b"
+                                                              r"|\b(?:incomplete|invalid)\s+(?:delivery\s+)?address\b"],
         ],
-        "ask": ["asks you to pay or update your details", r"\b(?:pay|payment|fee|charge|settle|card details|update (?:your )?(?:address|details|delivery))\b|\$\s?\d"],
+        "ask": ["asks you to pay a fee or update your details", r"\b(?:pay|settle|clear)\b[^.?!\n]{0,40}?(?:\$\s?\d|\bfee\b|\btoll\b|\bamount\b|\bbalance\b|\bcharge\b)"
+                                                               r"|\b(?:update|confirm|re-?enter)\s+(?:your\s+)?(?:delivery\s+)?(?:address|details|payment)\b"
+                                                               r"|\b(?:redelivery|delivery|customs|handling)\s+fee\b"],
         "opening": False,
-        "requires": ["link"],
+        "requires": ["link", "offsite_link"],
         "impersonates_organisation": True,
         "advice": [["Don't use the link", "Don't open the link or pay anything through it."],
                    ["Check with them yourself", "Check your delivery or toll account through the company's official app or a website address you type yourself."],
@@ -118,11 +130,15 @@ PATTERNS: tuple[dict, ...] = (
         "hallmarks": [
             ["claims to be a government agency or the police", r"\b(?:ato|australian taxation office|tax office|police|afp|federal police|immigration|home affairs|court"
                                                                r"|sheriff|services australia|centrelink|medicare|mygov|government|department of)\b"],
-            ["threatens arrest, legal action or a penalty", r"\b(?:arrest(?:ed)?|warrant|legal action|deport(?:ed|ation)?|prosecut\w*|criminal|penalt(?:y|ies)"
-                                                            r"|court action|jail|charges against you)\b"],
+            ["threatens arrest, legal action or a penalty", r"\b(?:arrest\s+warrant|warrant\s+(?:for|has\s+been\s+issued)|(?:will|may|could)\s+be\s+arrested"
+                                                            r"|face\s+(?:arrest|legal\s+action|prosecution|jail|deportation)|legal\s+action\s+(?:will|against)"
+                                                            r"|(?:be|being)\s+deported|court\s+action|(?:criminal|legal)\s+proceedings|police\s+will\s+(?:attend|come|arrest)"
+                                                            r"|suspend(?:ed)?\s+your\s+(?:tfn|tax\s+file\s+number|visa|medicare))\b"],
         ],
-        "ask": ["asks you to pay or hand over details", r"\b(?:pay|payment|gift\s?cards?|vouchers?|itunes|google play|bitcoin|crypto|transfer|wire"
-                                                         r"|bank details|tax file number|tfn|passport|keep (?:it|your money) safe)\b"],
+        "ask": ["asks you to pay or hand over details", r"\b(?:pay|transfer|send|buy|purchase)\b[^.?!\n]{0,50}?(?:\$\s?\d|\bgift\s?cards?\b|\bvouchers?\b|\bitunes\b"
+                                                         r"|\bgoogle play\b|\bbitcoin\b|\bcrypto\b|\bfine\b|\bpenalty\b|\bamount\b|\bdebt\b|\bimmediately\b)"
+                                                         r"|\b(?:provide|confirm|give)\s+(?:us\s+)?(?:your\s+)?(?:bank details|tax file number|tfn|passport|card details)\b"
+                                                         r"|\bkeep\s+(?:it|your money|this)\s+(?:safe|secret|confidential)\b"],
         "opening": False,
         "requires": [],
         "impersonates_organisation": True,
@@ -141,10 +157,14 @@ PATTERNS: tuple[dict, ...] = (
                  "haven't entered a competition.” What to do: “Don't pay a fee to collect winnings or a prize. Legitimate lotteries don't ask "
                  "you to do this.”"),
         "hallmarks": [
-            ["says you've won or are owed money", r"\b(?:you(?:'ve| have)?\s+won|winner|prize|lottery|jackpot|inheritance|beneficiary|unclaimed|compensation|rebate"
-                                                  r"|entitled to|refund\s+(?:is\s+)?(?:due|waiting|pending|available|of))\b"],
+            ["says you've won or are owed money", r"\byou(?:'ve| have)?\s+(?:won|been\s+selected|been\s+chosen)\b"
+                                                  r"|\b(?:claim|collect|receive)\s+your\s+(?:prize|winnings|reward|refund|rebate|inheritance|compensation|funds)\b"
+                                                  r"|\b(?:unclaimed|pending|outstanding)\s+(?:refund|rebate|inheritance|funds|compensation|prize)\b"
+                                                  r"|\bentitled\s+to\s+(?:a\s+)?(?:refund|rebate|compensation|payment|\$)"],
         ],
-        "ask": ["asks for a fee or your details to release it", r"\b(?:fee|fees|tax|taxes|charge|charges|pay|payment|deposit|bank details|card details|account details|passport)\b"],
+        "ask": ["asks for a fee or your details to release it", r"\b(?:pay|send|transfer)\b[^.?!\n]{0,40}?\b(?:fee|tax|taxes|charge|charges|deposit)\b"
+                                                               r"|\b(?:processing|release|administration|clearance|transfer|handling|customs)\s+(?:fee|charge|tax)\b"
+                                                               r"|\b(?:provide|confirm|enter|send)\s+(?:us\s+)?(?:your\s+)?(?:bank\s+details|card\s+details|account\s+details|bsb)\b"],
         "opening": False,
         "requires": [],
         "impersonates_organisation": True,
@@ -163,11 +183,15 @@ PATTERNS: tuple[dict, ...] = (
                  "“You are told to top up an account with your own money or cryptocurrency to complete tasks.” What to do: “Never send your "
                  "own money, you won't get it back.”"),
         "hallmarks": [
-            ["offers a job or paid tasks", r"\b(?:job|role|position|vacanc(?:y|ies)|recruit(?:er|ing|ment)?|hiring|work from home|part[- ]time|remote work|tasks?|online work)\b"],
+            ["offers a job or paid tasks", r"\b(?:job|role|position|vacanc(?:y|ies)|opportunity)\s+(?:offer|available|opening)|\bwe(?:'re|\s+are)\s+hiring\b"
+                                           r"|\brecruiting\s+for\b|\bpart[- ]time\s+(?:job|work|role)\b|\bwork\s+from\s+home\b|\bremote\s+(?:job|work|role)\b"
+                                           r"|\bonline\s+(?:job|work|tasks?)\b|\b(?:simple|easy)\s+tasks?\b|\bcomplete\s+tasks?\b"],
             ["promises easy or high pay", r"\$\s?\d[\d,]*\s*(?:per|a|an|/|each)\s*(?:day|hour|hr|week|task)\b|\b(?:earn|earning)\b[^.?!\n]{0,40}(?:\$\s?\d|daily|per day|a day|commission)"
                                           r"|\b(?:little effort|easy money|no experience (?:needed|required)|high (?:income|pay|salary))\b"],
         ],
-        "ask": ["asks you to pay, top up or deposit money", r"\b(?:top[- ]?up|deposit|recharge|upfront|training fee|registration fee|recruitment fee|pay (?:a|the|your)|usdt|crypto|bitcoin)\b"],
+        "ask": ["asks you to pay, top up or deposit money", r"\b(?:top[- ]?up|recharge|deposit)\b[^.?!\n]{0,40}?(?:\$|\baccount\b|\busdt\b|\bcrypto\b|\bfunds\b|\bbalance\b)"
+                                                           r"|\b(?:pay|transfer|send)\s+(?:a|the|your|an)?\s*(?:training|registration|recruitment|starter|activation|joining)\s+fee\b"
+                                                           r"|\b(?:upfront|activation|joining|registration)\s+(?:fee|payment|deposit)\b"],
         "opening": False,
         "requires": [],
         "impersonates_organisation": False,
@@ -186,14 +210,17 @@ PATTERNS: tuple[dict, ...] = (
                  "the company or website is not named on the Moneysmart investor alert list.” “Ensure the person offering you financial "
                  "products or advice has an Australian financial services (AFS) license.”"),
         "hallmarks": [
-            ["is an investment or trading offer", r"\b(?:invest\w*|trading|trader|crypto\w*|bitcoin|forex|portfolio|shares|stocks|ipo)\b"],
+            ["is an investment or trading offer", r"\binvest(?:ment|ing)?\s+(?:opportunity|plan|platform|offer|with\s+us|now|today)\b|\binvest\s+(?:\$\s?\d|in\s+(?:our|this|crypto|bitcoin))"
+                                                  r"|\btrading\s+(?:platform|signals?|bot|account|group|opportunity)\b|\bcrypto(?:currency)?\s+(?:investment|trading|platform|opportunity)\b"
+                                                  r"|\bforex\s+(?:trading|signals?)\b|\bour\s+(?:fund|portfolio|trading\s+platform)\b"],
             ["promises guaranteed or very high returns",
              r"guarantee[ds]?\s+(?:\w+\s+){0,2}(?:returns?|profits?|income|interest|payouts?)"
              r"|\b\d{1,3}(?:\.\d+)?\s?%\s*(?:(?:per|a|each|every)\s+)?(?:day|daily|week|weekly|month|monthly|returns?|profit|interest|roi)\b"
              r"|risk[- ]free|no risk|double your (?:money|investment)|can'?t lose"],
         ],
-        "ask": ["asks you to invest or get in touch to start", r"\b(?:deposit|invest\s+(?:now|today|with)|minimum\s+(?:investment|deposit)|send|transfer|get started|to start"
-                                                                r"|start (?:now|today|earning|trading)|join (?:us|now|today|our)|sign up|register|whatsapp|telegram|signal|dm me|message (?:me|us))\b"],
+        "ask": ["asks you to invest or get in touch to start", r"\b(?:deposit|invest|send|transfer)\b[^.?!\n]{0,30}?(?:\$\s?\d|\bmoney\b|\bfunds\b|\busdt\b|\bcrypto\b|\bbitcoin\b|\bminimum\b)"
+                                                                r"|\bminimum\s+(?:investment|deposit)\b"
+                                                                r"|\b(?:message|contact|join|add)\s+(?:us|me|our\s+(?:group|team|channel))\s+on\s+(?:whatsapp|telegram|signal)\b"],
         "opening": False,
         "requires": [],
         "impersonates_organisation": False,
@@ -211,11 +238,14 @@ PATTERNS: tuple[dict, ...] = (
                  "phone or computer” or “suggests you or your accounts have been hacked or involved in fraud”. What to do: “Never give anyone "
                  "remote access to your computer.”"),
         "hallmarks": [
-            ["says your device or account has a problem", r"\b(?:virus|malware|infected|hacked|compromised|security (?:issue|problem|breach)|suspicious activity"
-                                                          r"|your (?:computer|device|internet|nbn|connection) (?:is|has))\b"],
+            ["says your device or account has a problem", r"\byour\s+(?:computer|device|pc|laptop|phone|internet|nbn|connection|account)\s+(?:has\s+been|is|was)\s+"
+                                                          r"(?:hacked|infected|compromised|blocked|at\s+risk)\b|\b(?:virus|malware|viruses)\s+(?:detected|found|on\s+your)\b"
+                                                          r"|\bwe(?:'ve|\s+have)\s+detected\s+(?:a\s+)?(?:virus|malware|suspicious\s+activity|hackers?)\b"
+                                                          r"|\bsecurity\s+(?:breach|issue|problem)\s+(?:on|with)\s+your\b"],
         ],
-        "ask": ["asks you to install software or give remote access", r"\b(?:anydesk|teamviewer|ultraviewer|quick\s?support|quick assist|remote (?:access|desktop|support)"
-                                                                       r"|screen\s?shar\w*|install (?:this|the|an) (?:app|software|program))\b"],
+        "ask": ["asks you to install software or give remote access", r"\b(?:download|install|open|run)\s+(?:the\s+)?(?:anydesk|teamviewer|ultraviewer|quick\s?support|quick\s+assist"
+                                                                       r"|remote\s+(?:access|desktop|support))\b|\b(?:give|allow|grant|let)\s+(?:us|me|our\s+technician)\s+(?:remote\s+)?access\b"
+                                                                       r"|\b(?:share|start)\s+(?:your\s+)?screen\b"],
         "opening": False,
         "requires": [],
         "impersonates_organisation": True,
@@ -226,7 +256,10 @@ PATTERNS: tuple[dict, ...] = (
     },
 )
 
-_REQUIREMENT_LABEL = {"brand": "names an organisation", "link": "contains a link"}
+_REQUIREMENT_LABEL = {"brand": "names an organisation", "link": "contains a link",
+                      "offsite_link": "sends you to a link that isn't the organisation's own website"}
+# Bumped whenever the shipped markers change, so the KB entries are refreshed rather than left stale.
+PATTERN_VERSION = 2
 
 
 async def load() -> int:
@@ -235,15 +268,15 @@ async def load() -> int:
     for p in PATTERNS:
         await knowledge.upsert(KIND, p["key"], title=f"Scam pattern: {p['name']}", body=p["body"], publisher=SCAMWATCH, url=p["url"],
                                authority_tier=TIER_1, jurisdiction="AU", retrieved_via="shipped_with_apollo", knowledge_class="scam_pattern",
-                               extra={"pattern": {k: v for k, v in p.items() if k not in ("body", "url")}})
+                               extra={"pattern": {**{k: v for k, v in p.items() if k not in ("body", "url")}, "version": PATTERN_VERSION}})
     return len(PATTERNS)
 
 
 async def entries() -> list[dict]:
-    """The scam patterns Apollo's KB currently holds (loaded on first use if the KB has none yet)."""
+    """The scam patterns Apollo's KB currently holds (loaded on first use, and refreshed when the markers change)."""
     query = {"kind": KIND, "status": {"$ne": "historical"}, "pattern": {"$exists": True}}
     rows = await db.higgins_knowledge.find(query, {"_id": 0}).to_list(200)
-    if not rows:
+    if not rows or any((r["pattern"].get("version") or 0) < PATTERN_VERSION for r in rows):
         await load()
         rows = await db.higgins_knowledge.find(query, {"_id": 0}).to_list(200)
     return rows
@@ -256,33 +289,51 @@ class PatternMatch:
     found: list[tuple[str, str]]     # (what the pattern looks for, the material's own words)
     missing: list[str]
     ask: tuple[str, str] | None
+    contradicted: list[str]          # defining indicators the evidence shows are absent
 
     def wire(self) -> dict:
         p = self.entry["pattern"]
         return {"kbId": self.entry.get("kb_id"), "key": p["key"], "name": p["name"], "publisher": self.entry.get("publisher"),
                 "url": self.entry.get("url"), "title": self.entry.get("title"), "summary": p["summary"], "stage": self.stage,
                 "found": [list(f) for f in self.found], "missing": self.missing, "ask": list(self.ask) if self.ask else None,
-                "advice": p["advice"], "consequence": p["consequence"], "impersonatesOrganisation": p["impersonates_organisation"]}
+                "contradicted": self.contradicted, "advice": p["advice"], "consequence": p["consequence"],
+                "impersonatesOrganisation": p["impersonates_organisation"]}
 
 
 def _quote(match: re.Match) -> str:
     return " ".join(match.group(0).split())[:90]
 
 
-def match_one(entry: dict, text: str, *, has_link: bool, has_brand: bool) -> PatternMatch | None:
+def _find(regex: str, text: str) -> re.Match | None:
+    """The first match that isn't negated ("we will never ask for your password")."""
+    for match in re.finditer(regex, text, re.I):
+        if not NEGATION.search(text[max(0, match.start() - 40):match.start()]):
+            return match
+    return None
+
+
+def match_one(entry: dict, text: str, *, has_link: bool, has_brand: bool, offsite: bool | None) -> PatternMatch | None:
+    """A full match needs every defining indicator — each a phrase-level construction in the material, or an
+    evidence-based one Teddy DI established (a link that isn't the organisation's own) — never a lone keyword."""
     p = entry["pattern"]
     found: list[tuple[str, str]] = []
     missing: list[str] = []
+    contradicted: list[str] = []
     for label, regex in p["hallmarks"]:
-        hit = re.search(regex, text, re.I)
+        hit = _find(regex, text)
         if hit:
             found.append((label, _quote(hit)))
         else:
             missing.append(label)
     for requirement in p.get("requires") or []:
-        if not {"brand": has_brand, "link": has_link}[requirement]:
+        if requirement == "offsite_link":
+            if offsite is False:
+                contradicted.append(_REQUIREMENT_LABEL[requirement])
+            if not offsite:
+                missing.append(_REQUIREMENT_LABEL[requirement])
+        elif not {"brand": has_brand, "link": has_link}[requirement]:
             missing.append(_REQUIREMENT_LABEL[requirement])
-    hit = re.search(p["ask"][1], text, re.I)
+    hit = _find(p["ask"][1], text)
     ask = (p["ask"][0], _quote(hit)) if hit else None
     if not missing and ask:
         stage = "full"
@@ -294,19 +345,19 @@ def match_one(entry: dict, text: str, *, has_link: bool, has_brand: bool) -> Pat
         return None
     if not ask:
         missing.append(p["ask"][0])
-    return PatternMatch(entry, stage, found, missing, ask)
+    return PatternMatch(entry, stage, found, missing, ask, contradicted)
 
 
 _RANK = {"full": 3, "opening": 2, "partial": 1}
 
 
-async def best(text: str, *, has_link: bool, has_brand: bool) -> PatternMatch | None:
+async def best(text: str, *, has_link: bool, has_brand: bool, offsite: bool | None) -> PatternMatch | None:
     """The established pattern the material matches best, or None."""
     try:
         rows = await entries()
     except Exception:  # noqa: BLE001 — the KB can never break an investigation
         log.warning("scam_patterns_unavailable", exc_info=True)
         return None
-    matches = [m for m in (match_one(e, text, has_link=has_link, has_brand=has_brand) for e in rows) if m]
+    matches = [m for m in (match_one(e, text, has_link=has_link, has_brand=has_brand, offsite=offsite) for e in rows) if m]
     matches.sort(key=lambda m: (_RANK[m.stage], len(m.found) + (1 if m.ask else 0)), reverse=True)
     return matches[0] if matches else None

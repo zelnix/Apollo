@@ -1,15 +1,18 @@
-"""Apollo Triage — what came in, and what needs investigating.
+"""Apollo Triage — makes every input investigation-ready and identifies what needs checking.
 
-    Apollo detects and protects. Apollo Triage decides what needs investigating.
-    Teddy DI does the fly-by investigation. Magnum DI investigates deeply.
-    Higgins explains and guides.
+    Apollo detects and protects. Apollo Triage extracts, structures and identifies what needs checking.
+    Teddy DI does the fly-by investigation. Magnum DI investigates deeply only when doing so could change
+    the finding or action. Higgins explains and guides.
 
-Triage does not investigate and never decides whether something is a scam. It reads the submitted
-material, extracts the entities and signals in it, classifies the message type and plans the checks that
-are relevant, so only those checks run.
+Triage does not investigate and never decides whether something is a scam. From the content of every
+supported input — submitted text and links, the text the phone read from screenshots and images, the text
+layer of documents — it extracts and structures links and domains, phone numbers, email addresses,
+organisations, companies and people, ABN/ACN/licence numbers, payment requests and amounts, payment and
+account details, claims, requests and instructions (with what each one points at), the message type, and
+how the extracted items relate in context. It records what could not be extracted (the reading of the
+items themselves happens in teddy/__init__.py), then plans only the checks that are relevant.
 
-It is deterministic and local: no network, no AI, no cost. Input it cannot classify is handed to Magnum
-DI's single call as it is — there is no separate AI triage call.
+It is deterministic and local: no network, no AI, no cost.
 """
 from __future__ import annotations
 
@@ -49,6 +52,51 @@ SITUATION = re.compile(
     r"asked me|told me|contacted|clicked|paid|gave)\b|\bthis (message|text|sms|email|call|link|site|website|number|offer|person|page|app)\b", re.I)
 FREE_MAIL = {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "live.com", "aol.com", "proton.me",
              "protonmail.com", "gmx.com", "mail.com", "bigpond.com"}
+
+# ── Payment and account details ──────────────────────────────────────────────
+BSB_RE = re.compile(r"\bBSB[\s:#.-]*(\d{3}[\s-]?\d{3})\b", re.I)
+ACCOUNT_RE = re.compile(r"\b(?:account|acc|a/c)(?:\s+(?:number|no\.?|#))?[\s:#.]*(\d(?:[\s-]?\d){4,14})\b", re.I)
+PAYID_RE = re.compile(r"\bPayID[\s:]*(?:is\s+|to\s+|of\s+)?([\w.+-]+@[\w-]+(?:\.[\w-]+)+|\+?\d(?:[\s-]?\d){7,13})", re.I)
+WALLET_RE = re.compile(r"\b(bc1[a-z0-9]{20,60}|0x[a-fA-F0-9]{40}|T[1-9A-HJ-NP-Za-km-z]{33})\b")
+# Financial claims that are warning signs in themselves (Scamwatch: "over-the-top promises of big returns").
+# An annual rate on its own (a term deposit's 5% p.a.) is not one.
+RED_FLAG_CLAIM = re.compile(
+    r"guarantee[ds]?\s+(?:\w+\s+){0,2}(?:returns?|profits?|income|interest|payouts?)"
+    r"|\b\d{1,3}(?:\.\d+)?\s?%\s*(?:(?:per|a|each|every)\s+)?(?:day|daily|week|weekly|month|monthly)\b"
+    r"|risk[- ]free|no risk|double your (?:money|investment)|can'?t lose", re.I)
+
+# ── Requests and instructions ────────────────────────────────────────────────
+# Each is a request construction (a verb bound to what it asks for), never a lone keyword. A negated one
+# ("we will never ask for your password") is not a request.
+NEGATION = re.compile(r"\b(?:never|won'?t|will\s+not|don'?t|do\s+not|doesn'?t|does\s+not|not|no\s+one)\b[^.?!\n]{0,30}$", re.I)
+REQUESTS: tuple[tuple[str, str], ...] = (
+    ("payment", r"(?:\b(?:send|transfer|pay|deposit|wire|lend|loan)\b|\b(?:must|should|needs?\s+to|to)\s+be\s+(?:paid|transferred|deposited)\b|\bpayable\s+to\b)"
+                r"[^.?!\n]{0,60}?(?:\$\s?\d|\bmoney\b|\bfunds\b|\bcash\b|\bpayment\b|\bfees?\b"
+                r"|\binvoice\b|\bbill\b|\bamount\b|\bbalance\b|\blevy\b|\brent\b|\btoll\b|\bfine\b|\bBSB\b|\baccount\b|\bPayID\b)"),
+    ("credentials", r"\b(?:enter|provide|confirm|verify|share|send|give|tell|update|re-?enter|reply\s+with)\b[^.?!\n]{0,40}?\b(?:password|passcode|pin"
+                    r"|one[- ]time\s+(?:code|password|passcode)|otp|verification\s+code|security\s+code|code\s+(?:we|you)|card\s+(?:number|details)|cvv"
+                    r"|netbank|login\s+details)\b|\b(?:log|sign)\s?(?:in|on)\b[^.?!\n]{0,30}?(?:https?://|\blink\b|\bhere\b|\bbelow\b)"),
+    ("personal_details", r"\b(?:enter|provide|confirm|verify|send|give|update|share)\b[^.?!\n]{0,40}?\b(?:date\s+of\s+birth|dob|driver'?s?\s+licen[cs]e"
+                         r"|passport|tax\s+file\s+number|tfn|medicare\s+(?:number|card)|bank\s+(?:details|account)|bsb|account\s+number"
+                         r"|personal\s+(?:details|information)|identity|id\s+documents?)\b"),
+    ("remote_access", r"\b(?:download|install|open|run)\s+(?:the\s+|this\s+|our\s+)?(?:anydesk|teamviewer|ultraviewer|quick\s?support|quick\s+assist|apk"
+                      r"|remote\s+(?:access|desktop|support))\b|\b(?:give|allow|grant|let)\s+(?:us|me|our\s+technician)\s+(?:remote\s+)?access\b"
+                      r"|\b(?:share|start)\s+(?:your\s+)?screen\b"),
+    ("gift_cards_crypto", r"\b(?:buy|purchase|get|send|pay)\b[^.?!\n]{0,40}?\b(?:gift\s?cards?|vouchers?|itunes|google\s+play\s+cards?|steam\s+cards?"
+                          r"|bitcoin|crypto(?:currency)?|usdt)\b"),
+    ("payment_details_change", r"\b(?:bank|account|payment)\s+(?:details|account)\s+(?:have|has)\s+(?:changed|been\s+updated)\b"
+                               r"|\b(?:new|updated|different)\s+(?:bank\s+)?(?:account|bank\s+details|payment\s+details|bsb)\b"
+                               r"|\binstead\s+of\s+(?:the|our|your)\s+usual\s+account\b"),
+    ("call_back", r"\b(?:call|ring|phone)\s+(?:us|me|our\s+\w+(?:\s+team)?|the\s+\w+\s+team|back)?\s*(?:on|at|now|immediately|urgently|today)\b"),
+    ("reply", r"\breply\s+(?:with|y|yes|stop|to\s+this)\b|\b(?:text|message)\s+(?:us|me)\s+back\b"),
+    ("open_link", r"\b(?:click|tap|visit|open|follow|go\s+to)\b[^.?!\n]{0,30}?(?:https?://|\blink\b|\bhere\b|\bbelow\b)"),
+)
+# Requests that move money, access or identity. Acting on one through a route nobody verified is where harm happens.
+CONSEQUENTIAL = ("payment", "credentials", "personal_details", "remote_access", "gift_cards_crypto", "payment_details_change")
+# When the request's own sentence names no route, the material's routes of the kind it would use.
+_TARGET_FALLBACK = {"payment": ("payment",), "payment_details_change": ("payment",), "gift_cards_crypto": ("payment",),
+                    "credentials": ("link",), "personal_details": ("link", "email"), "remote_access": ("link",),
+                    "call_back": ("phone",), "open_link": ("link",), "reply": ("phone", "email")}
 
 MESSAGE_TYPES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("investment", ("invest", "investment", "returns", "trading", "crypto", "bitcoin", "forex", "portfolio", "shares", "profit",
@@ -126,9 +174,13 @@ class Entities:
     amounts: list[str] = field(default_factory=list)
     credentials: list[str] = field(default_factory=list)
     urgency: list[str] = field(default_factory=list)
+    payment_details: list[str] = field(default_factory=list)   # BSB / account numbers, PayIDs, crypto wallets
+    requests: list[dict] = field(default_factory=list)          # what the material asks the person to do, and what it points at
+    relationships: list[dict] = field(default_factory=list)     # how extracted items relate, with their context
 
     def any_identifier(self) -> bool:
-        return bool(self.urls or self.hosts or self.phones or self.emails or self.companies or self.abns or self.acns or self.licences)
+        return bool(self.urls or self.hosts or self.phones or self.emails or self.companies or self.abns or self.acns or self.licences
+                    or self.payment_details)
 
     def wire(self) -> dict:
         return {k: [list(v) if isinstance(v, tuple) else v for v in getattr(self, k)] for k in self.__dataclass_fields__}
@@ -177,6 +229,80 @@ def _brands(text: str) -> list[tuple[str, str]]:
     return found
 
 
+def _payment_details(text: str) -> list[str]:
+    return _dedupe([f"BSB {m}" for m in BSB_RE.findall(text)] + [f"account {m}" for m in ACCOUNT_RE.findall(text)]
+                   + [f"PayID {m}" for m in PAYID_RE.findall(text)] + [f"wallet {m}" for m in WALLET_RE.findall(text)])
+
+
+def _sentences(text: str) -> list[tuple[int, int, str]]:
+    spans, start = [], 0
+    for match in SENTENCE_SPLIT.finditer(text):
+        spans.append((start, match.start()))
+        start = match.end()
+    spans.append((start, len(text)))
+    return [(a, b, text[a:b].strip()) for a, b in spans if text[a:b].strip()]
+
+
+def _context(pos: int, sentences: list[tuple[int, int, str]]) -> str:
+    """The sentence a match sits in — and the next one when it ends in a colon ("pay to:")."""
+    for index, (a, b, sentence) in enumerate(sentences):
+        if a <= pos <= b:
+            follow = sentences[index + 1][2] if sentence.endswith(":") and index + 1 < len(sentences) else ""
+            return f"{sentence} {follow}".strip()
+    return ""
+
+
+def _routes(ent: "Entities") -> list[tuple[str, str]]:
+    """Everything in the material a person could be sent to: links, numbers, addresses, payment details."""
+    return ([("link", u) for u in ent.urls] + [("link", h) for h in ent.hosts if not any(h in u.lower() for u in ent.urls)]
+            + [("phone", p) for p in ent.phones] + [("email", e) for e in ent.emails] + [("payment", d) for d in ent.payment_details])
+
+
+def _mentions(kind: str, value: str, context: str) -> bool:
+    if kind == "phone":
+        return digits(value)[-8:] in digits(context)
+    if kind == "payment":
+        return digits(value) and digits(value) in digits(context) or value.split(" ", 1)[-1].lower() in context.lower()
+    return value.lower() in context.lower()
+
+
+def _requests(text: str, ent: "Entities") -> list[dict]:
+    """What the material asks the person to do, each with the routes it points at (one per kind of request)."""
+    sentences, routes, out = _sentences(text), _routes(ent), []
+    for kind, pattern in REQUESTS:
+        for match in re.finditer(pattern, text, re.I):
+            if NEGATION.search(text[max(0, match.start() - 40):match.start()]):
+                continue
+            context = _context(match.start(), sentences)
+            targets = [v for k, v in routes if _mentions(k, v, context)] or [v for k, v in routes if k in _TARGET_FALLBACK.get(kind, ())]
+            out.append({"type": kind, "quote": " ".join(match.group(0).split())[:120], "context": context[:240], "targets": _dedupe(targets)})
+            break
+    return out
+
+
+def _relationships(text: str, ent: "Entities") -> list[dict]:
+    """How extracted items relate where they appear together: an organisation and the link, address or number
+    given for it; a company and its ABN/ACN/licence; a person and the company they speak for."""
+    found: list[tuple[str, str, str, str]] = []
+    for _a, _b, sentence in _sentences(text):
+        low, numbers = sentence.lower(), digits(sentence)
+        for name, domain in ent.brands:
+            needles = [n for n, brand in BRANDS.items() if brand == (name, domain)] + [name.lower()]
+            if not any(re.search(rf"(?<![a-z0-9]){re.escape(n)}(?![a-z0-9])", low) for n in needles):
+                continue
+            found += [("organisation_link", name, h, sentence) for h in ent.hosts if h in low]
+            found += [("organisation_email", name, e, sentence) for e in ent.emails if e.lower() in low]
+            found += [("organisation_phone", name, p, sentence) for p in ent.phones if digits(p)[-8:] in numbers]
+        for company in ent.companies:
+            if company.lower() not in low:
+                continue
+            found += [("company_registration", company, n, sentence) for n in ent.abns + ent.acns if n in numbers]
+            found += [("company_licence", company, f"{kind} {number}", sentence) for kind, number in ent.licences if number in numbers]
+            found += [("person_company", person, company, sentence) for person in ent.people if person.lower() in low]
+    unique = list(dict.fromkeys(found))
+    return [{"kind": k, "a": a, "b": b, "context": s[:200]} for k, a, b, s in unique][:12]
+
+
 def extract(text: str) -> Entities:
     """Every entity and signal the material itself states. No inference, no lookup."""
     ind = read_indicators(text)
@@ -199,6 +325,9 @@ def extract(text: str) -> Entities:
     ent.claims = _claims(text)
     ent.phrases = _dedupe([q.strip() for q in QUOTED_RE.findall(text) if 8 <= len(q.split()) <= 40])
     ent.payments, ent.amounts, ent.credentials, ent.urgency = ind.payments, ind.amounts, ind.credentials, ind.urgency
+    ent.payment_details = _payment_details(text)
+    ent.requests = _requests(text, ent)
+    ent.relationships = _relationships(text, ent)
     return ent
 
 
@@ -242,7 +371,7 @@ class Check:
     subject: str
     question: str = ""                         # the narrow factual question for Teddy's search, when that stage applies
     statuses: tuple[str, ...] = ()             # the answers that question allows
-    status: str = "open"                       # open | resolved | not_found | unavailable | needs_reasoning
+    status: str = "open"                       # open | resolved | not_found | unavailable | needs_reasoning | not_needed
     route: str | None = None                   # official_source | apollo_kb | google_search | magnum_di
     facts: list[dict] = field(default_factory=list)
     open_issue: str = ""                       # what only Magnum DI can settle
@@ -267,8 +396,7 @@ class Plan:
     has_message: bool
     link_only: bool
     general: bool
-    unreadable: list[str]                      # evidence ids Teddy cannot read (images, documents without text)
-    ambiguous: bool
+    gaps: list[dict]                           # what Triage couldn't extract: {"evidenceId", "item", "what", "magnum"}
     advisories: list[dict] = field(default_factory=list)   # official advisories Teddy's stage 1 matched
     pattern: dict | None = None                            # the established scam pattern (Apollo KB) the material matches best
 
@@ -276,11 +404,12 @@ class Plan:
 WARNING_STATUSES = ("WARNING", "NO_WARNING_FOUND")
 
 
-def plan(question: str, material: list[str], *, unreadable: list[str]) -> Plan:
+def plan(question: str, material: list[str], *, gaps: list[dict] | None = None) -> Plan:
     """Decide which checks are relevant to what came in. Nothing is looked up here."""
+    gaps = gaps or []
     text = "\n".join(material)
     ent = extract(text if material else question)
-    general = general_question(question, material, ent)
+    general = general_question(question, material, ent) and not gaps
     urls_only = bool(material) and all(URL_RE.fullmatch(m.strip()) for m in material if m.strip())
     has_message = bool(text.strip()) and not urls_only and not general
     checks: list[Check] = []
@@ -292,7 +421,7 @@ def plan(question: str, material: list[str], *, unreadable: list[str]) -> Plan:
 
     if general:
         add("general_question", question.strip(), question=question.strip() if factual(question) else "", statuses=("ANSWER", "NO_RECORD_FOUND"))
-        return Plan(ent, "general_question", checks, False, False, True, unreadable, False)
+        return Plan(ent, "general_question", checks, False, False, True, gaps)
 
     for host in ent.hosts[:MAX_LINKS]:
         urls = [u for u in ent.urls if host in u.lower()]
@@ -330,14 +459,11 @@ def plan(question: str, material: list[str], *, unreadable: list[str]) -> Plan:
         add("phrase", phrase, question=(f'Does this exact text appear elsewhere online — copied on other websites, or quoted in scam '
                                         f'warnings: "{phrase}"?'), statuses=("WARNING", "FOUND_ELSEWHERE", "NO_RECORD_FOUND"))
     for claim in ent.claims[:MAX_CLAIMS]:
-        add("claim", claim, open_issue="Whether the return or financial claim in the material is credible.")
+        add("claim", claim)
     mtype = message_type(text, ent)
     if has_message:
         add("scam_alerts", mtype)
+        # Planned, not automatic: it reaches Magnum DI only if the deciding test says its reasoning could change the result.
         add("message_analysis", "the submitted material",
             open_issue="Message and deception analysis of the submitted material (requests, pressure, persuasion, intent).")
-    if unreadable:
-        add("image_analysis", f"{len(unreadable)} item(s) Apollo can't read without Gemini",
-            open_issue="Interpretation of the screenshot or document content.")
-    ambiguous = not ent.any_identifier() and not ent.brands and not ent.claims and not ent.payments and not ent.credentials
-    return Plan(ent, "link_only" if urls_only else mtype, checks, has_message, urls_only, False, unreadable, ambiguous)
+    return Plan(ent, "link_only" if urls_only else mtype, checks, has_message, urls_only, False, gaps)

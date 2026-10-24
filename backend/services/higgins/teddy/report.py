@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+from services.higgins import outcomes
+from services.higgins.teddy.decide import Decision, corroborated_impersonation
 from services.higgins.teddy.triage import Check, Plan
 
 ROUTE_LABEL = {"teddy_official": "official source checks", "teddy_kb": "Apollo's knowledge base", "teddy_search": "a targeted web search"}
@@ -39,7 +41,7 @@ def _missing(checks: list[Check], not_taken_further: str | None) -> list[str]:
     for c in checks:
         if c.status == "unavailable":
             out.append(f"{c.subject}: Teddy DI's lookup was unavailable, so this wasn't established either way.")
-        elif c.status in ("open", "needs_reasoning") and not_taken_further and c.open_issue:
+        elif c.status in ("open", "needs_reasoning", "not_needed") and not_taken_further and c.open_issue:
             out.append(f"Not taken further, because {not_taken_further}: {c.open_issue[0].lower()}{c.open_issue[1:]}")
     return out
 
@@ -73,13 +75,17 @@ def _routes(checks: list[Check]) -> str:
     return _join(names) or "official source checks"
 
 
+def _subject(plan_: Plan) -> str:
+    return (", ".join(plan_.entities.hosts[:3]) or "the link") if plan_.link_only else "what you sent"
+
+
 def _scope(plan_: Plan, how: str) -> str:
     examined = "the submitted link" + ("s" if len(plan_.entities.hosts) > 1 else "") if plan_.link_only else "the submitted material"
     return (f"Teddy DI checked {examined} using {how}. Nothing was opened or fetched from the destination, no one was contacted "
             "and no account was accessed.")
 
 
-def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, route: str, unread: list[str]) -> dict:
+def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, route: str) -> dict:
     decisive = [(c, f) for c, f in _live(checks) if f["decisive"] and f["signal"] == "concern"]
     lead_check, lead = decisive[0]
     brand = plan_.entities.brands[0][0] if plan_.entities.brands else None
@@ -113,28 +119,35 @@ def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_it
         "findings": findings[:8], "uncertainties": _missing(checks, "the official result already settles what to do")[:4] or
         ["Anything outside the submitted material — earlier messages or the sender's history — wasn't examined."],
         "scope": _scope(plan_, ROUTE_LABEL[route]), "sourceIds": sorted({s for f in findings for s in f["sourceIds"]}),
-        "remainingEvidenceIds": unread, "actions": actions, "recommendedActionIndex": 0, "question": None,
-        "completion": "partial" if unread else "complete",
+        "remainingEvidenceIds": [], "actions": actions, "recommendedActionIndex": 0, "question": None, "completion": "complete",
     }
 
 
 def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, route: str) -> dict:
+    """No scam indicators in what Teddy DI checked — never described as safe."""
     facts = _live(checks)
     findings = [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in facts]
-    hosts = ", ".join(plan_.entities.hosts[:3]) or "the link"
     official = next((f for _, f in facts if f["decisive"] and f["signal"] == "clear"), None)
-    overview = (f"{official['text']} Nothing Apollo checked raises a concern, so nothing here needs action."
-                if official else
-                f"Nothing Apollo checked raises a concern about {hosts}. That isn't proof the site is safe — only that these checks found nothing.")
-    found = "\n".join(f"- {f['text']}" for _, f in facts)
-    explanation = (f"**What was found**\n{found}\n\n**What it means**\nThese checks look at who runs the address and whether any safety list or "
-                   f"warning names it. They don't show what the page asks you to do, so still never enter passwords or codes on a page you reached "
-                   f"from a message.{_knowledge_block(checks)}\n\n**How Apollo checked**\nTeddy DI settled this with {ROUTE_LABEL[route]}; "
-                   "nothing in it needed Magnum DI's deeper analysis.")
+    if plan_.link_only:
+        overview = (f"{official['text']} Nothing Apollo checked raises a concern, so nothing here needs action."
+                    if official else
+                    f"Nothing Apollo checked raises a concern about {_subject(plan_)}. That isn't proof the site is safe — only that these checks found nothing.")
+        means = ("These checks look at who runs the address and whether any safety list or warning names it. They don't show what the page asks "
+                 "you to do, so still never enter passwords or codes on a page you reached from a message.")
+        uncertainties = ["Apollo didn't open the page, so what it shows or asks for wasn't checked."]
+    else:
+        overview = ("Apollo's checks found no scam indicators in what you sent. That isn't proof it's genuine — only that these checks found "
+                    "nothing, and it doesn't ask you to send money, codes or details anywhere that hasn't been verified.")
+        means = ("Apollo checked the links, numbers, addresses and names in it against official sources and its knowledge base. Checks like these "
+                 "can't confirm who sent it, so if anything about it feels off, contact the person or organisation using details you already have.")
+        uncertainties = ["Apollo can't confirm who actually sent this."]
+    found = "\n".join(f"- {f['text']}" for _, f in facts) or "- No warning signs in anything Apollo checked."
+    explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n**How Apollo checked**\n"
+                   f"Teddy DI settled this with {ROUTE_LABEL[route]}; nothing in it needed Magnum DI's deeper analysis.")
     return {
         "overview": overview, "explanationMarkdown": explanation, "assessment": "no_concern_found_within_scope", "outcome": "no_scam_indicators",
         "attention": "none", "attentionReason": None, "findings": findings[:8],
-        "uncertainties": (_missing(checks, None) + ["Apollo didn't open the page, so what it shows or asks for wasn't checked."])[:4],
+        "uncertainties": (_missing(checks, None) + uncertainties)[:4],
         "scope": _scope(plan_, ROUTE_LABEL[route]), "sourceIds": sorted({s for f in findings for s in f["sourceIds"]}),
         "remainingEvidenceIds": [], "actions": [], "recommendedActionIndex": None, "question": None, "completion": "complete",
     }
@@ -146,7 +159,6 @@ _NOT_NEEDED = "Magnum DI's deeper analysis wasn't needed, because it couldn't ch
 
 def _result(plan_: Plan, checks: list[Check], *, overview: str, found: list[dict], means: str, how: str, outcome: str, attention: str,
             reason: str | None, actions: list[dict], uncertainties: list[str], extra_sources: list[str] = ()) -> dict:
-    from services.higgins import outcomes
     lines = "\n".join(f"- {f['text']}" for f in found) or "- Nothing beyond what's listed under what isn't certain."
     return {
         "overview": overview[:900],
@@ -212,48 +224,71 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
                        *_missing(checks, "it couldn't change the outcome or what to do")])
 
 
-def link_result(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, outcome: str) -> dict:
-    """A bare link Teddy DI couldn't clear, after every applicable resource. Magnum DI can't open the page
-    either, so this is the result: Concerning, or Unable to determine."""
-    hosts = ", ".join(plan_.entities.hosts[:3]) or "the link"
-    facts = [(c, f) for c, f in _live(checks)]
-    how = (f"Teddy DI used {_routes(checks)}. Magnum DI wasn't called: it can't open the page either, so it had nothing further that "
-           "could change this result.")
-    if outcome == "concerning":
-        signals = [(c, f) for c, f in facts if f["signal"] in ("anomaly", "concern")]
-        return _result(
-            plan_, checks, outcome=outcome, attention="review", how=how,
-            found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in facts],
-            overview=(f"{hosts} raises a concern: {signals[0][1]['text']} Nothing here proves it's a scam, but don't enter anything on it "
-                      "unless you reached it yourself from the organisation's official website or app."),
-            means=("These checks look at who runs the address and whether any safety list or warning names it. One of them raises a concern, "
-                   "and they can't show what the page asks you to do."),
-            reason="A page like this can still collect whatever is typed into it.",
-            actions=[_action("Don't enter details", "Don't enter passwords, codes or card details on this page."), _action("Go there directly", _CHECK_FIRST)],
-            uncertainties=[*_missing(checks, None), "Apollo didn't open the page, so what it shows or asks for wasn't checked."])
+def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
+    """Warning signs the evidence established, with nothing that proves a scam: Concerning. Deeper analysis
+    couldn't change what to do — be careful and check independently."""
+    facts = [(c, f) for c, f in _live(checks) if f["signal"] in ("anomaly", "concern")]
+    subject = _subject(plan_)
+    link = plan_.link_only or any(c.kind == "link" for c, _ in facts)
+    actions = ([_action("Don't enter details", "Don't enter passwords, codes or card details on this page."), _action("Go there directly", _CHECK_FIRST)]
+               if link else
+               [_action("Don't act on it yet", "Don't send money, codes or personal details, and don't call or reply using anything in it."),
+                _action("Check independently", "If it claims to be from someone you know or deal with, contact them using details you already have — "
+                                               "not anything in it.")])
     return _result(
-        plan_, checks, outcome="unable_to_determine", attention="review", how=how,
+        plan_, checks, outcome="concerning", attention="review", actions=actions,
         found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in facts],
-        overview=(f"Apollo couldn't establish enough about {hosts} to say whether it's safe. Nothing it found raises a concern, but that "
-                  "isn't the same as it being safe — only use it if you reached it yourself from the organisation's official website or app."),
-        means="Some of the checks that would settle this couldn't be completed, so the available evidence can't establish more.",
-        reason="An address Apollo couldn't fully check may still be unsafe.",
-        actions=[_action("Check before using it", _CHECK_FIRST)],
-        uncertainties=[*_missing(checks, None), "Apollo didn't open the page, so what it shows or asks for wasn't checked."])
+        overview=(f"{subject[0].upper()}{subject[1:]} raises a concern: {facts[0][1]['text']} Nothing here proves it's a scam, but don't act on "
+                  "it until you've checked it through a channel you trust."),
+        means=(f"Apollo's checks established the warning sign{'s' if len(facts) > 1 else ''} above. That's reason to be careful, but not enough "
+               "to call it a scam."),
+        how=f"Teddy DI checked {subject} using {_routes(checks)}. {_NOT_NEEDED}",
+        reason="Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
+        uncertainties=[*_missing(checks, "it couldn't change the outcome or what to do"),
+                       *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
 
 
-def compose(basis: str, outcome: str, route: str, plan_: Plan, material: dict[str, str], teddy_item: str, unread: list[str],
-            corroboration: list[dict]) -> dict:
+def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
+    """The available evidence can't establish more, and deeper investigation couldn't change that."""
+    subject = _subject(plan_)
+    after = ("only use it if you reached it yourself from the organisation's official website or app." if plan_.link_only else
+             "check it through a channel you trust before acting on it.")
+    return _result(
+        plan_, checks, outcome="unable_to_determine", attention="review", actions=[_action("Check before using it", _CHECK_FIRST)],
+        found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks)],
+        overview=(f"Apollo couldn't establish enough about {subject} to say either way. Nothing it found raises a concern, but that isn't the same "
+                  f"as it being safe — {after}"),
+        means="Some of what would settle this couldn't be checked, so the available evidence can't establish more.",
+        how=f"Teddy DI checked {subject} using {_routes(checks)}. {_NOT_NEEDED}",
+        reason="Something Apollo couldn't fully check may still be unsafe.",
+        uncertainties=[*_missing(checks, None), *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
+
+
+def _with_gaps(result: dict, plan_: Plan) -> dict:
+    """Whatever Apollo Triage couldn't extract stays visible: listed as remaining and uncertain, never assumed."""
+    if not plan_.gaps:
+        return result
+    notes = [f"{g['item'][0].upper()}{g['item'][1:]}: {g['what']}." for g in plan_.gaps]
+    return {**result, "completion": "partial", "uncertainties": [*notes, *result["uncertainties"]][:6],
+            "remainingEvidenceIds": sorted({*result["remainingEvidenceIds"], *(g["evidenceId"] for g in plan_.gaps)})}
+
+
+def compose(decision: Decision, plan_: Plan, material: dict[str, str], teddy_item: str) -> dict:
     """Higgins' result for a case Teddy DI resolved, by what settled it."""
-    if basis == "threat":
-        return concern(plan_, plan_.checks, material, teddy_item, route, unread)
-    if basis == "pattern":
-        return pattern_result(plan_, plan_.checks, material, teddy_item, outcome)
-    if basis == "impersonation":
-        return impersonation_result(plan_, plan_.checks, material, teddy_item, corroboration)
-    if outcome == "no_scam_indicators":
-        return clear(plan_, plan_.checks, material, teddy_item, route)
-    return link_result(plan_, plan_.checks, material, teddy_item, outcome)
+    route, checks = decision.answered_by, plan_.checks
+    if decision.basis == "threat":
+        result = concern(plan_, checks, material, teddy_item, route)
+    elif decision.basis == "pattern":
+        result = pattern_result(plan_, checks, material, teddy_item, decision.outcome)
+    elif decision.basis == "impersonation":
+        result = impersonation_result(plan_, checks, material, teddy_item, corroborated_impersonation(plan_))
+    elif decision.basis == "signals":
+        result = signals_result(plan_, checks, material, teddy_item)
+    elif decision.outcome == "no_scam_indicators":
+        result = clear(plan_, checks, material, teddy_item, route)
+    else:
+        result = undetermined(plan_, checks, material, teddy_item)
+    return _with_gaps(result, plan_)
 
 
 def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[str]) -> dict:
@@ -277,8 +312,8 @@ def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[
     }
 
 
-def magnum_brief(checks: list[Check], unread_sections: dict, pattern: dict | None = None) -> str:
-    """Only what Magnum DI needs: the open issues, the facts that bear on them, and what is still missing.
+def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict, pattern: dict | None = None) -> str:
+    """Only what Magnum DI needs: the issues the deciding test sent it, the facts that bear on them, and what is still missing.
     Resolved, uneventful checks are named in one line so Magnum DI doesn't redo them; Apollo KB text isn't sent
     (a scam-pattern check is named in one line, as general knowledge)."""
     signals = [f"- {f['text']}" + (f" (source: {f['source']['publisher']})" if f.get("source") else "")
@@ -287,7 +322,6 @@ def magnum_brief(checks: list[Check], unread_sections: dict, pattern: dict | Non
     missing += [f"- {c.subject}: lookup unavailable" for c in checks if c.status == "unavailable"]
     clean = sorted({f"{c.kind} {c.subject}" for c in checks for f in c.facts if f.get("class") == "live_evidence" and f["signal"] == "clear"})
     neutral = [f"- {f['text']}" for c in checks for f in c.facts if f.get("class") == "live_evidence" and f["signal"] == "neutral"]
-    issues = [f"- {c.open_issue}" for c in checks if c.status == "needs_reasoning" and c.open_issue]
     parts = ["Teddy DI fly-by results for this case (live evidence, with sources)."]
     if signals:
         parts.append("Established signals:\n" + "\n".join(signals))
@@ -302,7 +336,8 @@ def magnum_brief(checks: list[Check], unread_sections: dict, pattern: dict | Non
         parts.append(f"Apollo KB pattern check (general knowledge, not evidence about this case): the material {how} the "
                      f"{pattern['name']} described by {pattern['publisher']}.")
     if issues:
-        parts.append("Not settled by Teddy DI:\n" + "\n".join(issues))
+        parts.append("For Magnum DI to settle — only these; everything above is already established:\n"
+                     + "\n".join(f"- ({i['capability']}) {i['text']}" for i in issues))
     if unread_sections:
         parts.append("Other specialist results, verbatim: " + json.dumps(unread_sections, ensure_ascii=False, default=str))
     return "\n\n".join(parts)

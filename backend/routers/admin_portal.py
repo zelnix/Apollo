@@ -1588,8 +1588,9 @@ def _routing_drilldown_html(case: dict | None) -> str:
     magnum = routing.get("magnum") or {}
     checks = "".join(
         f"<tr><td>{html_mod.escape(c.get('kind', ''))}</td><td>{html_mod.escape(c.get('status', ''))}</td>"
-        f"<td>{html_mod.escape(_ROUTE_LABELS.get(c.get('route') or '', 'Magnum DI' if c.get('status') == 'needs_reasoning' else '—'))}</td></tr>"
+        f"<td>{html_mod.escape(_ROUTE_LABELS.get(c.get('route') or '', {'needs_reasoning': 'Magnum DI', 'not_needed': 'Not needed'}.get(c.get('status'), '—')))}</td></tr>"
         for c in teddy.get("checks", []))
+    issues = "<br>".join(f"{html_mod.escape(i.get('capability', ''))}: {html_mod.escape(i.get('text', '')[:200])}" for i in teddy.get("issues") or [])
     magnum_line = (f"Called &middot; Google Search {'on' if magnum.get('search') else 'off'} &middot; {magnum.get('itemsSent', 0)} evidence items sent "
                    f"&middot; {magnum.get('searchQueries', 0)} search queries" if magnum else "Not called")
     pattern = teddy.get("pattern") or {}
@@ -1604,6 +1605,7 @@ def _routing_drilldown_html(case: dict | None) -> str:
             <tr><td style="color:var(--muted);">Apollo KB Scam Pattern</td><td>{pattern_line}</td></tr>
             <tr><td style="color:var(--muted);">Teddy DI Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
             <tr><td style="color:var(--muted);">Magnum DI</td><td>{magnum_line}</td></tr>
+            <tr><td style="color:var(--muted);">Sent To Magnum DI</td><td data-testid="magnum-issues">{issues or 'Nothing — Teddy DI settled it'}</td></tr>
         </tbody>
     </table>
     <table style="margin-top:8px;">

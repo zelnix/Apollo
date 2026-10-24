@@ -29,9 +29,10 @@ from services.higgins import evidence as ev
 from services.higgins import knowledge
 from services.higgins import repository as repo
 from services.higgins.contracts import Coverage, SourceReference
+from services.higgins.teddy import decide as deciding
 from services.higgins.teddy import official, patterns, report, search
-from services.higgins.teddy.official import fact
-from services.higgins.teddy.triage import Check, Plan, digits, registrable
+from services.higgins.teddy.official import fact, source_ref
+from services.higgins.teddy.triage import RED_FLAG_CLAIM, Check, Plan, digits
 from services.higgins.teddy.triage import plan as triage_plan
 
 log = logging.getLogger("apollo.teddy")
@@ -55,24 +56,67 @@ class TeddyOutcome:
     model: str | None = None
 
 
-# ── Reading the submitted material ──────────────────────────────────────────
-async def _material(owner: str, case: dict, rows: list[dict]) -> tuple[dict[str, str], list[str], list[dict]]:
-    """Text and links Teddy can read, and the items it can't (images, documents with no extracted text)."""
+# ── Apollo Triage's extraction: every input made investigation-ready ─────────
+def _page_number(row: dict) -> int | None:
+    match = re.search(r"\.page(\d+)$", row.get("client_item_id") or "")
+    return int(match.group(1)) if match else None
+
+
+def _gap(row: dict, item: str, what: str, *, magnum: bool) -> dict:
+    """Something Triage couldn't extract. `magnum`: Magnum DI can read it directly (an image), so reading it is
+    something deeper investigation could add."""
+    return {"evidenceId": row["evidence_id"], "item": item, "what": what, "magnum": magnum}
+
+
+async def _material(owner: str, case: dict, rows: list[dict]) -> tuple[dict[str, str], list[dict], list[dict]]:
+    """Before Teddy DI sees anything: submitted text and links, the text the phone read from screenshots and
+    images, and the text layer of documents — and a record of whatever couldn't be extracted.
+    Returns (texts, gaps, rows read)."""
     texts: dict[str, str] = {}
-    unreadable: list[str] = []
+    gaps: list[dict] = []
     read: list[dict] = []
-    parents_with_text = {r.get("parent_id") for r in rows if r["kind"] == "text" and r.get("parent_id")}
+    by_id = {r["evidence_id"]: r for r in rows}
+    extracted = {r["parent_id"] for r in rows if r["kind"] == "text" and r.get("parent_id") and r["origin"] != "apollo_inference"}
+    scanned: dict[str, set[int]] = {}
     for row in rows:
-        if row["availability"] != "available" or row["origin"] in ("apollo_inference", "device_observation", "external_source"):
+        parent = by_id.get(row.get("parent_id") or "")
+        if row["kind"] == "text" and parent and parent["kind"] == "document":
+            pages = (await repo.evidence_meta(row)).get("pages") or []
+            scanned[parent["evidence_id"]] = {p["page"] for p in pages if not p.get("readable", True)}
+    for row in rows:
+        if row["origin"] in ("apollo_inference", "device_observation", "external_source"):
             continue
-        if row["kind"] in ("text", "url"):
-            text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
+        kind, eid = row["kind"], row["evidence_id"]
+        label = row.get("label") or kind
+        parent = by_id.get(row.get("parent_id") or "")
+        if row["availability"] != "available":
+            if kind in ("image", "document", "audio", "attachment") and eid not in extracted:
+                gaps.append(_gap(row, label, "it wasn't available to examine", magnum=False))
+            continue
+        if kind in ("text", "url"):
+            text = (await repo.read_bytes(owner, case["case_id"], eid)).decode("utf-8", errors="replace")
             if text.strip() and not ev.is_workflow_metadata(text):
-                texts[row["evidence_id"]] = text
+                texts[eid] = text
                 read.append(row)
-        elif row["kind"] == "image" or (row["kind"] == "document" and row["evidence_id"] not in parents_with_text):
-            unreadable.append(row["evidence_id"])
-    return texts, unreadable, read
+        elif kind == "image" and parent and parent["kind"] == "document":
+            doc, page = parent.get("label") or "the document", _page_number(row)
+            if page is None:
+                gaps.append(_gap(row, f"an image inside {doc}", "what the image shows couldn't be extracted", magnum=True))
+            elif page in scanned.get(parent["evidence_id"], set()) or parent["evidence_id"] not in extracted:
+                gaps.append(_gap(row, f"page {page} of {doc}", "a scanned page with no text layer, so its text couldn't be extracted", magnum=True))
+            else:
+                gaps.append(_gap(row, f"the pictures on page {page} of {doc}", "the page's text was extracted, but not what its pictures show", magnum=True))
+        elif kind == "image" and eid not in extracted:
+            gaps.append(_gap(row, label, "no text could be read from this image on the phone, so its content wasn't extracted", magnum=True))
+        elif kind == "document" and eid not in extracted:
+            gaps.append(_gap(row, label, "the document's text couldn't be extracted", magnum=False))
+        elif kind == "document":
+            reasons = {o.get("reason") or "" for o in (row.get("coverage") or {}).get("omittedRanges") or []}
+            gaps += [_gap(row, f"part of {label}", reason, magnum=False) for reason in sorted(reasons)
+                     if reason and not reason.startswith("rendered page withheld")]
+        elif kind in ("audio", "attachment"):
+            gaps.append(_gap(row, label, "Apollo can't extract content from this kind of file", magnum=False))
+    return texts, gaps, read
 
 
 # ── Stage 2: Apollo Knowledge Base ──────────────────────────────────────────
@@ -88,23 +132,27 @@ def _kb_fact(entry: dict, text: str) -> dict:
         "basis": "Apollo Knowledge Base — general knowledge, not evidence about this case", "retrieval": "fetched", "kbId": entry.get("kb_id")})
 
 
+def _offsite(plan_: Plan) -> bool | None:
+    """Evidence-based pattern indicator: does a link in the material go somewhere that isn't an official domain?
+    None when there is no link."""
+    links = [c for c in plan_.checks if c.kind == "link"]
+    if not links:
+        return None
+    return any(not any(f["decisive"] and f["signal"] == "clear" for f in c.facts) for c in links)
+
+
 async def _pattern_stage(plan_: Plan, text: str) -> None:
     """Compare the material with the established scam patterns in Apollo's KB (deterministic, no cost)."""
     if not plan_.has_message:
         return
-    found = await patterns.best(text, has_link=bool(plan_.entities.hosts), has_brand=bool(plan_.entities.brands))
+    found = await patterns.best(text, has_link=bool(plan_.entities.hosts), has_brand=bool(plan_.entities.brands), offsite=_offsite(plan_))
     if not found:
         return
     plan_.pattern = found.wire()
     entry = found.entry
     check = Check(id=f"c{len(plan_.checks) + 1}", kind="scam_pattern", subject=entry.get("title") or found.wire()["name"], route="apollo_kb",
                   facts=[_kb_fact(entry, f"{entry.get('publisher')}: “{entry.get('title')}”")])
-    if found.stage == "partial":
-        check.status = "needs_reasoning"
-        check.open_issue = (f"Whether this is the {plan_.pattern['name']}: the material {', '.join(label for label, _ in found.found)}, "
-                            f"but not that it {', '.join(found.missing)}.")
-    else:
-        check.status = "resolved"
+    check.status = "resolved"   # a partial match establishes nothing by itself; the deciding test weighs it
     plan_.checks.append(check)
 
 
@@ -120,9 +168,16 @@ async def _kb_stage(plan_: Plan, text: str) -> None:
                 elif not check.question:
                     check.status, check.open_issue = "needs_reasoning", "A general question that needs reasoning rather than a lookup."
             elif check.kind == "claim":
+                if RED_FLAG_CLAIM.search(check.subject):
+                    check.facts.append(fact(f"The material promises “{check.subject[:160]}”. Scamwatch lists “over-the-top promises of big returns” "
+                                            "as a warning sign of investment scams.", "anomaly", topic="claim",
+                                            source=source_ref("Scamwatch (ACCC)", url="https://www.scamwatch.gov.au/types-of-scams/investment-scams",
+                                                              basis="Scamwatch's published warning signs of investment scams")))
+                else:
+                    check.facts.append(fact(f"The material makes a financial claim: “{check.subject[:160]}”.", "neutral", topic="claim"))
                 for entry in _current(await knowledge.related(check.subject))[:2]:
                     check.facts.append(_kb_fact(entry, f"{entry.get('publisher')} on claims like this: “{entry.get('title')}”"))
-                check.status, check.route = "needs_reasoning", ("apollo_kb" if check.facts else None)
+                check.status, check.route = "resolved", "apollo_kb"
             elif check.kind == "scam_alerts":
                 for entry in _current(await knowledge.related(text[:1500]))[:2]:
                     check.facts.append(_kb_fact(entry, f"{entry.get('publisher')}: “{entry.get('title')}”"))
@@ -134,8 +189,6 @@ async def _kb_stage(plan_: Plan, text: str) -> None:
                                                            "That is context, not proof about this case."))
         except Exception:  # noqa: BLE001 — the KB can never break an investigation
             log.warning("teddy_kb_stage_failed kind=%s", check.kind, exc_info=True)
-        if check.kind in ("message_analysis", "image_analysis"):
-            check.status = "needs_reasoning"
 
 
 # ── Stage 3: applying targeted search answers ───────────────────────────────
@@ -148,6 +201,18 @@ def _names(check: Check, text: str) -> bool:
 
 def _core(name: str) -> str:
     return " ".join(_CORPORATE.sub(" ", name.lower()).split())
+
+
+_GENERIC_NAME_WORDS = {"australia", "australian", "services", "service", "capital", "investments", "investment", "financial", "finance",
+                       "markets", "trading", "wealth", "partners", "securities", "management", "asset", "funds", "fund", "global",
+                       "international", "company", "corporation", "solutions", "enterprises"}
+
+
+def _shares_name(name: str, entry: str) -> bool:
+    """The register entry shares a distinctive word with the name in the material (a possible trading name,
+    parent or related entity) without matching it."""
+    words = {w for w in re.findall(r"[a-z0-9]+", _core(name)) if len(w) >= 4 and w not in _GENERIC_NAME_WORDS}
+    return any(re.search(rf"\b{re.escape(w)}\b", entry) for w in words)
 
 
 def _apply(check: Check, answer: dict, plan_: Plan) -> None:
@@ -174,102 +239,30 @@ def _apply(check: Check, answer: dict, plan_: Plan) -> None:
     check.status = "resolved"
     if check.kind in ("abn", "acn", "licence") and plan_.entities.companies:
         named = plan_.entities.companies
-        if any(_core(c) and _core(c) in answer.get("fact", "").lower() for c in named):
+        entry = answer.get("fact", "").lower()
+        if any(_core(c) and _core(c) in entry for c in named):
             check.facts.append(fact(f"The register entry for {check.subject} matches {named[0]}, the name in the material.", "clear", topic="name_match"))
+        elif any(_shares_name(c, entry) for c in named):
+            # Related but different: a trading name or related entity would explain it, a lookalike wouldn't.
+            check.facts.append(fact(f"The register entry for {check.subject} is under a related but different name to {', '.join(named)}, the name in "
+                                    "the material.", "anomaly", topic="name_relation"))
+            check.status, check.open_issue = "needs_reasoning", (f"Conflict: {check.subject} is registered to a related but different name than "
+                                                                 f"{named[0]} — whether that is a trading name or related entity, or a mismatch.")
         else:
             check.facts.append(fact(f"The register entry for {check.subject} does not match {', '.join(named)}, the name in the material.", "anomaly",
                                     topic="name_match"))
-            check.status, check.open_issue = "needs_reasoning", f"Conflict: {check.subject} is registered to a different name than {named[0]}."
 
 
-# ── Deciding: is the case resolved, or does Magnum DI get the unresolved slice? ──
-# The deciding test: could Magnum DI's deeper investigation change Apollo's finding or Higgins' action?
-#   No  → resolved: Teddy DI's outcome stands and Magnum DI is not called.
-#   Yes → not resolved: only the unresolved part goes to Magnum DI.
-# "Unable to determine" is a resolved outcome when Magnum DI has nothing further that could change it.
-@dataclass
-class Decision:
-    answered_by: str
-    outcome: str | None        # Apollo's case outcome (outcomes.py); None for a general question
-    basis: str                 # threat | pattern | impersonation | link | knowledge
-
-
-def _link_clear(check: Check) -> bool:
-    if any(f["decisive"] and f["signal"] == "clear" for f in check.facts):
-        return True
-    topics = {f.get("topic"): f["signal"] for f in check.facts}
-    return (topics.get("listing") == "clear" and topics.get("registration") == "neutral"
-            and check.status == "not_found" and check.route == "google_search")
-
-
-def _live(plan_: Plan) -> list[dict]:
-    return [f for c in plan_.checks for f in c.facts if f["class"] == "live_evidence"]
-
-
-def _conflicts(plan_: Plan) -> list[Check]:
-    """Findings that disagree in a way that could change the outcome (e.g. a register entry under another name)."""
-    return [c for c in plan_.checks if c.open_issue.startswith("Conflict")]
-
-
-def _official_material(plan_: Plan) -> bool:
-    """Every link and address in the material belongs to the organisation it names — which contradicts an
-    impersonation pattern, so resolving it needs Magnum DI."""
-    impersonation = [c for c in plan_.checks if c.kind == "impersonation"]
-    return bool(impersonation) and all(c.status == "resolved" and not any(f["signal"] == "anomaly" for f in c.facts) for c in impersonation)
-
-
-def corroborated_impersonation(plan_: Plan) -> list[dict]:
-    """The material names an organisation, a link in it isn't that organisation's domain, and an independent
-    fact about that same link backs it up (newly registered, flagged, redirected, a direct download)."""
-    mismatched = [f for c in plan_.checks if c.kind == "impersonation" for f in c.facts if f.get("topic") == "impersonation"]
-    places = {registrable(f["place"]) for f in mismatched if f.get("place")}
-    support = [f for c in plan_.checks if c.kind == "link" and registrable(c.subject) in places
-               for f in c.facts if f["class"] == "live_evidence" and f["signal"] in ("anomaly", "concern")]
-    return mismatched + support if support else []
-
-
-def _link_outcome(plan_: Plan) -> Decision:
-    """A bare link, after every applicable Teddy DI resource: Magnum DI can't open the page either, so it has
-    nothing further that could change the result."""
-    links = [c for c in plan_.checks if c.kind == "link"]
-    others = [c for c in plan_.checks if c.kind != "link"]
-    route = "teddy_search" if any(c.route == "google_search" for c in links) else "teddy_official"
-    if any(f["signal"] in ("anomaly", "concern") for f in _live(plan_)):
-        return Decision(route, "concerning", "link")
-    if links and all(c.status == "resolved" for c in others) and all(_link_clear(c) for c in links):
-        return Decision(route, "no_scam_indicators", "link")
-    return Decision(route, "unable_to_determine", "link")
-
-
-def decide(plan_: Plan, *, final: bool) -> Decision | None:
-    """Apollo's outcome criteria. Before the last stage only a decisive official result (or a general
-    question already answered) stops Teddy DI; every other outcome waits until the checks Apollo Triage
-    planned have run."""
+# ── After the deciding test (decide.py) ─────────────────────────────────────
+def _settle(plan_: Plan, issues: list[deciding.Issue]) -> None:
+    """Record per check whether Magnum DI takes it on: only what the deciding test sent it. Every other open
+    check was not needed, because it couldn't change Apollo's finding or Higgins' action."""
+    sent = {i.check_id for i in issues if i.check_id}
     for check in plan_.checks:
-        for f in check.facts:
-            if f["class"] == "live_evidence" and f["signal"] == "concern" and f["decisive"]:
-                return Decision("teddy_search" if check.route == "google_search" else "teddy_official", "confirmed_threat", "threat")
-    if plan_.general:
-        check = plan_.checks[0]
-        if check.status == "resolved":
-            return Decision("teddy_kb" if check.route == "apollo_kb" else "teddy_search", None, "knowledge")
-        return None
-    if not final or plan_.unreadable or _conflicts(plan_):
-        return None   # content only Magnum DI can read, or a contradiction that could change the outcome
-    pattern = plan_.pattern
-    if pattern and pattern["stage"] in ("full", "opening") and not (pattern["impersonatesOrganisation"] and _official_material(plan_)):
-        return Decision("teddy_kb", "likely_scam" if pattern["stage"] == "full" else "concerning", "pattern")
-    if corroborated_impersonation(plan_):
-        return Decision("teddy_official", "concerning", "impersonation")
-    if plan_.link_only:
-        return _link_outcome(plan_)
-    return None       # the wording and tactics need Magnum DI's message analysis
-
-
-def magnum_needs_search(plan_: Plan) -> bool:
-    """Google Search stays OFF for Magnum DI unless a specific external fact is still missing: content Teddy
-    couldn't read, a lookup that was unavailable, or a general question Teddy couldn't answer."""
-    return bool(plan_.unreadable or any(c.status == "unavailable" for c in plan_.checks) or plan_.general)
+        if check.id in sent:
+            check.status = "needs_reasoning"
+        elif check.status in ("open", "needs_reasoning"):
+            check.status = "not_needed"
 
 
 # ── Persistence and provenance ──────────────────────────────────────────────
@@ -315,13 +308,18 @@ async def _mark_read(owner: str, case_id: str, read: list[dict], texts: dict[str
         await ev.mark_examined(owner, case_id, row["evidence_id"], 0, total, total)
 
 
-async def _magnum_rows(owner: str, case: dict, brief_id: str) -> list[dict]:
-    """Everything Magnum DI must see (the material itself), with Teddy's brief standing in for the raw lookups."""
+async def _magnum_rows(owner: str, case: dict, brief_id: str, needed: set[str] | None, settled: set[str]) -> list[dict]:
+    """What Magnum DI receives: Teddy's brief, the evidence each unresolved issue needs, and anything Teddy didn't
+    examine. Material Teddy already settled — and the raw lookups behind it — isn't resent. `needed` None: the
+    whole case (Teddy's own result couldn't be used)."""
     pe_values = {json.dumps(v, sort_keys=True, default=str) for v in (case.get("triage_provider_evidence") or {}).values()}
+    skip = set() if needed is None else settled - needed
     rows = []
     for row in await repo.list_evidence(owner, case["case_id"]):
         cid = row.get("client_item_id") or ""
         if cid in (PREGATHERED_ITEM_ID, CHECKS_ITEM_ID):
+            continue
+        if row["evidence_id"] in skip or (row["origin"] == "apollo_inference" and row.get("parent_id") in skip):
             continue
         if cid.startswith("intel-") and pe_values:
             text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
@@ -334,14 +332,16 @@ async def _magnum_rows(owner: str, case: dict, brief_id: str) -> list[dict]:
     return sorted(rows, key=lambda r: r["evidence_id"] != brief_id)
 
 
-def _summary(plan_: Plan, decision: Decision | None, magnum_search: bool, searched: dict) -> dict:
+def _summary(plan_: Plan, decision: deciding.Decision | None, issues: list[deciding.Issue], magnum_search: bool, searched: dict) -> dict:
     return {"ranAt": now_utc(), "answeredBy": decision.answered_by if decision else "magnum_di", "resolved": bool(decision),
             "outcome": decision.outcome if decision else None, "basis": decision.basis if decision else None, "messageType": plan_.message_type,
             "pattern": {"key": plan_.pattern["key"], "stage": plan_.pattern["stage"]} if plan_.pattern else None,
             "checks": [{"kind": c.kind, "status": c.status, "route": c.route} for c in plan_.checks],
             "searchCalls": searched["calls"], "searchQueries": searched["queries"], "cacheHits": searched["cacheHits"],
             "teddyTokens": searched["tokens"], "simulated": searched["simulated"], "searchModel": searched["model"],
-            "magnumNeeded": not decision, "magnumSearch": magnum_search, "reusedOnRetry": 0}
+            "magnumNeeded": not decision, "magnumSearch": magnum_search, "reusedOnRetry": 0,
+            "gaps": [{"item": g["item"], "what": g["what"]} for g in plan_.gaps],
+            "issues": [{"capability": i.capability, "text": i.text} for i in issues]}
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
@@ -359,25 +359,27 @@ async def investigate(owner: str, case: dict, job: dict, question: str, rows: li
               "simulated": record["search"]["simulated"], "model": record["search"]["model"]}
     if record.get("response"):
         return TeddyOutcome(True, record["decision"]["answeredBy"], response=record["response"], **common)
-    brief_id = record["items"]["brief"]
-    return TeddyOutcome(False, "magnum_di", rows=await _magnum_rows(owner, case, brief_id), magnum_search=record["magnumSearch"], **common)
+    issues = record.get("issues")
+    needed = None if issues is None else {e for i in issues for e in i["evidenceIds"]}
+    rows_ = await _magnum_rows(owner, case, record["items"]["brief"], needed, set(record.get("settled") or []))
+    return TeddyOutcome(False, "magnum_di", rows=rows_, magnum_search=record["magnumSearch"], **common)
 
 
 async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict], progress) -> dict:
     case_id = case["case_id"]
-    await progress("observe", "Apollo Triage is working out what needs checking.")
-    texts, unreadable, read = await _material(owner, case, rows)
-    plan_ = triage_plan(question, list(texts.values()), unreadable=unreadable)
+    await progress("observe", "Apollo Triage is preparing what was sent and working out what needs checking.")
+    texts, gaps, read = await _material(owner, case, rows)
+    plan_ = triage_plan(question, list(texts.values()), gaps=gaps)
     combined = "\n".join(texts.values())
 
     await progress("observe", "Teddy DI is checking official sources first.")
     await official.run(plan_, case.get("triage_provider_evidence"), combined)
-    decision = decide(plan_, final=False)
+    decision, issues = deciding.evaluate(plan_, texts, final=False)
     searched = {"calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False, "model": None, "status": "skipped"}
     if not decision:
         await progress("observe", "Teddy DI is checking Apollo's knowledge base.")
         await _kb_stage(plan_, combined)
-        decision = decide(plan_, final=False)
+        decision, issues = deciding.evaluate(plan_, texts, final=False)
     if not decision:
         open_checks = [c for c in plan_.checks if c.question and c.status == "open"]
         if open_checks:
@@ -386,15 +388,16 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
             for check in open_checks:
                 if check.id in searched["answers"]:
                     _apply(check, searched["answers"][check.id], plan_)
-        decision = decide(plan_, final=True)
-    magnum_search = False if decision else magnum_needs_search(plan_)
+        decision, issues = deciding.evaluate(plan_, texts, final=True)
+    _settle(plan_, issues)
+    magnum_search = False if decision else deciding.magnum_needs_search(plan_, issues)
 
     await _register_sources(owner, case_id, plan_.checks)
     unread_sections = official.unread_sections(case.get("triage_provider_evidence"))
     checks_id = await _item(owner, case, CHECKS_ITEM_ID, json.dumps({
         "messageType": plan_.message_type, "entities": plan_.entities.wire(), "checks": [c.wire() for c in plan_.checks],
-        "pattern": plan_.pattern, "search": {k: v for k, v in searched.items() if k != "answers"}}, ensure_ascii=False, default=str),
-        "Teddy DI fly-by checks")
+        "pattern": plan_.pattern, "gaps": plan_.gaps, "issues": [i.wire() for i in issues],
+        "search": {k: v for k, v in searched.items() if k != "answers"}}, ensure_ascii=False, default=str), "Teddy DI fly-by checks")
     await _mark_read(owner, case_id, read, texts)
 
     response = None
@@ -405,18 +408,22 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         presented = knowledge.present(entries, check.subject)[0] if entries else ""
         response = report.knowledge_answer(check, decision.answered_by, presented, sorted({s for f in check.facts for s in f.get("sourceIds", [])}))
     elif decision:
-        response = report.compose(decision.basis, decision.outcome, decision.answered_by, plan_, texts, checks_id, unreadable,
-                                  corroborated_impersonation(plan_))
+        response = report.compose(decision, plan_, texts, checks_id)
     brief_id = None
     if not decision:
-        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, unread_sections, plan_.pattern), "Teddy DI brief for Magnum DI")
+        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern),
+                               "Teddy DI brief for Magnum DI")
 
-    record = {"version": 2, "ranAt": now_utc().isoformat(), "plan": {"messageType": plan_.message_type, "linkOnly": plan_.link_only,
-              "general": plan_.general, "unreadable": plan_.unreadable}, "checks": [c.wire() for c in plan_.checks], "pattern": plan_.pattern,
+    # Material Teddy read in full, and the images whose content it read through the text extracted from them.
+    by_id = {r["evidence_id"]: r for r in rows}
+    settled = {r["evidence_id"] for r in read} | {r["parent_id"] for r in read if (by_id.get(r.get("parent_id") or "") or {}).get("kind") == "image"}
+    record = {"version": 3, "ranAt": now_utc().isoformat(), "plan": {"messageType": plan_.message_type, "linkOnly": plan_.link_only,
+              "general": plan_.general, "gaps": plan_.gaps}, "checks": [c.wire() for c in plan_.checks], "pattern": plan_.pattern,
               "decision": {"answeredBy": decision.answered_by, "outcome": decision.outcome, "basis": decision.basis} if decision else None,
+              "issues": [i.wire() for i in issues], "settled": sorted(settled),
               "response": response, "magnumSearch": magnum_search, "search": {k: v for k, v in searched.items() if k != "answers"},
               "items": {"checks": checks_id, "brief": brief_id}}
-    summary = _summary(plan_, decision, magnum_search, searched)
+    summary = _summary(plan_, decision, issues, magnum_search, searched)
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {
         "teddy_ciphertext": repo.enc_json(record), "routing.teddy": summary, "routing.answeredBy": summary["answeredBy"]}})
     return record
@@ -431,9 +438,11 @@ async def discard_response(owner: str, case: dict) -> None:
         return
     record = repo.dec_json(stored["teddy_ciphertext"])
     checks = [Check.from_wire(c) for c in record["checks"]]
-    brief = report.magnum_brief(checks, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"))
+    whole = [{"capability": "reasoning", "evidenceIds": [], "checkId": None,
+              "text": "Teddy DI's own result didn't pass Apollo's validation, so investigate the whole case."}]
+    brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"))
     record["items"]["brief"] = await _item(owner, case, BRIEF_ITEM_ID, brief, "Teddy DI brief for Magnum DI")
-    record.update(response=None, decision=None, magnumSearch=True)
+    record.update(response=None, decision=None, magnumSearch=True, issues=None)
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {
         "teddy_ciphertext": repo.enc_json(record), "routing.answeredBy": "magnum_di", "routing.teddy.resolved": False,
         "routing.teddy.magnumNeeded": True, "routing.teddy.magnumSearch": True, "routing.teddy.answeredBy": "magnum_di"}})

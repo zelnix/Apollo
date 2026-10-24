@@ -55,9 +55,10 @@ async def _investigation(gemini_calls: int = 0):
     owner = f"one-call-{uuid.uuid4().hex[:8]}"
     await repo.ensure_indexes()
     case = await repo.create_case(owner, "text", None)
-    # A message nothing Teddy DI checks can settle, so it reaches Magnum DI's one call.
-    await ev.ingest_text(owner, case, "message-text", "Hi, it's Sarah from the conference. Here are the slides you asked for: https://slides-deck.net/deck",
-                         kind="text", origin="user_submission", label="Submitted message text")
+    # A request to send money to new bank details that nothing Teddy DI established settles: Magnum DI's
+    # analysis could change what to do, so it reaches Magnum DI's one call.
+    await ev.ingest_text(owner, case, "message-text", "Hi, it's Sarah from accounts. Our bank details have changed, so please pay invoice 4471 "
+                         "($1,240) to BSB 062-000 account 1234 5678 today.", kind="text", origin="user_submission", label="Submitted message text")
     case = await repo.get_case(owner, case["case_id"])
     turn_id = str(uuid.uuid4())
     job = await repo.create_job(owner, case, turn_id, repo.digest(turn_id), repo.digest("p"), "turn", {"message": "Is this real?", "turnId": turn_id})

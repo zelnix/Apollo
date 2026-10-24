@@ -444,6 +444,9 @@ class UploadMetadata(Wire):
     sanitization_decision: Optional[str] = None
     redacted_regions: Optional[int] = None
     sanitization_transformations: list[str] = Field(default_factory=list)
+    # The text the phone's on-device text recognition read from the image (credentials already removed there).
+    # Apollo Triage uses it as the image's extracted content; the image itself is stored unchanged.
+    device_extracted_text: Optional[str] = Field(default=None, max_length=20000)
 
 
 class CreateUpload(UploadMetadata):

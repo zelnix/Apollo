@@ -9,6 +9,7 @@ No AI is involved. A lookup that fails is recorded as unavailable — never as s
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from services import kb_sources
@@ -25,7 +26,7 @@ def fact(text: str, signal: str, *, decisive: bool = False, kind: str = "live_ev
     return {"text": text, "signal": signal, "decisive": decisive, "class": kind, "source": source, "topic": topic}
 
 
-def _source(publisher: str, *, url: str | None = None, authority: str = "official", basis: str = "", retrieval: str = "fetched",
+def source_ref(publisher: str, *, url: str | None = None, authority: str = "official", basis: str = "", retrieval: str = "fetched",
             checked_at: str | None = None) -> dict:
     return {"publisher": publisher, "url": url, "authority": authority, "basis": basis, "retrieval": retrieval,
             "checkedAt": checked_at or datetime.now(timezone.utc).isoformat()}
@@ -126,7 +127,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
     if owner:
         publisher, basis = owner
         check.facts.append(fact(f"{host} is {publisher}'s official domain.", "clear", decisive=True, topic="official_domain",
-                                source=_source("Apollo official-domain register", authority="official", basis=basis)))
+                                source=source_ref("Apollo official-domain register", authority="official", basis=basis)))
     urls = check.urls or [f"https://{host}/"]
     checked_any = False
     for url in urls[:2]:
@@ -134,7 +135,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
         targets = [url] + ([chain[-1]] if len(chain) > 1 and chain[-1] != url else [])
         if len(targets) > 1:
             check.facts.append(fact(f"The link {url[:120]} redirects to {targets[-1][:120]}.", "anomaly",
-                                    source=_source("Apollo redirect expansion", authority="independent", basis="HTTP redirect chain recorded by Apollo")))
+                                    source=source_ref("Apollo redirect expansion", authority="independent", basis="HTTP redirect chain recorded by Apollo")))
         for target in targets:
             sb = pg["safe_browsing"].get(target)
             if sb and sb.get("status", "ok") == "ok" and sb.get("verdict"):
@@ -150,11 +151,11 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
             if result["verdict"] == "malicious":
                 publisher = _sb_publisher(result["sources"])
                 check.facts.append(fact(f"{publisher} lists {target_host} as {_threat_words(result['threatTypes'])}.", "concern", decisive=True, topic="listing",
-                                        source=_source(publisher, url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
+                                        source=source_ref(publisher, url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
                                                        authority="independent", basis="Direct Safe Browsing / blocklist lookup", checked_at=result.get("checkedAt"))))
             elif result["verdict"] == "clean":
                 check.facts.append(fact(f"{target_host} is not listed by Google Safe Browsing or Apollo's blocklist.", "clear", topic="listing",
-                                        source=_source("Google Safe Browsing", url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
+                                        source=source_ref("Google Safe Browsing", url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
                                                        authority="independent", basis="Direct Safe Browsing / blocklist lookup", checked_at=result.get("checkedAt"))))
     domain = registrable(host)
     rd = pg["rdap"].get(domain) or pg["rdap"].get(host)
@@ -169,26 +170,37 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
         young = record.get("newlyRegistered") or (age is not None and age < 90)
         check.facts.append(fact(f"{domain} was registered on {when}" + (f" ({age} days before this check)." if age is not None and age < 365 else "."),
                                 "anomaly" if young else "neutral", topic="registration",
-                                source=_source("Domain registry (RDAP)", url=f"https://rdap.org/domain/{domain}", authority="official",
+                                source=source_ref("Domain registry (RDAP)", url=f"https://rdap.org/domain/{domain}", authority="official",
                                                basis="The registry's RDAP registration record")))
     for url, info in pg["ipqs_urls"].items():
         if host in url.lower() and info.get("status") == "ok":
             flags = [name for name in ("phishing", "malware", "suspicious") if info.get(name)]
             if flags:
                 check.facts.append(fact(f"IPQualityScore flags {host} as {', '.join(flags)} (risk score {info.get('risk_score', '?')}/100).", "anomaly",
-                                        source=_source("IPQualityScore", authority="independent", basis="Commercial URL reputation lookup")))
+                                        source=source_ref("IPQualityScore", authority="independent", basis="Commercial URL reputation lookup")))
     for item in pg["downloads"]:
         if host in (item.get("url") or "").lower():
             check.facts.append(fact(f"The link downloads a file directly ({item.get('filename', 'a file')}).", "anomaly",
-                                    source=_source("Apollo download-link detection", authority="independent", basis="Static link analysis")))
+                                    source=source_ref("Apollo download-link detection", authority="independent", basis="Static link analysis")))
     for match in pg["advisories"] + plan_.advisories:
         if (match.get("matched_on") or "") == f"domain: {host}" or (match.get("matched_on") or "") == f"domain: {domain}":
             check.facts.append(fact(f"An official scam advisory names {host}: “{match.get('title', 'advisory')}”.", "concern", decisive=True,
-                                    source=_source("Official scam advisory feed", authority="official", basis="Government advisory held by Apollo")))
+                                    source=source_ref("Official scam advisory feed", authority="official", basis="Government advisory held by Apollo")))
     if any(f["decisive"] for f in check.facts):
         check.status, check.route = "resolved", "official_source"
     elif not checked_any and not owner:
         check.facts.append(fact(f"Google Safe Browsing could not be checked for {host}.", "missing", topic="listing"))
+
+
+def _lookalike(name: str, official: str, place: str) -> bool:
+    """The organisation's name is part of the other address itself (commbank-notice.net) — a lookalike, which is a
+    warning sign on its own, unlike a name merely mentioned beside someone else's link."""
+    host = place.lower()
+    for needle in [n for n, brand in BRANDS.items() if brand == (name, official)] + [name.lower()]:
+        for variant in {needle.replace(" ", ""), needle.replace(" ", "-")}:
+            if len(variant) >= 5 and variant in host or re.search(rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])", host):
+                return True
+    return False
 
 
 def _impersonation(check: Check, plan_: Plan) -> None:
@@ -200,12 +212,16 @@ def _impersonation(check: Check, plan_: Plan) -> None:
     mismatched = [p for p in places if registrable(p) != registrable(official)]
     if mismatched:
         for place in mismatched[:3]:
-            check.facts.append(fact(f"The material names {name}, but {place} is not {name}'s domain ({official}).", "anomaly", topic="impersonation",
-                                    source=_source("Apollo official-domain register", basis=f"{name}'s published domain")) | {"place": place})
+            if _lookalike(name, official, place):
+                text, topic = f"{place} carries {name}'s name, but it is not {name}'s domain ({official}).", "lookalike"
+            else:
+                text, topic = f"The material names {name}, but {place} is not {name}'s domain ({official}).", "impersonation"
+            check.facts.append(fact(text, "anomaly", topic=topic,
+                                    source=source_ref("Apollo official-domain register", basis=f"{name}'s published domain")) | {"place": place})
         check.status, check.open_issue = "needs_reasoning", f"Impersonation: whether the material genuinely comes from {name}."
     else:
         check.facts.append(fact(f"Every link and address in the material uses {official}, {name}'s official domain.", "clear",
-                                source=_source("Apollo official-domain register", basis=f"{name}'s published domain")))
+                                source=source_ref("Apollo official-domain register", basis=f"{name}'s published domain")))
         check.status, check.route = "resolved", "official_source"
 
 
@@ -216,7 +232,7 @@ def _phone(check: Check, pg: dict) -> None:
         check.facts.append(fact(f"IPQualityScore gives {check.subject} a fraud score of {info.get('fraud_score', '?')}/100"
                                 + ("; recent abuse is reported" if info.get("recent_abuse") else "") + f" (carrier: {info.get('carrier', 'unknown')}).",
                                 "anomaly" if risky else "neutral",
-                                source=_source("IPQualityScore", authority="independent", basis="Commercial phone reputation lookup")))
+                                source=source_ref("IPQualityScore", authority="independent", basis="Commercial phone reputation lookup")))
 
 
 def _email(check: Check, plan_: Plan) -> None:
@@ -224,17 +240,17 @@ def _email(check: Check, plan_: Plan) -> None:
     owner = official_domain(domain)
     if owner:
         check.facts.append(fact(f"{check.subject} uses {domain}, {owner[0]}'s official domain.", "clear",
-                                source=_source("Apollo official-domain register", basis=owner[1])))
+                                source=source_ref("Apollo official-domain register", basis=owner[1])))
     elif domain in FREE_MAIL and plan_.entities.brands:
         check.facts.append(fact(f"{check.subject} is a free personal email account ({domain}), not an address of {plan_.entities.brands[0][0]}.", "anomaly",
-                                source=_source("Apollo official-domain register", basis="Free email providers are not organisation domains")))
+                                topic="freemail", source=source_ref("Apollo official-domain register", basis="Free email providers are not organisation domains")))
 
 
 def _registration_number(check: Check) -> None:
     label = "ABN" if check.kind == "abn" else "ACN"
     valid = abn_valid(check.subject) if check.kind == "abn" else acn_valid(check.subject)
     publisher = "Australian Business Register" if check.kind == "abn" else "ASIC"
-    source = _source(f"{publisher} check-digit algorithm", authority="official", basis=f"{publisher}'s published {label} validation rule")
+    source = source_ref(f"{publisher} check-digit algorithm", authority="official", basis=f"{publisher}'s published {label} validation rule")
     if valid:
         check.facts.append(fact(f"{label} {check.subject} passes the {publisher}'s check-digit test.", "neutral", source=source))
     else:
@@ -265,4 +281,4 @@ async def run(plan_: Plan, pre_gathered: dict | None, text: str) -> None:
                 if on.startswith("keyword"):
                     check.facts.append(fact(f"An official advisory describes a similar scam: “{match.get('title', 'advisory')}” (severity {match.get('severity', 'unknown')}).",
                                             "context", kind="apollo_knowledge",
-                                            source=_source("Official scam advisory feed", basis="Government advisory held by Apollo — general knowledge")))
+                                            source=source_ref("Official scam advisory feed", basis="Government advisory held by Apollo — general knowledge")))

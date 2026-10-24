@@ -26,7 +26,8 @@ ASSESSMENT = {
 # What each outcome means — stated once, here, and given to Magnum DI as the schema's description.
 CRITERIA = (
     "Apollo's case outcome. "
-    "no_scam_indicators (assessment no_concern_found_within_scope): the checks found nothing concerning. "
+    "no_scam_indicators (assessment no_concern_found_within_scope): the checks performed found no scam indicators — "
+    "this does not mean Apollo has proven the item safe, so never describe it as safe. "
     "concerning (assessment concern_found): established warning signs, but not enough to call it a scam. "
     "likely_scam (assessment concern_found): the evidence, together with an established scam pattern, points to a scam — "
     "without proof about this particular sender. "

@@ -12,7 +12,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   // Shared investigation case (spec §8): opaque IDs, the person's question/message, explicitly submitted items and a device profile — never credentials.
-  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "unavailableReason", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters"]),
+  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "unavailableReason", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters", "deviceExtractedText"]),
   // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
   voice: new Set(["device_id", "text", "scope_id"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
@@ -165,6 +165,7 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (typeof out.question === 'string') out.question = redactInvestigationSecrets(out.question);
     if (typeof out.text === 'string') out.text = redactInvestigationSecrets(out.text);
     if (typeof out.message === 'string') out.message = redactInvestigationSecrets(out.message);
+    if (typeof out.deviceExtractedText === 'string') out.deviceExtractedText = redactInvestigationSecrets(out.deviceExtractedText);
     if (typeof out.url === 'string') out.url = purposeLimitedUrl(out.url);
   }
   if (endpoint === 'intel_check') {

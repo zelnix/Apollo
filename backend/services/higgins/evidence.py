@@ -330,6 +330,13 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
                                publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
     await repo.store_bytes(owner, case["case_id"], item.id, data, expires, publish_root=False)
     await _derive(owner, case, item, data, detected, attempt_id, publication_owner)
+    device_text = (meta_in.get("deviceExtractedText") or "").strip() if kind == "image" else ""
+    if device_text:
+        # Apollo Triage's extraction of the screenshot/image: the text the phone read from it, as derived evidence.
+        await ingest_text(owner, case, f"{item.client_item_id}.device-text", device_text, parent_id=item.id,
+                          label="text read from the image on the phone", meta={"deviceExtracted": True, "registerClues": True},
+                          transformations=[Transformation(kind="decode", description="Text the phone's on-device text recognition read from this image (credentials removed on the device).")],
+                          publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner, publish=False)
     if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id, publication_owner=publication_owner):
         await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id, attempt_id=attempt_id, publication_owner=publication_owner)
         raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
