@@ -57,6 +57,15 @@ async def readiness(request: Request):
                         status_code=503 if report["status"] == "unavailable" else 200, headers=NO_STORE)
 
 
+@router.get("/health/parity")
+async def parity_fingerprint(request: Request):
+    """Non-secret fingerprint compared between preview and production by scripts/parity_check.py."""
+    _owner(request)
+    from fastapi.encoders import jsonable_encoder
+    from services import parity
+    return JSONResponse(jsonable_encoder(await parity.snapshot()), headers=NO_STORE)
+
+
 @router.post("/health/higgins-checks")
 async def start_check(request: Request, tasks: BackgroundTasks, idempotency_key: str = Header(..., alias="Idempotency-Key")):
     owner = _owner(request)

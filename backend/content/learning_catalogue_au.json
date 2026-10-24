@@ -159,15 +159,15 @@
     {
       "feedId": "acsc-alerts",
       "sourceId": "acsc",
-      "url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories",
-      "format": "html",
+      "url": "https://www.cyber.gov.au/rss/alerts",
+      "format": "rss",
       "contentType": "live_alert",
       "language": "en-AU",
-      "parser": "approved_listing_page",
+      "relay": "internet_archive",
       "allowedPathPrefixes": [
-        "/about-us/view-all-content/alerts-and-advisories/"
+        "/alert/"
       ],
-      "refreshIntervalMinutes": 60,
+      "refreshIntervalMinutes": 240,
       "reviewQueuePolicy": "always_review",
       "enabled": true
     },

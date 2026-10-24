@@ -26,6 +26,9 @@ _DETAIL_MESSAGES = {
     "feed redirect escaped source allowlist": "The source redirected Apollo to a website that isn't approved.",
     "feed response rejected": "The source answered, but not with a usable feed (an error page, the wrong format, or too much data).",
     "HTML source was not explicitly approved": "This web page hasn't been approved as a feed.",
+    "archive_unavailable": "The Internet Archive couldn't make or find a copy of this feed. Apollo will try again.",
+    "archive_copy_too_old": "The newest Internet Archive copy of this feed is more than a day old.",
+    "archive_wrong_capture": "The Internet Archive returned a copy of a different address, so Apollo didn't use it.",
 }
 _CODE_MESSAGES = {
     "SourceUnavailable": "This feed's government source is switched off or no longer recognised.",
@@ -82,6 +85,9 @@ async def snapshot() -> dict:
             "lastSuccessAt": _aware(state.get("last_success_at")) if state else None,
             "lastCheckedAt": _aware(state.get("last_checked_at")) if state else None,
             "recordCount": state.get("item_count") if state else None,
+            # Always-relayed feeds, plus feeds whose last sync fell back to the Archive because the source refused us.
+            "relay": feed.get("relay") or (state.get("relay_used") if state else None),
+            "relayCopyAt": _aware(state.get("relay_copy_at")) if state else None,
             "lastError": {"message": error_message(code, state.get("error_detail")), "code": code,
                           "detail": state.get("error_detail"), "at": _aware(state.get("last_checked_at"))} if code else None,
         })

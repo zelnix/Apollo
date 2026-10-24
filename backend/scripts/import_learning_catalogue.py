@@ -1,4 +1,7 @@
-"""Explicit admin/import path for the Australian starter catalogue. Never runs at app startup."""
+"""Explicit admin/import path for the Australian starter catalogue.
+
+The articles themselves are now published at startup by services.learning.seed_catalogue_articles, so every
+environment has the same library; this script remains for re-importing the sources/feeds/articles package."""
 from __future__ import annotations
 
 import argparse
@@ -10,22 +13,7 @@ from services import learning
 from core.db import db, now_utc
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def expand_article(raw: dict) -> dict:
-    citations = [{"sourceId": source_id, "label": label, "url": url} for source_id, label, url in raw.pop("citations")]
-    sections = [
-        {"heading": "Recognise what is happening", "paragraphs": [raw.pop("overview") + " Look for the combination of context, behaviour and requested action rather than trusting one familiar logo, name or number."], "bullets": raw.pop("signs")},
-        {"heading": "Check and respond safely", "paragraphs": ["Use a separate trusted path and keep control of the pace. These steps are specific to this situation and do not require sharing passwords, verification codes or recovery phrases."], "bullets": raw.pop("actions")},
-        {"heading": "If you already acted", "paragraphs": ["Contain the practical risk first, then report through official channels. Keep useful evidence without continuing the conversation or revisiting unsafe links."], "bullets": raw.pop("recovery")},
-    ]
-    recovery = raw["category"] == "After an incident"
-    checklist = raw["slug"] in {"urgency-and-pressure", "verify-independently", "keeping-codes-private", "password-reuse", "contact-bank", "secure-accounts"}
-    alert_context = raw["slug"] in {"data-breach-notices", "deepfake-voice-and-video"}
-    explanatory = raw["slug"] in {"dangerous-links", "caller-id-spoofing", "public-wifi", "qr-code-scam", "device-warning", "unsafe-app-permissions"}
-    content_type = "recovery" if recovery else "checklist" if checklist else "alert_context" if alert_context else "explainer" if explanatory else "guide"
-    return {**raw, "audience": "general", "language": "en-AU", "contentType": content_type, "riskContext": raw["category"],
-            "sections": sections, "citations": citations, "sourceType": "owner_curated", "evidenceQuality": "official_guidance", "status": "draft"}
+expand_article = learning.expand_catalogue_article
 
 
 async def main(publish: bool) -> None:

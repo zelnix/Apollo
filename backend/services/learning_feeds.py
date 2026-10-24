@@ -14,7 +14,8 @@ from urllib.parse import urldefrag, urljoin, urlparse
 from defusedxml import ElementTree as ET
 
 from core.db import db, now_utc
-from services.outbound import public_get
+from services import archive_relay
+from services.outbound import BLOCKED_STATUS, OutboundBlocked, public_get
 
 MAX_BYTES = 1_048_576
 MAX_ITEMS = 100
@@ -36,16 +37,28 @@ def _text(node) -> str:
     return re.sub(r"\s+", " ", plain).strip()
 
 
+def _find(node, *paths: str):
+    """First matching child. An Element with no children is falsy, so `find(a) or find(b)` silently skipped
+    every text-only <description> and <pubDate> — RSS items arrived with no summary and no date."""
+    for path in paths:
+        found = node.find(path)
+        if found is not None:
+            return found
+    return None
+
+
 def _xml_items(raw: bytes) -> list[dict]:
     root = ET.fromstring(raw); values = []
     nodes = root.findall(".//item") or root.findall(".//{*}entry")
     for node in nodes[:MAX_ITEMS]:
-        link_node = node.find("link") or node.find("{*}link")
+        link_node = _find(node, "link", "{*}link")
         link = _text(link_node) or (link_node.attrib.get("href", "") if link_node is not None else "")
-        values.append({"title": _text(node.find("title") or node.find("{*}title")), "url": link,
-            "summary": _text(node.find("description") or node.find("{*}summary") or node.find("{*}content")),
-            "guid": _text(node.find("guid") or node.find("{*}id")) or link,
-            "publishedAt": _date(_text(node.find("pubDate") or node.find("{*}published") or node.find("{*}updated")))})
+        guid = _text(_find(node, "guid", "{*}id"))
+        link = link or (guid if guid.startswith("https://") else "")  # e.g. FBI: no <link>, the URL is the <guid>
+        values.append({"title": _text(_find(node, "title", "{*}title")), "url": link,
+            "summary": _text(_find(node, "description", "{*}summary", "{*}content")),
+            "guid": guid or link,
+            "publishedAt": _date(_text(_find(node, "pubDate", "{*}published", "{*}updated")))})
     return values
 
 
@@ -94,9 +107,29 @@ async def refresh(feed: dict, source: dict) -> dict:
     try:
         target = urlparse(feed["url"])
         if target.scheme != "https" or target.hostname not in set(source["allowed_hosts"]): raise ValueError("feed URL outside source allowlist")
-        response = await public_get(feed["url"], max_hops=2)
-        final_host = urlparse(str(response.request.url)).hostname
-        if final_host not in set(source["allowed_hosts"]): raise ValueError("feed redirect escaped source allowlist")
+        copy_at = relay_used = None
+        if feed.get("relay") == archive_relay.INTERNET_ARCHIVE:
+            # The source blocks cloud servers; read the Archive's fresh copy of this exact feed URL instead.
+            response, copy_at = await archive_relay.fetch(feed["url"]); relay_used = archive_relay.INTERNET_ARCHIVE
+        else:
+            direct_error: Exception | None = None
+            try:
+                response = await public_get(feed["url"], max_hops=2)
+            except OutboundBlocked as exc:
+                if str(exc) != "fetch_failed": raise
+                response, direct_error = None, exc
+            if response is None or response.status_code in BLOCKED_STATUS:
+                # The source refused THIS server (sources block some cloud addresses and not others). Read the
+                # Archive's copy instead, so every Apollo server reads the same feed. If that fails too, the
+                # direct refusal stays the reported reason.
+                try:
+                    response, copy_at = await archive_relay.fetch(feed["url"]); relay_used = archive_relay.INTERNET_ARCHIVE
+                except archive_relay.ArchiveRelayError:
+                    if direct_error: raise direct_error
+                    raise ValueError("feed response rejected")
+            else:
+                final_host = urlparse(str(response.request.url)).hostname
+                if final_host not in set(source["allowed_hosts"]): raise ValueError("feed redirect escaped source allowlist")
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         allowed_types = {"application/feed+json", "application/json"} if feed["format"] == "json" else {"text/html", "application/xhtml+xml"} if feed["format"] == "html" else {"application/rss+xml", "application/atom+xml", "application/xml", "text/xml", "application/octet-stream"}
         if response.status_code != 200 or len(response.content) > MAX_BYTES or content_type not in allowed_types: raise ValueError("feed response rejected")
@@ -117,7 +150,7 @@ async def refresh(feed: dict, source: dict) -> dict:
             run["accepted"] += int(bool(result.upserted_id))
         run["status"] = "success"
         await db.learning_feed_state.update_one({"feed_id": feed["feed_id"]}, {"$set": {"feed_id": feed["feed_id"], "last_checked_at": started,
-            "last_success_at": started, "status": "fresh", "item_count": len(rows), "error": None, "error_detail": None}}, upsert=True)
+            "last_success_at": started, "status": "fresh", "item_count": len(rows), "error": None, "error_detail": None, "relay_copy_at": copy_at, "relay_used": relay_used}}, upsert=True)
     except Exception as exc:
         run["status"] = "failed"; run["error"] = type(exc).__name__
         # ValueError reasons are Apollo's own fixed strings (or OutboundBlocked codes) — safe to keep for Feed Health.

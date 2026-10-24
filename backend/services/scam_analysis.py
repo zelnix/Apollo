@@ -206,7 +206,9 @@ async def _run_model(prompt: str) -> dict | None:
 async def analyze_item(item: dict) -> dict | None:
     """Fetch + analyse one feed item. Returns the cached-shape analysis dict, or None if the model was
     unreachable (so the item stays unanalysed and is retried next cycle)."""
-    article = await _fetch_article_text(item.get("url") or "")
+    # Items from a relayed feed come from a source that blocks Apollo's servers; trying its article page
+    # would only burn ~30 s of timeouts per item, so analysis uses the headline and summary.
+    article = "" if item.get("_article_unreachable") else await _fetch_article_text(item.get("url") or "")
     source_region = item.get("_source_region") or ""
     prompt = (
         f"SOURCE: {item.get('_source_name') or item.get('source_id')} ({source_region})\n"
@@ -256,6 +258,7 @@ async def analyze_pending(limit: int = 8) -> int:
     from services import scam_intel
     source_ids = list({r["source_id"] for r in rows})
     sources = {s["source_id"]: s for s in await db.learning_sources.find({"source_id": {"$in": source_ids}}, {"_id": 0}).to_list(100)}
+    relayed = {f["feed_id"] for f in await db.learning_feeds.find({"relay": {"$ne": None}}, {"_id": 0, "feed_id": 1}).to_list(100)}
     done = 0
     for row in rows:
         if _obviously_not_an_alert(row):
@@ -264,6 +267,7 @@ async def analyze_pending(limit: int = 8) -> int:
         src = sources.get(row["source_id"], {})
         row["_source_name"] = src.get("name") or row["source_id"]
         row["_source_region"] = scam_intel.region_for(row["source_id"])
+        row["_article_unreachable"] = row.get("feed_id") in relayed
         analysis = await analyze_item(row)
         if analysis is None:
             continue

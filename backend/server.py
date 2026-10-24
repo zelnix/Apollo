@@ -70,9 +70,13 @@ async def lifespan(_: FastAPI):
     await government_alerts.ensure_indexes()
     await learning.ensure_indexes()
     try:
+        # Sources first (article citations are checked against them), then the same Learn library in every
+        # environment — content comes from the code, never from a one-off script run against one database.
         await learning.seed_catalogue_sources_feeds()
+        await learning.seed_learning_articles()
+        await learning.seed_catalogue_articles()
     except Exception:  # noqa: BLE001 — seeding must never block startup
-        pass
+        logger.warning("learning catalogue seed failed", exc_info=True)
     await capability_registry.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     # Legacy retention migration removed — server no longer retains completed investigations

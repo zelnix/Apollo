@@ -209,37 +209,68 @@ async def seed_catalogue_sources_feeds() -> dict[str, int]:
     return await import_package({"sources": package.get("sources", []), "feeds": package.get("feeds", [])}, "system:seed")
 
 
-async def seed_learning_articles() -> dict[str, int]:
-    """Idempotently seed starter Learn with Higgins articles, transitioning them through
-    the workflow to 'published' status. Safe to rerun — skips articles that already exist."""
+def _content(name: str) -> dict[str, Any]:
     import json
     from pathlib import Path
-    path = Path(__file__).resolve().parent.parent / "content" / "learning_seed_articles.json"
     try:
-        package = json.loads(path.read_text())
+        return json.loads((Path(__file__).resolve().parent.parent / "content" / name).read_text())
     except (OSError, ValueError):
-        return {"articles_seeded": 0, "articles_published": 0, "articles_skipped": 0}
+        return {}
 
-    articles = package.get("articles", [])
-    seeded = 0; published = 0; skipped = 0
+
+async def _seed_published(articles: list[dict[str, Any]], actor: str) -> dict[str, int]:
+    """Create and publish every article that does not exist yet, and give each one its stored thumbnail.
+    Existing articles — including ones an admin edited or archived — are never touched beyond a missing image."""
+    thumbnails = _content("learning_thumbnails.json").get("thumbnails", {})
+    seeded = published = skipped = 0
     for raw in articles:
         slug = _slug(str(raw.get("slug") or raw.get("title") or ""))
-        existing = await db.learning_articles.find_one({"slug": slug}, {"_id": 0})
-        if existing:
+        if await db.learning_articles.find_one({"slug": slug}, {"_id": 1}):
             skipped += 1
-            continue
-        # Upsert as draft
-        await upsert_article(raw, "system:seed_articles")
-        seeded += 1
-        # Transition through workflow: draft → in_review → approved → published
-        try:
-            await transition(slug, "in_review", "system:seed_articles")
-            await transition(slug, "approved", "system:seed_articles")
-            await transition(slug, "published", "system:seed_articles")
-            published += 1
-        except (LookupError, ValueError):
-            pass  # Article stays as draft if quality checks don't pass
+        else:
+            await upsert_article(raw, actor); seeded += 1
+            try:
+                for target in ("in_review", "approved", "published"):
+                    await transition(slug, target, actor)
+                published += 1
+            except (LookupError, ValueError):
+                pass  # stays a draft when quality checks don't pass
+        if thumbnails.get(slug):
+            await db.learning_articles.update_one({"slug": slug, "thumbnail_path": {"$in": [None, ""]}}, {"$set": {"thumbnail_path": thumbnails[slug]}})
     return {"articles_seeded": seeded, "articles_published": published, "articles_skipped": skipped}
+
+
+async def seed_learning_articles() -> dict[str, int]:
+    """Idempotently seed the six starter Learn with Higgins articles (content/learning_seed_articles.json)."""
+    return await _seed_published(_content("learning_seed_articles.json").get("articles", []), "system:seed_articles")
+
+
+def expand_catalogue_article(raw: dict[str, Any]) -> dict[str, Any]:
+    """Turn one compact entry of content/learning_catalogue_au.json into a full article draft."""
+    raw = dict(raw)
+    citations = [{"sourceId": source_id, "label": label, "url": url} for source_id, label, url in raw.pop("citations")]
+    sections = [
+        {"heading": "Recognise what is happening", "paragraphs": [raw.pop("overview") + " Look for the combination of context, behaviour and requested action rather than trusting one familiar logo, name or number."], "bullets": raw.pop("signs")},
+        {"heading": "Check and respond safely", "paragraphs": ["Use a separate trusted path and keep control of the pace. These steps are specific to this situation and do not require sharing passwords, verification codes or recovery phrases."], "bullets": raw.pop("actions")},
+        {"heading": "If you already acted", "paragraphs": ["Contain the practical risk first, then report through official channels. Keep useful evidence without continuing the conversation or revisiting unsafe links."], "bullets": raw.pop("recovery")},
+    ]
+    recovery = raw["category"] == "After an incident"
+    checklist = raw["slug"] in {"urgency-and-pressure", "verify-independently", "keeping-codes-private", "password-reuse", "contact-bank", "secure-accounts"}
+    alert_context = raw["slug"] in {"data-breach-notices", "deepfake-voice-and-video"}
+    explanatory = raw["slug"] in {"dangerous-links", "caller-id-spoofing", "public-wifi", "qr-code-scam", "device-warning", "unsafe-app-permissions"}
+    content_type = "recovery" if recovery else "checklist" if checklist else "alert_context" if alert_context else "explainer" if explanatory else "guide"
+    return {**raw, "audience": "general", "language": "en-AU", "contentType": content_type, "riskContext": raw["category"],
+            "sections": sections, "citations": citations, "sourceType": "owner_curated", "evidenceQuality": "official_guidance", "status": "draft"}
+
+
+async def seed_catalogue_articles() -> dict[str, int]:
+    """Idempotently publish the 43-article owner-curated Australian library shipped in the code.
+
+    It used to reach a database only through scripts/import_learning_catalogue.py, which a previous session
+    ran against the PREVIEW database — so preview showed 49 Australian articles and production 6. Every
+    environment now builds the same library from the same file at startup."""
+    articles = [expand_catalogue_article(raw) for raw in _content("learning_catalogue_au.json").get("articles", [])]
+    return await _seed_published(articles, "system:catalogue_seed")
 
 
 
@@ -263,6 +294,7 @@ async def import_package(payload: dict[str, Any], actor: str) -> dict[str, int]:
                "parser": str(raw.get("parser") or "standard")[:40], "refresh_interval_minutes": max(15, min(int(raw.get("refreshIntervalMinutes") or 60), 1440)),
                "allowed_path_prefixes": [str(value)[:300] for value in raw.get("allowedPathPrefixes", [])][:20],
                "review_queue_policy": str(raw.get("reviewQueuePolicy") or "always_review")[:40], "trust_status": "recognised_government",
+               "relay": raw.get("relay") if raw.get("relay") in ("internet_archive",) else None,
                "enabled": bool(raw.get("enabled", True)), "updated_at": now_utc(), "updated_by": actor[:80]}
         await db.learning_feeds.update_one({"feed_id": feed_id}, {"$set": doc, "$setOnInsert": {"created_at": now_utc()}}, upsert=True); feed_count += 1
     for raw in payload.get("articles", []):

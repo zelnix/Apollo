@@ -4,7 +4,7 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { Pill } from "@/src/components/ui";
-import { contentTypeLabel, FEED_STATUS_LABEL, feedStatusTone, recordCountLabel, relativeAge, type FeedHealthRow as Row } from "@/src/domain/feedHealth";
+import { contentTypeLabel, FEED_STATUS_LABEL, feedStatusTone, recordCountLabel, relativeAge, relayLabel, type FeedHealthRow as Row } from "@/src/domain/feedHealth";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -37,6 +37,7 @@ export function FeedHealthRow({ feed, now, first }: { feed: Row; now: number; fi
         Last successful sync: <Text style={s.factStrong}>{relativeAge(feed.lastSuccessAt, now)}</Text>
       </Text>
       <Text style={s.fact} testID={`${testID}-records`}>{recordCountLabel(feed.recordCount)}</Text>
+      {relayLabel(feed, now) ? <Text style={s.type} testID={`${testID}-relay`}>{relayLabel(feed, now)}</Text> : null}
       {feed.lastError ? (
         <View style={s.error} testID={`${testID}-error`}>
           <CircleAlert size={16} color={colors.barking} />

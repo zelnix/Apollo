@@ -61,6 +61,7 @@ class FeedIn(BaseModel):
     feedId: str; sourceId: str; url: str; format: str = "rss"; contentType: str = "live_alert"; language: str = "en-AU"
     parser: str = "standard"; allowedPathPrefixes: list[str] = Field(default_factory=list, max_length=20)
     refreshIntervalMinutes: int = Field(default=60, ge=15, le=1440); reviewQueuePolicy: str = "always_review"; enabled: bool = True
+    relay: str | None = None  # "internet_archive" for sources that block cloud servers
 
 
 def actor(request: Request, supplied: str | None) -> str:

@@ -7,6 +7,7 @@ export interface FeedHealthError { message: string; code: string | null; detail:
 export interface FeedHealthRow {
   feedId: string; source: string; feedUrl: string; contentType: string; status: FeedStatus;
   lastSuccessAt: string | null; lastCheckedAt: string | null; recordCount: number | null; lastError: FeedHealthError | null;
+  relay?: string | null; relayCopyAt?: string | null;
 }
 export interface FeedHealthReport {
   generatedAt: string; staleAfterHours: number;
@@ -37,6 +38,14 @@ export function relativeAge(iso: string | null, now: number = Date.now(), never 
 export function recordCountLabel(count: number | null): string {
   if (count === null || count === undefined) return "No records loaded yet";
   return `${count} record${count === 1 ? "" : "s"} in the last sync`;
+}
+
+/** For feeds read through a relay because the source blocks cloud servers; null for direct feeds. */
+export function relayLabel(feed: Pick<FeedHealthRow, "relay" | "relayCopyAt">, now: number = Date.now()): string | null {
+  if (feed.relay !== "internet_archive") return null;
+  return feed.relayCopyAt
+    ? `Read through the Internet Archive · copy made ${relativeAge(feed.relayCopyAt, now)}`
+    : "Read through the Internet Archive";
 }
 
 export function summaryHeadline(report: Pick<FeedHealthReport, "summary">): string {

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { contentTypeLabel, FEED_STATUS_LABEL, feedStatusTone, recordCountLabel, relativeAge, summaryHeadline } from "../src/domain/feedHealth.ts";
+import { contentTypeLabel, FEED_STATUS_LABEL, feedStatusTone, recordCountLabel, relativeAge, relayLabel, summaryHeadline } from "../src/domain/feedHealth.ts";
 
 const NOW = Date.parse("2026-06-10T12:00:00Z");
 const ago = (minutes: number) => new Date(NOW - minutes * 60000).toISOString();
@@ -40,6 +40,13 @@ test("content types are spelled out", () => {
   assert.equal(contentTypeLabel("live_alert"), "Live alerts");
   assert.equal(contentTypeLabel("official_advice"), "Official advice");
   assert.equal(contentTypeLabel("something_new"), "Government feed");
+});
+
+test("relayed feeds say they are read through the Internet Archive, with the copy's age", () => {
+  assert.equal(relayLabel({ relay: null, relayCopyAt: null }, NOW), null);
+  assert.equal(relayLabel({ relay: undefined, relayCopyAt: undefined }, NOW), null);
+  assert.equal(relayLabel({ relay: "internet_archive", relayCopyAt: null }, NOW), "Read through the Internet Archive");
+  assert.equal(relayLabel({ relay: "internet_archive", relayCopyAt: ago(120) }, NOW), "Read through the Internet Archive · copy made 2 hours ago");
 });
 
 test("summary headline counts every feed that is not healthy", () => {

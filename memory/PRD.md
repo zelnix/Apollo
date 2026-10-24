@@ -1,3 +1,25 @@
+## Preview ≠ production: root causes fixed + parity check (2026-06)
+**Owner complaint:** production Learn showed 6 articles, preview ~57. Root causes (all verified against the live production API):
+1. The 43 curated en-AU articles (`content/learning_catalogue_au.json`) only ever reached the PREVIEW DB via the
+   one-off `scripts/import_learning_catalogue.py --publish`. Production never ran it. Production's other 39
+   articles are feed-derived en-US/en-GB/EU items, hidden because the Learn screen requests `language=en-AU`.
+   FIX: `learning.seed_catalogue_articles()` + `seed_learning_articles()` now run at startup (idempotent, never
+   overwrite admin edits/archives); thumbnails from `content/learning_thumbnails.json` (Emergent storage is shared —
+   all 49 paths verified served by production).
+2. Production's server is refused by Scamwatch/FTC/ACSC (cloud-address blocks) while preview's is not.
+   FIX: `learning_feeds.refresh` falls back to the Internet Archive (`archive_relay`) when a source refuses
+   (fetch_failed or 403/406/429/503); `relay_used` shown on Feed Health. ACSC always relayed (RSS `/rss/alerts`).
+3. Both environments: RSS items lost description + pubDate (Element truthiness bug) and FBI items were all rejected
+   (URL only in <guid>). FIXED in `_xml_items` (`_find`, guid fallback).
+4. Preview's backend `.env` has a BLANK `EMERGENT_LLM_KEY` (managed key) → preview file storage fails (Learn
+   thumbnails 404 in preview, work in production). NOT changed by agent (managed key rule) — needs owner OK.
+**Parity check:** `GET /api/health/parity` (device-authed, no secret values: code hash, Learn counts/curated hash,
+feeds status/via, non-secret settings, credential presence booleans, file storage) +
+`python scripts/parity_check.py --production https://threat-patrol-1.emergent.host` (feed-grown counts reported
+separately as expected). Before redeploy it reports production has no parity endpoint (older build).
+Two anonymous parity-check devices registered on production (tokens cached in /tmp/apollo_parity_tokens.json).
+Tests: `tests/test_environment_parity.py`; full backend suite 966 passed.
+
 ## ENISA feed fixed + listing-page parser (2026-06)
 - ENISA retired its RSS (old and documented URLs both 404). `enisa-news` in `content/learning_catalogue_au.json`
   now reads `https://www.enisa.europa.eu/news` as an `approved_listing_page` limited to `/news/` (re-seeded at
