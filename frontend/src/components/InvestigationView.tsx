@@ -828,7 +828,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                   if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
                   if (!caseData) return;
                   void runAction(action, caseData).then((outcome) => {
-                    setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading. Ask Higgins to re-check so it folds the new result in."
+                    setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this phone."
                       : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
                       : outcome.kind === "requested" ? "Apollo asked the system for that permission. A fresh check runs when you return."
                       : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
@@ -1001,6 +1001,18 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         </View>
       ) : null}
     </> : null}
+
+    {/* ── Follow-ups on the finished investigation — answered from its record, never re-investigated ── */}
+    {state.followUps.map((item) => <View key={item.turnId} style={s.turn} testID={`inv-followup-${item.turnId}`}>
+      <View style={s.user}><Text style={s.text}>{item.question}</Text></View>
+      <Card style={s.card}>
+        <View style={s.higginsExplanation}>
+          <Text style={s.higginsExplainLabel}>Higgins</Text>
+          <Text style={s.higginsExplainText} testID="inv-followup-answer">{scrubMessage(item.answer)}</Text>
+        </View>
+        <Text style={s.muted}>{"From Magnum DI's finished investigation. Nothing new was analysed."}</Text>
+      </Card>
+    </View>)}
 
     {/* ── Question from Higgins (outside tabs — transient) ── */}
     {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Magnum DI asks: {scrubMessage(question.reasonNeeded)}</Text>

@@ -1,3 +1,34 @@
+## Remove unnecessary Gemini calls — Higgins presents what Apollo already knows (2026-06)
+**Owner's choices:** keep the ONE Gemini call for a general scam question nothing in Apollo answers; NEVER call
+Gemini on a follow-up to a finished investigation (even with a new link/email/number); health check = "Status from
+saved records" (key set + how the last real Gemini call went, no test call). No testing agent (owner's rule).
+- **Finished Magnum DI follow-ups (0 calls):** `presenter.investigation_follow_up` + `is_finished` + `new_items`
+  (link/email/phone ≥8 digits) → "You've mentioned something new (…) that wasn't part of this investigation …
+  nothing new has been checked. To have it checked, start a new check." New `recheck` intent; the old "add it and
+  Magnum DI will investigate" line removed. Frontend port `src/higgins/followUp.ts` (same wording): `caseStore.ask`
+  and `continueWith` answer on the phone when the result is complete/partial with no pending question →
+  `CaseState.followUps` rendered in `InvestigationView` (`inv-followup-*`). Works on device-local (purged) cases.
+  Server safety net: `POST /investigations/{id}/turns` on a finished case returns 200 `{job: null, followUp}` and
+  starts no job (`_finished_follow_up`); `transferManager.runAppend` settles on `job: null`. Answering Magnum DI's own
+  pending question (waiting_user) still continues the investigation.
+- **Chat (`chat.py`):** saved-report follow-up now checked BEFORE investigation-intent routing; scam alert card not in
+  the cache → `presenter.scam_alert_card` (card's own words); "Please explain the learning article: X" →
+  `presenter.learn_article` or "couldn't find"; `selected_patrol_record_id` → `presenter.patrol_record`; device state:
+  `_ABOUT_STATE` ("my … protection/gates/permissions", "my device security review/assessment", "Apollo says its
+  status") always answered from the snapshot, naming matched gates/capabilities (`_named_lines`), else the overview.
+  The single `provider.generate` remains last (AST test).
+- **Patrol / incident / Device Check "Ask Higgins" handoffs** (no case id): `src/higgins/issueExplanation.ts`
+  explains the context in chat with no server call; card `ask-issue-investigate-offer` → "Ask Magnum DI to
+  investigate" starts a separate investigation only on tap. Handoffs with a case id open that case.
+- **Health check:** `health_check.provider_status()` (gemini_usage, simulated excluded) stored as
+  `provider_status`, exposed at `investigation.provider`; Support screen shows "AI service key: set." + "Last Gemini
+  call: <time> — it worked / it failed — <reason>" (`src/health/providerStatus.ts`).
+- Not changed: `/page/extract` and `/page/crawl` still call Gemini (signal extraction, not used by the app).
+- Tests: `backend/tests/test_deterministic_higgins.py` (20), `frontend/tests/deterministicHiggins.test.ts` (6).
+  Backend full suite 1001 passed (13 live-API failures were a mid-run restart; re-run passed), frontend 922/922, tsc clean.
+  Live: 4 chat questions (device state, alert card, Learn article, latest alerts) → gemini_usage unchanged.
+
+
 ## Phases 3–4: screenshot checks read on the phone, cost dashboard verified, resubmit note on Ask Higgins (2026-06)
 **Owner's choices:** screenshot checks = "Phone reads the text, then Apollo checks it" (the picture never leaves the
 phone; Gemini only via Magnum DI's one call if Triage escalates). No readable text = say so, no check, pick another

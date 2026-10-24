@@ -27,6 +27,7 @@ async function investigationImageMeta(uri: string, gate?: SanitizationReceipt): 
   return {};
 }
 import type { CreateCase, DeviceProfile, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
+import type { FollowUpAnswer } from "@/src/higgins/followUp";
 
 /** Generate a UUID key with robust fallback for environments where expo-crypto's randomUUID isn't available. */
 export function safeUUID(): string {
@@ -67,7 +68,8 @@ export function evidenceContentUrl(caseId: string, evidenceId: string) { return 
 export function deleteCase(caseId: string) { return apiDelete<void>(`/investigations/${caseId}`); }
 export function confirmCommit(caseId: string) { return apiPost<{ purged: boolean; status: string }>(`/investigations/${caseId}/confirm-commit`, "investigation", {}); }
 export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string, signal?: AbortSignal) {
-  return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);
+  // A follow-up on a finished investigation comes back answered from its record, with no job (no Magnum DI call).
+  return postWithKey<{ job: Job | null; followUp?: FollowUpAnswer; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);
 }
 export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, safeUUID()); }
 export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string; outcome: "cancelled" | "completed" | "failed" | "superseded"; cancelled: boolean; cleanupStatus: string; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }

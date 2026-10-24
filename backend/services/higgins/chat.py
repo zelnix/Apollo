@@ -23,7 +23,7 @@ from pydantic.alias_generators import to_camel
 
 from core.db import db
 from core.redaction import redact_investigation_secrets
-from services import government_alerts
+from services import government_alerts, learning
 from services.higgins import app_knowledge, knowledge, presenter
 from services.higgins import context as memory
 from services.higgins import context_tools, provider
@@ -214,7 +214,26 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                 device_snapshot: DeviceSnapshot | None = None, selected_scam_alert_url: str | None = None) -> ChatReply:
     clean = redact_investigation_secrets(message).strip()
 
-    # ── P0: Investigation intent routing ─────────────────────────────────────
+    # ── P0: Completed Magnum DI report → deterministic follow-up (0 Gemini calls) ──
+    # Checked first so a follow-up that mentions a new link, email or number is still answered from the
+    # finished record — it never opens a new investigation and never reaches Gemini.
+    if selected_report_id:
+        report = await _saved_report(owner, selected_report_id)
+        if report is not None:
+            follow = presenter.investigation_follow_up(report, report.get("sources") or [], clean)
+            provenance = ["saved_report"]
+            if follow["intent"] == "unanswered" and not follow["newItems"]:
+                # A general question about this kind of scam: Higgins can teach from the KB, kept apart from the case.
+                entries = await knowledge.search(clean)
+                if entries:
+                    general, sources = knowledge.present(entries, clean)
+                    follow = {**follow, "answer": f"{follow['answer']}\n\nGeneral knowledge — not part of Magnum DI's findings about this case:\n\n{general}",
+                              "sources": sources}
+                    provenance.append("apollo_knowledge_base")
+            return await _deterministic(owner, conversation_id, turn_id, clean, follow, "investigation_report", provenance,
+                                        uncertainty=["The investigation doesn't answer this directly."] if follow["limitation"] else [])
+
+    # ── P1: Investigation intent routing ─────────────────────────────────────
     # If the user clearly asks Higgins to investigate a specific artefact, submit
     # it directly into the shared investigation pipeline.  Higgins does NOT perform
     # a separate pseudo-investigation in chat — it uses the same pipeline as User
@@ -272,34 +291,32 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                 log.warning("higgins_pipeline_submit_failed device=%s error=%s", owner[:12], type(exc).__name__)
                 # Fall through to normal chat if pipeline submission fails
 
-    # ── P1: Completed Magnum DI report → deterministic follow-up (0 Gemini calls) ──
-    if selected_report_id:
-        report = await _saved_report(owner, selected_report_id)
-        if report is not None:
-            follow = presenter.investigation_follow_up(report, report.get("sources") or [], clean)
-            provenance = ["saved_report"]
-            if follow["intent"] == "unanswered":
-                # A general question about this kind of scam: Higgins can teach from the KB, kept apart from the case.
-                entries = await knowledge.search(clean)
-                if entries:
-                    general, sources = knowledge.present(entries, clean)
-                    follow = {**follow, "answer": f"{follow['answer']}\n\nGeneral knowledge — not part of Magnum DI's findings about this case:\n\n{general}",
-                              "sources": sources}
-                    provenance.append("apollo_knowledge_base")
-            return await _deterministic(owner, conversation_id, turn_id, clean, follow, "investigation_report", provenance,
-                                        uncertainty=["The investigation doesn't answer this directly."] if follow["limitation"] else [])
-
     # ── P2: A scam alert the person opened → the source's own sections (0 Gemini calls) ──
-    alert_url = selected_scam_alert_url or _alert_url_in(clean)
-    if alert_url:
-        alert = await government_alerts.alert_by_url(alert_url)
+    card = _alert_card_in(clean)
+    alert_url = selected_scam_alert_url or (card or {}).get("url") or _alert_url_in(clean)
+    if alert_url or card:
+        alert = await government_alerts.alert_by_url(alert_url) if alert_url else None
         if alert:
             return await _deterministic(owner, conversation_id, turn_id, clean, presenter.scam_alert_explanation(alert),
                                         "scam_alert", ["recognised_government_feed_cache"])
+        if card:
+            # Apollo no longer holds the full alert: present only what the card carried. Never Gemini.
+            return await _deterministic(owner, conversation_id, turn_id, clean,
+                                        presenter.scam_alert_card(card["title"], card["source"], card["summary"], card["url"]),
+                                        "scam_alert", ["scam_alert_card"])
+
+    # ── P2b: A Learn with Higgins article the person opened → its own words (0 Gemini calls) ──
+    article_title = _article_title_in(clean)
+    if article_title:
+        article = await _learn_article(article_title)
+        result = presenter.learn_article(article) if article else {
+            "answer": f"I couldn't find “{article_title}” in Apollo's Learn with Higgins library, so I have nothing of its to show you.",
+            "navigate": ["/higgins/learning"], "limitation": True}
+        return await _deterministic(owner, conversation_id, turn_id, clean, result, "learn_article", ["learn_with_higgins_catalogue"])
 
     # ── P3: The hard boundary — anything Apollo already knows is presented, never sent to Gemini ──
     plan = context_tools.classify_context(clean, has_selected_report=False, has_selected_patrol_record=bool(selected_patrol_record_id))
-    established = await _from_apollo(owner, clean, plan, device_snapshot)
+    established = await _from_apollo(owner, clean, plan, device_snapshot, selected_patrol_record_id)
     if established:
         result, label, provenance = established
         return await _deterministic(owner, conversation_id, turn_id, clean, result, label, provenance)
@@ -361,11 +378,36 @@ def in_scope(question: str) -> bool:
 
 
 _ALERT_URL = re.compile(r"official source:\s*(https?://\S+)", re.I)
+_ALERT_CARD = re.compile(r"i just read this scam alert", re.I)
+_CARD_FIELD = {"title": re.compile(r"^\W*title:\s*(.+)$", re.I | re.M), "source": re.compile(r"^\W*source:\s*(.+)$", re.I | re.M),
+               "summary": re.compile(r"^\W*what the source says:\s*(.+)$", re.I | re.M)}
+_ARTICLE = re.compile(r"explain the learning article:\s*(.+?)\s*$", re.I | re.S)
 
 
 def _alert_url_in(message: str) -> Optional[str]:
     match = _ALERT_URL.search(message or "")
     return match.group(1).rstrip(").,") if match else None
+
+
+def _alert_card_in(message: str) -> Optional[dict]:
+    """The alert card the Scam Alerts screen hands to Higgins: its title, source, summary and official link."""
+    if not _ALERT_CARD.search(message or ""):
+        return None
+    fields = {name: (m.group(1).strip() if (m := pattern.search(message)) else "") for name, pattern in _CARD_FIELD.items()}
+    if not fields["title"]:
+        return None
+    return {**fields, "url": _alert_url_in(message) or ""}
+
+
+def _article_title_in(message: str) -> Optional[str]:
+    match = _ARTICLE.search(message or "")
+    return match.group(1).strip().strip("“”\"'.") if match else None
+
+
+async def _learn_article(title: str) -> Optional[dict]:
+    row = await db.learning_articles.find_one({"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "status": "published", "deleted_at": None},
+                                              {"_id": 0, "slug": 1})
+    return await learning.get_article(row["slug"]) if row else None
 
 
 def _navigation(routes: list[str]) -> list[NavTarget]:
@@ -393,17 +435,24 @@ async def _saved_report(owner: str, report_id: str) -> Optional[dict]:
 
 
 async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan,
-                       snapshot: DeviceSnapshot | None) -> Optional[tuple[dict, str, list[str]]]:
+                       snapshot: DeviceSnapshot | None, patrol_record_id: str | None = None) -> Optional[tuple[dict, str, list[str]]]:
     """What Apollo, Patrol, Magnum DI or the device already established — presented, never re-reasoned."""
     label = plan.label
+    if label == "patrol_record_context" and patrol_record_id:
+        found = await context_tools.execute(owner, "get_recent_patrol_outcomes")
+        record = next((item for item in found.get("items") or [] if item.get("recordId") == patrol_record_id), None)
+        if record:
+            return presenter.patrol_record(record), label, ["authoritative_patrol_record_store"]
     if label in ("patrol_record_context", "patrol_history"):
         found = await context_tools.execute(owner, "get_recent_patrol_outcomes")
         return presenter.patrol_findings(found.get("items") or []), label, ["authoritative_patrol_record_store"]
     if label == "current_issues" and snapshot is None:
         found = await context_tools.execute(owner, "get_recent_patrol_outcomes")
         return presenter.patrol_findings(found.get("items") or []), label, ["authoritative_patrol_record_store"]
-    device = presenter.device_state(snapshot, message) if label in ("protection_status", "current_issues", "device_info") or presenter.device_intent(message) else None
-    if device and (label in ("protection_status", "current_issues", "device_info") or _ABOUT_THIS_PHONE.search(message)):
+    # Anything about THIS phone's state is answered from its live reading — never inferred, never sent to Gemini.
+    about_state = label in ("protection_status", "current_issues", "device_info") or bool(_ABOUT_STATE.search(message))
+    device = presenter.device_state(snapshot, message, about_phone=about_state)
+    if device and (about_state or _ABOUT_THIS_PHONE.search(message)):
         return device, "device_state", ["device_snapshot" if snapshot else "no_device_reading"]
     if label == "scam_alerts":
         snapshot_alerts = await government_alerts.snapshot(5)
@@ -419,6 +468,9 @@ async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan
 
 
 _ABOUT_THIS_PHONE = re.compile(r"\b(my|this)\s+(phone|device|mobile|iphone|android)\b|\bon (?:my|this) (?:phone|device)\b|\b(?:am i|are my|is my)\b", re.I)
+# Unmistakably about the state Apollo reads on this phone: always answered from the reading, whatever the wording.
+_ABOUT_STATE = re.compile(r"\bmy\s+(?:[\w'-]+\s+){0,3}(?:protections?|gates?|permissions|security (?:review|check|status)|device (?:check|assessment))\b"
+                          r"|\bapollo (?:says|shows|reports) (?:its|the|my) status\b", re.I)
 _ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|can) i\b|\bhow (?:do|can) i (?:check|scan|open|find|turn|use)\b", re.I)
 
 

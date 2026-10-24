@@ -25,6 +25,7 @@ from services.storage import storage_configured
 from routers.push import push_configured
 from services.higgins import evidence as ev
 from services.higgins import jobs
+from services.higgins import presenter
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
@@ -886,6 +887,25 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
 
 
 # ------------------------------------------------------------------ turns / jobs
+async def _finished_follow_up(owner: str, case: dict, body: SubmitTurn) -> Optional[dict]:
+    """A follow-up on a FINISHED Magnum DI investigation is answered from its record — no job, no Gemini call.
+
+    This holds even when the follow-up brings something new (a link, an email, a number or fresh evidence):
+    a finished investigation is never reopened. Only an answer to Magnum DI's own pending question continues it.
+    """
+    if body.answer_to_question_id or case.get("active_job_id") or not case.get("response_ciphertext"):
+        return None
+    response = repo.dec_json(case["response_ciphertext"])
+    if not presenter.is_finished(response):
+        return None
+    answer = presenter.investigation_follow_up(response, await repo.sources(owner, case["case_id"]), redact_investigation_secrets(body.message))
+    if body.evidence_ids and answer["intent"] != "recheck":
+        answer = {**answer, "answer": ("The new material was kept with this case, but Magnum DI's investigation is finished, so it wasn't re-assessed.\n\n"
+                                       + answer["answer"])}
+    return {"turnId": body.turn_id, "question": redact_investigation_secrets(body.message), "answer": answer["answer"],
+            "intent": answer["intent"], "limitation": answer["limitation"], "newItems": answer["newItems"], "answeredBy": "apollo"}
+
+
 async def _submit_turn(owner: str, case: dict, body: SubmitTurn, key: str) -> dict:
     payload = {"message": redact_investigation_secrets(body.message), "answerToQuestionId": body.answer_to_question_id, "evidenceIds": body.evidence_ids, "turnId": body.turn_id}
     key_digest, payload_digest = repo.digest(f"{owner}:turn:{key}"), repo.digest(json.dumps(payload, sort_keys=True))
@@ -916,6 +936,9 @@ async def submit_turn(case_id: str, body: SubmitTurn, request: Request, idempote
     existing = await db.investigation_jobs.find_one({"owner_id": owner, "case_id": case_id, "idempotency_key_digest": repo.digest(f"{owner}:turn:{key}")}, {"_id": 0})
     if not existing:
         _revision_check(case, body.expected_revision)
+        follow_up = await _finished_follow_up(owner, case, body)
+        if follow_up:
+            return JSONResponse({"job": None, "followUp": follow_up, "caseRevision": case["revision"]}, status_code=200, headers=NO_STORE)
     job = await _submit_turn(owner, case, body, key)
     case = await repo.get_case(owner, case_id)
     return JSONResponse({"job": repo.job_view(job).wire(), "caseRevision": case["revision"]}, status_code=202, headers=NO_STORE)

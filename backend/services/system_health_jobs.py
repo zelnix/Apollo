@@ -42,7 +42,9 @@ def public(doc: dict, *, cached: bool = False) -> dict:
             "checkedAt": _utc(doc.get("checked_at")),
             "cached": cached,
             "investigation": {"status": doc.get("investigation_status", "pending"),
-                              "code": doc.get("investigation_code")},
+                              "code": doc.get("investigation_code"),
+                              # From saved records only: is the key set, and how did the last real Gemini call go.
+                              "provider": doc.get("provider_status")},
             "report": {"status": doc.get("report_status", "pending"),
                        "code": doc.get("report_code"),
                        "fixture": health_check.fixture(doc["check_id"]) if done else None},
@@ -122,6 +124,10 @@ async def run(owner: str, check_id: str) -> None:
     patch = {"state": "failed", "checked_at": now_utc(),
              "investigation_status": "unavailable", "investigation_code": "provider_unavailable",
              "report_status": "unavailable", "report_code": "report_not_attempted", "cleanup_status": "complete"}
+    try:
+        patch["provider_status"] = await asyncio.wait_for(health_check.provider_status(), timeout=5)
+    except Exception:  # the status line is informational; the check itself still runs
+        patch["provider_status"] = None
     try:
         response = await asyncio.wait_for(health_check.investigate(), timeout=60)
         patch.update(investigation_status="healthy", investigation_code=None)

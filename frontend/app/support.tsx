@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle, type Tone } from "@/src/components/ui";
 import { useSystemHealth } from "@/src/health/systemHealthCoordinator";
+import { providerStatusLines } from "@/src/health/providerStatus";
 import type { CheckRow, CheckStatus, FullHealthCheck } from "@/src/health/systemHealthTypes";
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { getBaseline } from "@/src/store/firstCheckStore";
@@ -296,6 +297,7 @@ export default function SupportScreen() {
           <ResultRow id="device" label="Apollo protection" result={health.device} />
           <ResultRow id="backend" label="Apollo services" result={health.backend} />
           <ResultRow id="higgins" label="Higgins investigations" result={health.higgins} />
+          {providerStatusLines(health.provider).map((line) => <Body key={line} style={s.detail} testID="support-higgins-provider">{line}</Body>)}
           <ResultRow id="report" label="Higgins reports" result={health.report} />
         </> : <Body style={s.detail}>No recent verified results. Run a check in the Check tab.</Body>}
         <Button testID="support-go-to-check" label="Go to Check" icon={<ArrowRight size={18} color={colors.onBrandPrimary} />} onPress={() => router.push("/(tabs)/check-it")} />

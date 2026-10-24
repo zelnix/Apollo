@@ -39,6 +39,7 @@ import { clearStarterMemory, loadStarterMemory, recordStarter, topStarters } fro
 import { pickQuickQuestions } from "@/src/higgins/quickQuestions";
 import { classifyIntent } from "@/src/higgins/intentRouter";
 import { detectCheckIntent } from "@/src/higgins/checkIntent";
+import { explainIssue, INVESTIGATE_OFFER } from "@/src/higgins/issueExplanation";
 import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStatus, getVpnStatus, getNotificationDiagnostic } from "@/src/higgins/diagnosticCore";
 import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage } from "@/src/higgins/localResponder";
 import { getNotificationHealth } from "@/src/push/notifications";
@@ -116,6 +117,8 @@ export default function Ask() {
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null); const [aboutOpen, setAboutOpen] = useState(false); const [confirmClear, setConfirmClear] = useState(false);
   const [starters, setStarters] = useState<string[]>([]);
+  // Offered after Higgins explains an issue from Apollo's own findings: a separate, explicit Magnum DI investigation.
+  const [issueOffer, setIssueOffer] = useState<{ context: HigginsIssueContext; question: string } | null>(null);
   const [rotation, setRotation] = useState(0);
   const [snapshotExtras, setSnapshotExtras] = useState<SnapshotExtras | null>(null);
   const [capabilityReading, setCapabilityReading] = useState<DeviceCapabilityReading | null>(null);
@@ -370,6 +373,7 @@ export default function Ask() {
   const submit = (message: string) => {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
     stick.current = true; // sending means "follow the conversation", wherever it was scrolled to
+    setIssueOffer(null);
     // Active investigation → route to investigation case directly
     if (investigationMode || activeContext || state.caseData) { setText(""); if (state.caseData) void ask(clean); else startInvestigation(clean, activeContext); return; }
 
@@ -433,13 +437,23 @@ export default function Ask() {
     const id = params.handoffId ? String(params.handoffId) : ""; if (!id || id === seenRoute.current || !deviceId) return; seenRoute.current = id;
     const transfer = takeHandoff(id); const context = transfer?.context ?? (params.context ? parseHigginsIssueContext(String(params.context)) : null); router.setParams({ handoffId: "", context: "", prompt: "" });
     if (!context) { setRouteError("Apollo could not prepare this issue for Higgins. Return to the result and try again."); return; }
-    const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim(); setActiveContext(context); setInvestigationMode(true);
-    if (context.case_id) { void attach(context.case_id).then((opened) => { if (opened && question) void ask(question); }); return; }
-    startInvestigation(question, context);
-  }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask, startInvestigation]);
+    const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim();
+    if (context.case_id) { setActiveContext(context); setInvestigationMode(true); void attach(context.case_id).then((opened) => { if (opened && question) void ask(question); }); return; }
+    // Explaining a Patrol finding, an incident or a Device Check result: Apollo's own findings, in fixed wording.
+    // No Gemini call and no investigation — Magnum DI only investigates if the person taps the offer below.
+    const asked = question || "Explain this issue and what I should do next.";
+    const now = new Date().toISOString();
+    const exchange: HigginsChatMessage[] = [
+      { id: Crypto.randomUUID(), turnId: Crypto.randomUUID(), role: "user", content: asked, createdAt: now, conversationId: conversationId.current },
+      { id: Crypto.randomUUID(), turnId: Crypto.randomUUID(), role: "higgins", content: explainIssue(context), createdAt: now, conversationId: conversationId.current },
+    ];
+    setActiveContext(null); setInvestigationMode(false); stick.current = true;
+    setChatMessages((current) => { const next = [...current, ...exchange]; void saveLocalChat(next); return next; });
+    setIssueOffer({ context, question: asked });
+  }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask]);
 
   const deleteInvestigation = async () => { clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
-  const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
+  const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setIssueOffer(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; setActiveContext(null); setInvestigationMode(false); void remove(); };
   // The quiet note above the conversation reopens a stopped investigation with its Resubmit ready.
   const openStopped = (stopped: StoppedCase) => {
@@ -591,6 +605,7 @@ export default function Ask() {
 
         {!investigationMode && lastAction?.destination === "higgins_case" && latestUserMessage ? <Card testID="ask-investigation-offer" style={{ marginTop: spacing.xs }}><Body>{lastAction.purpose}</Body><Button testID="ask-start-investigation" label={lastAction.label} onPress={() => startInvestigation(latestUserMessage)} /></Card> : null}
         {!investigationMode && lastAction?.destination === "check_it" ? <Card testID="ask-check-it-offer" style={{ marginTop: spacing.xs }}><Body>{lastAction.purpose}</Body><Button testID="ask-open-check-it" label={lastAction.label} onPress={() => router.push("/(tabs)/check-it")} /></Card> : null}
+        {!investigationMode && issueOffer ? <Card testID="ask-issue-investigate-offer" style={{ marginTop: spacing.xs }}><Body>{INVESTIGATE_OFFER}</Body><Button testID="ask-issue-investigate" label="Ask Magnum DI to investigate" disabled={busy} onPress={() => { const offer = issueOffer; setIssueOffer(null); setActiveContext(offer.context); startInvestigation(offer.question, offer.context); }} /></Card> : null}
 
         {investigationMode ? <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation" onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} /> : null}
         {routeError ? <Card style={s.context} testID="ask-error-card"><Text style={s.errorText} testID="ask-error">{routeError}</Text></Card> : null}

@@ -27,6 +27,7 @@ OUT_OF_SCOPE = ("I specialise in helping you stay safe from scams and cyber thre
                 "assistant would be a better fit. Is there anything security-related I can help with?")
 
 _FOLLOW_UP_INTENTS: list[tuple[str, re.Pattern]] = [(name, re.compile(pattern, re.I)) for name, pattern in [
+    ("recheck", r"\bre-?check|\bfresh (?:observation|reading)|\bre-?assess|\bcheck (?:it |this |that )?again\b"),
     ("not_established", r"\b(?:wasn'?t|not|never|couldn'?t|didn'?t)\s+(?:established|found|checked|confirmed|able|cover(?:ed)?|look(?:ed)?)\b|\bunknown\b|\buncertain"
                         r"|\blimitations?\b|\bmissing\b|\bgaps?\b|\bscope\b|what (?:don'?t|didn'?t) (?:you|we|it) know"),
     ("sources", r"\bsources?\b|where did (?:this|that|the|you|it)\b.*\b(?:come from|get)|\breferences?\b|\bcitations?\b|\blinks?\b"),
@@ -49,8 +50,45 @@ def follow_up_intent(question: str) -> Optional[str]:
     return next((name for name, pattern in _FOLLOW_UP_INTENTS if pattern.search(question or "")), None)
 
 
+# Something new in a follow-up: a link, an email address or a phone number the finished investigation never saw.
+_NEW_ITEMS: list[tuple[str, re.Pattern]] = [
+    ("an email address", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
+    ("a link", re.compile(r"\bhttps?://\S+|\bwww\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|app|xyz|top|online|site|shop|link|co|au|uk|nz)(?:/\S*)?\b", re.I)),
+    ("a phone number", re.compile(r"(?<![\w.])\+?\d[\d ()-]{6,}\d(?![\w.])")),
+]
+NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of this investigation. Magnum DI doesn't reopen a finished investigation, "
+                 "so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.")
+
+
+def new_items(question: str) -> list[str]:
+    """The kinds of new material a follow-up mentions, in a fixed order. Emails are removed before links are looked for."""
+    text = question or ""
+    found: list[str] = []
+    for label, pattern in _NEW_ITEMS:
+        hits = [m.group(0) for m in pattern.finditer(text)]
+        if label == "a phone number":
+            hits = [h for h in hits if sum(ch.isdigit() for ch in h) >= 8]
+        if hits:
+            found.append(label)
+            text = pattern.sub(" ", text)
+    return found
+
+
+def _join(labels: list[str]) -> str:
+    return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
+
+
+def is_finished(response: Optional[dict[str, Any]]) -> bool:
+    """A Magnum DI result that is complete or partial — not one still waiting for the person's answer."""
+    return bool(response) and response.get("completion") in ("complete", "partial") and not response.get("question")
+
+
 def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, Any]], question: str) -> dict[str, Any]:
-    """Answer a follow-up from a completed Magnum DI result (camelCase wire shape). Never infers."""
+    """Answer a follow-up from a completed Magnum DI result (camelCase wire shape). Never infers.
+
+    A follow-up never reaches Gemini, even when it brings something new: the new item is named as
+    not covered, and the answer comes only from what the finished investigation recorded.
+    """
     overview = str(response.get("overview") or "").strip()
     assessment = ASSESSMENT_TEXT.get(str(response.get("assessment") or ""), "")
     attention = ATTENTION_TEXT.get(str(response.get("attention") or ""), "")
@@ -74,7 +112,10 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
             line += f"; source: {', '.join(titles)}" if titles else ""
         return line + ")"
 
-    if intent == "meaning":
+    if intent == "recheck":
+        answer = ("Magnum DI's investigation is finished, so it isn't re-assessed — any fresh reading Apollo took is shown with the action, "
+                  "and what the investigation established is unchanged.") + (f"\n\n{overview}" if overview else "")
+    elif intent == "meaning":
         answer = "\n\n".join(part for part in [overview, " ".join(p for p in [assessment, attention, reason] if p)] if part)
     elif intent == "why":
         answer = "\n\n".join(part for part in [reason or assessment, "What Magnum DI found:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if part)
@@ -114,9 +155,11 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
     else:
         limitation = True
         answer = ("I can only answer from what Magnum DI's investigation established, and it doesn't answer that directly."
-                  + (f" Here's what it did establish: {overview}" if overview else "")
-                  + " If you have new information or something else to check, add it and Magnum DI will investigate it.")
-    return {"answer": answer.strip(), "intent": intent or "unanswered", "limitation": limitation}
+                  + (f" Here's what it did establish: {overview}" if overview else ""))
+    mentioned = new_items(question)
+    if mentioned:
+        answer = NEW_ITEM_NOTE.format(items=_join(mentioned)) + "\n\n" + answer.strip()
+    return {"answer": answer.strip(), "intent": intent or "unanswered", "limitation": limitation, "newItems": mentioned}
 
 
 # ── Device / Apollo state ─────────────────────────────────────────────────────
@@ -139,10 +182,28 @@ def device_intent(question: str) -> Optional[str]:
     return next((name for name, pattern in _DEVICE_INTENTS if pattern.search(question or "")), None)
 
 
-def device_state(snapshot: Any, question: str, intent: Optional[str] = None) -> Optional[dict[str, Any]]:
-    """Answer from the phone's live, authoritative reading. None when the question isn't about device state."""
+def _named_lines(s: Any, question: str) -> list[str]:
+    """Protections and capabilities the question names, exactly as the phone reports them."""
+    asked = (question or "").lower()
+    quoted = [q.strip().lower() for q in re.findall(r"[“\"]([^”\"]{3,80})[”\"]", question or "")]
+    lines = [f"{g.title}: {g.status}" + ("" if g.automatic else " (manual checks only)") for g in s.gates if len(g.title) >= 3 and g.title.lower() in asked]
+    for line in [*s.capabilities, *s.device_protections, *s.recommended_settings]:
+        label = re.split(r"\s+—\s+|:\s", line, maxsplit=1)[0].strip().lower()
+        if (len(label) >= 4 and label in asked) or any(q and q in line.lower() for q in quoted):
+            if line not in lines:
+                lines.append(line)
+    return lines
+
+
+def device_state(snapshot: Any, question: str, intent: Optional[str] = None, *, about_phone: bool = False) -> Optional[dict[str, Any]]:
+    """Answer from the phone's live, authoritative reading. None when the question isn't about device state.
+
+    A question about this phone always gets an answer from the reading — the protections or capabilities it
+    names, the topic it asks about, or the full reading — never an inferred one.
+    """
     intent = intent or device_intent(question)
-    if not intent:
+    named = _named_lines(snapshot, question) if snapshot is not None else []
+    if not intent and not named and not about_phone:
         return None
     if snapshot is None:
         return {"answer": "I don't have a live reading from this phone in this conversation, so I can't tell you its current state. "
@@ -152,7 +213,11 @@ def device_state(snapshot: Any, question: str, intent: Optional[str] = None) -> 
     missing = "Apollo doesn't have a reading for that on this phone."
     lines: list[str] = []
     navigate: list[str] = []
-    if intent == "permissions":
+    if named:
+        lines = ["What this phone reports for what you asked about:\n" + _bullets(named),
+                 *(["Open right now:\n" + _bullets(s.open_threats)] if s.open_threats else [])]
+        navigate = ["/(tabs)/guard", "/device-protection"]
+    elif intent == "permissions":
         lines = ["Permissions on this phone:\n" + _bullets(s.permissions)] if s.permissions else [missing]
     elif intent == "device_protections":
         lines = ["Protection built into this device (provided by the device maker or operating system, not by Apollo):\n" + _bullets(s.device_protections)] \
@@ -180,7 +245,8 @@ def device_state(snapshot: Any, question: str, intent: Optional[str] = None) -> 
     elif intent == "alerts":
         lines = [p for p in [f"Security alerts: {s.alerts}" if s.alerts else "", f"Quiet hours: {s.quiet_hours}" if s.quiet_hours else ""] if p] or [missing]
         navigate = ["/notification-check"]
-    else:  # protection
+    if not lines or (lines == [missing] and about_phone and intent != "protection"):
+        # The protection overview — also what a question about this phone gets when its topic has no reading.
         switched = "" if s.protection_on is None else ("Apollo protection is switched on." if s.protection_on else "Apollo protection is switched off.")
         gates = [f"{g.title}: {g.status}" + ("" if g.automatic else " (manual checks only)") for g in s.gates]
         lines = [p for p in [switched, "Your protections:\n" + _bullets(gates) if gates else "",
@@ -206,6 +272,23 @@ def patrol_findings(items: list[dict[str, Any]]) -> dict[str, Any]:
             line += f" {item['summary']}"
         lines.append(line)
     return {"answer": "Apollo's most recent findings:\n" + _bullets(lines), "navigate": ["/(tabs)/patrol"], "limitation": False}
+
+
+def patrol_record(item: dict[str, Any]) -> dict[str, Any]:
+    """One Patrol finding, explained from its own record: what Apollo saw, its state, and what it confirmed."""
+    state = STATE_TEXT.get(item.get("effectiveState"), item.get("effectiveState") or "state not known")
+    parts = [f"{item.get('headline') or 'This finding'} — {state}."]
+    if item.get("evidence_availability") == "limited_to_originating_device":
+        parts.append("The details of this finding stay on the phone that found it, so I can't explain more than its state from here.")
+    elif item.get("summary"):
+        parts.append(f"What Apollo recorded:\n{item['summary']}")
+    facts = item.get("structuredFacts") or {}
+    if facts.get("indicatorHost"):
+        parts.append(f"Where: {facts['indicatorHost']}")
+    if facts.get("claimedBrand"):
+        parts.append(f"Who it claimed to be: {facts['claimedBrand']}")
+    parts.append("Apollo confirmed it blocked this." if item.get("observedBlockReference") else "Apollo hasn't confirmed a block for this one.")
+    return {"answer": "Here's what Apollo recorded about this finding:\n\n" + "\n\n".join(parts), "navigate": ["/(tabs)/patrol"], "limitation": False}
 
 
 def recent_investigations(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -237,6 +320,36 @@ def scam_alert_explanation(alert: dict[str, Any]) -> dict[str, Any]:
              f"Urgency: {SEVERITY_TEXT.get(alert.get('severity'), 'not rated')}. {alert.get('severityReason') or ''}".strip()]
     return {"answer": "\n\n".join(parts), "navigate": [], "limitation": False,
             "sources": [{"title": alert["title"], "publisher": alert["source"], "url": alert["url"], "route": None, "licence": None}]}
+
+
+def scam_alert_card(title: str, source: str, summary: str, url: str) -> dict[str, Any]:
+    """An alert Apollo no longer holds the full record for: only what the card itself carried, and where to read the rest."""
+    parts = [f"“{title}”" + (f" — {source}." if source else "."),
+             f"What the source says:\n{summary}" if summary else "The alert card didn't include the source's summary.",
+             "Apollo doesn't hold the rest of this alert right now, so I won't add to it."
+             + (" The full details are on the official page." if url else "")]
+    sources = [{"title": title, "publisher": source or "Official source", "url": url, "route": None, "licence": None}] if url else []
+    return {"answer": "\n\n".join(parts), "navigate": ["/(tabs)/scams"], "limitation": not summary, "sources": sources}
+
+
+def learn_article(article: dict[str, Any], max_chars: int = 1800) -> dict[str, Any]:
+    """A Learn with Higgins article in its own words: summary, then its sections in order."""
+    blocks = [f"From the Learn with Higgins article “{article['title']}”:"]
+    if article.get("summary"):
+        blocks.append(article["summary"])
+    used = sum(len(b) for b in blocks)
+    for section in article.get("sections") or []:
+        lines = [f"{section['heading']}:"] if section.get("heading") else []
+        lines += [str(p) for p in section.get("paragraphs") or []] + [f"• {b}" for b in section.get("bullets") or []]
+        text = "\n".join(lines).strip()
+        if not text or used + len(text) > max_chars:
+            break
+        blocks.append(text)
+        used += len(text)
+    sources = [{"title": c.get("label") or c["url"], "publisher": "Learn with Higgins source", "url": c["url"], "route": None, "licence": None}
+               for c in (article.get("citations") or [])[:3] if c.get("url")]
+    return {"answer": "\n\n".join(blocks), "navigate": ["/higgins/learning"], "limitation": False,
+            "sources": sources}
 
 
 # ── Apollo product knowledge ──────────────────────────────────────────────────

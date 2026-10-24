@@ -16,16 +16,28 @@ import { observe } from "./deviceBroker";
 import { appendManagedOperation, cancelManagedOperation, expireOperation, managedOperation, retryManagedOperation,
   settleManagedOperation, startManagedOperation, subscribeManagedOperation, type ManagedOperation } from "./transferManager";
 import type { CreateCase, DeviceResult, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
+import { investigationFollowUp, isFinished, type FollowUpAnswer } from "@/src/higgins/followUp";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
 export interface CaseState {
   phase: Phase; operationId: string | null; caseData: InvestigationCase | null; job: Job | null; progress: string[];
   response: HigginsResponse | null; sources: SourceReference[]; turns: TurnCommit[]; failure: Failure | null;
   question: Question | null; error: string | null; notice: string | null; undeleted?: string | null;
+  /** Follow-ups on the finished investigation, each answered from its record (never by Gemini). */
+  followUps: FollowUpAnswer[];
 }
 
 const EMPTY: CaseState = { phase: "idle", operationId: null, caseData: null, job: null, progress: [], response: null,
-  sources: [], turns: [], failure: null, question: null, error: null, notice: null };
+  sources: [], turns: [], failure: null, question: null, error: null, notice: null, followUps: [] };
+
+/** New material handed to a finished investigation: not added, not checked, and said so. */
+function finishedWithNewMaterial(response: HigginsResponse, sources: SourceReference[], input: Omit<CreateCase, "deviceProfile">): FollowUpAnswer {
+  const material = [...input.submissions.map((item) => item.value), ...input.initialFindings].join("\n");
+  const answer = investigationFollowUp(response, sources, `${input.question}\n${material}`, safeUUID());
+  const note = material.trim() && !answer.newItems.length
+    ? "Magnum DI's investigation is finished, so the new material wasn't added to it or checked. To have it checked, start a new check.\n\n" : "";
+  return { ...answer, question: input.question, answer: `${note}${answer.answer}` };
+}
 const UNDELETED_KEY = "apollo.investigation.undeleted";
 
 async function pendingDeletions(): Promise<string[]> {
@@ -169,6 +181,8 @@ export function useInvestigation(boundOperationId?: string | null) {
       : ["Magnum DI is continuing this investigation."];
     // Propagate failure data from the job if available, or construct from error string
     const failure = record.job?.failure ?? (record.phase === "failed" && record.error ? { code: "operation_failed", message: record.error, retryable: true, retryAfterSeconds: null, missingEvidenceIds: [] } : null);
+    const answered = record.followUp;
+    if (answered) update((previous) => previous.followUps.some((item) => item.turnId === answered.turnId) ? {} : { followUps: [...previous.followUps, answered] });
     update({ operationId: record.operationId, caseData: record.caseData, job: record.job, error: record.error, failure, progress,
       phase: record.phase === "failed" ? "failed" : record.phase === "expired" ? "expired" : record.phase === "settled"
         ? record.caseData?.response?.question ? "waiting_user" : record.caseData?.response ? "answered" : "idle" : "working",
@@ -199,6 +213,14 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   const ask = useCallback(async (message: string) => {
     const caseData = caseRef.current ?? state.caseData; if (!caseData) return false;
+    // A finished investigation is answered from its own record, on this phone: no Magnum DI turn, no Gemini call —
+    // even when the follow-up mentions a new link, email or number.
+    const finished = state.response ?? caseData.response;
+    if (isFinished(finished)) {
+      const answer = investigationFollowUp(finished, state.sources, message, safeUUID());
+      update((previous) => ({ followUps: [...previous.followUps, answer], phase: "answered", error: null, notice: null }));
+      return true;
+    }
     const turn = pending.current?.message === message ? pending.current : { turnId: safeUUID(), key: safeUUID(), message,
       answerTo: (caseRef.current?.response?.question ?? state.question)?.id ?? null };
     pending.current = turn;
@@ -206,21 +228,33 @@ export function useInvestigation(boundOperationId?: string | null) {
     const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
     try {
       const fresh = await api.getCase(caseData.id); if (!live()) return false;
-      const { job } = await api.submitTurn(caseData.id, { expectedRevision: fresh.case.revision, turnId: turn.turnId, message,
+      const { job, followUp } = await api.submitTurn(caseData.id, { expectedRevision: fresh.case.revision, turnId: turn.turnId, message,
         answerToQuestionId: turn.answerTo, evidenceIds: [] }, turn.key);
-      if (!live()) return false; update({ caseData: fresh.case }); follow(caseData.id, job); return true;
+      if (!live()) return false;
+      if (!job) { // the server found the investigation finished and answered from its record
+        pending.current = null;
+        update((previous) => ({ caseData: fresh.case, phase: "answered", followUps: followUp ? [...previous.followUps, followUp] : previous.followUps }));
+        return true;
+      }
+      update({ caseData: fresh.case }); follow(caseData.id, job); return true;
     } catch (error: unknown) { if (live()) update({ phase: "failed", error: error instanceof Error ? error.message : "Magnum DI could not take this follow-up." }); return false; }
-  }, [state.caseData, state.question, follow]);
+  }, [state.caseData, state.question, state.response, state.sources, follow]);
 
   const continueWith = useCallback(async (input: Omit<CreateCase, "deviceProfile">, operationId = boundOperationId ?? safeUUID()) => {
     const caseData = caseRef.current ?? state.caseData; if (!caseData || (caseData.activeJobId && !managedOperation(operationId, caseData.id))) return false;
+    const finished = state.response ?? caseData.response;
+    if (isFinished(finished)) {
+      const answer = finishedWithNewMaterial(finished, state.sources, input);
+      update((previous) => ({ followUps: [...previous.followUps, answer], phase: "answered", error: null, notice: null }));
+      return true;
+    }
     operationRef.current = operationId; followed.current = null;
     const unsubscribe = subscribeManagedOperation(operationId, adoptManaged);
     try {
       const record = await appendManagedOperation(operationId, caseData, input); adoptManaged(record); return record.phase !== "failed";
     } catch (error: unknown) { update({ phase: "failed", error: error instanceof Error ? error.message : "Apollo could not append the fresh observation." }); return false; }
     finally { unsubscribe(); }
-  }, [adoptManaged, boundOperationId, state.caseData]);
+  }, [adoptManaged, boundOperationId, state.caseData, state.response, state.sources]);
 
   const retry = useCallback(async () => {
     const caseData = caseRef.current ?? state.caseData;

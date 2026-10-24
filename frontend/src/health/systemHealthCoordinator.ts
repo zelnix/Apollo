@@ -94,7 +94,7 @@ async function serverCheck(signal: AbortSignal, started: number): Promise<void> 
     if (signal.aborted) return;
     const stale = check.cached && !!check.checkedAt && Date.parse(check.checkedAt) < started - 1000;
     emit({ higgins: row(stale ? "degraded" : check.investigation.status === "healthy" ? "healthy" : "degraded",
-      stale ? "cached_result" : check.investigation.code, check.checkedAt) });
+      stale ? "cached_result" : check.investigation.code, check.checkedAt), provider: check.investigation.provider ?? null });
     await finishReport(check, stale, signal);
   } catch (error) {
     if (signal.aborted) return;
@@ -110,7 +110,7 @@ export function runSystemHealthCheck(): Promise<FullHealthCheck> {
   activeAbort = controller;
   const started = Date.now();
   emit({ checking: true, overall: "checking", checkedAt: null, device: row("checking"), backend: row("checking"),
-    higgins: row("checking"), report: row("checking"), checkId: null });
+    higgins: row("checking"), report: row("checking"), checkId: null, provider: null });
   running = Promise.all([deviceCheck(), serverCheck(controller.signal, started)]).then(() => {
     if (controller.signal.aborted) {
       const complete = (part: CheckRow) => part.status === "checking" ? row("unavailable", "check_cancelled") : part;

@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from core.config import GEMINI_API_KEY
 from core.db import db, now_utc
@@ -27,6 +27,18 @@ class HealthFailure(Exception):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
+
+
+async def provider_status() -> dict:
+    """Whether the Gemini key is set and how Apollo's last real Gemini call went. Read from records; no call is made."""
+    last = await db.gemini_usage.find_one({"extra.simulated": {"$ne": True}}, {"_id": 0, "timestamp": 1, "success": 1, "failure_code": 1, "purpose": 1},
+                                          sort=[("timestamp", -1)])
+    call = None
+    if last:
+        at = last.get("timestamp")
+        call = {"at": (at.replace(tzinfo=at.tzinfo or timezone.utc).isoformat() if isinstance(at, datetime) else None),
+                "worked": bool(last.get("success")), "failureCode": last.get("failure_code"), "purpose": last.get("purpose")}
+    return {"keyConfigured": bool(GEMINI_API_KEY), "lastCall": call}
 
 
 async def investigate() -> dict:

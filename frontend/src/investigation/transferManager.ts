@@ -4,6 +4,7 @@ import { disposePickerCopy } from "@/src/domain/fileCopyLifecycle";
 import * as api from "./client";
 import { currentDeviceProfile } from "./deviceBroker";
 import type { CreateCase, InvestigationCase, Job, Submission } from "./types";
+import type { FollowUpAnswer } from "@/src/higgins/followUp";
 
 interface OperationFile { uri: string; name: string; mediaType: string }
 export interface OperationTurn { turnId: string; key: string; message: string }
@@ -27,6 +28,8 @@ export interface ManagedOperation {
   error: string | null;
   caseData: InvestigationCase | null;
   job: Job | null;
+  /** Set when the server answered a follow-up on a finished investigation from its record (no job). */
+  followUp?: FollowUpAnswer | null;
   expiresAt: string;
   generation: number;
   controller: AbortController;
@@ -176,6 +179,8 @@ async function runAppend(record: ManagedOperation): Promise<ManagedOperation> {
   const fresh = (await api.getCase(caseId)).case;
   assertLive(record, generation);
   bindCase(record, fresh);
+  // A finished investigation is never reopened: the server answered from its record and started no job.
+  if (!submitted.job) return publish(record, { job: null, followUp: submitted.followUp ?? null, phase: "settled", error: null });
   return publish(record, { job: submitted.job, phase: "submitted", error: null });
 }
 
