@@ -207,7 +207,7 @@ async def test_device_state_prompts_from_apollo_screens_make_no_call(prompt, exp
 @pytest.mark.asyncio
 async def test_a_general_scam_question_keeps_its_one_gemini_call(monkeypatch, no_gemini):
     """The owner's rule: a general scam question Apollo's knowledge can't answer still gets exactly one call."""
-    calls = AsyncMock(return_value=SimpleNamespace(text=json.dumps({"answer": "Scammers pressure you to act fast."})))
+    calls = AsyncMock(return_value=SimpleNamespace(text=json.dumps({"answer": "Scammers pressure you to act fast."}), simulated=False))
     monkeypatch.setattr(provider, "generate", calls)
     monkeypatch.setattr(chat.knowledge, "remember_gemini_answer", AsyncMock(return_value=True))
     reply = await ask("Why do scammers ask for gift cards?")

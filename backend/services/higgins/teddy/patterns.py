@@ -1,0 +1,312 @@
+"""Apollo KB — established scam patterns, as official sources describe them.
+
+Each pattern is an official source's description of a known scam, reduced to what defines it: the
+hallmarks (who the message claims to be and the story it tells) and the ask (what it wants the person to
+do). They are Apollo knowledge-base entries (kind "scam_pattern") like any other, with publisher, link and
+authority tier, and Teddy DI reads the markers from the KB entry itself.
+
+Teddy DI compares the submitted material with them deterministically — no AI, no cost:
+  full     every hallmark and the ask are in the material            → supports "Likely scam"
+  opening  every hallmark, no ask yet (where the pattern starts so)  → supports "Concerning"
+  partial  some of it                                                → unclear: Magnum DI decides
+A match supports Apollo's assessment. It is general knowledge applied to the material, never proof that
+this particular sender is a scammer.
+"""
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+
+from core.db import db
+from services.kb_sources import TIER_1
+
+log = logging.getLogger("apollo.teddy.patterns")
+
+KIND = "scam_pattern"
+SCAMWATCH = "Scamwatch (ACCC)"
+_PAY = r"\b(?:pay|payment|fee|fees|charge|settle|card details|bank details)\b|\$\s?\d"
+
+PATTERNS: tuple[dict, ...] = (
+    {
+        "key": "family_new_number",
+        "name": "family member “new number” scam (“Hi Mum”)",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/phishing-scams",
+        "summary": "a message from an unknown number claims to be a family member whose phone was lost or broken, then asks for money.",
+        "body": ("Scamwatch: “Phishing is when scammers impersonate trusted people or organisations to deceive you into providing "
+                 "personal information.” Among those impersonated: “Friends and family members impersonated through social media or "
+                 "messaging apps.” In the family version, a message from a new number says it's your child or another relative whose "
+                 "phone was lost or broken, and soon asks for money. Scamwatch: “Call the organisation or person back on a phone number "
+                 "you have found yourself.”"),
+        "hallmarks": [
+            ["says it's from a family member", r"\b(?:hi|hey|hello|hiya)\s+(?:mum|mom|mam|dad|mother|father|nan|nana|nanna|grandma|grandpa|gran)\b"
+                                               r"|\bit'?s\s+your\s+(?:son|daughter|child|grandson|granddaughter)\b"],
+            ["says they have a new or lost phone", r"\bnew\s+(?:phone\s+)?(?:number|mobile|phone)\b|\b(?:lost|broke|dropped|smashed|cracked|damaged)\s+my\s+phone\b"
+                                                   r"|\bmy\s+(?:old\s+)?phone\s+(?:is\s+)?(?:broken|died|dead|lost|smashed)\b|\b(?:temporary|temp)\s+number\b"],
+        ],
+        "ask": ["asks for money", r"\b(?:send|transfer|pay|lend|loan|borrow|need|owe)\b[^.?!\n]{0,60}?(?:\$\s?\d[\d,]*|\bmoney\b|\bcash\b|\bbills?\b|\bpayment\b|\brent\b|\bfunds\b)"
+                                  r"|\$\s?\d[\d,]*"],
+        "opening": True,
+        "requires": [],
+        "impersonates_organisation": False,
+        "advice": [["Don't send money", "Don't send money or any details to this number."],
+                   ["Call them on their usual number", "Call your family member on the number you already have saved for them — not the new one — and ask if it's really them."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid, contact your bank now."]],
+        "consequence": "Money sent to a scammer this way is almost never recovered.",
+    },
+    {
+        "key": "organisation_phishing",
+        "name": "phishing message impersonating an organisation",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/phishing-scams",
+        "summary": "a message claiming to be from an organisation you deal with says there's a problem with your account and sends you to a link to verify or log in.",
+        "body": ("Scamwatch warning signs: “You receive an email, text or phone call claiming to be from a business you regularly deal with, "
+                 "such as your bank. They may ask you to update or verify your details or tell you there is a problem with your account.” "
+                 "“The website address is slightly different to normal.” Scammers ask for “Personal information such as passwords, credit "
+                 "card details, and one-time codes” and “To click on links that lead to fake websites.” What to do: “Check that a message, "
+                 "call, or email is real by contacting the person or organisation directly using contact details you've found yourself.”"),
+        "hallmarks": [
+            ["says there's a problem with your account or asks you to verify it",
+             r"\b(?:verify|confirm|update|unlock|reactivate|re-activate|validate|restore)\b[^.?!\n]{0,40}\b(?:account|details|identity|information|card|profile|access|payment|security|password|netbank|login|log-in)\b"
+             r"|\b(?:account|card|access)\b[^.?!\n]{0,30}\b(?:suspended|locked|blocked|restricted|on hold|disabled|frozen|compromised)\b"
+             r"|\bunusual\s+(?:sign[- ]?in|log[- ]?in|activity|transaction)s?\b|\bsecurity\s+(?:alert|notice|warning)\b"],
+        ],
+        "ask": ["asks for your login, codes or card details through a link",
+                r"\b(?:password|passcode|pin|one[- ]time\s+(?:code|password|passcode)|otp|verification\s+code|security\s+code|card\s+(?:number|details)|cvv"
+                r"|log\s?in|sign\s?in|login|account\s+details|personal\s+details|banking\s+details)\b"
+                r"|\b(?:click|tap|visit|go to|follow)\b[^.?!\n]{0,30}(?:\blink\b|\bhere\b|\bbelow\b|https?://)"],
+        "opening": False,
+        "requires": ["brand", "link"],
+        "impersonates_organisation": True,
+        "advice": [["Don't use the link", "Don't open the link and don't enter any passwords, codes or card details."],
+                   ["Contact them yourself", "Go to the organisation through its official app or a website address you type yourself, or call the number on your card or statement."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already entered details, contact the organisation now and change your password."]],
+        "consequence": "Details typed into a fake page can be used straight away to get into your account.",
+    },
+    {
+        "key": "delivery_toll",
+        "name": "parcel delivery or unpaid toll text scam",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/text-or-sms-scams",
+        "summary": "a text says a parcel is held or a toll is unpaid and sends you to a link to pay a small fee or update your details.",
+        "body": ("Scamwatch: “Scam messages look like they are from the government, businesses you deal with or even your own family or "
+                 "friends to try to catch you out.” They may say “there's a problem with your payment or your package delivery” and ask you "
+                 "to “make a payment or transfer money” or “click on a link or call a number provided in the message”. “Scammers can steal "
+                 "any personal information entered on these scam websites and use it to take your money or commit fraud in your name.”"),
+        "hallmarks": [
+            ["is about a parcel, delivery or toll", r"\b(?:parcel|package|delivery|deliver|redeliver(?:y)?|shipment|courier|toll|tolls|linkt|e-?toll|e-?tag)\b"],
+            ["says something is held, failed or unpaid", r"\b(?:held|on hold|failed|unsuccessful|unpaid|overdue|outstanding|missed|could not be delivered|couldn'?t be delivered"
+                                                         r"|unable to deliver|incomplete address|address (?:is )?incomplete|returned to sender)\b"],
+        ],
+        "ask": ["asks you to pay or update your details", r"\b(?:pay|payment|fee|charge|settle|card details|update (?:your )?(?:address|details|delivery))\b|\$\s?\d"],
+        "opening": False,
+        "requires": ["link"],
+        "impersonates_organisation": True,
+        "advice": [["Don't use the link", "Don't open the link or pay anything through it."],
+                   ["Check with them yourself", "Check your delivery or toll account through the company's official app or a website address you type yourself."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid or entered card details, contact your bank now."]],
+        "consequence": "Card details entered on a fake payment page can be used to take much more than the small fee shown.",
+    },
+    {
+        "key": "government_threat",
+        "name": "government or authority threat scam",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/threat-scams",
+        "summary": "someone claiming to be a government agency or the police says you're in trouble and threatens arrest or penalties unless you pay.",
+        "body": ("Scamwatch warning signs: “You receive a call, message or email unexpectedly from someone claiming to be from a government "
+                 "department, debt collection agency or trusted company.” “They will claim that you owe money or that you are in trouble with "
+                 "authorities and threaten you with legal action or arrest.” “The caller will tell you that to fix the matter you will need "
+                 "to pay a fee or fine.” What to do: “Don't use any contact details provided by the caller. Verify their identity by calling "
+                 "the relevant organisation directly.”"),
+        "hallmarks": [
+            ["claims to be a government agency or the police", r"\b(?:ato|australian taxation office|tax office|police|afp|federal police|immigration|home affairs|court"
+                                                               r"|sheriff|services australia|centrelink|medicare|mygov|government|department of)\b"],
+            ["threatens arrest, legal action or a penalty", r"\b(?:arrest(?:ed)?|warrant|legal action|deport(?:ed|ation)?|prosecut\w*|criminal|penalt(?:y|ies)"
+                                                            r"|court action|jail|charges against you)\b"],
+        ],
+        "ask": ["asks you to pay or hand over details", r"\b(?:pay|payment|gift\s?cards?|vouchers?|itunes|google play|bitcoin|crypto|transfer|wire"
+                                                         r"|bank details|tax file number|tfn|passport|keep (?:it|your money) safe)\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "advice": [["Don't pay or reply", "Don't pay, reply or call back using anything in this message."],
+                   ["Contact the agency yourself", "If you're worried, contact the agency using contact details from its official website."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid, contact your bank now."]],
+        "consequence": "Government agencies and police don't demand immediate payment under threat — money paid this way goes to the scammer.",
+    },
+    {
+        "key": "unexpected_money",
+        "name": "unexpected money or prize scam",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/unexpected-money-scams",
+        "summary": "a message says you've won or are owed money, but you have to pay a fee or hand over details to receive it.",
+        "body": ("Scamwatch warning signs: “Unexpected emails, letters, texts, or any contact that say you are entitled to money, "
+                 "compensation, or an inheritance.” “You are asked to pay money up-front, like taxes or fees to get money or prizes; but you "
+                 "haven't entered a competition.” What to do: “Don't pay a fee to collect winnings or a prize. Legitimate lotteries don't ask "
+                 "you to do this.”"),
+        "hallmarks": [
+            ["says you've won or are owed money", r"\b(?:you(?:'ve| have)?\s+won|winner|prize|lottery|jackpot|inheritance|beneficiary|unclaimed|compensation|rebate"
+                                                  r"|entitled to|refund\s+(?:is\s+)?(?:due|waiting|pending|available|of))\b"],
+        ],
+        "ask": ["asks for a fee or your details to release it", r"\b(?:fee|fees|tax|taxes|charge|charges|pay|payment|deposit|bank details|card details|account details|passport)\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "advice": [["Don't pay to receive money", "Don't pay any fee or tax, or send details, to receive the money."],
+                   ["Check independently", "If it names an organisation, contact it using details from its official website — not from this message."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au."]],
+        "consequence": "A fee paid to release a prize or refund is lost, and the money promised never arrives.",
+    },
+    {
+        "key": "job_task",
+        "name": "job or paid-task scam",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/jobs-and-employment-scams",
+        "summary": "an unexpected job offer promises easy money for simple tasks, then asks you to pay, top up or deposit money to keep earning.",
+        "body": ("Scamwatch warning signs: “A recruiter contacts you unexpectedly through text message or encrypted message platforms like "
+                 "WhatsApp, Signal or Telegram.” “You are told you can earn a high income while working from home and with little effort.” "
+                 "“You are told to top up an account with your own money or cryptocurrency to complete tasks.” What to do: “Never send your "
+                 "own money, you won't get it back.”"),
+        "hallmarks": [
+            ["offers a job or paid tasks", r"\b(?:job|role|position|vacanc(?:y|ies)|recruit(?:er|ing|ment)?|hiring|work from home|part[- ]time|remote work|tasks?|online work)\b"],
+            ["promises easy or high pay", r"\$\s?\d[\d,]*\s*(?:per|a|an|/|each)\s*(?:day|hour|hr|week|task)\b|\b(?:earn|earning)\b[^.?!\n]{0,40}(?:\$\s?\d|daily|per day|a day|commission)"
+                                          r"|\b(?:little effort|easy money|no experience (?:needed|required)|high (?:income|pay|salary))\b"],
+        ],
+        "ask": ["asks you to pay, top up or deposit money", r"\b(?:top[- ]?up|deposit|recharge|upfront|training fee|registration fee|recruitment fee|pay (?:a|the|your)|usdt|crypto|bitcoin)\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": False,
+        "advice": [["Don't send money", "Don't pay, top up or deposit anything to get or keep this work."],
+                   ["Check the employer yourself", "Contact the company using details you find yourself on its official website."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid, contact your bank now."]],
+        "consequence": "Money you top up or deposit for a 'job' like this is not paid back.",
+    },
+    {
+        "key": "investment_returns",
+        "name": "investment scam promising high or guaranteed returns",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/investment-scams",
+        "summary": "an investment or trading offer promises guaranteed or unusually high returns and pushes you to invest or get in touch to start.",
+        "body": ("Scamwatch warning signs: “Emails, websites or ads with testimonials and over-the-top promises of big returns.” “High pressure "
+                 "tactics designed to rush you to act so you don't 'miss out'.” What to do: “Always stop and check before you act.” “Check "
+                 "the company or website is not named on the Moneysmart investor alert list.” “Ensure the person offering you financial "
+                 "products or advice has an Australian financial services (AFS) license.”"),
+        "hallmarks": [
+            ["is an investment or trading offer", r"\b(?:invest\w*|trading|trader|crypto\w*|bitcoin|forex|portfolio|shares|stocks|ipo)\b"],
+            ["promises guaranteed or very high returns",
+             r"guarantee[ds]?\s+(?:\w+\s+){0,2}(?:returns?|profits?|income|interest|payouts?)"
+             r"|\b\d{1,3}(?:\.\d+)?\s?%\s*(?:(?:per|a|each|every)\s+)?(?:day|daily|week|weekly|month|monthly|returns?|profit|interest|roi)\b"
+             r"|risk[- ]free|no risk|double your (?:money|investment)|can'?t lose"],
+        ],
+        "ask": ["asks you to invest or get in touch to start", r"\b(?:deposit|invest\s+(?:now|today|with)|minimum\s+(?:investment|deposit)|send|transfer|get started|to start"
+                                                                r"|start (?:now|today|earning|trading)|join (?:us|now|today|our)|sign up|register|whatsapp|telegram|signal|dm me|message (?:me|us))\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": False,
+        "advice": [["Don't invest or send money", "Don't invest, deposit or send money in response to this offer."],
+                   ["Check Moneysmart", "Check the company isn't on Moneysmart's Investor Alert List and holds an Australian financial services licence."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid, contact your bank now."]],
+        "consequence": "Money sent to a scam investment is rarely recovered.",
+    },
+    {
+        "key": "remote_access",
+        "name": "remote access or tech support scam",
+        "url": "https://www.scamwatch.gov.au/types-of-scams/phone-scams",
+        "summary": "someone says your device or account has a problem and asks you to install software or give them remote access to fix it.",
+        "body": ("Scamwatch: it's probably a scam if the caller “wants you to install software or access a secure account on your mobile "
+                 "phone or computer” or “suggests you or your accounts have been hacked or involved in fraud”. What to do: “Never give anyone "
+                 "remote access to your computer.”"),
+        "hallmarks": [
+            ["says your device or account has a problem", r"\b(?:virus|malware|infected|hacked|compromised|security (?:issue|problem|breach)|suspicious activity"
+                                                          r"|your (?:computer|device|internet|nbn|connection) (?:is|has))\b"],
+        ],
+        "ask": ["asks you to install software or give remote access", r"\b(?:anydesk|teamviewer|ultraviewer|quick\s?support|quick assist|remote (?:access|desktop|support)"
+                                                                       r"|screen\s?shar\w*|install (?:this|the|an) (?:app|software|program))\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "advice": [["Don't give access", "Don't install anything or let anyone connect to your device."],
+                   ["Hang up and check", "If it names a company, contact it using details from its official website."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already given access, disconnect from the internet and contact your bank."]],
+        "consequence": "Remote access lets someone see and control everything on your device, including your banking.",
+    },
+)
+
+_REQUIREMENT_LABEL = {"brand": "names an organisation", "link": "contains a link"}
+
+
+async def load() -> int:
+    """Put the shipped patterns into Apollo's KB. Idempotent."""
+    from services.higgins import knowledge
+    for p in PATTERNS:
+        await knowledge.upsert(KIND, p["key"], title=f"Scam pattern: {p['name']}", body=p["body"], publisher=SCAMWATCH, url=p["url"],
+                               authority_tier=TIER_1, jurisdiction="AU", retrieved_via="shipped_with_apollo", knowledge_class="scam_pattern",
+                               extra={"pattern": {k: v for k, v in p.items() if k not in ("body", "url")}})
+    return len(PATTERNS)
+
+
+async def entries() -> list[dict]:
+    """The scam patterns Apollo's KB currently holds (loaded on first use if the KB has none yet)."""
+    query = {"kind": KIND, "status": {"$ne": "historical"}, "pattern": {"$exists": True}}
+    rows = await db.higgins_knowledge.find(query, {"_id": 0}).to_list(200)
+    if not rows:
+        await load()
+        rows = await db.higgins_knowledge.find(query, {"_id": 0}).to_list(200)
+    return rows
+
+
+@dataclass
+class PatternMatch:
+    entry: dict
+    stage: str                       # full | opening | partial
+    found: list[tuple[str, str]]     # (what the pattern looks for, the material's own words)
+    missing: list[str]
+    ask: tuple[str, str] | None
+
+    def wire(self) -> dict:
+        p = self.entry["pattern"]
+        return {"kbId": self.entry.get("kb_id"), "key": p["key"], "name": p["name"], "publisher": self.entry.get("publisher"),
+                "url": self.entry.get("url"), "title": self.entry.get("title"), "summary": p["summary"], "stage": self.stage,
+                "found": [list(f) for f in self.found], "missing": self.missing, "ask": list(self.ask) if self.ask else None,
+                "advice": p["advice"], "consequence": p["consequence"], "impersonatesOrganisation": p["impersonates_organisation"]}
+
+
+def _quote(match: re.Match) -> str:
+    return " ".join(match.group(0).split())[:90]
+
+
+def match_one(entry: dict, text: str, *, has_link: bool, has_brand: bool) -> PatternMatch | None:
+    p = entry["pattern"]
+    found: list[tuple[str, str]] = []
+    missing: list[str] = []
+    for label, regex in p["hallmarks"]:
+        hit = re.search(regex, text, re.I)
+        if hit:
+            found.append((label, _quote(hit)))
+        else:
+            missing.append(label)
+    for requirement in p.get("requires") or []:
+        if not {"brand": has_brand, "link": has_link}[requirement]:
+            missing.append(_REQUIREMENT_LABEL[requirement])
+    hit = re.search(p["ask"][1], text, re.I)
+    ask = (p["ask"][0], _quote(hit)) if hit else None
+    if not missing and ask:
+        stage = "full"
+    elif not missing and p.get("opening"):
+        stage = "opening"
+    elif found and len(found) + (1 if ask else 0) >= 2:
+        stage = "partial"
+    else:
+        return None
+    if not ask:
+        missing.append(p["ask"][0])
+    return PatternMatch(entry, stage, found, missing, ask)
+
+
+_RANK = {"full": 3, "opening": 2, "partial": 1}
+
+
+async def best(text: str, *, has_link: bool, has_brand: bool) -> PatternMatch | None:
+    """The established pattern the material matches best, or None."""
+    try:
+        rows = await entries()
+    except Exception:  # noqa: BLE001 — the KB can never break an investigation
+        log.warning("scam_patterns_unavailable", exc_info=True)
+        return None
+    matches = [m for m in (match_one(e, text, has_link=has_link, has_brand=has_brand) for e in rows) if m]
+    matches.sort(key=lambda m: (_RANK[m.stage], len(m.found) + (1 if m.ask else 0)), reverse=True)
+    return matches[0] if matches else None

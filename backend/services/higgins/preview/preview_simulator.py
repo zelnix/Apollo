@@ -282,7 +282,11 @@ async def simulate_generate(
             kb = await knowledge.related(query)
         except Exception:  # noqa: BLE001 — the knowledge base can never break the simulator
             kb = []
-    text = simulated_text(purpose, json_output, blocks, kb=kb, query=query, response_schema=response_schema)
+    grounding = None
+    if name == "teddy_search":
+        text, grounding = await teddy_lookup(blocks)
+    else:
+        text = simulated_text(purpose, json_output, blocks, kb=kb, query=query, response_schema=response_schema)
     prompt_chars = (len(system) if system else 0) + int(payload_audit.get("total_text_chars") or 0)
     usage = {
         "prompt_token_count": _estimate_tokens(prompt_chars),
@@ -306,7 +310,8 @@ async def simulate_generate(
             usage_metadata=usage,
             duration_ms=duration_ms,
             extra={"payload_audit": payload_audit, "simulated": True, "trigger_source": trigger_source,
-                   "note": SIMULATED_NOTE, "apollo_kb": [entry.get("kb_id") for entry in kb]},
+                   "note": SIMULATED_NOTE, "apollo_kb": [entry.get("kb_id") for entry in kb],
+                   "search_tool": any(getattr(t, "google_search", None) is not None for t in tools or []), "search_queries": 0},
         )
     except Exception:
         pass
@@ -316,7 +321,51 @@ async def simulate_generate(
         content=types.Content(role="model", parts=[types.Part(text=text)]),
         finish_reason="STOP",
         usage=usage,
-        grounding=None,
+        grounding=grounding,
         model=model,
         simulated=True,
     )
+
+
+# ── Teddy DI's targeted search, answered from Apollo's knowledge base ───────
+_TEDDY_QUESTION = re.compile(r"^Q(\d+) \[statuses: ([A-Z_, ]+)\] \[subject: (.*?)\] (.+)$", re.M)
+
+
+async def teddy_lookup(blocks: list[EvidenceBlock]) -> tuple[str, dict]:
+    """Each Teddy DI question answered from Apollo's KB, in the line format and grounding shape Google Search
+    grounding produces. A warning is reported only when an official alert in the KB names the exact value;
+    anything else is reported as not found. No web search is made."""
+    from urllib.parse import urlparse
+
+    prompt = "\n".join(b.text for b in blocks if b.kind == "question")
+    lines: list[str] = []
+    chunks: list[dict] = []
+    supports: list[dict] = []
+    offset = 0
+    for match in _TEDDY_QUESTION.finditer(prompt):
+        number, subject, question = match.group(1), match.group(3), match.group(4)
+        statuses = [s.strip() for s in match.group(2).split(",")]
+        entry = None
+        try:
+            if "ANSWER" in statuses:
+                entry = next((e for e in await knowledge.search(question) if e.get("kind") != "gemini_answer"), None)
+            elif "WARNING" in statuses:
+                entry = next((e for e in await knowledge.related(f"{subject} {question}") if e.get("kind") == "scam_alert"
+                              and subject.lower() in f"{e.get('title', '')} {e.get('body', '')}".lower()), None)
+        except Exception:  # noqa: BLE001
+            entry = None
+        url = (entry or {}).get("url") or ""
+        if entry and url.startswith("https://"):
+            words = knowledge.excerpt(entry.get("body") or "", knowledge.terms(question), max_chars=280).replace("\n", " ")
+            status = "ANSWER" if "ANSWER" in statuses else "WARNING"
+            line = f"Q{number} | {status} | (Simulated from Apollo's knowledge base) {entry.get('publisher')}: “{entry.get('title')}” — {words}"
+            host = (urlparse(url).hostname or "").removeprefix("www.")
+            chunks.append({"web": {"uri": url, "title": host, "domain": host}})
+            supports.append({"segment": {"start_index": offset, "end_index": offset + len(line.encode("utf-8")), "text": line},
+                             "grounding_chunk_indices": [len(chunks) - 1]})
+        else:
+            missing = next((s for s in statuses if s.startswith(("NO_", "NOT_"))), statuses[-1])
+            line = f"Q{number} | {missing} | (Simulated) Apollo's knowledge base has nothing on {subject}; no web search is made in preview."
+        lines.append(line)
+        offset += len(line.encode("utf-8")) + 1
+    return "\n".join(lines), {"grounding_chunks": chunks, "grounding_supports": supports, "web_search_queries": []}

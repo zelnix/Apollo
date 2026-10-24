@@ -1,6 +1,6 @@
-"""The Gemini investigation request contains exactly three things: the person's question, the
-complete case evidence (labelled with id and kind), and the response schema. No system prompt, no
-framework, no summarised or duplicated representation of evidence Apollo already supplies.
+"""The Magnum DI request contains exactly three things: the person's question, the case evidence it needs
+(the submitted material in full, plus Teddy DI's brief, each labelled with id and kind), and the response
+schema. No system prompt, no framework, no summarised or duplicated representation of the material.
 
 Runs against the preview simulator: the request below is the real one; only the external call is
 replaced. Run: cd /app/backend && python -m pytest tests/test_gemini_request_shape.py -q
@@ -67,13 +67,16 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
     assert sent_schema.properties["sourceIds"].max_items == 0
     finding = sent_schema.properties["findings"].items.properties
     assert finding["sourceIds"].max_items == 0
-    supplied = {row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])}
+    # Magnum DI may cite only what it was sent: the material and Teddy DI's brief. The raw lookups Teddy
+    # already read, and Teddy's full check record, stay registered for the case but are not resent.
+    supplied = {row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])
+                if row["client_item_id"] not in ("apollo-triage-intelligence", "teddy-di-checks")}
     allowed = finding["evidenceIds"].items.enum or []
     assert allowed and set(allowed) == supplied
     assert sent_schema.properties["remainingEvidenceIds"].items.enum == allowed
     assert captured["kwargs"]["json_output"] is True
-    # Google Search stays attached (a tool, not prompt text).
-    assert captured["kwargs"]["tools"]
+    # Nothing in this case needs an external fact Teddy DI couldn't establish, so Google Search is off.
+    assert captured["kwargs"]["tools"] is None
 
     parts = captured["contents"][0].parts
     texts = [p.text for p in parts if getattr(p, "text", None)]
@@ -94,8 +97,10 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
     assert long_text in message_part
     assert "only the first 2000" not in message_part
 
-    # 5. Pre-gathered triage intelligence is sent raw, as evidence, not summarised into the prompt.
+    # 5. Pre-gathered results Teddy DI has no reader for are passed on verbatim inside its brief, never
+    #    summarised away; the raw item itself is not sent a second time.
     assert any("safe_browsing" in t and "SOCIAL_ENGINEERING" in t for t in evidence_texts)
+    assert not any("Apollo triage specialist intelligence" in t for t in evidence_texts)
 
     # 6. The schema-shaped response passes the real validator and is staged as a turn.
     #    (This job was never claimed by the worker, so the final case CAS reports "superseded";

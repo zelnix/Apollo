@@ -1,0 +1,37 @@
+"""Apollo case outcomes — one outcome system fed by both investigation layers.
+
+Teddy DI and Magnum DI both end a case with one of these. Each outcome fixes the assessment it implies, so
+the two can never disagree. A general question (nothing submitted to check) has no case outcome.
+"""
+from __future__ import annotations
+
+OUTCOMES = ("no_scam_indicators", "concerning", "likely_scam", "confirmed_threat", "unable_to_determine")
+
+LABELS = {
+    "no_scam_indicators": "No scam indicators found",
+    "concerning": "Concerning",
+    "likely_scam": "Likely scam",
+    "confirmed_threat": "Confirmed scam or threat",
+    "unable_to_determine": "Unable to determine",
+}
+
+ASSESSMENT = {
+    "no_scam_indicators": "no_concern_found_within_scope",
+    "concerning": "concern_found",
+    "likely_scam": "concern_found",
+    "confirmed_threat": "concern_found",
+    "unable_to_determine": "uncertain",
+}
+
+# What each outcome means — stated once, here, and given to Magnum DI as the schema's description.
+CRITERIA = (
+    "Apollo's case outcome. "
+    "no_scam_indicators (assessment no_concern_found_within_scope): the checks found nothing concerning. "
+    "concerning (assessment concern_found): established warning signs, but not enough to call it a scam. "
+    "likely_scam (assessment concern_found): the evidence, together with an established scam pattern, points to a scam — "
+    "without proof about this particular sender. "
+    "confirmed_threat (assessment concern_found): an authoritative source names this exact link, number, address or "
+    "company as a scam or threat. "
+    "unable_to_determine (assessment uncertain): the available evidence can't establish more. "
+    "Null only when nothing was submitted to check (a general question)."
+)

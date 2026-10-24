@@ -1,3 +1,35 @@
+## Teddy DI stopping rule + one Apollo outcome system (2026-10-24)
+**Owner's rule:** a case is RESOLVED at Teddy DI when further Magnum DI investigation could not change Apollo's finding or
+Higgins' action; "Unable to determine" is a valid resolved outcome; a KB pattern match supports the assessment but is never
+proof about the sender. Owner's answers: impersonation + brand-new domain → Concerning (no Magnum); "Hi Mum" → check Apollo KB
+first, pattern match → Concerning/Likely scam, unclear → Magnum; bare link → stop at Concerning / Unable to determine after all
+Teddy resources; outcome labels in the app result AND the admin portal, fed by both layers.
+- **Outcomes** `services/higgins/outcomes.py`: no_scam_indicators · concerning · likely_scam · confirmed_threat · unable_to_determine,
+  each fixing its assessment. `HigginsResponse.outcome` / `ModelResponse.outcome` (optional; null = general question). Magnum's
+  Gemini schema requires `outcome` (criteria in its description); validation rejects an outcome that disagrees with the assessment.
+  Preview simulator returns one too. `routing.outcome` stored on every commit.
+- **KB scam patterns** `services/higgins/teddy/patterns.py`: 8 Scamwatch-sourced patterns (family new number, organisation phishing,
+  delivery/toll, government threat, unexpected money, job/task, investment returns, remote access) stored in `higgins_knowledge`
+  as kind `scam_pattern` (markers in the entry; loaded by `knowledge.refresh()` and on first use). Deterministic match:
+  full → Likely scam, opening (family pattern only) → Concerning, partial → Magnum.
+- **Teddy decide()** (`teddy/__init__.py`): official decisive concern stops early (Confirmed); otherwise official → KB (patterns) →
+  targeted search for the planned open checks, then: unreadable image/doc or a register conflict → Magnum; pattern full/opening
+  (unless the material's links are the named organisation's own → contradiction → Magnum) → Likely/Concerning; brand named +
+  link not its domain + independent fact about that link (new domain, IPQS flag, redirect, download) → Concerning; bare link →
+  Concerning / No scam indicators / Unable to determine; any other message → Magnum (message analysis).
+- **Results** `teddy/report.py`: `compose()` → threat / pattern / impersonation / link results; findings are the material's own
+  words or sourced live facts; KB pattern only in "What Apollo's knowledge base adds" + sourceIds; uncertainties say what was not
+  taken further and why. Magnum brief names the pattern check in one line.
+- **Admin portal**: Outcome badge column on investigations, Outcome + "Apollo KB Scam Pattern" rows in the drill-down, cost-routing
+  table broken down by the five outcomes.
+- **App**: `outcome` in `src/investigation/types.ts`; `outcomeLabel`/`outcomeTone` in `messageVoice.ts`; outcome badge
+  (`inv-outcome`) on the investigation status card. Verified in the preview: "Hi Mum" text → "Likely scam" badge.
+- **Production never loads simulation code**: the indicator reader moved from `preview_analysis.py` to `services/higgins/indicators.py`
+  (Apollo Triage imported the preview module in production).
+- Tests: `test_teddy_routing.py` (18), `test_one_gemini_call.py` material updated (its ANZ text is now settled by Teddy),
+  stale mock fixed in `test_deterministic_higgins.py`; full backend suite 1048 passed. Frontend messageGuardrails + tsc clean.
+  No testing agent (owner's rule). Preview: 0 live Gemini calls since 08:00 UTC today.
+
 ## Admin portal: "Live AI" / "Simulated" badge on every page (2026-10-24)
 - `routers/admin_portal.py` `_ai_mode_badge()` rendered by `_shell` at the top of every signed-in page
   (`#ai-mode-badge`, `data-mode="preview|live"`), read from `provider.get_provider_mode()` + `provider.GEMINI_API_KEY`:

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from google.genai import types
 
+from services.higgins import outcomes
+
 _STRING = types.Schema(type="STRING")
 _STRING_LIST = types.Schema(type="ARRAY", items=types.Schema(type="STRING"))
 
@@ -105,6 +107,7 @@ def response_schema(*, evidence_ids: list[str] = (), source_ids: list[str] = (),
                                                                       "its own field and is displayed separately."),
         "assessment": _enum(["concern_found", "no_concern_found_within_scope", "uncertain"],
                             "'concern_found' requires at least one finding."),
+        "outcome": types.Schema(type="STRING", enum=list(outcomes.OUTCOMES), nullable=True, description=outcomes.CRITERIA),
         "attention": _enum(["none", "review", "action_needed", "urgent"],
                            "'action_needed'/'urgent' require attentionReason and at least one action."),
         "attentionReason": types.Schema(type="STRING", nullable=True, description="One sentence on why this needs the "
@@ -126,7 +129,7 @@ def response_schema(*, evidence_ids: list[str] = (), source_ids: list[str] = (),
         "completion": _enum(["complete", "partial", "waiting_user"],
                             "'waiting_user' requires a question; 'partial' when evidence remains unexamined."),
     },
-    required=["overview", "explanationMarkdown", "assessment", "attention", "attentionReason", "findings",
+    required=["overview", "explanationMarkdown", "assessment", "outcome", "attention", "attentionReason", "findings",
               "uncertainties", "scope", "sourceIds", "remainingEvidenceIds", "actions", "recommendedActionIndex",
               "completion"],
 )

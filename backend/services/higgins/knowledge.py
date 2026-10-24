@@ -4,6 +4,8 @@ Every entry keeps its source, link, authority tier, jurisdiction and dates, and 
 - learn_article      — published Learn with Higgins articles (in-app route)
 - scam_alert         — official scam alerts and advisories from the government feeds
 - official_guidance  — cyber.gov.au guidance (CC BY 4.0), shipped in data/cyber_gov_au_guidance.json
+- scam_pattern       — established scam patterns as official sources describe them (teddy/patterns.py), with the
+                       markers Teddy DI compares submitted material against
 - researched         — trusted pages found and maintained through Tavily (services/apollo_kb.py), versioned
 - gemini_answer      — an answer cache: Gemini's answer to a general question nothing above covered. It is
                        labelled as Gemini's and is never treated as sourced knowledge.
@@ -165,8 +167,10 @@ async def load_official_guidance() -> int:
 
 
 async def refresh() -> dict:
-    """Bring the KB up to date with Learn, Scam Alerts and the shipped official guidance. Idempotent."""
-    result = {"learn": await sync_learn_articles(), "alerts": await sync_scam_alerts(), "guidance": await load_official_guidance()}
+    """Bring the KB up to date with Learn, Scam Alerts, the shipped official guidance and scam patterns. Idempotent."""
+    from services.higgins.teddy import patterns
+    result = {"learn": await sync_learn_articles(), "alerts": await sync_scam_alerts(), "guidance": await load_official_guidance(),
+              "patterns": await patterns.load()}
     log.info("knowledge_refresh %s", result)
     return result
 

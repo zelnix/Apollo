@@ -139,6 +139,30 @@ def _forbid_live_gemini(monkeypatch):
     monkeypatch.setattr(provider, "generate_json", blocked)
 
 
+@pytest.fixture(autouse=True)
+def _teddy_offline(monkeypatch):
+    """Teddy DI's direct-source lookups (Safe Browsing, RDAP, advisories) and its targeted Google Search reach the
+    network. Bounded tests run them offline: every lookup reports unavailable, so investigations reach Magnum DI
+    exactly as before. Teddy's own tests replace these with fixed results."""
+    from services.higgins.teddy import official, search
+
+    async def unavailable(*_args, **_kwargs):
+        return None
+
+    async def no_advisories(*_args, **_kwargs):
+        return []
+
+    async def search_unavailable(checks, **_kwargs):
+        return {"answers": {c.id: {"status": "UNAVAILABLE", "fact": "", "sources": []} for c in checks if c.question},
+                "calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False,
+                "model": None, "status": "unavailable"}
+
+    monkeypatch.setattr(official, "lookup_url", unavailable)
+    monkeypatch.setattr(official, "lookup_domain", unavailable)
+    monkeypatch.setattr(official, "advisories", no_advisories)
+    monkeypatch.setattr(search, "run", search_unavailable)
+
+
 
 # Motor event-loop compatibility: asyncio_default_fixture_loop_scope = session in pytest.ini
 # keeps one loop per xdist worker for the whole test session, so Motor's AsyncIOMotorClient

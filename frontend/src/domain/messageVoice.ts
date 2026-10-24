@@ -193,6 +193,25 @@ export function attentionLabel(attention: string): string {
   }
 }
 
+/** Apollo's case outcome, as the person sees it. Null/unknown (a general question) shows no label. */
+export function outcomeLabel(outcome: string | null | undefined): string | null {
+  switch (outcome) {
+    case "no_scam_indicators": return "No scam indicators found";
+    case "concerning": return "Concerning";
+    case "likely_scam": return "Likely scam";
+    case "confirmed_threat": return "Confirmed scam or threat";
+    case "unable_to_determine": return "Unable to determine";
+    default: return null;
+  }
+}
+
+export function outcomeTone(outcome: string | null | undefined): "barking" | "ears_up" | "sniffing" | "resting" {
+  if (outcome === "confirmed_threat" || outcome === "likely_scam") return "barking";
+  if (outcome === "concerning") return "ears_up";
+  if (outcome === "unable_to_determine") return "sniffing";
+  return "resting";
+}
+
 // --- Plain-English status history for an event detail screen (Status Timeline) -----------------------
 export interface HistoryEntry { at: string; text: string }
 /** Builds a human-readable history from the event's own facts plus any synced revisions. Never shows a

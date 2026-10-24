@@ -22,6 +22,7 @@ from typing import Optional
 
 from pydantic import ValidationError
 
+from services.higgins import outcomes
 from services.higgins.contracts import ActionProposal, Finding, HigginsResponse, ModelFinding, ModelResponse, Question
 
 CAPABILITY_ACTIONS = {"open_settings", "request_permission", "recheck"}
@@ -109,6 +110,8 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         errors.append("assessment 'concern_found' requires at least one finding; add the finding that supports the concern")
     if model.assessment == "no_concern_found_within_scope" and model.attention in ("action_needed", "urgent"):
         errors.append("assessment 'no_concern_found_within_scope' is contradicted by attention 'action_needed'/'urgent'; reconcile the assessment with the attention level")
+    if model.outcome and model.assessment != outcomes.ASSESSMENT[model.outcome]:
+        errors.append(f"outcome '{model.outcome}' requires assessment '{outcomes.ASSESSMENT[model.outcome]}'; reconcile the outcome with the assessment")
 
     # ── DIRECT: actionable concerns must have specific instructions ──
     for idx, action in enumerate(model.actions):
@@ -161,7 +164,7 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
     elif model.completion == "waiting_user" and pending_question:
         question = Question.model_validate(pending_question)
     response = HigginsResponse(revision=revision, overview=model.overview, explanation_markdown=model.explanation_markdown, assessment=model.assessment,
-                               attention=model.attention, attention_reason=model.attention_reason,
+                               outcome=model.outcome, attention=model.attention, attention_reason=model.attention_reason,
                                findings=[Finding(id=str(uuid.uuid4()), **f.model_dump()) for f in deduplicate_findings(model.findings)], uncertainties=model.uncertainties,
                                scope=model.scope, source_ids=model.source_ids, remaining_evidence_ids=model.remaining_evidence_ids, actions=actions,
                                recommended_action_id=actions[model.recommended_action_index].id if model.recommended_action_index is not None and actions else None,

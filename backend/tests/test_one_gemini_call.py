@@ -55,7 +55,8 @@ async def _investigation(gemini_calls: int = 0):
     owner = f"one-call-{uuid.uuid4().hex[:8]}"
     await repo.ensure_indexes()
     case = await repo.create_case(owner, "text", None)
-    await ev.ingest_text(owner, case, "message-text", "ANZ: your card is locked. Verify now at https://anz-verify.co/login",
+    # A message nothing Teddy DI checks can settle, so it reaches Magnum DI's one call.
+    await ev.ingest_text(owner, case, "message-text", "Hi, it's Sarah from the conference. Here are the slides you asked for: https://slides-deck.net/deck",
                          kind="text", origin="user_submission", label="Submitted message text")
     case = await repo.get_case(owner, case["case_id"])
     turn_id = str(uuid.uuid4())

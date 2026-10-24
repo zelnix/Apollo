@@ -99,6 +99,10 @@ _DEFAULT_PRICING = {
     "cached_input": 0.10,
 }
 
+# Grounding with Google Search on Gemini 3 models is billed per search query Gemini runs
+# ($14 per 1,000 queries, list price before any monthly free allowance).
+SEARCH_QUERY_USD = 0.014
+
 
 def _get_pricing(model: str) -> dict[str, float]:
     """Get pricing for a model, falling back to conservative defaults."""
@@ -256,6 +260,9 @@ async def record_usage(
 
     tokens = _extract_tokens(usage_metadata)
     cost = estimate_cost_usd(model, tokens)
+    search_queries = int((extra or {}).get("search_queries") or 0)
+    search_cost = 0.0 if (extra or {}).get("simulated") else search_queries * SEARCH_QUERY_USD
+    cost += search_cost
     now = datetime.now(timezone.utc)
 
     doc = {
@@ -269,6 +276,8 @@ async def record_usage(
         "failure_code": failure_code,
         "tokens": tokens,
         "estimated_cost_usd": cost if cost > 0 else None,
+        "search_queries": search_queries,
+        "search_cost_usd": search_cost,
         "pricing_version": PRICING_VERSION,
         "pricing_rates": _get_pricing(model),
         "duration_ms": duration_ms,

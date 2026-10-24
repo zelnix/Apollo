@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import type { ApolloState, EventCategory, PatrolEvent } from "../src/domain/types.ts";
-import { assessmentLabel, attentionLabel, looksLikeInternalCode, projectedEventVoice } from "../src/domain/messageVoice.ts";
+import { assessmentLabel, attentionLabel, looksLikeInternalCode, outcomeLabel, outcomeTone, projectedEventVoice } from "../src/domain/messageVoice.ts";
 import { resolveApolloState } from "../src/domain/stateMachine.ts";
 import { buildGatesOverview } from "../src/domain/gates.ts";
 import { patrolPayload } from "../src/domain/patrolPayload.ts";
@@ -90,6 +90,13 @@ test("Higgins chat replies: every verdict maps to plain English, never a raw enu
     const label = attentionLabel(a);
     assert.ok(label.trim().length > 0 && !looksLikeInternalCode(label), `attention leaked: ${label}`);
   }
+  // Apollo's case outcome: the same five plain-English labels whichever investigation layer answered.
+  const outcomes: Record<string, string> = { no_scam_indicators: "No scam indicators found", concerning: "Concerning", likely_scam: "Likely scam",
+    confirmed_threat: "Confirmed scam or threat", unable_to_determine: "Unable to determine" };
+  for (const [key, label] of Object.entries(outcomes)) assert.equal(outcomeLabel(key), label);
+  assert.equal(outcomeLabel(null), null, "a general question has no outcome label");
+  assert.equal(outcomeTone("likely_scam"), "barking");
+  assert.equal(outcomeTone("no_scam_indicators"), "resting");
   // The investigation view must not interpolate raw enums into the UI.
   const view = readFileSync("src/components/InvestigationView.tsx", "utf8");
   assert.doesNotMatch(view, /\.(assessment|attention)\.replace|\{response\.(assessment|attention)\}/, "InvestigationView must render verdicts via messageVoice labels, not raw enums");

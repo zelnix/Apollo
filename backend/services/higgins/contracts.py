@@ -16,6 +16,8 @@ CaseStatus = Literal["queued", "investigating", "waiting_device", "waiting_user"
 Origin = Literal["user_submission", "device_observation", "external_source", "apollo_inference"]
 CoverageStatus = Literal["not_started", "partial", "examined", "unavailable", "out_of_scope"]
 Assessment = Literal["concern_found", "no_concern_found_within_scope", "uncertain"]
+# Apollo's case outcome (services/higgins/outcomes.py), shared by Teddy DI and Magnum DI.
+Outcome = Literal["no_scam_indicators", "concerning", "likely_scam", "confirmed_threat", "unable_to_determine"]
 Attention = Literal["none", "review", "action_needed", "urgent"]
 Completion = Literal["complete", "partial", "waiting_user"]
 FailureCode = Literal["invalid_input", "unauthenticated", "not_found", "conflict", "provider_configuration", "rate_limited",
@@ -155,6 +157,7 @@ class HigginsResponse(Wire):
     overview: str
     explanation_markdown: str
     assessment: Assessment
+    outcome: Optional[Outcome] = None
     attention: Attention
     attention_reason: Optional[str] = None
     findings: list[Finding] = Field(default_factory=list)
@@ -356,7 +359,7 @@ class Usage(Wire):
 
 
 class ProviderResult(Wire):
-    provider: Literal["gemini"] = "gemini"
+    provider: Literal["gemini", "apollo"] = "gemini"
     model: str
     api_version: str = "v1beta"
     finish_reason: str
@@ -365,6 +368,8 @@ class ProviderResult(Wire):
     source_ids: list[str] = Field(default_factory=list)
     # True when the preview simulator answered instead of Gemini — recorded, never hidden.
     simulated: bool = False
+    # Who settled this turn: "magnum_di", or Teddy DI by route ("teddy_official", "teddy_kb", "teddy_search").
+    answered_by: str = "magnum_di"
 
 
 class TurnCommit(Wire):
@@ -501,6 +506,7 @@ class ModelResponse(Wire):
     overview: str = Field(min_length=1)
     explanation_markdown: str = Field(min_length=1)
     assessment: Assessment
+    outcome: Optional[Outcome] = None
     attention: Attention
     attention_reason: Optional[str] = None
     findings: list[ModelFinding] = Field(default_factory=list)

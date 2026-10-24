@@ -88,6 +88,9 @@ def register_preview_handler(handler) -> None:
 # Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
 # input, Search grounding and structured outputs, which is everything the investigation request uses.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
+# Teddy DI's targeted Google Search lookups: the low-cost model with Search grounding. By default the same
+# model Magnum DI is configured with — never a stronger one, and never a second attempt at Magnum's task.
+TEDDY_MODEL = os.getenv("GEMINI_TEDDY_MODEL", TEXT_MODEL)
 # Vision extraction and advisory generation stay on their existing model — unchanged by the
 # Magnum DI model switch.
 VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.8-flash")
@@ -334,9 +337,11 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     # to system prompt, evidence, tool results, conversation rounds, etc.
     payload_audit = _audit_payload(system, contents, tools)
 
-    async def _track(success: bool, usage: dict | None = None, failure_code: str | None = None):
+    async def _track(success: bool, usage: dict | None = None, failure_code: str | None = None, search_queries: int | None = None):
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        extra_data: dict = {"payload_audit": payload_audit}
+        extra_data: dict = {"payload_audit": payload_audit, "search_tool": _has_search(tools)}
+        if search_queries is not None:
+            extra_data["search_queries"] = search_queries
         if trigger_source:
             extra_data["trigger_source"] = trigger_source
         try:
@@ -456,9 +461,10 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     usage = response.usage_metadata.model_dump(mode='json', exclude_none=True) if response.usage_metadata else {}
     usage['admission_input_tokens'] = input_count
     usage['admission_method'] = 'complete content plus system/schema surrogate; wrapper reserve'
+    grounding = candidate.grounding_metadata.model_dump(mode="json", exclude_none=True) if candidate.grounding_metadata else None
 
-    # Track successful usage
-    await _track(True, usage=usage)
+    # Track successful usage, with the number of Google Search queries Gemini ran (each one is billed).
+    await _track(True, usage=usage, search_queries=search_query_count(grounding) if _has_search(tools) else None)
 
     # DI transaction record for the real call (production as well as preview).
     try:
@@ -474,8 +480,17 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
     except Exception:
         _gateway_log.warning("di_record: could not record live DI transaction", exc_info=True)
 
-    return GeminiResult(text, candidate.content, finish, usage,
-                        candidate.grounding_metadata.model_dump(mode="json", exclude_none=True) if candidate.grounding_metadata else None, model)
+    return GeminiResult(text, candidate.content, finish, usage, grounding, model)
+
+
+def _has_search(tools: list[types.Tool] | None) -> bool:
+    return any(getattr(tool, "google_search", None) is not None for tool in tools or [])
+
+
+def search_query_count(grounding: dict | None) -> int:
+    """How many Google Search queries Gemini ran for one answer (from its grounding record)."""
+    grounding = grounding or {}
+    return len(grounding.get("web_search_queries") or grounding.get("webSearchQueries") or [])
 
 
 async def generate_json(system: str, prompt: Any, **kwargs: Any) -> tuple[dict, dict]:
@@ -488,7 +503,7 @@ async def generate_text(system: str, prompt: Any, **kwargs: Any) -> GeminiResult
 
 
 def configuration() -> dict:
-    models = {"investigation": TEXT_MODEL, "vision": VISION_MODEL,
+    models = {"investigation": TEXT_MODEL, "teddy_search": TEDDY_MODEL, "vision": VISION_MODEL,
               "recovery": RECOVERY_MODEL or None, "chat": CHAT_MODEL,
               "triage": TRIAGE_MODEL}
     preview_active = _preview_generate is not None

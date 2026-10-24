@@ -1494,6 +1494,125 @@ def _env_label(model_str: str | None) -> str:
     return "Production"
 
 
+# How each investigation was answered (cost routing): Teddy DI's route, or Magnum DI's Gemini call.
+ANSWERED_BY_LABELS = {"teddy_official": "Official check", "teddy_kb": "Apollo KB", "teddy_search": "Web search", "magnum_di": "Gemini"}
+_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "Apollo KB", "google_search": "Web search (Teddy DI)"}
+
+
+def _answered_by(case: dict, magnum_calls: int) -> str:
+    key = (case.get("routing") or {}).get("answeredBy")
+    return key or ("magnum_di" if magnum_calls else "")
+
+
+def _answered_by_badge(key: str) -> str:
+    if not key:
+        return '<span style="color:var(--muted);">&mdash;</span>'
+    colour = "var(--yellow)" if key == "magnum_di" else "var(--green)"
+    who = "Magnum DI" if key == "magnum_di" else "Teddy DI"
+    return (f'<span class="badge" data-testid="answered-by-{html_mod.escape(key)}" style="background:rgba(127,127,127,0.12);color:{colour};">'
+            f'{html_mod.escape(ANSWERED_BY_LABELS.get(key, key))}</span> <span style="font-size:0.78em;color:var(--muted);">{who}</span>')
+
+
+_OUTCOME_COLOURS = {"confirmed_threat": "var(--red)", "likely_scam": "var(--red)", "concerning": "var(--yellow)",
+                    "unable_to_determine": "var(--muted)", "no_scam_indicators": "var(--green)"}
+
+
+def _outcome_badge(key: str | None) -> str:
+    """Apollo's case outcome — the same five outcomes whichever layer answered."""
+    from services.higgins import outcomes
+    if not key:
+        return '<span style="color:var(--muted);">&mdash;</span>'
+    return (f'<span class="badge" data-testid="outcome-{html_mod.escape(key)}" style="background:rgba(127,127,127,0.12);'
+            f'color:{_OUTCOME_COLOURS.get(key, "var(--muted)")};">{html_mod.escape(outcomes.LABELS.get(key, key))}</span>')
+
+
+def _routing_html(rows: list[dict], avg_cost: float) -> str:
+    """Cost & performance measurement for Triage → Teddy DI → Magnum DI over the period."""
+    routed = [r for r in rows if (r["routing"] or {}).get("teddy")]
+    n = len(routed)
+    resolved = sum(1 for r in routed if r["routing"]["teddy"].get("resolved"))
+    pct = lambda part, whole: f"{(100 * part / whole):.0f}%" if whole else "—"  # noqa: E731
+    total = lambda key: sum(r.get(key, 0) for r in rows)  # noqa: E731
+    cache_hits = sum(r["routing"]["teddy"].get("cacheHits", 0) for r in routed)
+    reused = sum(r["routing"]["teddy"].get("reusedOnRetry", 0) for r in routed)
+    magnum_search_off = sum(1 for r in routed if (r["routing"].get("magnum") or {}) and not r["routing"]["magnum"].get("search"))
+    from services.higgins import outcomes as case_outcomes
+    outcomes: dict[str, dict] = {}
+    for r in rows:
+        key = r["answered_by"] or "unknown"
+        bucket = outcomes.setdefault(key, {"cases": 0, "cost": 0.0, "partial": 0, **{o: 0 for o in case_outcomes.OUTCOMES}})
+        bucket["cases"] += 1
+        bucket["cost"] += r["cost"]
+        outcome = (r["routing"] or {}).get("outcome")
+        if outcome in bucket:
+            bucket[outcome] += 1
+        if (r["routing"] or {}).get("completion") == "partial":
+            bucket["partial"] += 1
+    outcome_rows = "".join(
+        f"<tr><td>{_answered_by_badge(key) if key != 'unknown' else 'Not recorded'}</td><td style='text-align:right;'>{b['cases']:,}</td>"
+        + "".join(f"<td style='text-align:right;'>{b[o]:,}</td>" for o in case_outcomes.OUTCOMES)
+        + f"<td style='text-align:right;'>{b['partial']:,}</td>"
+        f"<td style='text-align:right;'>${(b['cost'] / b['cases'] if b['cases'] else 0):.4f}</td></tr>"
+        for key, b in sorted(outcomes.items()))
+    outcome_heads = "".join(f"<th>{html_mod.escape(case_outcomes.LABELS[o])}</th>" for o in case_outcomes.OUTCOMES)
+    return f"""
+    <h2 data-testid="cost-routing-heading">Cost Routing — Triage &rarr; Teddy DI &rarr; Magnum DI</h2>
+    <div class="stats-grid">
+        {_stat_card(f'{n:,}', 'Teddy DI Investigations')}
+        {_stat_card(f'{resolved:,} ({pct(resolved, n)})', 'Resolved Without Magnum DI')}
+        {_stat_card(pct(n - resolved, n), 'Magnum DI Invocation Rate')}
+        {_stat_card(f"{total('teddy_queries'):,} / {total('magnum_queries'):,}", 'Google Search Queries (Teddy / Magnum)')}
+        {_stat_card(f"{total('teddy_in'):,} / {total('teddy_out'):,}", 'Teddy Gemini Tokens (in / out)')}
+        {_stat_card(f"{total('magnum_in'):,} / {total('magnum_out'):,}", 'Magnum Gemini Tokens (in / out)')}
+        {_stat_card(f"{total('magnum_search_calls'):,} / {total('magnum_calls') - total('magnum_search_calls'):,}", 'Magnum Calls with Search On / Off')}
+        {_stat_card(f'{cache_hits + reused + magnum_search_off:,}', 'Repeated Searches Avoided')}
+        {_stat_card(f'${avg_cost:.4f}', 'Avg Cost per Investigation')}
+    </div>
+    <p style="font-size:0.82em;color:var(--muted);margin:4px 0 8px;">
+        Repeated searches avoided = {cache_hits:,} Teddy lookups served from its 7-day cache &middot; {reused:,} Magnum retries that reused
+        Teddy's record &middot; {magnum_search_off:,} Magnum calls sent with Google Search off because Teddy had the facts.
+        Search cost is estimated at the list price per query.
+    </p>
+    <table>
+        <thead><tr><th>Answered By</th><th>Investigations</th>{outcome_heads}<th>Partial</th><th>Avg Cost</th></tr></thead>
+        <tbody>{outcome_rows or '<tr><td colspan="9" style="color:var(--muted);">No investigations for this period</td></tr>'}</tbody>
+    </table>
+    """
+
+
+def _routing_drilldown_html(case: dict | None) -> str:
+    routing = (case or {}).get("routing") or {}
+    teddy = routing.get("teddy")
+    if not teddy:
+        return ""
+    magnum = routing.get("magnum") or {}
+    checks = "".join(
+        f"<tr><td>{html_mod.escape(c.get('kind', ''))}</td><td>{html_mod.escape(c.get('status', ''))}</td>"
+        f"<td>{html_mod.escape(_ROUTE_LABELS.get(c.get('route') or '', 'Magnum DI' if c.get('status') == 'needs_reasoning' else '—'))}</td></tr>"
+        for c in teddy.get("checks", []))
+    magnum_line = (f"Called &middot; Google Search {'on' if magnum.get('search') else 'off'} &middot; {magnum.get('itemsSent', 0)} evidence items sent "
+                   f"&middot; {magnum.get('searchQueries', 0)} search queries" if magnum else "Not called")
+    pattern = teddy.get("pattern") or {}
+    pattern_line = (f"{html_mod.escape(pattern.get('key', ''))} &middot; {html_mod.escape(pattern.get('stage', ''))} match" if pattern else "No match")
+    return f"""
+    <h2>Cost Routing</h2>
+    <table>
+        <tbody>
+            <tr><td style="color:var(--muted);width:180px;">Answered By</td><td>{_answered_by_badge(routing.get('answeredBy') or '')}</td></tr>
+            <tr><td style="color:var(--muted);">Outcome</td><td>{_outcome_badge(routing.get('outcome'))}</td></tr>
+            <tr><td style="color:var(--muted);">Message Type</td><td>{html_mod.escape(teddy.get('messageType') or 'unknown')}</td></tr>
+            <tr><td style="color:var(--muted);">Apollo KB Scam Pattern</td><td>{pattern_line}</td></tr>
+            <tr><td style="color:var(--muted);">Teddy DI Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
+            <tr><td style="color:var(--muted);">Magnum DI</td><td>{magnum_line}</td></tr>
+        </tbody>
+    </table>
+    <table style="margin-top:8px;">
+        <thead><tr><th>Check</th><th>Status</th><th>Settled By</th></tr></thead>
+        <tbody>{checks or '<tr><td colspan="3" style="color:var(--muted);">No checks were planned</td></tr>'}</tbody>
+    </table>
+    """
+
+
 def _investigation_desc(case: dict, gate_str: str) -> str:
     """Build a non-sensitive investigation description."""
     status = case.get("status", "unknown")
@@ -1570,6 +1689,17 @@ async def investigations_cost_report(request: Request):
             "purposes": {"$addToSet": "$purpose"},
             "models": {"$addToSet": "$model"},
             "sources": {"$addToSet": "$extra.trigger_source"},
+            # Cost routing: Magnum DI's call(s) and Teddy DI's search call(s) are counted apart.
+            "magnum_calls": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, 1, 0]}},
+            "teddy_calls": {"$sum": {"$cond": [{"$eq": ["$purpose", "teddy_search"]}, 1, 0]}},
+            "magnum_in": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, {"$ifNull": ["$tokens.input", 0]}, 0]}},
+            "magnum_out": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, {"$ifNull": ["$tokens.output", 0]}, 0]}},
+            "teddy_in": {"$sum": {"$cond": [{"$eq": ["$purpose", "teddy_search"]}, {"$ifNull": ["$tokens.input", 0]}, 0]}},
+            "teddy_out": {"$sum": {"$cond": [{"$eq": ["$purpose", "teddy_search"]}, {"$ifNull": ["$tokens.output", 0]}, 0]}},
+            "magnum_queries": {"$sum": {"$cond": [{"$eq": ["$purpose", "investigation"]}, {"$ifNull": ["$search_queries", 0]}, 0]}},
+            "teddy_queries": {"$sum": {"$cond": [{"$eq": ["$purpose", "teddy_search"]}, {"$ifNull": ["$search_queries", 0]}, 0]}},
+            "magnum_search_calls": {"$sum": {"$cond": [{"$and": [{"$eq": ["$purpose", "investigation"]},
+                                                                 {"$eq": ["$extra.search_tool", True]}]}, 1, 0]}},
         }},
         {"$sort": {"cost": -1}},
     ]
@@ -1584,6 +1714,15 @@ async def investigations_cost_report(request: Request):
             investigation_groups.append(g)
         else:
             unattributed_groups.append(g)
+
+    # Cases Teddy DI settled without any Gemini call have no usage record, but they are investigations too.
+    gemini_case_ids = [g["_id"][5:] for g in investigation_groups]
+    async for routed in db.investigation_cases.find({"routing.teddy.ranAt": {"$gte": start_utc, "$lte": end_utc},
+                                                     "case_id": {"$nin": gemini_case_ids}}, {"_id": 0, "case_id": 1, "routing": 1}):
+        ran_at = routed["routing"]["teddy"]["ranAt"]
+        investigation_groups.append({"_id": f"case-{routed['case_id']}", "calls": 0, "ok": 0, "fail": 0, "input_tokens": 0, "output_tokens": 0,
+                                     "thinking_tokens": 0, "cached_tokens": 0, "cost": 0.0, "first_call": ran_at, "last_call": ran_at,
+                                     "purposes": [], "models": ["teddy-di"], "sources": []})
 
     # ── 3. Lookup investigation_cases and jobs for each case_id ──
     case_ids = [g["_id"][5:] for g in investigation_groups]  # strip "case-" prefix
@@ -1661,6 +1800,10 @@ async def investigations_cost_report(request: Request):
             "env": env,
             "resumed": resumed,
             "models": g["models"],
+            "answered_by": _answered_by(case, g.get("magnum_calls", 0)),
+            "routing": case.get("routing") or {},
+            **{k: g.get(k, 0) for k in ("magnum_calls", "teddy_calls", "magnum_in", "magnum_out", "teddy_in", "teddy_out",
+                                        "magnum_queries", "teddy_queries", "magnum_search_calls")},
         }
 
         # Apply filters
@@ -1779,9 +1922,11 @@ async def investigations_cost_report(request: Request):
             return f"{n / 1_000:.1f}K"
         return str(n)
 
-    # One investigation = one Gemini call (one retry allowed after a failed call).
-    retried = sum(1 for r in report_rows if r["calls"] == 2)
-    over_limit = sum(1 for r in report_rows if r["calls"] > 2)
+    # One Magnum DI investigation = one Gemini call (one retry allowed after a failed call).
+    # Teddy DI's low-cost search call is counted separately below, under cost routing.
+    retried = sum(1 for r in report_rows if r["magnum_calls"] == 2)
+    over_limit = sum(1 for r in report_rows if r["magnum_calls"] > 2)
+    magnum_cases = sum(1 for r in report_rows if r["magnum_calls"])
     avg_calls = total_calls / total_investigations if total_investigations else 0.0
     avg_cost = total_cost / total_investigations if total_investigations else 0.0
     summary_html = f"""
@@ -1794,11 +1939,12 @@ async def investigations_cost_report(request: Request):
         {_stat_card(f'${total_cost:.4f}', 'Estimated Cost')}
     </div>
     <div class="alert {'alert-critical' if over_limit else 'alert-ok'}">
-        <strong>One investigation = one Gemini call.</strong>
-        {total_investigations - retried - over_limit:,} answered on the first call &middot; {retried:,} needed the one allowed retry &middot;
+        <strong>One Magnum DI investigation = one Gemini call.</strong>
+        {magnum_cases - retried - over_limit:,} answered on the first call &middot; {retried:,} needed the one allowed retry &middot;
         {over_limit:,} over the limit{' — investigate these cases' if over_limit else ''}.
         Gemini calls outside investigations this period: {unattr_calls:,} (${unattr_cost:.4f}).
     </div>
+    {_routing_html(report_rows, avg_cost)}
     """
 
     # Initiator breakdown
@@ -1838,6 +1984,8 @@ async def investigations_cost_report(request: Request):
         main_tbody += f"""<tr>
             <td>{html_mod.escape(r['device'])}</td>
             <td><a href="/api/admin/investigations-cost/{r['case_id']}?period={html_mod.escape(period_param)}">{html_mod.escape(r['desc'])}</a>{resumed_badge}</td>
+            <td>{_answered_by_badge(r['answered_by'])}</td>
+            <td>{_outcome_badge(r['routing'].get('outcome'))}</td>
             <td>{html_mod.escape(r['gate'])}</td>
             <td>{html_mod.escape(r['initiator'])}</td>
             <td><code style="font-size:0.82em;">{src_display}</code></td>
@@ -1856,10 +2004,10 @@ async def investigations_cost_report(request: Request):
     <div style="overflow-x:auto;">
     <table>
         <thead><tr>
-            <th>Device</th><th>Investigation</th><th>Gate</th><th>Initiated By</th>
+            <th>Device</th><th>Investigation</th><th>Answered By</th><th>Outcome</th><th>Gate</th><th>Initiated By</th>
             <th>Source</th><th>Env</th><th>Calls</th><th>Total Tokens</th><th>Est. Cost</th>
         </tr></thead>
-        <tbody>{main_tbody or '<tr><td colspan="9" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
+        <tbody>{main_tbody or '<tr><td colspan="11" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
     </table>
     </div>
     """
@@ -2211,6 +2359,7 @@ async def investigation_drilldown(request: Request, case_id: str):
 
     body = f"""
     {provenance_html}
+    {_routing_drilldown_html(case)}
     {time_html}
     {summary_html}
     {calls_html}

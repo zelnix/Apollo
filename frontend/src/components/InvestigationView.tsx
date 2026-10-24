@@ -30,7 +30,7 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
-import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
+import { assessmentLabel, attentionLabel, investigationHistory, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
@@ -695,6 +695,12 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const statusBadgeBg = status.tone === "resting" ? colors.restingTint : status.tone === "barking" ? colors.barkingTint : status.tone === "ears_up" ? colors.ears_upTint : colors.sniffingTint;
   const statusBadgeColor = status.tone === "resting" ? colors.restingText : status.tone === "barking" ? colors.barkingText : status.tone === "ears_up" ? colors.ears_upText : colors.sniffingText;
   const StatusIcon = status.tone === "resting" ? CircleCheck : status.tone === "barking" ? CircleAlert : Info;
+  // Apollo's case outcome (e.g. "Likely scam"), whichever investigation layer answered.
+  const outcome = outcomeLabel(response?.outcome);
+  const outcomeKey = outcomeTone(response?.outcome);
+  const outcomeBg = { resting: colors.restingTint, barking: colors.barkingTint, ears_up: colors.ears_upTint, sniffing: colors.sniffingTint }[outcomeKey];
+  const outcomeColor = { resting: colors.restingText, barking: colors.barkingText, ears_up: colors.ears_upText, sniffing: colors.sniffingText }[outcomeKey];
+  const OutcomeIcon = outcomeKey === "resting" ? CircleCheck : outcomeKey === "barking" ? CircleAlert : Info;
 
   return <View style={{ gap: spacing.md }} testID={testID}>
 
@@ -730,9 +736,15 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           <Text style={s.statusTitle}>{gate.title}</Text>
         </View>
         <View style={{ gap: 4 }}>
-          <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
-            <StatusIcon size={12} color={statusBadgeColor} />
-            <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
+          <View style={{ flexDirection: "row" as const, flexWrap: "wrap" as const, gap: spacing.sm }}>
+            {outcome ? <View style={[s.statusBadge, { backgroundColor: outcomeBg }]} testID="inv-outcome" accessibilityLabel={`Outcome: ${outcome}`}>
+              <OutcomeIcon size={12} color={outcomeColor} />
+              <Text style={[s.statusBadgeText, { color: outcomeColor }]}>{outcome}</Text>
+            </View> : null}
+            <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
+              <StatusIcon size={12} color={statusBadgeColor} />
+              <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
+            </View>
           </View>
           <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
             {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
