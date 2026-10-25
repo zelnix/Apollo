@@ -120,9 +120,9 @@ export function SimulatedAnswerNotice({ caseId, refreshKey, style }: { caseId: s
   if (!records.some((record) => record.simulated)) return null;
   return (
     <View style={[s.diNotice, style]} testID="simulated-answer-notice" accessibilityRole="alert">
-      <Text style={s.diNoticeText}>SIMULATED ANSWER — not from Gemini</Text>
+      <Text style={s.diNoticeText}>SIMULATED ANSWER — not from an AI tool</Text>
       <Text style={s.sourceSub}>
-        The preview simulator answered this investigation. No Gemini API call was made, so this verdict is not a real
+        The preview simulator answered this investigation. No AI call was made, so this verdict is not a real
         investigation and must not be relied on.
       </Text>
     </View>
@@ -179,8 +179,8 @@ export function DiReport({ caseId }: { caseId: string | null }) {
             {record.simulated ? (
               <View style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
                 <Text style={s.diNoticeText}>
-                  SIMULATED — this record came from the preview simulator, not from Gemini. The workflow,
-                  the request and the processing below are real; the response was not produced by Gemini and is
+                  SIMULATED — this record came from the preview simulator, not from an AI tool. The workflow,
+                  the request and the processing below are real; the response was not produced by an AI tool and is
                   not a real investigation, so it must not be relied on.
                 </Text>
               </View>
@@ -195,19 +195,18 @@ export function DiReport({ caseId }: { caseId: string | null }) {
               <DiRow label="Investigation ID:" value={record.investigationId} />
               <DiRow label="Engine:" value={record.engine} />
               <DiRow label="Environment:" value={record.environment} />
-              <DiRow label="Model requested:" value={record.modelRequested ?? "not recorded"} />
-              <DiRow label="Call:" value={record.mode} note={record.simulated ? "No Gemini API call was made." : "A live Gemini API call was made."} />
+              <DiRow label="Call:" value={record.mode} note={record.simulated ? "No AI call was made." : "A live AI call was made."} />
               <DiRow label="Status:" value={record.failureCode ? `${record.status ?? "failed"} (${record.failureCode})` : record.status ?? "not recorded"} />
               <DiRow label="Date/time:" value={record.occurredAt ? formatDateTime(record.occurredAt) : "not recorded"} />
             </Card>
 
             <Card testID={`tc-di-request-${index}`}>
               <View style={s.cardHeader}>
-                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>Sent to Gemini</Text>
-                <CardCopy text={diRequestText(record)} label="The request sent to Gemini" testID={`tc-di-request-copy-${index}`} />
+                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>Sent to the AI tool</Text>
+                <CardCopy text={diRequestText(record)} label="The request sent to the AI tool" testID={`tc-di-request-copy-${index}`} />
               </View>
               <Text style={s.provenanceNote}>
-                The actual final request produced at the Gemini boundary. Attachments are the post-redaction form that
+                The actual final request produced at the AI privacy boundary, after your personal information was removed. Attachments are the post-redaction form that
                 would be transmitted — originals are never shown here.
               </Text>
               <DiBlock testID={`tc-di-prompt-${index}`} title="Question and evidence sent" body={record.request.investigationPrompt || "not recorded"} />
@@ -228,8 +227,8 @@ export function DiReport({ caseId }: { caseId: string | null }) {
 
             <Card testID={`tc-di-response-${index}`}>
               <View style={s.cardHeader}>
-                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>{record.simulated ? "Simulator response" : "Gemini response"}</Text>
-                <CardCopy text={diResponseText(record)} label={record.simulated ? "The simulator response" : "The Gemini response"} testID={`tc-di-response-copy-${index}`} />
+                <Text style={[s.sectionTitle, { flex: 1, marginBottom: 0 }]}>{record.simulated ? "Simulator response" : "AI response"}</Text>
+                <CardCopy text={diResponseText(record)} label={record.simulated ? "The simulator response" : "The AI response"} testID={`tc-di-response-copy-${index}`} />
               </View>
               <DiBlock testID={`tc-di-response-text-${index}`} title="Complete response" body={record.response.text || "not recorded"} />
               <DiRow label="Finish reason:" value={record.response.finishReason ?? "not recorded"} />
@@ -245,13 +244,13 @@ export function DiReport({ caseId }: { caseId: string | null }) {
               <DiRow label="Attachments:" value={String(p.attachmentCount ?? 0)} />
               <DiRow label="Payload size:" value={formatBytes(p.requestBytes ?? null)} note="Measured" />
               <DiRow label="Duration:" value={p.durationMs == null ? "not recorded" : `${p.durationMs} ms`} note="Measured" />
-              <DiRow label="Gemini calls:" value={String(p.geminiCalls ?? 0)} />
+              <DiRow label="AI calls:" value={String(p.geminiCalls ?? 0)} />
               <DiRow label="Retries:" value={String(p.retries ?? 0)} />
               <DiRow
                 label="Cost:"
                 value={p.cost?.amountUsd == null ? "not recorded" : `US$${p.cost.amountUsd.toFixed(6)}`}
                 note={record.simulated
-                  ? "Simulated — not Gemini billing. No Gemini API call was made."
+                  ? "Simulated — not AI billing. No AI call was made."
                   : `${p.cost?.basis === "estimated" ? "Estimated" : "Recorded"} — ${p.cost?.note ?? ""}`}
               />
             </Card>

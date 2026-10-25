@@ -17,7 +17,7 @@ TIER_1 = "tier_1_authoritative"
 TIER_2 = "tier_2_security_research"
 TIER_3 = "tier_3_supporting"
 TIER_LABEL = {TIER_1: "Official authority", TIER_2: "Established security research", TIER_3: "Supporting source",
-              "apollo_curated": "Learn with Higgins", "ai_generated": "Written by Gemini (not verified by a source)"}
+              "apollo_curated": "Learn with Higgins", "ai_generated": "Written by AI (not verified by a source)"}
 JURISDICTION_LABEL = {"AU": "Australia", "US": "United States", "UK": "United Kingdom", "EU": "European Union", "NZ": "New Zealand",
                       "CA": "Canada", "INTL": "International"}
 

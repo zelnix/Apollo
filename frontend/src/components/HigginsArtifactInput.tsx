@@ -158,7 +158,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 const SAMPLE_NOTE =
-  "Preview only. Selecting one fills the box below — Higgins still runs the real check when you submit.";
+  "Preview only. Selecting one fills the box below — Apollo still runs the real check when you submit.";
 
 // ── Pick from my own things ──────────────────────────────────────────────────
 // Each category names the sources a person can pick from instead of typing. On a real phone these read

@@ -28,19 +28,20 @@ describe("AI processing disclosure", () => {
     assert.ok(whereSection, "Missing 'Where your data goes' section");
     assert.ok(whereSection.text.includes("paid API tier"), "Must mention paid API tier");
     assert.ok(
-      whereSection.text.includes("not your personal Google account"),
-      "Must clarify it is not the user's personal Google account"
+      whereSection.text.includes("not your personal account with any AI provider"),
+      "Must clarify it is not the user's personal AI account"
     );
+    assert.ok(!/Gemini|Google/.test(whereSection.text), "AI tools are not named");
   });
 
-  it("explains what Google receives", () => {
+  it("explains what the AI tools receive", () => {
     const whatSection = AI_PROCESSING_DISCLOSURE.sections.find(
-      (s) => s.heading === "What Google receives"
+      (s) => s.heading === "What the AI tools receive"
     );
-    assert.ok(whatSection, "Missing 'What Google receives' section");
+    assert.ok(whatSection, "Missing 'What the AI tools receive' section");
     assert.ok(
-      whatSection.text.includes("you submit") && whatSection.text.includes("credentials"),
-      "Must say Google receives what the user submits, with credentials removed"
+      whatSection.text.includes("you submit") && whatSection.text.includes("credentials") && whatSection.text.includes("personal information removed"),
+      "Must say the AI tools receive what the user submits, with credentials and personal information removed"
     );
   });
 

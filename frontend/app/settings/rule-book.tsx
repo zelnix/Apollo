@@ -3,13 +3,13 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { RuleBookSections } from "@/src/components/RuleBookSections";
 import { Body, Button, Card } from "@/src/components/ui";
-import { parseRuleBook, reviewedLabel, sectionsOf } from "@/src/domain/ruleBook";
+import { forPlatform, parseRuleBook, reviewedLabel, sectionsOf } from "@/src/domain/ruleBook";
 import { ruleBook, type RuleBook } from "@/src/higgins/hubClient";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -64,7 +64,7 @@ export default function RuleBookScreen() {
   // Tried at once; tried again when this device's credential arrives (a moment after a cold start).
   useEffect(() => { void load(); }, [load, deviceId]);
 
-  const { intro, sections } = useMemo(() => sectionsOf(book ? parseRuleBook(book.markdown) : []), [book]);
+  const { intro, sections } = useMemo(() => sectionsOf(book ? forPlatform(parseRuleBook(book.markdown), Platform.OS) : []), [book]);
   const reviewed = reviewedLabel(book?.reviewedAt);
 
   const goToSection = useCallback(() => {

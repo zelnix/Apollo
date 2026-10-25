@@ -109,6 +109,34 @@ export function reviewedLabel(isoDate: string | null | undefined): string | null
 
 export interface RuleBookSection { id: string; title: string; blocks: Block[] }
 
+const ANDROID_LABEL = /\(Android\)\s*$/;
+
+/** The book as an iPhone or iPad shows it: Android-only rules are left out, so the person reads only what
+ *  applies to their phone. Android-only means a "**… (Android)**" label and the list under it, a list item
+ *  that starts "**Android:**", or a table row whose first cell ends "(Android)". Other platforms get the whole book. */
+export function forPlatform(blocks: Block[], platform: string): Block[] {
+  if (platform !== "ios") return blocks;
+  const out: Block[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    if (block.kind === "paragraph" && ANDROID_LABEL.test(plainText(block.spans))) {
+      if (blocks[i + 1]?.kind === "list") i += 1;
+      continue;
+    }
+    if (block.kind === "list") {
+      const items = block.items.filter((item) => !/^Android:/.test(plainText(item.spans)));
+      if (items.length) out.push({ ...block, items });
+      continue;
+    }
+    if (block.kind === "table") {
+      out.push({ ...block, rows: block.rows.filter((row) => !ANDROID_LABEL.test(plainText(row[0] ?? []))) });
+      continue;
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /** The book as the app shows it: the intro, then one section per level-2 heading, each opened by a tap.

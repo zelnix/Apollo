@@ -118,7 +118,7 @@ def _chat(question: str, kb=None) -> dict:
 def test_a_higgins_question_is_answered_from_the_knowledge_base_with_its_source():
     reply = _chat("what is a romance scam", [KB_ENTRY])
     ModelChatReply.model_validate(reply)  # the real chat validator accepts it
-    assert reply["answer"].startswith("SIMULATED — No Gemini API call was made")
+    assert reply["answer"].startswith("SIMULATED — No AI call was made")
     assert "Scamwatch — “Romance scams”" in reply["answer"]
     assert "fake profiles on dating sites" in reply["answer"]
     assert "Read the original: https://www.scamwatch.gov.au/types-of-scams/romance-scams" in reply["answer"]

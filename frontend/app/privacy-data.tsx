@@ -3,7 +3,7 @@
 // and returns Apollo to a first-run state. Offline deletion is recorded as pending and retried on reconnect.
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
@@ -31,6 +31,9 @@ const useStyles = makeStyles((c) => ({
   input: { borderWidth: 1, borderColor: c.borderStrong, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface, backgroundColor: c.surfaceSecondary, letterSpacing: 2 },
   pending: { gap: spacing.xs, borderWidth: 1, borderColor: c.growling, backgroundColor: c.surfaceSecondary },
 }));
+
+// Call screening is an Android-only feature, so iPhone never lists its record.
+const RETENTION_ROWS = RETENTION_INVENTORY.filter((row) => Platform.OS === "android" || row.key !== "screened_calls");
 
 export default function PrivacyDataScreen() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
@@ -101,9 +104,9 @@ export default function PrivacyDataScreen() {
                 <Button testID="privacy-data-inv-retry" variant="ghost" label="Try again" onPress={() => void loadInventory()} />
               </View>
             ) : null}
-            {RETENTION_INVENTORY.map((row, i) => {
+            {RETENTION_ROWS.map((row, i) => {
               const count = row.where === "service" ? countFor(row.key) : null;
-              const last = i === RETENTION_INVENTORY.length - 1;
+              const last = i === RETENTION_ROWS.length - 1;
               return (
                 <View key={row.key} style={[s.item, last && { borderBottomWidth: 0 }]} testID={`privacy-data-row-${row.key}`}>
                   <View style={s.itemHead}>

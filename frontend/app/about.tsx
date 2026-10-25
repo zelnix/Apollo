@@ -51,7 +51,7 @@ export default function About() {
             ApolloSG is your personal scam protection companion. With Higgins by your side, Apollo watches over your digital life — checking messages, calls, emails and websites for scams and threats.
           </Text>
           <Text style={s.body}>
-            ApolloSG operates locally on your device whenever possible, keeping your personal information private. When AI analysis is needed, ApolloSG uses Google Gemini with strict privacy controls.
+            ApolloSG operates locally on your device whenever possible, keeping your personal information private. When AI analysis is needed, ApolloSG uses AI tools with strict privacy controls: your personal information is removed before anything is sent to them.
           </Text>
           <Text style={s.body}>
             Built to protect people from the rising tide of scams and online fraud.

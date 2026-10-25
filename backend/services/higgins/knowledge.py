@@ -308,7 +308,7 @@ def storable(question: str) -> bool:
     return redact_investigation_secrets(question) == question and not _PERSONAL.search(question)
 
 
-GEMINI_PUBLISHER = "Higgins (written by Gemini, Google's AI)"
+GEMINI_PUBLISHER = "Higgins (written by an AI tool)"
 
 
 async def remember_gemini_answer(question: str, answer: str) -> bool:
@@ -439,7 +439,7 @@ def excerpt(body: str, query_terms: list[str], max_chars: int = 900) -> str:
     return "\n\n".join(paragraphs[i] for i in sorted(chosen))[: max_chars + 200]
 
 
-SAVED_ANSWER_NOTE = ("(ApolloSG saved this answer earlier. Gemini, Google's AI, wrote it because ApolloSG's library didn't cover this "
+SAVED_ANSWER_NOTE = ("(ApolloSG saved this answer earlier. An AI tool wrote it because ApolloSG's library didn't cover this "
                      "question. No official source has checked it.)")
 
 

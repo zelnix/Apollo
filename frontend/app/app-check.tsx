@@ -323,7 +323,7 @@ export default function CheckApp() {
       <Sheet visible={pickerOpen} onClose={() => { setPickerOpen(false); setAppQuery(""); }} title="Pick an installed app" testID="app-picker-sheet">
         <TextInput testID="app-picker-search" style={s.input} value={appQuery} onChangeText={setAppQuery} placeholder="Search your apps" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
         {appsLoading ? <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}><ActivityIndicator color={colors.gold} /></View>
-          : (installedApps?.length ?? 0) === 0 ? <Body testID="app-picker-empty">ApolloSG can&apos;t list installed apps on this build. Type the app name instead — this feature needs a production Android build.</Body>
+          : (installedApps?.length ?? 0) === 0 ? <Body testID="app-picker-empty">ApolloSG can&apos;t list installed apps on this build. Type the app name instead — this feature needs a production build.</Body>
           : <ScrollView style={{ maxHeight: 360 }} testID="app-picker-list" keyboardShouldPersistTaps="handled" nestedScrollEnabled>
               {filteredApps.length === 0 ? <Body>No apps match “{appQuery}”.</Body> : filteredApps.map((app) => (
                 <Pressable key={app.packageId} testID={`app-picker-${app.packageId}`} accessibilityRole="button" onPress={() => pickApp(app)} style={({ pressed }) => [s.permRow, { paddingVertical: spacing.md, opacity: pressed ? 0.7 : 1 }]}>
@@ -339,7 +339,7 @@ export default function CheckApp() {
         title="Installed apps"
         note="Each one stands in for an app and its stated permissions. Apollo runs the real app check on whichever you pick."
         preview={simulation.included}
-        error={simulation.included ? null : "ApolloSG can't list installed apps on this build. Type the app name below instead — this needs a production Android build."}
+        error={simulation.included ? null : Platform.OS === "android" ? "ApolloSG can't list installed apps on this build. Type the app name below instead — this needs a production build." : "Your phone doesn't let apps see what else is installed. Type the app name below instead."}
         items={simulation.apps.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
         emptyText="There are no apps to choose from here."
         onSelect={(id: string) => {

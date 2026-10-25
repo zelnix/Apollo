@@ -437,13 +437,13 @@ export default function Home() {
           <Pressable
             testID="home-higgins-check"
             accessibilityRole="button"
-            accessibilityLabel={lastHigginsCheckAt ? `Protection checked by Higgins ${timeAgo(lastHigginsCheckAt)}. Open the result.` : "Higgins hasn't checked this device yet. Run a check."}
+            accessibilityLabel={lastHigginsCheckAt ? `Protection checked by Apollo ${timeAgo(lastHigginsCheckAt)}. Open the result.` : "Apollo hasn't checked this device yet. Run a check."}
             onPress={() => router.push("/recheck")}
             style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
           >
             <ShieldCheck size={16} color={colors.resting} />
             <Text style={s.checkedText} numberOfLines={2} testID="home-higgins-check-text">
-              {lastHigginsCheckAt ? `Protection checked by Higgins · ${timeAgo(lastHigginsCheckAt)}` : "Higgins hasn't checked this device yet"}
+              {lastHigginsCheckAt ? `Protection checked by Apollo · ${timeAgo(lastHigginsCheckAt)}` : "Apollo hasn't checked this device yet"}
             </Text>
             <Text style={s.checkedAction}>{lastHigginsCheckAt ? "View" : "Run check"}</Text>
           </Pressable>

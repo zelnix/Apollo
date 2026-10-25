@@ -33,7 +33,7 @@ export const GATE_CONTENT: Record<GateId, GateContent> = {
     ],
     limitations: [
       "Requires VPN permission to filter traffic — no other VPN can be active at the same time.",
-      "Encrypted DNS (Private DNS on Android) may bypass Apollo's filtering.",
+      "Encrypted DNS (Private DNS) may bypass Apollo's filtering.",
       "Cannot inspect the content of encrypted (HTTPS) web pages.",
       "New or unknown malicious websites may not be in the block list immediately.",
     ],
@@ -233,7 +233,7 @@ export const GATE_CONTENT: Record<GateId, GateContent> = {
     ],
     limitations: [
       "Cannot modify device settings directly — recommends actions for you to take.",
-      "Some settings may not be observable on all Android versions.",
+      "Some settings may not be observable on every phone or system version.",
       "Root/jailbreak detection is based on observable indicators.",
       "Manufacturer-specific security features may not be fully assessed.",
     ],

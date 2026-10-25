@@ -140,7 +140,7 @@ export function analyseApp(input: AppInput): AppAnalysis {
   const permWhy = unexpected.length ? [`It asks for ${unexpected.slice(0, 3).map((n) => n.label.toLowerCase()).join(", ")} — more than a ${APP_PURPOSES.find((p) => p.id === input.purpose)?.label.toLowerCase() ?? "typical"} app needs.`] : [];
   const R = (scenario: string, title: string, state: ApolloState, verdict: string, why: string[], recommendation: string, extra: Partial<Pick<AppAnalysis, "handoff" | "stayWithMe">> = {}): AppAnalysis =>
     ({ scenario, title, state, verdict, why: why.filter(Boolean), recommendation, riskScore: score, permissionNotes: notes, claimedBrand: brand, remoteCapable, handoff: extra.handoff ?? "none", stayWithMe: extra.stayWithMe ?? false, technical });
-  const removeAdvice = "Remove this app unless you intentionally installed it and trust the source. On Android: Settings → Apps. On iPhone: hold the icon → Remove App.";
+  const removeAdvice = "Remove this app unless you intentionally installed it and trust the source. On iPhone: hold the icon → Remove App. On other phones: Settings → Apps.";
 
   // A01 — remote-access app during a suspicious call (acceptance test 1).
   if (remoteCapable && (ctx.promptedByCaller || scentCall)) {

@@ -165,7 +165,7 @@ def wire(record: dict) -> dict:
         "request": record.get("request") or {},
         "response": record.get("response") or {},
         "processing": record.get("processing") or {},
-        "notice": "SIMULATED — No Gemini API call was made" if record.get("simulated") else None,
+        "notice": "SIMULATED — No AI call was made" if record.get("simulated") else None,
     }
 
 

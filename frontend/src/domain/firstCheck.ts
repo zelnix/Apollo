@@ -107,7 +107,7 @@ function osThreatCheck(i: FirstCheckInputs): Row {
   }
   if (t.status === "error") {
     return { ...base, supported: true, executed: false, result: "ERROR", confidence: "low", severity: "low", evidenceRef: null, evidence: null,
-      explanation: `Higgins asked ${t.source} for its threat report but it didn't answer. ${t.detail}`, platformLimitation: null, action: "Run the Re-check again in a moment." };
+      explanation: `Apollo asked ${t.source} for its threat report but it didn't answer. ${t.detail}`, platformLimitation: null, action: "Run the Re-check again in a moment." };
   }
   if (t.status === "not_available") {
     if (t.protectionOff) {
@@ -115,7 +115,7 @@ function osThreatCheck(i: FirstCheckInputs): Row {
         evidence: `${t.source} is switched off.`, explanation: `${t.source} is turned off, so the device's built-in malware scanning isn't running and there's no threat report to read.`,
         platformLimitation: null, action: i.platform === "windows" ? "Turn on Real-time protection in Windows Security → Virus & threat protection." : "Turn on 'Scan apps with Play Protect' in Google Play → Play Protect." };
     }
-    return notAvailable(base, `Higgins couldn't read a malware report from the operating system on this ${platformName(i.platform)}.`, t.detail);
+    return notAvailable(base, `Apollo couldn't read a malware report from the operating system on this ${platformName(i.platform)}.`, t.detail);
   }
   return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: "os:threat_report",
     evidence: `${t.source}: ${t.detail}`, explanation: `${t.source} reports no active threats on this device.`, platformLimitation: null, action: null };
@@ -125,7 +125,7 @@ function deviceIntegrityCheck(i: FirstCheckInputs): Row {
   const base = { id: "device_integrity", category: "device_integrity" as const, title: i.platform === "ios" ? "Jailbreak and system modification" : i.platform === "android" ? "Root and system modification" : "System integrity protections" };
   const s = i.signals.systemIntegrity;
   if (!i.nativeHost || !s) {
-    return notAvailable(base, `Higgins couldn't read system-integrity signals on this ${platformName(i.platform)}, so it can't confirm or rule out system modification.`,
+    return notAvailable(base, `Apollo couldn't read system-integrity signals on this ${platformName(i.platform)}, so it can't confirm or rule out system modification.`,
       !i.nativeHost ? PREVIEW_LIMIT : "This build doesn't expose system-integrity signals.");
   }
   const off = s.protections.filter((p) => p.enabled === false).map((p) => p.name);
@@ -134,7 +134,7 @@ function deviceIntegrityCheck(i: FirstCheckInputs): Row {
   if (s.indicators.length) {
     return { ...base, supported: true, executed: true, result: "SUSPICIOUS", confidence: "medium", severity: "medium", evidenceRef: "signals:integrity",
       evidence: `Found: ${s.indicators.join("; ")}`,
-      explanation: `Higgins found signs this ${platformName(i.platform)} has been ${i.platform === "ios" ? "jailbroken" : i.platform === "android" ? "rooted" : "modified"}. That isn't proof of malware, but it removes protections the operating system normally guarantees.`,
+      explanation: `Apollo found signs this ${platformName(i.platform)} has been ${i.platform === "ios" ? "jailbroken" : i.platform === "android" ? "rooted" : "modified"}. That isn't proof of malware, but it removes protections the operating system normally guarantees.`,
       platformLimitation: null, action: "If you didn't modify this device yourself, back up your data and restore the official system software." };
   }
   if (off.length) {
@@ -144,14 +144,14 @@ function deviceIntegrityCheck(i: FirstCheckInputs): Row {
       platformLimitation: null, action: `Turn ${off.join(" and ")} back on unless you deliberately turned ${off.length > 1 ? "them" : "it"} off.` };
   }
   return { ...base, supported: true, executed: true, result: "PASS", confidence: "medium", severity: "none", evidenceRef: "signals:integrity",
-    evidence: `Checked: ${checkedText}`, explanation: "Higgins found no signs of system modification, and the system protections it could read are on.",
+    evidence: `Checked: ${checkedText}`, explanation: "Apollo found no signs of system modification, and the system protections it could read are on.",
     platformLimitation: i.platform === "ios" ? "iOS only allows basic jailbreak checks; a well-hidden jailbreak may not be visible." : i.platform === "android" ? "Root checks are heuristic; a well-hidden root may not be visible." : null, action: null };
 }
 
 function applicationRiskCheck(i: FirstCheckInputs): Row {
   const base = { id: "application_risk", category: "application_risk" as const, title: "Installed apps and powerful access" };
   if (i.platform !== "android" || !i.nativeHost) {
-    return notAvailable(base, "Higgins checked the security information this device lets apps inspect. Looking through other installed apps isn't possible here.",
+    return notAvailable(base, "Apollo checked the security information this device lets apps inspect. Looking through other installed apps isn't possible here.",
       !i.nativeHost ? PREVIEW_LIMIT : i.platform === "ios" ? "Apple prevents any app from listing or scanning other apps." : i.platform === "macos" ? "macOS doesn't let ApolloSG list other apps' permissions." : "Installed-app inspection isn't available on Windows yet.");
   }
   const s = i.signals;
@@ -165,8 +165,8 @@ function applicationRiskCheck(i: FirstCheckInputs): Row {
   return { ...base, supported: true, executed: true, result, confidence: "medium", severity,
     evidenceRef: found.length ? "signals:app_access" : null,
     evidence: found.length ? found.join("; ") : "Checked remote-access apps and accessibility services.",
-    explanation: result === "PASS" ? "Higgins found no apps with the kind of powerful access that usually accompanies malware, within what Android lets Apollo read."
-      : "Higgins found app access worth a look. Powerful access is not proof of malware, but it's worth confirming you set it up.",
+    explanation: result === "PASS" ? "Apollo found no apps with the kind of powerful access that usually accompanies malware, within what Android lets it read."
+      : "Apollo found app access worth a look. Powerful access is not proof of malware, but it's worth confirming you set it up.",
     platformLimitation: null, action: result === "PASS" ? null : "If you don't recognise these apps or didn't give them this access, remove the access or uninstall them." };
 }
 
@@ -175,7 +175,7 @@ function installSourcesCheck(i: FirstCheckInputs): Row {
   const v = i.signals.unknownSourcesEnabled;
   const label = i.platform === "macos" ? "Gatekeeper" : i.platform === "windows" ? "SmartScreen" : "unknown-source installs";
   if (!i.nativeHost || v === null) {
-    return notAvailable(base, "Higgins couldn't read whether apps from outside the official store can be installed.",
+    return notAvailable(base, "Apollo couldn't read whether apps from outside the official store can be installed.",
       !i.nativeHost ? PREVIEW_LIMIT : i.platform === "ios" ? "iOS only installs apps through Apple-approved channels and doesn't expose this setting." : i.platform === "android" ? "Since Android 8 this permission is granted per app and Android doesn't let Apollo read it for other apps." : "This setting couldn't be read on this device.");
   }
   if (v) {
@@ -193,7 +193,7 @@ function networkConfigCheck(i: FirstCheckInputs): Row {
   const s = i.signals;
   const visible = s.vpnActive !== null || s.managementProfile !== "unknown" || s.userTrustedCertificates !== null;
   if (!visible) {
-    return notAvailable(base, "Higgins couldn't read VPN, management-profile or certificate state on this device.",
+    return notAvailable(base, "Apollo couldn't read VPN, management-profile or certificate state on this device.",
       !i.nativeHost ? PREVIEW_LIMIT : i.platform === "ios" ? "iOS doesn't let apps list configuration profiles or installed certificates." : "These network-security signals aren't exposed on this device.");
   }
   const found: string[] = [];
@@ -210,8 +210,8 @@ function networkConfigCheck(i: FirstCheckInputs): Row {
   const missing = [s.vpnActive === null && "VPN", s.userTrustedCertificates === null && "certificates", s.managementProfile === "unknown" && "management profiles"].filter(Boolean) as string[];
   return { ...base, supported: true, executed: true, result, confidence: "medium", severity, evidenceRef: found.length ? "signals:network_config" : null,
     evidence: `Observed: ${seen.join(", ")}`,
-    explanation: result === "PASS" ? "Higgins found no unexpected VPN, management profile or certificate affecting how this device trusts connections."
-      : `Higgins noticed ${found.join("; ")}. ${result === "INFORMATION" ? "That can be perfectly normal — worth knowing about." : "Confirm you set this up."}`,
+    explanation: result === "PASS" ? "Apollo found no unexpected VPN, management profile or certificate affecting how this device trusts connections."
+      : `Apollo noticed ${found.join("; ")}. ${result === "INFORMATION" ? "That can be perfectly normal — worth knowing about." : "Confirm you set this up."}`,
     platformLimitation: missing.length ? `Couldn't read ${missing.join(" or ")} on this device.` : null,
     action: result === "CAUTION" || result === "SUSPICIOUS" ? "If you didn't set this up, remove the VPN or certificate in Settings." : null };
 }
@@ -228,7 +228,7 @@ function osSecurityCheck(i: FirstCheckInputs): Row {
   ];
   const read = readings.filter(([, v]) => v !== null);
   if (!osVersion && read.length === 0) {
-    return notAvailable(base, "Higgins couldn't read the operating-system version or security settings on this build.", !i.nativeHost ? PREVIEW_LIMIT : "These settings aren't exposed on this build.");
+    return notAvailable(base, "Apollo couldn't read the operating-system version or security settings on this build.", !i.nativeHost ? PREVIEW_LIMIT : "These settings aren't exposed on this build.");
   }
   const bad = read.filter(([, v]) => v === false);
   const evidence = [osVersion ? `Running ${osVersion}` : null, ...read.map(([n, v]) => `${n}: ${n === "System updates" ? (v ? "up to date" : "updates pending") : v ? "on" : "off"}`), s.developerOptions ? "Developer options: on" : null].filter(Boolean).join(" · ");
@@ -239,26 +239,26 @@ function osSecurityCheck(i: FirstCheckInputs): Row {
       platformLimitation: null, action: bad.map(([, , a]) => a).join(" ") };
   }
   return { ...base, supported: true, executed: true, result: "INFORMATION", confidence: "medium", severity: "info", evidenceRef: osVersion ? `os:${osVersion}` : "signals:os_condition", evidence,
-    explanation: "The security settings Higgins could read look fine. Keeping the system up to date is still the single best way to stay safe.",
+    explanation: "The security settings Apollo could read look fine. Keeping the system up to date is still the single best way to stay safe.",
     platformLimitation: unread.length ? `Couldn't read ${unread.join(", ")} on this device.` : null, action: null };
 }
 
 function apolloIntegrityCheck(i: FirstCheckInputs): Row {
   const base = { id: "apollo_integrity", category: "apollo_integrity" as const, title: "Apollo's own protection" };
-  if (!i.nativeHost) return notAvailable(base, "This preview can't verify Apollo's protection component. On a real device Higgins confirms ApolloSG is present and responding.", PREVIEW_LIMIT);
+  if (!i.nativeHost) return notAvailable(base, "This preview can't verify Apollo's protection component. On a real device Apollo confirms its protection component is present and responding.", PREVIEW_LIMIT);
   if (i.protection) {
     return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: `adapter:${i.protection.adapterLabel}`,
       evidence: `${i.protection.adapterLabel} responded${i.protection.operational ? " and protection is running" : ""}.`, explanation: "Apollo's protection component is present and responding on this device.", platformLimitation: null, action: null };
   }
   return { ...base, supported: true, executed: false, result: "ERROR", confidence: "low", severity: "low", evidenceRef: null, evidence: null,
-    explanation: "Higgins couldn't read Apollo's protection component just now.", platformLimitation: null, action: "Try the check again shortly." };
+    explanation: "Apollo couldn't read its protection component just now.", platformLimitation: null, action: "Try the check again shortly." };
 }
 
 function securityRulesCheck(i: FirstCheckInputs): Row {
   const base = { id: "security_rules", category: "apollo_integrity" as const, title: "Apollo's security rules" };
   const rules = i.ruleBundle ?? null;
   if (!i.nativeHost || !rules || !rules.observable) {
-    return notAvailable(base, "Higgins couldn't read the state of Apollo's security rules on this device.",
+    return notAvailable(base, "Apollo couldn't read the state of its security rules on this device.",
       !i.nativeHost ? PREVIEW_LIMIT : "This device doesn't report the state of Apollo's security rules.");
   }
   if (rules.current === null) {
@@ -279,7 +279,7 @@ function connectionCheck(i: FirstCheckInputs): Row {
   const base = { id: "connection", category: "connection" as const, title: "Internet connection" };
   const n = i.connection ?? null;
   if (!n) {
-    return notAvailable(base, "Higgins couldn't read this device's internet connection.",
+    return notAvailable(base, "Apollo couldn't read this device's internet connection.",
       !i.nativeHost ? PREVIEW_LIMIT : "This device didn't report its connection state.");
   }
   const where = n.type === "wifi" ? `Wi-Fi${n.ssid ? ` "${n.ssid}"` : ""}` : n.type === "cellular" ? "mobile data" : n.type === "none" ? "no connection" : `a ${n.type} connection`;
@@ -343,7 +343,7 @@ export function runFirstCheck(inputs: FirstCheckInputs, now: string = new Date()
   const concerns = checks.filter((c) => CONCERN_STATES.includes(c.result)).map((c) => `${c.title}: ${c.explanation}`);
   const unavailable = checks.filter((c) => c.result === "NOT_AVAILABLE").map((c) => c.title);
   const ran = checks.filter((c) => c.executed).length;
-  const capabilityNote = `On this ${platformName(inputs.platform)}, Higgins ran ${ran} of ${checks.length} checks. ${PLATFORM_NOTE[inputs.platform]}`;
+  const capabilityNote = `On this ${platformName(inputs.platform)}, Apollo ran ${ran} of ${checks.length} checks. ${PLATFORM_NOTE[inputs.platform]}`;
   return { overall, platform: inputs.platform, checkedAt: now, checks, concerns, unavailable, capabilityNote, signals: inputs.signals };
 }
 
@@ -351,33 +351,33 @@ export function runFirstCheck(inputs: FirstCheckInputs, now: string = new Date()
 export function erroredFirstCheck(platform: DevicePlatform, signals: DeviceSignals, now: string = new Date().toISOString(),
                                   reason?: string): FirstCheckReport {
   return { overall: "ERROR", platform, checkedAt: now, checks: [], concerns: [],
-    unavailable: [reason?.trim() || "Higgins couldn't complete the initial security check."], signals };
+    unavailable: [reason?.trim() || "Apollo couldn't complete the initial security check."], signals };
 }
 
 // --- Higgins plain-English copy per overall state ------------------------------------------------------
 
 export const FIRST_CHECK_COPY: Record<FirstCheckOverall, { title: string; headline: string; dogState: "resting" | "ears_up" | "growling" | "barking" | "sniffing" }> = {
   CLEAR: { title: "No signs of a problem", dogState: "resting",
-    headline: "Higgins First Check complete. I found no signs of malware or compromise in the areas this device allows me to check." },
+    headline: "Apollo's First Check is complete. No signs of malware or compromise were found in the areas this device allows Apollo to check." },
   ATTENTION: { title: "Worth a look first", dogState: "ears_up",
-    headline: "Higgins found something that deserves attention before I can give this device a full all-clear." },
+    headline: "Apollo found something that deserves attention before this device can get a full all-clear." },
   HIGH_RISK: { title: "This needs your attention", dogState: "barking",
-    headline: "Higgins found signs that this device may already be compromised. These are warning signs, not confirmed malware — but they need attention." },
+    headline: "Apollo found signs that this device may already be compromised. These are warning signs, not confirmed malware — but they need attention." },
   CONFIRMED_THREAT: { title: "Apollo is barking", dogState: "barking",
     headline: "The device's own malware protection is reporting a threat. Apollo will protect what it can — follow the steps to remove it." },
   LIMITED_CHECK: { title: "Checked everything this device allows", dogState: "ears_up",
-    headline: "Higgins ran every check this device allows and found nothing wrong. Some areas can't be inspected on this platform — that's a limitation, not an all-clear." },
+    headline: "Apollo ran every check this device allows and found nothing wrong. Some areas can't be inspected on this platform — that's a limitation, not an all-clear." },
   ERROR: { title: "Couldn't finish the check", dogState: "ears_up",
-    headline: "Higgins couldn't complete the security check. ApolloSG can still start available protection, but I can't yet confirm the device's security condition." },
+    headline: "Apollo couldn't complete the security check. ApolloSG can still start available protection, but the device's security condition can't be confirmed yet." },
 };
 
 export function reCheckHeadline(overall: FirstCheckOverall, changeCount: number): string {
   if (overall === "CONFIRMED_THREAT") return FIRST_CHECK_COPY.CONFIRMED_THREAT.headline;
-  if (overall === "HIGH_RISK") return "Apollo is barking. Higgins found signs that this device may already be compromised.";
-  if (changeCount > 0 && overall === "ATTENTION") return `Higgins found something that's changed. ${changeCount === 1 ? "One item needs" : `${changeCount} items need`} your attention.`;
-  if (overall === "LIMITED_CHECK") return "Higgins ran every check this device allows. Some areas can't be inspected on this platform.";
+  if (overall === "HIGH_RISK") return "Apollo is barking. Apollo found signs that this device may already be compromised.";
+  if (changeCount > 0 && overall === "ATTENTION") return `Apollo found something that's changed. ${changeCount === 1 ? "One item needs" : `${changeCount} items need`} your attention.`;
+  if (overall === "LIMITED_CHECK") return "Apollo ran every check this device allows. Some areas can't be inspected on this platform.";
   if (overall === "ERROR") return FIRST_CHECK_COPY.ERROR.headline;
-  return "Device Re-check complete. I found no new signs of a problem in the areas this device allows me to check.";
+  return "Device Re-check complete. Apollo found no new signs of a problem in the areas this device allows it to check.";
 }
 
 // --- Re-check comparison ----------------------------------------------------------------------------

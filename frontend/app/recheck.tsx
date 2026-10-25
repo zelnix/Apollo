@@ -127,14 +127,14 @@ export default function Recheck() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Device Check"
-          info={{ title: "About Device Check", body: ["Re-check this device for signs of malware, unsafe changes or an existing compromise.", "Higgins repeats the checks this device allows and compares them with the last check. Pop-ups, unusual battery drain, new apps you didn't add, or settings that change back after you fix them may indicate a problem."] }}
+          info={{ title: "About Device Check", body: ["Re-check this device for signs of malware, unsafe changes or an existing compromise.", "Apollo repeats the checks this device allows and compares them with the last check. Pop-ups, unusual battery drain, new apps you didn't add, or settings that change back after you fix them may indicate a problem."] }}
           testID="recheck"
         />
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="recheck-scroll">
         <GateAbout title="About Device Check" testID="recheck-intro"
           tip="Pop-ups or ads appearing outside apps, the battery or data draining unusually fast, new apps or icons you didn't add, or settings that change back after you fix them.">
-          <Body>Re-check this device for signs of malware, unsafe changes or an existing compromise. Higgins repeats the checks this device allows and compares them with the last check.</Body>
+          <Body>Re-check this device for signs of malware, unsafe changes or an existing compromise. Apollo repeats the checks this device allows and compares them with the last check.</Body>
         </GateAbout>
         {stamp ? <Text style={s.stamp} testID="recheck-stamp">Last checked {stamp}</Text> : null}
 
@@ -160,7 +160,7 @@ export default function Recheck() {
           <>
             <Button testID="recheck-run" label="Run the check now" onPress={() => void run()} icon={<RefreshCw size={18} color={colors.onBrandPrimary} />} />
             <Card testID="recheck-empty" style={{ gap: spacing.sm }}>
-              <Body>Higgins hasn&apos;t run a check on this device yet. Run it now so there is something to compare future checks against.</Body>
+              <Body>Apollo hasn&apos;t run a check on this device yet. Run it now so there is something to compare future checks against.</Body>
             </Card>
           </>
         )}

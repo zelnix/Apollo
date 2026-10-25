@@ -1,3 +1,27 @@
+## Apple compliance: privacy wording, permissions, web privacy policy, no Android wording on iPhone (2026-10-25)
+**Owner's choices:** hide Android wording on iPhone; fix the permission details; privacy policy on a web page (no
+existing URL, so ApolloSG's server hosts it); keep iPad support. "We redact all personal information going to Google AI"
+→ never name Google AI / Gemini in the app; say "AI tools", and that personal information is removed first.
+- **Privacy policy web page:** `GET /api/privacy-policy` (public, no device credential) serves
+  `backend/content/privacy_policy.html` (`routers/legal.py`). App opens it with `src/config/privacyPolicy.ts`
+  (`openPrivacyPolicy`, in-app browser) from Settings › Policies › "Privacy policy" (`settings-privacy-policy`),
+  the Privacy screen (`privacy-open-policy`) and the Privacy statement (`disclosure-full-policy`).
+  App Store Connect / Play Console privacy URL = `<published domain>/api/privacy-policy`.
+- **AI wording:** every user-facing "Gemini"/"Google AI" (privacy statement, register, About, Privacy, DI record,
+  simulator notes, saved-answer note, KB label "Written by AI", PDF export, rule book, too-long-document message)
+  now says "AI tools"/"AI call". The DI record no longer shows "Model requested". Admin portal (owner-only) unchanged.
+  Internal names (`geminiCalls`, `GEMINI_PUBLISHER`, `MAX_GEMINI_CALLS`) unchanged.
+- **Permissions (app.config.js):** one camera string for both expo-camera and expo-image-picker ("Scan QR codes and
+  photograph suspicious items for checking"); photos "Choose screenshots of suspicious messages to check for scams";
+  removed the non-existent `NSUserNotificationsUsageDescription` key; privacy manifest now lists collected data types
+  (Device ID, Email, Phone, Name, Other user content, Other diagnostics — linked, not tracking, app functionality).
+- **Android wording on iPhone:** Platform-gated in text-guard, call-guard, network, family help, privacy-data (screened
+  calls row hidden), rule book (`forPlatform()` in `src/domain/ruleBook.ts` drops "(Android)" labels+lists, "Android:"
+  items, "(Android)" table rows on iOS); neutral wording in shared domain text (recovery steps, app removal advice, APK
+  finding, gate limitations, phone/messaging spam-label rows, VPN toast). Rule book §13 has a separate "Call Guard (iPhone)".
+- Tests: frontend 954/954 (ruleBook iOS filter + no AI provider named; privacyDisclosure updated); backend
+  `test_privacy_policy_page.py` (3) + updated rulebook/simulator/DI/too-long tests; rule book re-stamped; tsc clean.
+
 ## App name vs the dog: "ApolloSG" where it means the app (2026-10-25)
 **Owner's rule:** ApolloSG = the app/product; Apollo = the guard-dog detector/protector (detects, blocks, checks, patrols,
 barks…, its findings and protections); Higgins explains. **Owner's choice for unclear lines: ApolloSG.**

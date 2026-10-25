@@ -8,7 +8,7 @@ This is the only copy. Whenever a rule or process changes, this book is updated 
 
 **The path of every check**
 
-Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → ApolloSG KB → one targeted search) → settled, *or* → **Magnum DI** (one Gemini call) → **Higgins** explains the result.
+Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → ApolloSG KB → one targeted search) → settled, *or* → **Magnum DI** (one AI call) → **Higgins** explains the result.
 
 Each check creates exactly one entry in the Threats list. The phone's first detection and the later investigation update the same card.
 
@@ -37,7 +37,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 - **Cache:** a possible threat is kept 30 days and no threat 7 days. Limited results are never cached.
 - **Biting only for a real block.** The DNS, VPN or packet filter must have actually blocked the connection. The block must be fresh (within 60 seconds), on this device, for this event, and on a real platform (not mock). Calls can never reach Biting. Link, email and text checks go no higher than Barking.
 - **Unknown is not unsafe.** A setting Apollo couldn't read is never counted as a change. "No concern" covers only the checks that completed. Nothing is ever called safe.
-- **Privacy first.** Passwords and codes are removed on the phone, and an image showing one is not sent. Only allow-listed fields leave the device. Secrets are stripped again before every Gemini request. The full rules are under Privacy and redaction.
+- **Privacy first.** Passwords and codes are removed on the phone, and an image showing one is not sent. Only allow-listed fields leave the device. Secrets are stripped again before every AI request. The full rules are under Privacy and redaction.
 - **Protection changes** say only what changed, never who changed it or why. The "what to do" lines are fixed text.
 
 **What sends a check onward:** a Possible Threat result. A check the person starts (Check It, or Ask Higgins with something to check) enters the same investigation pipeline.
@@ -192,7 +192,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 **Process**
 1. It runs only when TC FlyBy hands it issues. On later turns it runs only when the person answers Magnum DI's own question.
 2. **Size limit.** If the written evidence is over 10,000 words, nothing is sent, and the person is told the word count.
-3. **One Gemini call** to the configured model.
+3. **One AI call** to the configured model.
    - There is one retry after 4 seconds, only for a temporary failure or an invalid answer. Configuration errors are never retried.
    - The limit of 2 calls per job is enforced on the job record.
    - If both calls fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
@@ -217,7 +217,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 - Every action needs a label and an instruction. "Action needed" or "urgent" needs at least one action and a reason. If there are actions, a recommended one must be set.
 - "Waiting for the person" needs a question, and a question needs that status.
 - "Complete" only when all material evidence was examined; otherwise "partial".
-- Gemini must have finished normally.
+- The AI tool must have finished normally.
 
 If the answer fails, the check fails honestly. The raw reply is kept only in the technical details.
 
@@ -245,7 +245,7 @@ It can't override what is already established, and it isn't called to move a cas
 5. **Patrol records, the phone's live state, recent investigations or ApolloSG product knowledge** → shown as they are.
 6. **ApolloSG's KB** → quoted with publisher and link, labelled as general knowledge.
 7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
-8. **A general scam-safety question nothing else answers** → **one** Gemini call with the question alone (no device state, history or case). The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
+8. **A general scam-safety question nothing else answers** → **one** AI call with the question alone (no device state, history or case). The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
 
 **Rules**
 - The phone's live reading is the truth. Higgins never contradicts it, guesses past it or invents a concern.
@@ -375,7 +375,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - Everything submitted is checked again for passwords, PINs, codes, usernames and login IDs, bearer tokens and secrets in links, and each one is replaced with "[redacted]".
 - A word that only describes a secret ("password reset", "code required") is left alone.
 
-**Before every Gemini request (one privacy boundary)**
+**Before every AI request (one privacy boundary)**
 - Secrets are stripped once more from the whole request, and a field that holds a credential is dropped.
 - A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
 - Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
@@ -415,7 +415,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 | Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
 | Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
 
-Gemini's saved answers are **not** in the KB. They are reusable intelligence (below), labelled as Gemini's and never treated as sourced knowledge.
+Saved AI answers are **not** in the KB. They are reusable intelligence (below), labelled as written by AI and never treated as sourced knowledge.
 
 **Trusted sources.** A page on any other website never becomes ApolloSG knowledge.
 - **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
@@ -467,24 +467,24 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 
 **Where the KB is used**
 - **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
-- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and Gemini's saved answers never are.
-- **Preview:** the simulator answers from the KB instead of calling Gemini, and says so.
+- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and saved AI answers never are.
+- **Preview:** the simulator answers from the KB instead of calling the AI tools, and says so.
 
 ### Reusable intelligence (not KB knowledge)
 **Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
 
 **What it holds**
-- Gemini's answer to a general scam-safety question nothing else answered.
+- The AI tool's answer to a general scam-safety question nothing else answered.
 - TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
 - Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
 - Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
 
-**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated Gemini answer is never saved.
+**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated AI answer is never saved.
 
 **How long a result counts as current**
 | Information | Current for |
 |---|---|
-| General question answered by Gemini | 90 days |
+| General question answered by AI | 90 days |
 | TC FlyBy search that found something | 7 days |
 | TC FlyBy search that found nothing | 1 day |
 | Phone reputation (IPQualityScore) | 24 hours |
@@ -498,11 +498,11 @@ An expired result never counts as current. It is deleted 90 days after it expire
 - **Partial:** something relevant, but expired, incomplete, contradicted, or for a check that must be live. The call runs as before and the result is refreshed.
 - **Unknown:** nothing relevant. The call runs as before.
 - The KB is always checked first. The check only saves calls; it never lowers what a check must establish.
-- A saved Gemini answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
+- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
 
 **What the person sees**
 - A reused result says when Apollo last checked it: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again". In Ask Higgins it reads "Saved answer · …"; in a result, it sits under the source.
-- A reused Gemini answer says that Gemini wrote it and that no official source has checked it.
+- A reused AI answer says that an AI tool wrote it and that no official source has checked it.
 
 **Staff see** the admin portal's Intelligence Reuse page: calls avoided and still needed, results saved, expired results checked again, by call site and by day, what the store holds and how long each kind stays current. Counts only, never content. The same counts go to the server logs.
 
@@ -631,7 +631,9 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
 - **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
-- **iPhone:** Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
+
+**Call Guard (iPhone)**
+- Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
 
 **Text Guard**
 - **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
@@ -739,8 +741,8 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 | Permission | What it's for | When ApolloSG asks |
 |---|---|---|
 | Notifications | Receive important threat and family alerts | During setup, or with Allow security alerts in Settings |
-| Camera | Scan QR codes and photograph suspicious items for Apollo to check | When the person scans a code or takes a photo |
-| Photos | Pick images of suspicious content for Apollo to investigate | When the person chooses a picture or a screenshot |
+| Camera | Scan QR codes and photograph suspicious items for checking | When the person scans a code or takes a photo |
+| Photos | Choose screenshots of suspicious messages to check for scams | When the person chooses a picture or a screenshot |
 | Website protection (Android) | Run Apollo's on-device VPN filter | When the person turns on website protection |
 | Notification access (Android) | Text Guard reads new text-message notifications | When the person turns on message screening |
 | Caller ID & spam app (Android) | Call Guard screens incoming calls | When the person turns on call screening |

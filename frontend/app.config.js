@@ -58,7 +58,6 @@ module.exports = {
         // affect the iOS encryption classification. All usage qualifies as exempt under
         // Apple's export compliance categories.
         ITSAppUsesNonExemptEncryption: false,
-        NSUserNotificationsUsageDescription: "Receive important threat and family alerts",
         NSLocationWhenInUseUsageDescription: "Check whether your Wi-Fi connection is secured",
       },
       entitlements: {
@@ -69,7 +68,22 @@ module.exports = {
           { NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults", NSPrivacyAccessedAPITypeReasons: ["CA92.1"] },
           { NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryFileTimestamp", NSPrivacyAccessedAPITypeReasons: ["C617.1"] },
         ],
-        NSPrivacyCollectedDataTypes: [],
+        // What leaves the phone and is kept beyond the request (Apple's definition of "collected"): all linked to
+        // the random device ID, used only to run the app, never for tracking or advertising. Content sent for a
+        // check is processed for that request only (copies closed within 15 minutes), so it is not listed.
+        NSPrivacyCollectedDataTypes: [
+          "NSPrivacyCollectedDataTypeDeviceID",
+          "NSPrivacyCollectedDataTypeEmailAddress",
+          "NSPrivacyCollectedDataTypePhoneNumber",
+          "NSPrivacyCollectedDataTypeName",
+          "NSPrivacyCollectedDataTypeOtherUserContent",
+          "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+        ].map((type) => ({
+          NSPrivacyCollectedDataType: type,
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        })),
         NSPrivacyTracking: false,
       },
     },
@@ -137,8 +151,9 @@ module.exports = {
       "./plugins/withGuardDogEngine",
       "./plugins/withRestrictedPhonePermissions",
       "expo-sharing",
-      ["expo-camera", { cameraPermission: "Scan QR codes and photograph suspicious items for Apollo to check", microphonePermission: false, recordAudioAndroid: false }],
-      ["expo-image-picker", { photosPermission: "Pick images of suspicious content for Apollo to investigate", cameraPermission: "Photograph suspicious items for Apollo to investigate", microphonePermission: false }],
+      ["expo-camera", { cameraPermission: "Scan QR codes and photograph suspicious items for checking", microphonePermission: false, recordAudioAndroid: false }],
+      // Same camera wording as expo-camera: both plugins write NSCameraUsageDescription, so they must agree.
+      ["expo-image-picker", { photosPermission: "Choose screenshots of suspicious messages to check for scams", cameraPermission: "Scan QR codes and photograph suspicious items for checking", microphonePermission: false }],
       // Alert sounds play only while Apollo is open: no background music-player service (a Play declaration Apollo can't justify).
       ["expo-audio", { microphonePermission: false, enableBackgroundPlayback: false }],
       ["expo-build-properties", { android: { minSdkVersion: 26 }, ios: { deploymentTarget: "16.4" } }],

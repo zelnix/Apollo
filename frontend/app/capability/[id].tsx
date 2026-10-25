@@ -186,7 +186,7 @@ export default function CapabilityDetailScreen() {
                   <Text style={s.text}>{explanation.state.result.explanation.protectsAgainst}</Text>
                   <Text style={s.attr} testID="capability-explanation-source">
                     {explanation.state.result.source === "apollo_reviewed" ? "Explanation reviewed by Apollo."
-                      : explanation.state.result.source === "preview_simulator" ? "SIMULATED — preview build, no Gemini call was made. Drawn from ApolloSG’s knowledge base where it had something."
+                      : explanation.state.result.source === "preview_simulator" ? "SIMULATED — preview build, no AI call was made. Drawn from ApolloSG’s knowledge base where it had something."
                         : `Explained by Higgins for ${explanation.state.result.scopeLabel}.`}
                   </Text>
                 </View>

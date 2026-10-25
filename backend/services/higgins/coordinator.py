@@ -208,7 +208,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     # Take a Gemini call slot before anything is sent. Refused = both attempts are already used:
     # nothing is sent and the person is asked to resubmit later.
     if await repo.claim_gemini_call(owner, job["job_id"], MAX_GEMINI_CALLS) is None:
-        return Outcome("call_limit_reached", errors=[f"this investigation already made {MAX_GEMINI_CALLS} Gemini calls"])
+        return Outcome("call_limit_reached", errors=[f"this investigation already made {MAX_GEMINI_CALLS} AI calls"])
 
     # Mark evidence as examined now that it has been sent to Gemini
     for evidence_id, start, end, total in pending_marks:

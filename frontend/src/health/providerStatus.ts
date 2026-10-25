@@ -13,8 +13,8 @@ export function providerStatusLines(status: ProviderStatus | null | undefined, l
   if (!status) return [];
   const key = status.keyConfigured ? "AI service key: set." : "AI service key: not set, so Magnum DI can't investigate.";
   const call = status.lastCall;
-  if (!call) return [key, "Last Gemini call: none recorded yet."];
+  if (!call) return [key, "Last AI call: none recorded yet."];
   const when = call.at && Number.isFinite(Date.parse(call.at)) ? new Date(call.at).toLocaleString(locale) : "time not recorded";
   const outcome = call.worked ? "it worked" : `it failed — ${FAILURE_TEXT[call.failureCode ?? ""] ?? "the reason wasn't recorded"}`;
-  return [key, `Last Gemini call: ${when} — ${outcome}.`];
+  return [key, `Last AI call: ${when} — ${outcome}.`];
 }

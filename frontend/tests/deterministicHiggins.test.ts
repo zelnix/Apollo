@@ -71,7 +71,7 @@ test("a Patrol explanation lists Apollo's own findings with their provenance", (
 
 test("health check AI lines come from saved records", () => {
   assert.deepEqual(providerStatusLines(null), []);
-  assert.deepEqual(providerStatusLines({ keyConfigured: true, lastCall: null }), ["AI service key: set.", "Last Gemini call: none recorded yet."]);
+  assert.deepEqual(providerStatusLines({ keyConfigured: true, lastCall: null }), ["AI service key: set.", "Last AI call: none recorded yet."]);
   const failed = providerStatusLines({ keyConfigured: true, lastCall: { at: "2026-06-02T07:00:00Z", worked: false, failureCode: "provider_configuration", purpose: "investigation" } }, "en-AU");
   assert.match(failed[1], /it failed — the AI service isn't set up correctly — often its billing or key\.$/);
   assert.match(providerStatusLines({ keyConfigured: false, lastCall: null })[0], /not set/);

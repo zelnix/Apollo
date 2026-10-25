@@ -11,6 +11,7 @@ import PhoneIcon from "lucide-react-native/icons/phone";
 import Search from "lucide-react-native/icons/search";
 import React, { useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -233,7 +234,9 @@ export default function CheckNumber() {
             "Apollo investigates phone numbers using reputation data, fraud databases, line-type intelligence and Higgins analysis.",
             "This works without answering the call — check before you call back.",
             "Reputation data indicates risk but cannot authenticate who is actually calling. Caller ID can be spoofed.",
-            "On Android, Calls Apollo screened lists the incoming numbers Android passed to Apollo's call screening — Apollo doesn't read your call log. On iOS, enter or paste the number.",
+            Platform.OS === "android"
+              ? "Calls Apollo screened lists the incoming numbers your phone passed to Apollo's call screening — Apollo doesn't read your call log."
+              : "Enter or paste the number you want checked.",
           ] }}
           testID="callguard"
         />

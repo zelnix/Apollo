@@ -23,6 +23,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { APP_VERSION } from "@/src/config/buildInfo";
+import { openPrivacyPolicy } from "@/src/config/privacyPolicy";
 import type { NotificationStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
 import { setShowResultReasons, useShowResultReasons } from "@/src/store/resultReasonsStore";
@@ -213,7 +214,8 @@ export default function SettingsScreen() {
 
       {/* 8 ── The documents, last: read occasionally, never urgent */}
       <Group icon={FileText} title="Policies &amp; assurance" tone="policies" testID="settings-policies">
-        <NavRow first label="Privacy statement" hint="What ApolloSG stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
+        <NavRow first label="Privacy policy" hint="The full policy, on our website" onPress={openPrivacyPolicy} testID="settings-privacy-policy" />
+        <NavRow label="Privacy statement" hint="What ApolloSG stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
         <NavRow label="Third-party services" hint="External services, what they receive and HWG accountability" onPress={() => router.push("/third-party-register")} testID="settings-third-party" />
         <NavRow label="Compliance matrix" hint="Standards, application controls and operational assurance" onPress={() => router.push("/compliance-matrix")} testID="settings-compliance-matrix" />
       </Group>

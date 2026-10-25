@@ -95,7 +95,7 @@ export default function ThirdPartyRegisterScreen() {
             {THIRD_PARTY_SERVICES_DISCLOSURE.services.length > 0 && (
               <>
                 <Body>ApolloSG applies its purpose-based privacy controls to information sent to external services.</Body>
-                <Body>Authentication secrets must not be sent to Gemini. Personal information unrelated to the investigation is minimised or withheld. Material security evidence is preserved where necessary.</Body>
+                <Body>Authentication secrets and your personal information are removed before anything is sent to AI tools. Material security evidence is preserved where necessary.</Body>
               </>
             )}
           </Card>

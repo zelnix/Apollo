@@ -126,7 +126,7 @@ function recentLogLines(health: FullHealthCheck, firstCheckConcerns: string[], e
   if (health.checkedAt) for (const [id, label] of [["device", "Apollo protection"], ["backend", "Online services"], ["higgins", "Higgins"], ["report", "Reports"]] as const) {
     const row = health[id as "device"]; lines.push(`${new Date(row.checkedAt ?? health.checkedAt!).toLocaleString()} · ${STATUS[row.status].toUpperCase()} · ${label}`);
   }
-  for (const concern of firstCheckConcerns) lines.push(`Higgins First Check · ${concern}`);
+  for (const concern of firstCheckConcerns) lines.push(`Apollo First Check · ${concern}`);
   // Device capability reads Apollo attempted and could not complete — shown so a failed check is never
   // mistaken for a clean one.
   for (const failure of recentNativeFailures()) {

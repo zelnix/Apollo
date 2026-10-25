@@ -7,7 +7,7 @@ import * as Crypto from "expo-crypto";
 import Wifi from "lucide-react-native/icons/wifi";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -152,7 +152,7 @@ export default function CheckNetwork() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check my internet"
-          info={{ title: "About internet monitoring", body: ["Apollo monitors your network connection for DNS hijacking, insecure Wi-Fi and known malicious infrastructure.", "On Android with VPN protection enabled, Apollo can inspect DNS queries in real time. On all platforms, Apollo checks your current connection details and warns about known risks."] }}
+          info={{ title: "About internet monitoring", body: ["Apollo monitors your network connection for DNS hijacking, insecure Wi-Fi and known malicious infrastructure.", Platform.OS === "android" ? "With VPN protection enabled, Apollo can inspect DNS queries in real time. Apollo also checks your current connection details and warns about known risks." : "Apollo checks your current connection details and warns about known risks."] }}
           testID="network"
         />
       </View>

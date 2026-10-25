@@ -55,9 +55,9 @@ export default function FirstCheckOnboarding() {
         <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={4} /></View>
         <View style={s.centre}>
           <ApolloLogo size={96} />
-          <Text style={s.eyebrow}>Higgins First Check</Text>
+          <Text style={s.eyebrow}>Apollo First Check</Text>
           <Text style={s.title}>Checking this device&apos;s starting point…</Text>
-          <Text style={s.sub}>ApolloSG never assumes a new device is clean. Higgins is reading the security signals this device allows — it takes a moment.</Text>
+          <Text style={s.sub}>ApolloSG never assumes a new device is clean. Apollo is reading the security signals this device allows — it takes a moment.</Text>
           <ActivityIndicator color={colors.brand} />
         </View>
       </View>
@@ -70,7 +70,7 @@ export default function FirstCheckOnboarding() {
       <ScrollView contentContainerStyle={[s.content, { paddingTop: spacing.lg, paddingBottom: spacing.xl }]}>
         <View style={{ alignItems: "center", gap: spacing.sm }}>
           <ApolloLogo size={72} />
-          <Text style={s.eyebrow}>Higgins First Check</Text>
+          <Text style={s.eyebrow}>Apollo First Check</Text>
         </View>
         <FirstCheckResult report={report} kind="first_check" />
       </ScrollView>

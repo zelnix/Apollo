@@ -182,7 +182,7 @@ export function buildLinkCheckResult(args: {
   }
   evidence.push({
     label: "Privacy",
-    value: "Purpose-limited processing. ApolloSG closes request copies immediately and never later than 15 minutes. Gemini account retention settings have not been independently verified.",
+    value: "Purpose-limited processing. ApolloSG closes request copies immediately and never later than 15 minutes. AI provider retention settings have not been independently verified.",
   });
 
   // Headline — one short sentence summarising the outcome. No competing verdict card.

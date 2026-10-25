@@ -30,7 +30,7 @@ export const PROCESSING_LOCATIONS = {
       label: 'ApolloSG\u2019s services',
       icon: 'server' as const,
       summary: 'When a security investigation is needed, ApolloSG transmits privacy-processed evidence to its backend for investigation coordination, security checking, evidence management and alerts.',
-      detail: 'Transmission is required because security investigations need access to threat intelligence, AI analysis and reputation databases that cannot run on-device. Protections include: one outbound privacy boundary before Google Gemini that strips credentials and authentication secrets, keeps the security evidence the investigation needs, and withholds unrelated personal data; owner-scoped access control; Fernet encryption for investigation content, and automatic deletion within 15 minutes of completion.',
+      detail: 'Transmission is required because security investigations need access to threat intelligence, AI analysis and reputation databases that cannot run on-device. Protections include: one outbound privacy boundary before any AI tool that strips credentials and authentication secrets, removes your personal information and keeps only the security evidence the investigation needs; owner-scoped access control; Fernet encryption for investigation content, and automatic deletion within 15 minutes of completion.',
     },
     {
       label: 'Third-party services',
@@ -48,7 +48,7 @@ export const CAPABILITY_DATA_USE = [
     capability: 'Message and email investigation',
     local: 'Apollo examines message text, sender details and embedded links on your device.',
     backend: 'Privacy-processed evidence (with credentials stripped) is sent to ApolloSG\u2019s backend for Higgins AI investigation.',
-    thirdParty: 'Google Gemini receives approved investigation content. Safe Browsing checks embedded URLs. RDAP checks sender domains.',
+    thirdParty: 'AI tools receive approved investigation content, with your personal information removed. Safe Browsing checks embedded URLs. RDAP checks sender domains.',
     shared: 'Sanitised message content, sender indicators, embedded URLs',
     necessary: 'AI investigation requires the submitted content to assess the threat accurately.',
     activation: 'Manual: when you submit a message for investigation',
@@ -58,7 +58,7 @@ export const CAPABILITY_DATA_USE = [
     capability: 'Gmail monitoring',
     local: 'ApolloSG does not store mailbox credentials. Gmail OAuth provides read-only access.',
     backend: 'Email content is processed through ApolloSG\u2019s backend investigation pipeline with the same credential stripping and privacy controls as manual investigations.',
-    thirdParty: 'Google Gemini receives privacy-processed email evidence. VirusTotal receives file hashes (not file content) for attachment scanning. Safe Browsing checks URLs in emails.',
+    thirdParty: 'AI tools receive privacy-processed email evidence, with your personal information removed. VirusTotal receives file hashes (not file content) for attachment scanning. Safe Browsing checks URLs in emails.',
     shared: 'Email sender, subject, body content (privacy-processed), attachment hashes',
     necessary: 'Automated monitoring requires processing email content to detect scam patterns.',
     activation: 'User-enabled: only after you connect Gmail via OAuth and start monitoring',
@@ -96,9 +96,9 @@ export const CAPABILITY_DATA_USE = [
   },
   {
     capability: 'Image and screenshot investigation',
-    local: 'When you submit an image, Apollo checks it on your device for passwords, PINs, one-time codes and similar secrets and blacks them out on the copy it sends. Names, numbers, emails, payment details, sender information and layout are kept, because they are the scam evidence. If a detected secret can\u2019t be blacked out, the image isn\u2019t sent.',
+    local: 'When you submit an image, Apollo checks it on your device for passwords, PINs, one-time codes and similar secrets and blacks them out on the copy it sends. The scam evidence in the picture \u2014 the message wording, links, the sender\u2019s details, payment requests and layout \u2014 is kept, because that is what Apollo checks. If a detected secret can\u2019t be blacked out, the image isn\u2019t sent.',
     backend: 'The prepared copy is sent to ApolloSG\u2019s backend for the investigation. Your original stays on your device unchanged.',
-    thirdParty: 'Google Gemini receives the prepared image (with any detected credentials blacked out) through ApolloSG\u2019s single Gemini gateway.',
+    thirdParty: 'AI tools receive the prepared image (with any detected credentials blacked out) through ApolloSG\u2019s single AI gateway.',
     shared: 'The submitted image, with detected credentials blacked out',
     necessary: 'Visual content investigation requires transmitting the approved representation to AI analysis.',
     activation: 'Manual: when you submit an image',
@@ -127,8 +127,8 @@ export const CAPABILITY_DATA_USE = [
   {
     capability: 'Ask Higgins (text chat)',
     local: 'Questions are composed on your device. A state-only reading of your own ApolloSG app \u2014 protection statuses, permission states, settings values, counts and the headlines ApolloSG itself wrote \u2014 is assembled on the device to accompany the question.',
-    backend: 'Questions, that state reading and requested speech are sent to ApolloSG\u2019s backend using the owner-managed key. Personal identifiers in research queries are minimised within ApolloSG\u2019s backend before transmission to Gemini.',
-    thirdParty: 'Google Gemini receives the privacy-processed query for AI response.',
+    backend: 'Questions, that state reading and requested speech are sent to ApolloSG\u2019s backend using the owner-managed key. Personal identifiers in research queries are removed within ApolloSG\u2019s backend before anything is sent to AI tools.',
+    thirdParty: 'AI tools receive the privacy-processed question, with your personal information removed.',
     shared: 'Privacy-processed question or speech request, plus your Apollo protection state',
     necessary: 'AI responses and speech generation require transmitting your query to the AI provider. The state reading is what lets Higgins answer about your actual phone instead of guessing.',
     activation: 'Manual: when you send a question, tap read-aloud, or enable automatic read-aloud',
@@ -140,11 +140,11 @@ export const CAPABILITY_DATA_USE = [
 
 export const PRIVACY_FLOWS = [
   { what: 'Purpose-limited security assessments', when: 'When you submit a message, email, screenshot, account alert, phone number or link', detail: 'ApolloSG combines on-device detection with Higgins context and supported reputation sources. Raw submitted content is not kept in Patrol, logs or analytics. Request-scoped copies close immediately after completion or failure and never later than 15 minutes.' },
-  { what: 'Optional ongoing access', when: 'Only after you enable notification access or connect Gmail with OAuth', detail: 'Android notification checks and Gmail OAuth are opt-in. Disconnect or disable access to stop future checks. ApolloSG never asks for or stores a mailbox username or password. Gmail monitoring uses the same credential stripping and privacy controls as manual investigations, with AI investigation authorised for detected threats.' },
+  { what: 'Optional ongoing access', when: 'Only after you enable notification access or connect Gmail with OAuth', detail: 'Notification checks (where your phone allows them) and Gmail OAuth are opt-in. Disconnect or disable access to stop future checks. ApolloSG never asks for or stores a mailbox username or password. Gmail monitoring uses the same credential stripping and privacy controls as manual investigations, with AI investigation authorised for detected threats.' },
   { what: 'Links you investigate', when: 'When you manually check or share a link, message or email', detail: 'ApolloSG receives a sanitised URL for the requested investigation. Credentials, fragments and secret query values are removed first. Reputation, safe webpage and domain-registration services receive only the URL or hostname needed for their check. Cached reputation uses a digest; expired rows are ignored, not treated as current evidence.' },
   { what: 'Minimal Patrol summaries and packet evidence', when: 'After checks and native observations; retried until acknowledged', detail: 'ApolloSG stores category, state, timestamps, opaque event IDs and website domain. Packet evidence adds mechanism, protocol, rule ID, port and observed action. No caller numbers, app/process attribution or raw message narratives. Clear Patrol currently hides server rows (soft deletion), not physical erasure. Pending uploads are shown in Patrol.' },
   { what: 'Device and notification settings', when: 'Setup, heartbeat, notification enablement and settings changes', detail: 'A server-issued random device ID, platform/app version, coarse UTC offset and quiet-hour preferences go to ApolloSG. Push delivery tokens go to the managed relay and Apple/Google delivery services. Disable notifications in Settings to stop notifications; this is not data erasure.' },
-  { what: 'Ask Higgins and Hear Higgins', when: 'When you send a question, tap read-aloud, or explicitly enable automatic read-aloud', detail: 'Questions and requested speech go to Higgins using the owner-managed key; do not paste private messages or secrets. Automatic event context is replaced with a generic summary. ApolloSG retains conversation history and temporary cached speech under the stated case lifecycle. Turning off read-aloud stops future automatic speech requests. Personal identifiers in research queries are minimised within ApolloSG\u2019s backend before reaching Google Gemini.' },
+  { what: 'Ask Higgins and Hear Higgins', when: 'When you send a question, tap read-aloud, or explicitly enable automatic read-aloud', detail: 'Questions and requested speech go to Higgins using the owner-managed key; do not paste private messages or secrets. Automatic event context is replaced with a generic summary. ApolloSG retains conversation history and temporary cached speech under the stated case lifecycle. Turning off read-aloud stops future automatic speech requests. Personal information is removed within ApolloSG\u2019s backend before anything reaches AI tools.' },
   { what: 'Optional family support', when: 'You pair, invite, share an incident, reply or send a text note', detail: 'Chosen names, contact details, minimal alerts, weekly counts and replies go to ApolloSG and paired guardians. Invitations use an email delivery service; confirmed guardians also receive authorised automatic security alerts via email when Apollo is barking or biting. Alerts use the push relay. Remove a pairing to stop future sharing; it does not erase prior deliveries.' },
   { what: 'App reputation checks', when: 'You manually check an app', detail: 'The supplied app/developer names, source, permission labels and website hosts go to ApolloSG and optionally Higgins for explanation, not your full app inventory. Do not enter personal content in app-name fields.' },
   { what: 'Optional Gmail investigation', when: 'Only after you connect Gmail with Google OAuth and start a scan or monitor', detail: "ApolloSG uses Gmail read-only OAuth access. ApolloSG never asks for or stores a mailbox username or password. Disconnect removes ApolloSG's stored OAuth connection; revoke provider access as an additional control. Raw message content is not copied into Patrol. Email attachment hashes are checked against VirusTotal for known malware; file content is never sent." },
@@ -155,19 +155,19 @@ export const AI_PROCESSING_DISCLOSURE = {
   sections: [
     {
       heading: 'Where your data goes',
-      text: "When you submit content for AI investigation, ApolloSG transmits privacy-processed evidence through its own service to Google Gemini. For Gmail monitoring, previously authorised automatic investigations use the same privacy controls. This uses a paid API tier managed by ApolloSG \u2014 it is not your personal Google account and does not connect to any Google account you own.",
+      text: "When you submit content for AI investigation, ApolloSG removes your personal information and sends the privacy-processed evidence through its own service to the AI tools it uses. For Gmail monitoring, previously authorised automatic investigations use the same privacy controls. This uses a paid API tier managed by ApolloSG \u2014 it is not your personal account with any AI provider and does not connect to any account you own.",
     },
     {
-      heading: 'What Google receives',
-      text: 'For manual investigations: the messages, screenshots and images you submit (with detected credentials removed or blacked out), and minimal research queries. For Gmail monitoring: privacy-processed email evidence from your previously authorised connection. In all cases, detected credentials and passwords are not transmitted.',
+      heading: 'What the AI tools receive',
+      text: 'For manual investigations: the scam evidence in the messages, screenshots and images you submit (with detected credentials removed or blacked out, and your personal information removed), and minimal research queries. For Gmail monitoring: privacy-processed email evidence from your previously authorised connection. In all cases, detected credentials, passwords and your personal information are not transmitted.',
     },
     {
       heading: 'Data retention',
-      text: "ApolloSG uses the paid Gemini API tier. According to Google's published API terms, customer data sent via the paid API is not used for model training. Request-scoped processing copies on ApolloSG's side are closed immediately after completion and never retained beyond 15 minutes. Google's own data retention and processing practices are governed by their published API terms, which ApolloSG does not control or independently verify.",
+      text: "ApolloSG uses paid AI services. Under their published terms, data sent through the paid service is not used for model training. Request-scoped processing copies on ApolloSG's side are closed immediately after completion and never retained beyond 15 minutes. Each AI provider's own data retention and processing practices are governed by its published terms, which ApolloSG does not control or independently verify.",
     },
     {
       heading: 'Research queries',
-      text: 'When Higgins researches a domain, phone number, or scam report, the outbound query is minimised. Personal identifiers detected in your evidence (emails, phone numbers, account numbers) are replaced with category labels within ApolloSG\u2019s backend before the query reaches Google Gemini. Domain names and scam indicators are preserved because they are essential for the investigation.',
+      text: 'When Higgins researches a domain, phone number, or scam report, the outbound query is minimised. Personal identifiers detected in your evidence (emails, phone numbers, account numbers) are replaced with category labels within ApolloSG\u2019s backend before the query reaches any AI tool. Domain names and scam indicators are preserved because they are essential for the investigation.',
     },
     {
       heading: 'On-device screening',
@@ -196,7 +196,7 @@ export const THIRD_PARTY_SERVICES_DISCLOSURE = {
   title: 'Third-party services',
   intro: 'ApolloSG is a brand of Harmony Wellness Group (HWG), which is accountable for the selection, configuration and oversight of the external services ApolloSG uses. ApolloSG uses external services only where needed to provide security investigations, reputation checks, communications, storage or supporting functionality.',
   services: [
-    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.' },
+    { name: 'AI tools', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Your personal information and authentication secrets are removed before anything is sent.' },
     { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains. Credentials and secret query values are removed before lookup.' },
     { name: 'Google Gmail', purpose: 'Optional read-only email checking', shared: 'Google OAuth authorisation and access to email information within the approved read-only scope. Only active when you connect Gmail.' },
     { name: 'VirusTotal', purpose: 'Email attachment malware scanning', shared: 'SHA-256 file hashes only. File content is never sent. Active when Gmail monitoring is connected.' },
@@ -216,7 +216,7 @@ export const THIRD_PARTY_REGISTER = {
   accountable: 'Harmony Wellness Group (HWG)',
   intro: 'Harmony Wellness Group is accountable for the selection, configuration and oversight of the external services ApolloSG uses. This register reflects the verified deployment configuration.',
   active: [
-    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.', controls: 'Single gateway; credential stripping; research-query minimisation; images only for authorised investigation purposes' },
+    { name: 'AI tools', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Your personal information and authentication secrets are removed before anything is sent.', controls: 'Single gateway; credential stripping; personal-information removal; research-query minimisation; images only for authorised investigation purposes' },
     { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains', controls: 'URL sanitisation removes credentials and secret parameters' },
     { name: 'IPQualityScore', purpose: 'Phone-number fraud and reputation checking', shared: 'The phone number being checked', controls: 'Single-field transmission' },
     { name: 'VirusTotal', purpose: 'Email attachment malware scanning (hash-only)', shared: 'SHA-256 file hashes only; file content never sent', controls: 'Hash-only mode; free tier rate-limited' },
@@ -253,7 +253,7 @@ export const COMPLIANCE_MATRIX_DISCLOSURE = {
   appControls: [
     { control: 'Privacy by default', detail: 'Local-first processing, minimum collection, automatic withholding', status: 'implemented' as const },
     { control: 'Personal information protection', detail: 'Identification, classification and redaction of unnecessary personal data', status: 'implemented' as const },
-    { control: 'Credential protection', detail: 'Prevent passwords, tokens and authentication codes from reaching Gemini', status: 'implemented' as const },
+    { control: 'Credential protection', detail: 'Prevent passwords, tokens and authentication codes from reaching AI tools', status: 'implemented' as const },
     { control: 'Purpose limitation', detail: 'Restrict information to each service according to its authorised purpose', status: 'implemented' as const },
     { control: 'Security evidence preservation', detail: 'Preserve sender details, URLs, scam wording and essential indicators', status: 'implemented' as const },
     { control: 'Image privacy', detail: 'On-device credential detection and blackout before an image is sent; personal details kept as evidence', status: 'implemented' as const },
@@ -267,7 +267,7 @@ export const COMPLIANCE_MATRIX_DISCLOSURE = {
   operationalItems: [
     { requirement: 'Formal privacy policy', appDoes: 'Display notices, obtain acknowledgements, offer privacy controls', outsideApp: 'Determine and approve legally adequate policy wording' },
     { requirement: 'Cross-border disclosure', appDoes: 'Minimise and authorise data leaving the device', outsideApp: 'Assess overseas processing and applicable legal obligations' },
-    { requirement: 'Supplier management', appDoes: 'Restrict Gemini requests through an audited gateway', outsideApp: 'Evaluate supplier commitments and contractual terms' },
+    { requirement: 'Supplier management', appDoes: 'Restrict AI requests through an audited gateway', outsideApp: 'Evaluate supplier commitments and contractual terms' },
     { requirement: 'Incident response', appDoes: 'Detect incidents, record evidence, revoke access, delete data', outsideApp: 'Assign responsibilities, evaluate breaches, handle notifications' },
     { requirement: 'Bias and fairness', appDoes: 'Implement evidence-based decisions, run fairness regression tests', outsideApp: 'Approve the assessment and periodically review outcomes' },
     { requirement: 'Formal access and correction', appDoes: 'Provide access, correction and deletion capabilities', outsideApp: 'Handle formal requests, identity verification and exceptions' },

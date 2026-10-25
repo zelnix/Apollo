@@ -40,7 +40,7 @@ _RESUBMIT_REASONS: dict[str, str] = {
     "rate_limited": "the analysis service was too busy to answer",
     "provider_unavailable": "the analysis service didn't answer in time",
     "incomplete_output": "the answer stopped before it was complete",
-    "response_invalid": "the answer didn't pass Apollo's checks (Gemini's actual reply is kept in the technical details)",
+    "response_invalid": "the answer didn't pass Apollo's checks (the AI tool's actual reply is kept in the technical details)",
     "budget_exhausted": "the investigation ran out of time before it could finish",
     "transport_interrupted": "the connection dropped before the answer arrived",
     "call_limit": "both of its attempts were already used",
@@ -65,8 +65,8 @@ def evidence_too_large_message(words: int) -> str:
         f"There is too much written material in this case for Apollo's standard investigation — about {words:,} words, "
         f"and ApolloSG's limit is {EVIDENCE_WORD_LIMIT:,} words for one investigation. "
         "I haven't sent any of it to be investigated, and nothing has been shortened or left out behind your back. "
-        "For documents this long, open them in your own AI assistant — such as Gemini, Claude or Copilot on your "
-        "device — where you can work through the whole document yourself. "
+        "For documents this long, open them in an AI assistant on your own device, "
+        "where you can work through the whole document yourself. "
         "If you'd like Apollo to investigate, remove some of the material from this case and run the check again."
     )
 
@@ -238,7 +238,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             except provider.ProviderFailure as exc:
                 duration_ms = int((_time.monotonic() - turn_start) * 1000)
                 diag = DiagnosticDetail(
-                    component="provider_adapter", service="Gemini", operation=exc.operation or "response_generation",
+                    component="provider_adapter", service="AI service", operation=exc.operation or "response_generation",
                     original_error_code=exc.code,
                     http_status=exc.http_status,
                     original_message=exc.original_message,
@@ -282,7 +282,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             # Support/DI can see exactly what Gemini returned.
             raw = (outcome.provider_text or "").strip()
             provider_response = provider._sanitise_diagnostic(redact_investigation_secrets(raw))[:4000] if raw else None
-            diag = DiagnosticDetail(component="magnum_di", service="Gemini", operation="validation",
+            diag = DiagnosticDetail(component="magnum_di", service="AI service", operation="validation",
                 original_error_code="response_invalid",
                 original_message="Answer failed Apollo's validation: " + "; ".join(outcome.errors)[:400],
                 provider_response=provider_response,

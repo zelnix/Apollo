@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { parseInline, parseRuleBook, plainText, reviewedLabel, sectionsOf, type Block } from "../src/domain/ruleBook.ts";
+import { forPlatform, parseInline, parseRuleBook, plainText, reviewedLabel, sectionsOf, type Block } from "../src/domain/ruleBook.ts";
 import { DEVICE_STATUS } from "../src/domain/deviceAnalysis.ts";
 import { FILE_SIZE_LIMIT } from "../src/domain/fileInspection.ts";
 import { detectCheckIntent } from "../src/higgins/checkIntent.ts";
@@ -140,9 +140,24 @@ test("the device results and permission wording in the book are the app's own, w
   for (const status of Object.values(DEVICE_STATUS)) assert.ok(device.includes(`| ${status.title} | ${status.meaning} |`), status.title);
   const permissions = sectionText("permissions");
   const config = read("app.config.js");
-  for (const key of ["NSUserNotificationsUsageDescription", "cameraPermission", "photosPermission"]) {
+  assert.ok(permissions.includes("| Notifications | Receive important threat and family alerts |"));
+  for (const key of ["cameraPermission", "photosPermission"]) {
     const wording = new RegExp(`${key}: "([^"]+)"`).exec(config)?.[1];
     assert.ok(wording && permissions.includes(`| ${wording} |`), `${key}: ${wording}`);
   }
   assert.ok(/microphonePermission: false/.test(config) && permissions.includes("**Never asked for:** the microphone"));
+});
+
+test("on iPhone and iPad the book leaves out Android-only rules, and keeps the iPhone ones", () => {
+  const all = parseRuleBook(BOOK);
+  const ios = texts(forPlatform(all, "ios")).join("\n");
+  assert.ok(!/Android/.test(ios), "no Android wording on iPhone");
+  assert.ok(ios.includes("Apple lets no app screen calls as they arrive"));
+  assert.ok(ios.includes("Apple gives apps no way to read Messages"));
+  assert.ok(ios.includes("| Camera |") || ios.includes("Scan QR codes and photograph suspicious items for checking"));
+  assert.deepEqual(forPlatform(all, "android"), all);
+});
+
+test("the book names no AI provider: it speaks of AI tools", () => {
+  assert.ok(!/Gemini|Google AI|Google's AI/.test(BOOK));
 });

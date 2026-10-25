@@ -40,7 +40,7 @@ def case(monkeypatch):
 
     async def _records(_owner, _case_id):
         return [{"investigationId": _case_id, "simulated": True, "mode": "Simulated",
-                 "environment": "Preview", "notice": "SIMULATED — No Gemini API call was made"}]
+                 "environment": "Preview", "notice": "SIMULATED — No AI call was made"}]
 
     monkeypatch.setattr("services.higgins.di_record.get_di_records", _records)
     return owner, case_id

@@ -16,6 +16,7 @@ import { CloseButton } from "@/src/components/CloseButton";
 import { SetupProgress } from "@/src/components/SetupProgress";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { openPrivacyPolicy } from "@/src/config/privacyPolicy";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import {
@@ -259,7 +260,7 @@ export default function PrivacyDisclosure() {
         <View>
           <SectionTitle>Where data goes and how long it stays</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body testID="disclosure-retention">Assessment request copies close immediately after success, failure, timeout or cancellation and never later than 15 minutes. Provider-side retention follows each configured API policy. Google, owner-managed storage and messaging services may process data outside Australia. Expiry of a cached reputation result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
+            <Body testID="disclosure-retention">Assessment request copies close immediately after success, failure, timeout or cancellation and never later than 15 minutes. Provider-side retention follows each configured API policy. AI tools, owner-managed storage and messaging services may process data outside Australia. Expiry of a cached reputation result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
           </Card>
         </View>
 
@@ -275,6 +276,7 @@ export default function PrivacyDisclosure() {
         </View>
 
         <Text style={s.legal} testID="disclosure-version">Disclosure version {DISCLOSURE_VERSION}. Optional communication features transmit the content you choose to send; never include passwords or verification codes.</Text>
+        <Button testID="disclosure-full-policy" variant="ghost" label="Read the full privacy policy" onPress={openPrivacyPolicy} />
       </ScrollView>
       {!setupDone ? (
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>

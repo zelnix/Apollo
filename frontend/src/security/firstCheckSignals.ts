@@ -47,7 +47,7 @@ export async function collectFirstCheck(onProgress?: (p: FirstCheckProgress) => 
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       return erroredFirstCheck(platform, EMPTY_SIGNALS(platform), undefined,
-        `Higgins couldn't read this device's security signals, so no part of the check could run (${detail}).`);
+        `Apollo couldn't read this device's security signals, so no part of the check could run (${detail}).`);
     }
     const signals = { ...EMPTY_SIGNALS(platform), ...raw };
     // Detect native OS/OEM call & message protection capabilities (detection only, no classifications).

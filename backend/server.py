@@ -309,6 +309,9 @@ app.include_router(usage.router, prefix="/api", tags=["usage"])
 # The Apollo SG banner that emails load (public: a mail app has no device credential).
 from routers import brand as brand_router
 app.include_router(brand_router.router, prefix="/api", tags=["brand"])
+# The privacy policy web page (public: the App Store listing and a browser have no device credential).
+from routers import legal as legal_router
+app.include_router(legal_router.router, prefix="/api", tags=["legal"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router

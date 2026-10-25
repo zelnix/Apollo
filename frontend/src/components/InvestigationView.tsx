@@ -232,7 +232,7 @@ function higginsExplanation(failure: Record<string, unknown> | null | undefined,
     if (code === "budget_exhausted") return "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.";
     return "Magnum DI encountered a temporary issue and is automatically retrying.";
   }
-  if (code === "response_invalid") return "Magnum DI couldn't complete the investigation. Gemini returned a response ApolloSG couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is in the technical details.";
+  if (code === "response_invalid") return "Magnum DI couldn't complete the investigation. The AI tool returned a response ApolloSG couldn't validate. No investigation conclusion has been substituted — the AI tool's actual reply is in the technical details.";
   if (code === "provider_configuration") return "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.";
   if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
   if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";

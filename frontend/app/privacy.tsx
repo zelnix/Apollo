@@ -6,6 +6,8 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppMenuButton } from "@/src/components/AppMenu";
+import { Button } from "@/src/components/ui";
+import { openPrivacyPolicy } from "@/src/config/privacyPolicy";
 
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -28,7 +30,7 @@ const PRINCIPLES = [
   { title: "Local-first processing", desc: "ApolloSG processes your data on-device whenever possible. Your messages, calls and personal information stay on your phone." },
   { title: "No data selling", desc: "We never sell, share or monetise your personal data. ApolloSG exists to protect you, not to profit from your information." },
   { title: "Minimal data collection", desc: "When AI analysis is needed, ApolloSG sends only the minimum required data. Personal details are redacted before any external call." },
-  { title: "Transparent AI usage", desc: "When ApolloSG uses Google Gemini for analysis, we tell you. You can see what was sent and what came back in the Magnum DI record." },
+  { title: "Transparent AI usage", desc: "When ApolloSG uses AI tools for analysis, we tell you. Your personal information is removed before anything is sent, and you can see what was sent and what came back in the Magnum DI record." },
   { title: "Your data, your control", desc: "You can export or delete your data at any time. Uninstalling ApolloSG removes all local data from your device." },
 ];
 
@@ -78,8 +80,13 @@ export default function Privacy() {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Data Processing</Text>
           <Text style={s.body}>
-            When ApolloSG uses Google Gemini for scam analysis, it operates under Google's published Gemini API terms. ApolloSG does not control Google's internal retention practices. ApolloSG's own request-scoped processing copies are closed after completion.
+            ApolloSG uses AI tools to help check for scams. Before anything is sent to them, ApolloSG removes your personal information, along with passwords, codes and other secrets. ApolloSG&apos;s own request-scoped processing copies are closed after completion.
           </Text>
+        </View>
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Full privacy policy</Text>
+          <Text style={s.body}>The complete policy, including what each service receives and how long information is kept, is on our website.</Text>
+          <Button testID="privacy-open-policy" variant="secondary" label="Read the full privacy policy" onPress={openPrivacyPolicy} />
         </View>
       </ScrollView>
     </View>

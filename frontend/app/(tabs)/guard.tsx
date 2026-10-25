@@ -50,7 +50,7 @@ function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; hi
         const granted = await enableSiteProtection();
         showToast(granted ? "Website protection is on." : "Website protection needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
       } catch {
-        showToast("Android could not open the VPN permission screen. Try again shortly.", "growling");
+        showToast("Your phone could not open the VPN permission screen. Try again shortly.", "growling");
       } finally { setEnablingSite(false); }
       return;
     }

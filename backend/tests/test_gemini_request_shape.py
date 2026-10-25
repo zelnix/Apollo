@@ -162,8 +162,9 @@ async def test_evidence_over_the_word_limit_is_not_sent():
     message = evidence_too_large_message(outcome.evidence_words)
     assert "11,000 words" in message and "10,000 words" in message
     assert "haven't sent any of it" in message
-    for assistant in ("Gemini", "Claude", "Copilot"):
-        assert assistant in message
+    assert "AI assistant on your own device" in message
+    for brand in ("Gemini", "Google", "Claude", "Copilot"):
+        assert brand not in message
 
 
 async def test_evidence_within_the_limit_still_runs():
