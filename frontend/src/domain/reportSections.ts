@@ -3,12 +3,15 @@
 // The top card already says who settled it and why, so nothing below repeats that. A finding the answer already states
 // isn't listed again; "How Apollo checked" and "What this covered" are one section; the reasons a question wasn't taken
 // further are said once there. Pure: no React, no native imports.
-import type { Finding, SourceReference } from "../investigation/types";
+import type { Finding, HigginsResponse, PlainEnglish, SourceReference } from "../investigation/types";
 
-export interface ReportFinding { text: string; detail: string | null }
+/** `explain`: Apollo's fixed explanation of a jargon word in the finding — explanatory, never evidence. */
+export interface ReportFinding { text: string; detail: string | null; explain?: string | null }
 export interface ReportSection { title: string; paragraphs: string[] }
 export interface Report {
   answer: string[];
+  /** How serious it is, in one fixed line (only in Higgins' plain English). */
+  severity?: string | null;
   found: ReportFinding[];
   means: string[];
   more: ReportSection[];
@@ -203,4 +206,31 @@ export function buildReport(input: ReportInput): Report {
 
   const used = new Set(input.sourceIds ?? []);
   return { answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) };
+}
+
+/** Higgins' plain English, only when it passed its Fidelity Check. Otherwise null, and Apollo's own wording is shown. */
+export function shownPlainEnglish(response: Pick<HigginsResponse, "plainEnglish"> | null | undefined): PlainEnglish | null {
+  const plain = response?.plainEnglish;
+  return plain && plain.mode !== "literal" && plain.fidelity?.status === "PASS" ? plain : null;
+}
+
+/** The report from Higgins' checked plain English. The server already said each point once and kept every finding,
+ *  so nothing is left out here. */
+export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[]): Report {
+  const used = new Set(sourceIds ?? []);
+  return {
+    answer: plain.result ? [plain.result] : [],
+    severity: plain.severity || null,
+    found: plain.established.map((item) => ({ text: item.text, detail: item.detail || null, explain: item.explain || null })),
+    means: [...plain.means, ...plain.matters],
+    more: [],
+    uncertain: plain.uncertain,
+    how: plain.how.length ? [plain.how.join(" ")] : [],
+    sources: (sources ?? []).filter((s) => used.has(s.id)),
+  };
+}
+
+/** A step of what to do: in Higgins' plain English when it's shown, else Apollo's own wording. */
+export function stepText(response: HigginsResponse, index: number): string {
+  return shownPlainEnglish(response)?.todo[index] ?? response.actions[index]?.instruction ?? "";
 }

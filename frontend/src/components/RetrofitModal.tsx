@@ -394,7 +394,7 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
   },
   higginsAvatar: {
-    width: 28, height: 28, borderRadius: 14, backgroundColor: c.goldTint,
+    width: 28, height: 28, borderRadius: 7, backgroundColor: c.goldTint,
     alignItems: "center", justifyContent: "center",
   },
   higginsLabel: {

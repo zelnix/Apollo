@@ -62,6 +62,9 @@
 3. Follow-ups on a finished investigation are answered from its record. No AI, the case is never reopened, and anything new is named as not covered. The answer credits whoever settled it (TC FlyBy or Magnum DI).
 4. Strict scope, with a fixed reply for anything off-topic. The phone's live reading is the truth: never contradict it or guess past it, and never invent a concern.
 5. Plain Australian English, no internal codes (`scrubMessage`), 2–4 short paragraphs.
+6. Every TC FlyBy / Magnum DI result gets a plain-English explanation in Apollo's wording only (`explain/`, no AI), under the
+   evidence lock. The Fidelity Check runs before it is shown; failed parts go back to Apollo's wording, and a second FAIL shows
+   Apollo's wording only. PASS/FAIL and reasons are in the admin portal.
 
 ## Outcomes (one system for all layers — `services/higgins/outcomes.py`)
 - No scam indicators found

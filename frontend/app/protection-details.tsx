@@ -22,7 +22,6 @@ import User from "lucide-react-native/icons/user";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useMemo, useState } from "react";
 import {
-  Image,
   Pressable,
   ScrollView,
   Text,
@@ -42,9 +41,9 @@ import { CATEGORY_CONTENT } from "@/src/domain/protectionContent";
 import { CallScreenerCard } from "@/src/components/CallScreenerCard";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // ── Gate icon mapping ───────────────────────────────────────────────────────
 const GATE_ICONS: Record<
@@ -173,15 +172,6 @@ const useStyles = makeStyles((c) => ({
     alignItems: "center",
     gap: spacing.md,
   },
-  briefingAvatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: c.surfaceTertiary,
-    flexShrink: 0,
-  },
-  briefingAvatar: { width: 44, height: 44 },
   briefingTitleBlock: { flex: 1, gap: 2 },
   briefingTitle: {
     fontFamily: fonts.displayBold,
@@ -382,14 +372,6 @@ const useStyles = makeStyles((c) => ({
     alignItems: "center",
     gap: spacing.md,
   },
-  bottomAvatarWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: "hidden",
-    flexShrink: 0,
-  },
-  bottomAvatar: { width: 48, height: 48 },
   bottomTextBlock: {
     flex: 1,
     gap: 2,
@@ -532,9 +514,7 @@ function OverviewContent({ area }: { area: ProtectionArea }) {
       {/* Higgins health summary */}
       <Card style={s.briefingCard} testID="protection-detail-briefing">
         <View style={s.briefingHeader}>
-          <View style={s.briefingAvatarWrap}>
-            <Image source={higginsAvatar} style={s.briefingAvatar} />
-          </View>
+          <HigginsAvatar size={44} />
           <View style={s.briefingTitleBlock}>
             <Text style={s.briefingTitle}>Higgins&apos; briefing</Text>
             <Text style={s.briefingSub}>Protection health summary</Text>
@@ -790,9 +770,7 @@ function BottomHigginsCard({ area }: { area: ProtectionArea }) {
       testID="protection-detail-bottom-higgins"
     >
       <View style={s.bottomTopRow}>
-        <View style={s.bottomAvatarWrap}>
-          <Image source={higginsAvatar} style={s.bottomAvatar} />
-        </View>
+        <HigginsAvatar size={48} />
         <View style={s.bottomTextBlock}>
           <Text style={s.bottomTitle}>{content.higginsLearnTitle}</Text>
           <Text style={s.bottomBody}>

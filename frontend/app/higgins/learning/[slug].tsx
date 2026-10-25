@@ -12,7 +12,6 @@ import Share2 from "lucide-react-native/icons/share-2";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   Text,
@@ -25,9 +24,9 @@ import { AppMenuButton } from "@/src/components/AppMenu";
 import { Body, Button, Card } from "@/src/components/ui";
 import { learningArticle, type LearningArticle, type LearningSection } from "@/src/higgins/hubClient";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const higginsHeadshot = require("@/assets/images/higgins-avatar.png");
 
 // ── Type badge colours ──────────────────────────────────────────────────────
 const TYPE_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -105,8 +104,6 @@ const useStyles = makeStyles((c) => ({
   titleTextBlock: { flex: 1, gap: spacing.xs },
   articleTitle: { fontFamily: fonts.displayBold, fontSize: 26, lineHeight: 32, color: c.onSurface },
   articleSummary: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
-  higginsWrap: { width: 72, height: 72, borderRadius: radius.md, overflow: "hidden", backgroundColor: c.surfaceTertiary },
-  higginsImg: { width: 72, height: 72 },
   higginsQuote: {
     fontFamily: fonts.text,
     fontSize: 12,
@@ -397,9 +394,7 @@ export default function LearningArticleScreen() {
 
         {/* Title area: Higgins on the left */}
         <View style={s.titleArea}>
-          <View style={s.higginsWrap} testID="article-higgins">
-            <Image source={higginsHeadshot} style={s.higginsImg} resizeMode="cover" accessibilityLabel="Higgins" />
-          </View>
+          <HigginsAvatar size={72} testID="article-higgins" />
           <View style={s.titleTextBlock}>
             <Text style={s.articleTitle} testID="article-title">{article.title}</Text>
             <Text style={s.articleSummary}>{article.summary}</Text>

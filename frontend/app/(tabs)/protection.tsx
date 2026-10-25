@@ -15,7 +15,6 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useMemo } from "react";
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,12 +40,12 @@ import { useProtectionHealth } from "@/src/protection/healthStore";
 import { WebsiteProtectionNotices } from "@/src/components/WebsiteProtectionNotices";
 import { agoLabel } from "@/src/domain/alertFreshness";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.png");
 const apolloDog = require("@/assets/images/apollo-dog.png");
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 const apolloLogo = require("@/assets/images/logo.png");
 
 // ── Icon map ────────────────────────────────────────────────────────────────
@@ -489,12 +488,7 @@ export default function ProtectionScreen() {
           testID="protection-higgins-guidance"
         >
           <View style={styles.guidanceTopRow}>
-            <View style={styles.guidanceAvatarWrap}>
-              <Image
-                source={higginsAvatar}
-                style={styles.guidanceAvatar}
-              />
-            </View>
+            <HigginsAvatar size={48} />
             <View style={styles.guidanceTextBlock}>
               <Text
                 style={[
@@ -723,14 +717,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  guidanceAvatarWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: "hidden",
-    flexShrink: 0,
-  },
-  guidanceAvatar: { width: 48, height: 48 },
   guidanceTextBlock: {
     flex: 1,
     gap: 2,

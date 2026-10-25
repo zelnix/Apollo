@@ -33,6 +33,7 @@ import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { learningArticles, type LearningArticleSummary } from "@/src/higgins/hubClient";
 import { useApollo } from "@/src/store/ApolloContext";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Topic tile definitions ──────────────────────────────────────────────────
@@ -93,9 +94,6 @@ function thumbnailIconColor(category: string): string {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
-  // Header avatar — same 42pt circle Ask Higgins uses
-  headerAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  headerAvatarImg: { width: 42, height: 42 },
 
   // Hero
   heroCard: {
@@ -108,25 +106,6 @@ const useStyles = makeStyles((c) => ({
   heroBgImage: {
     width: "100%",
     height: 180,
-  },
-  heroAvatarWrap: {
-    position: "absolute",
-    bottom: 0,
-    right: spacing.lg,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#B8D4F0",
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    overflow: "hidden",
-  },
-  heroAvatarImg: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
   },
   heroSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, marginTop: spacing.sm },
 
@@ -603,17 +582,7 @@ export default function HigginsLearningScreen() {
   // Tab root: RootScreenHeader (consistent with Scam Alerts)
   // Standalone: ChildScreenHeader (back X + title)
   // Higgins' avatar leads the title, exactly as it does on Ask Higgins.
-  const higginsAvatar = (
-    <View style={s.headerAvatar}>
-      <Image
-        source={require("@/assets/images/higgins-avatar.png")}
-        style={s.headerAvatarImg}
-        resizeMode="cover"
-        accessibilityLabel="Higgins"
-        testID="learning-header-avatar"
-      />
-    </View>
-  );
+  const higginsAvatar = <HigginsAvatar size={42} testID="learning-header-avatar" />;
   const headerArea = isTab
     ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Learn with Higgins" testID="learning-header" leading={higginsAvatar} /></View>
     : <ChildScreenHeader title="Learn with Higgins" testID="learning-header" leading={higginsAvatar} />;

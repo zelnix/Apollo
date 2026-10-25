@@ -1623,6 +1623,128 @@ def _routing_drilldown_html(case: dict | None) -> str:
     """
 
 
+# ── Higgins Plain English: the Fidelity Check of each result (services/higgins/explain) ──
+_FIDELITY_MODES = {"plain": "Plain English shown", "repaired": "Plain English shown, failed parts in Apollo's wording",
+                   "literal": "Apollo's wording shown"}
+
+
+def _fidelity_badge(fidelity: dict | None) -> str:
+    if not fidelity:
+        return '<span style="color:var(--muted);">&mdash;</span>'
+    status = fidelity.get("status") or "FAIL"
+    colour = "var(--green)" if status == "PASS" else "var(--red)"
+    repaired = ' <span style="font-size:0.78em;color:var(--muted);">repaired</span>' if fidelity.get("mode") == "repaired" else ""
+    return (f'<span class="badge" data-testid="fidelity-{status.lower()}" style="background:rgba(127,127,127,0.12);color:{colour};">'
+            f'{html_mod.escape(status)}</span>{repaired}')
+
+
+def _fidelity_summary_html(rows: list[dict]) -> str:
+    """How often Higgins' plain English passed its Fidelity Check over the period."""
+    from services.higgins.explain import fidelity as fidelity_check
+    checked = [r["routing"]["fidelity"] for r in rows if (r["routing"] or {}).get("fidelity")]
+    count = lambda mode: sum(1 for f in checked if f.get("mode") == mode)  # noqa: E731
+    codes: dict[str, int] = {}
+    for f in checked:
+        for attempt in f.get("attemptFailures") or []:
+            for failure in attempt:
+                codes[failure.get("code", "")] = codes.get(failure.get("code", ""), 0) + 1
+    code_rows = "".join(f"<tr><td><code>{html_mod.escape(code)}</code></td><td>{html_mod.escape(fidelity_check.describe(code))}</td>"
+                        f"<td style='text-align:right;'>{n:,}</td></tr>" for code, n in sorted(codes.items(), key=lambda kv: -kv[1]))
+    return f"""
+    <h2 data-testid="fidelity-heading">Higgins Plain English &mdash; Fidelity Check</h2>
+    <p style="font-size:0.82em;color:var(--muted);margin:4px 0 8px;">
+        Before a result's plain-English explanation is shown, it is checked against the result: nothing lost, added or changed.
+        A part that fails is put back in Apollo's own wording and checked again; if it still fails, the person sees Apollo's own wording only.
+    </p>
+    <div class="stats-grid">
+        {_stat_card(f'{len(checked):,}', 'Results Checked')}
+        {_stat_card(f'{count("plain"):,}', 'PASS First Time')}
+        {_stat_card(f'{count("repaired"):,}', 'PASS After Repair')}
+        {_stat_card(f'{count("literal"):,}', "FAIL: Apollo's Wording Shown")}
+    </div>
+    <table>
+        <thead><tr><th>Failure</th><th>What it means</th><th>Times</th></tr></thead>
+        <tbody>{code_rows or '<tr><td colspan="3" style="color:var(--muted);">No failures this period</td></tr>'}</tbody>
+    </table>
+    """
+
+
+def _fidelity_attempts_html(fidelity: dict) -> str:
+    from services.higgins.explain import fidelity as fidelity_check
+    rows = ""
+    for n, failures in enumerate(fidelity.get("attemptFailures") or [], start=1):
+        lines = []
+        for f in failures:
+            where = " &middot; ".join(html_mod.escape(x) for x in (f.get("ref"), f.get("detail")) if x)
+            lines.append(f"<code>{html_mod.escape(f.get('code', ''))}</code> {html_mod.escape(fidelity_check.describe(f.get('code', '')))}"
+                         + (f" <span style='color:var(--muted);'>({where})</span>" if where else ""))
+        result = "<br>".join(lines) or '<span style="color:var(--green);">PASS</span>'
+        rows += f"<tr><td style='color:var(--muted);'>Attempt {n}</td><td data-testid='fidelity-attempt-{n}'>{result}</td></tr>"
+    return rows
+
+
+def _fidelity_texts_html(case: dict) -> str:
+    """Apollo's wording beside Higgins' plain English, read from the case while the server still holds it."""
+    from core.redaction import redact_investigation_secrets as clean
+    from services.higgins.repository import dec_json
+    response = None
+    if case.get("response_ciphertext"):
+        try:
+            response = dec_json(case["response_ciphertext"])
+        except Exception:  # noqa: BLE001 — unreadable record: say so rather than guess
+            response = None
+    if not response:
+        return ('<p style="color:var(--muted);" data-testid="fidelity-texts-gone">The case content has left the server (Apollo keeps it no '
+                'longer than 24 hours after the investigation finishes), so the two texts are no longer available. The check result stays.</p>')
+    esc = lambda t: html_mod.escape(clean(t or ""))  # noqa: E731
+    bullets = lambda items: "".join(f"<li>{esc(i)}</li>" for i in items if i)  # noqa: E731
+    steps = [f"{a.get('label')}: {a.get('instruction')}" for a in response.get("actions") or []]
+    apollo = (f"<p>{esc(response.get('overview'))}</p><h4>Findings</h4><ul>"
+              + "".join(f"<li>{esc(f.get('text'))} <span style='color:var(--muted);'>({esc(f.get('basis'))} &middot; {esc(f.get('confidence'))})</span></li>"
+                        for f in response.get("findings") or [])
+              + f"</ul><h4>Explanation</h4><div style='white-space:pre-wrap;'>{esc(response.get('explanationMarkdown'))}</div>"
+              + f"<h4>Reason</h4><p>{esc(response.get('attentionReason'))}</p>"
+              + f"<h4>What to do</h4><ul>{bullets(steps)}</ul>"
+              + f"<h4>Not certain</h4><ul>{bullets(response.get('uncertainties') or [])}</ul><h4>Scope</h4><p>{esc(response.get('scope'))}</p>")
+    plain = response.get("plainEnglish")
+    if plain and plain.get("mode") != "literal":
+        higgins = (f"<p><strong>{esc(plain.get('result'))}</strong></p><p>{esc(plain.get('severity'))}</p><h4>What was found</h4><ul>"
+                   + "".join(f"<li>{esc(i.get('text'))} <span style='color:var(--muted);'>({esc(i.get('detail'))})</span>"
+                             + (f"<br><em style='color:var(--muted);'>{esc(i.get('explain'))}</em>" if i.get("explain") else "") + "</li>"
+                             for i in plain.get("established") or [])
+                   + f"</ul><h4>What it means</h4><ul>{bullets([*(plain.get('means') or []), *(plain.get('matters') or [])])}</ul>"
+                   + f"<h4>What to do</h4><ul>{bullets(plain.get('todo') or [])}</ul>"
+                   + f"<h4>Not certain</h4><ul>{bullets(plain.get('uncertain') or [])}</ul>"
+                   + f"<h4>How Apollo checked</h4><ul>{bullets(plain.get('how') or [])}</ul>")
+    else:
+        higgins = "<p style='color:var(--muted);'>Not shown. The plain English failed its check, so the person saw Apollo's own wording.</p>"
+    return (f"<table style='margin-top:8px;'><thead><tr><th style='width:50%;'>Apollo's wording (authoritative)</th>"
+            f"<th>Higgins' plain English (what the person saw)</th></tr></thead><tbody><tr>"
+            f"<td style='vertical-align:top;white-space:normal;' data-testid='fidelity-apollo-text'>{apollo}</td>"
+            f"<td style='vertical-align:top;white-space:normal;' data-testid='fidelity-plain-text'>{higgins}</td></tr></tbody></table>")
+
+
+def _fidelity_drilldown_html(case: dict | None) -> str:
+    """The Fidelity Check of this case's latest result, and both texts while the server still holds the case."""
+    fidelity = ((case or {}).get("routing") or {}).get("fidelity")
+    if not fidelity:
+        return ""
+    mode = fidelity.get("mode") or ""
+    return f"""
+    <h2 data-testid="fidelity-drilldown">Higgins Plain English &mdash; Fidelity Check</h2>
+    <table>
+        <tbody>
+            <tr><td style="color:var(--muted);width:180px;">Result</td><td>{_fidelity_badge(fidelity)}</td></tr>
+            <tr><td style="color:var(--muted);">Shown To The Person</td><td data-testid="fidelity-mode">{html_mod.escape(_FIDELITY_MODES.get(mode, mode))}</td></tr>
+            <tr><td style="color:var(--muted);">Result Explained</td><td>Revision {fidelity.get('revision', '—')} &middot; settled by {html_mod.escape(fidelity.get('by') or '—')}</td></tr>
+            <tr><td style="color:var(--muted);">Checked</td><td>{_to_local(fidelity.get('at'))}</td></tr>
+            {_fidelity_attempts_html(fidelity)}
+        </tbody>
+    </table>
+    {_fidelity_texts_html(case or {})}
+    """
+
+
 def _investigation_desc(case: dict, gate_str: str) -> str:
     """Build a non-sensitive investigation description."""
     status = case.get("status", "unknown")
@@ -1955,6 +2077,7 @@ async def investigations_cost_report(request: Request):
         Gemini calls outside investigations this period: {unattr_calls:,} (${unattr_cost:.4f}).
     </div>
     {_routing_html(report_rows, avg_cost)}
+    {_fidelity_summary_html(report_rows)}
     """
 
     # Initiator breakdown
@@ -1997,6 +2120,7 @@ async def investigations_cost_report(request: Request):
             <td>{_answered_by_badge(r['answered_by'])}</td>
             <td>{_outcome_badge(r['routing'].get('outcome'))}</td>
             <td>{_settled_reason_html(r['routing'], short=True)}</td>
+            <td>{_fidelity_badge(r['routing'].get('fidelity'))}</td>
             <td>{html_mod.escape(r['gate'])}</td>
             <td>{html_mod.escape(r['initiator'])}</td>
             <td><code style="font-size:0.82em;">{src_display}</code></td>
@@ -2015,10 +2139,10 @@ async def investigations_cost_report(request: Request):
     <div style="overflow-x:auto;">
     <table>
         <thead><tr>
-            <th>Device</th><th>Investigation</th><th>Answered By</th><th>Outcome</th><th>Why</th><th>Gate</th><th>Initiated By</th>
+            <th>Device</th><th>Investigation</th><th>Answered By</th><th>Outcome</th><th>Why</th><th>Plain English</th><th>Gate</th><th>Initiated By</th>
             <th>Source</th><th>Env</th><th>Calls</th><th>Total Tokens</th><th>Est. Cost</th>
         </tr></thead>
-        <tbody>{main_tbody or '<tr><td colspan="12" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
+        <tbody>{main_tbody or '<tr><td colspan="13" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
     </table>
     </div>
     """
@@ -2362,6 +2486,7 @@ async def investigation_drilldown(request: Request, case_id: str):
     body = f"""
     {provenance_html}
     {_routing_drilldown_html(case)}
+    {_fidelity_drilldown_html(case)}
     {time_html}
     {summary_html}
     {calls_html}

@@ -29,6 +29,7 @@ from google.genai import types
 
 from core.db import db, now_utc
 from services.higgins import evidence as ev
+from services.higgins import explain
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins import teddy
@@ -100,8 +101,24 @@ class Outcome:
         self.provider_text, self.finish_reason, self.model = provider_text, finish_reason, model
 
 
+async def _plain_english(owner: str, case: dict, response: HigginsResponse, answered_by: str) -> tuple[HigginsResponse, Optional[dict]]:
+    """Higgins' plain English for the validated result, after its Fidelity Check (services/higgins/explain). It sits
+    beside the result and changes nothing in it. A renderer error never fails the investigation: the person then sees
+    Apollo's own wording."""
+    by = explain.facts_mod.investigator(answered_by)
+    try:
+        doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing": 1}) or {}
+        plain = explain.explain(response, answered_by=answered_by, routing=doc.get("routing") or {},
+                                sources=await repo.sources(owner, case["case_id"]))
+    except Exception as exc:  # noqa: BLE001 — presentation only; never logs case content
+        log.warning("plain_english_renderer_error case=%s error=%s", case["case_id"], type(exc).__name__)
+        return response, explain.renderer_error(by=by, revision=response.revision)
+    return response.model_copy(update={"plain_english": plain}), explain.summary(plain, by=by, revision=response.revision)
+
+
 async def _commit(owner: str, case: dict, job: dict, payload: dict, response: HigginsResponse, provider_result: ProviderResult,
                   evidence_ids: set[str], source_ids: set[str]) -> Outcome:
+    response, fidelity = await _plain_english(owner, case, response, provider_result.answered_by)
     commit = TurnCommit(turn_id=job["turn_id"], case_id=case["case_id"], input_revision=job["input_revision"], committed_revision=response.revision,
                         question=payload["message"], answer_to_question_id=payload.get("answerToQuestionId"), response=response, provider=provider_result,
                         evidence_ids=sorted(evidence_ids), source_ids=sorted(source_ids), committed_at=now_utc())
@@ -117,6 +134,10 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
     if response.outcome:
         # Apollo's case outcome — the latest one, from whichever layer answered.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"routing.outcome": response.outcome}})
+    if fidelity:
+        # The Fidelity Check of the latest result's plain English, for the admin portal: PASS/FAIL and why, no content.
+        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]},
+                                                {"$set": {"routing.fidelity": {**fidelity, "at": now_utc()}}})
     return Outcome("committed", commit=commit, case=updated)
 
 

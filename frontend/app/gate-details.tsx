@@ -24,7 +24,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   AppState,
-  Image,
   Linking,
   Platform,
   Pressable,
@@ -47,9 +46,9 @@ import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // ── Gate icon mapping ───────────────────────────────────────────────────────
 const GATE_ICONS: Record<
@@ -402,15 +401,6 @@ const useStyles = makeStyles((c) => ({
     alignItems: "center",
     gap: spacing.md,
   },
-  higginsAvatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: c.surfaceTertiary,
-    flexShrink: 0,
-  },
-  higginsAvatar: { width: 44, height: 44 },
   higginsTitleBlock: { flex: 1, gap: 2 },
   higginsTitle: {
     fontFamily: fonts.displayBold,
@@ -570,9 +560,7 @@ function HigginsTroubleshootCard({
         testID="gate-higgins-success"
       >
         <View style={s.higginsHeader}>
-          <View style={s.higginsAvatarWrap}>
-            <Image source={higginsAvatar} style={s.higginsAvatar} />
-          </View>
+          <HigginsAvatar size={44} />
           <View style={s.higginsTitleBlock}>
             <Text style={s.higginsTitle}>Higgins</Text>
             <Text style={[s.higginsSub, { color: colors.restingText }]}>
@@ -598,9 +586,7 @@ function HigginsTroubleshootCard({
         testID="gate-higgins-healthy"
       >
         <View style={s.higginsHeader}>
-          <View style={s.higginsAvatarWrap}>
-            <Image source={higginsAvatar} style={s.higginsAvatar} />
-          </View>
+          <HigginsAvatar size={44} />
           <View style={s.higginsTitleBlock}>
             <Text style={s.higginsTitle}>Higgins</Text>
             <Text style={[s.higginsSub, { color: colors.restingText }]}>
@@ -632,9 +618,7 @@ function HigginsTroubleshootCard({
       testID="gate-higgins-troubleshoot"
     >
       <View style={s.higginsHeader}>
-        <View style={s.higginsAvatarWrap}>
-          <Image source={higginsAvatar} style={s.higginsAvatar} />
-        </View>
+        <HigginsAvatar size={44} />
         <View style={s.higginsTitleBlock}>
           <Text style={s.higginsTitle}>Higgins</Text>
           <Text

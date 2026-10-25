@@ -33,7 +33,7 @@ import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
-import { buildReport, type Report } from "@/src/domain/reportSections";
+import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
 import { assessmentLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -77,8 +77,6 @@ const useStyles = makeStyles((c) => ({
 
   // ── Overview tab ──
   higginsHeader: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, marginBottom: spacing.md },
-  higginsAvatarWrap: { width: 48, height: 48, borderRadius: 24, overflow: "hidden" as const, backgroundColor: c.surfaceTertiary },
-  higginsAvatarImg: { width: 48, height: 48 },
   higginsName: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
   higginsTime: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   briefingText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
@@ -657,11 +655,17 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const inventory = caseData?.inventory;
   const showTabs = !!(response || (failure && caseData && !working));
   // Higgins' report, built the same way as a threat's Overview: each fact once.
-  const report = useMemo(() => response ? buildReport({
-    overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
-    findings: response.findings, uncertainties: response.uncertainties, scope: response.scope, sources, sourceIds: response.sourceIds,
-    alreadySaid: [caseData?.settledReason?.sentence],
-  }) : null, [response, sources, caseData?.settledReason]);
+  // Higgins' plain English when it passed its Fidelity Check; otherwise Apollo's own wording.
+  const report = useMemo(() => {
+    if (!response) return null;
+    const plain = shownPlainEnglish(response);
+    if (plain) return plainReport(plain, sources, response.sourceIds);
+    return buildReport({
+      overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
+      findings: response.findings, uncertainties: response.uncertainties, scope: response.scope, sources, sourceIds: response.sourceIds,
+      alreadySaid: [caseData?.settledReason?.sentence],
+    });
+  }, [response, sources, caseData?.settledReason]);
   const higginsTime = caseData ? new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   // ── Categorised evidence items ──
@@ -758,7 +762,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             ) : null}
 
             {/* Dynamic actions from Higgins */}
-            {response?.actions.map((action) => (
+            {response?.actions.map((action, actionIndex) => (
               <Pressable key={action.id} style={s.actionCard} testID={`inv-action-${action.id}`}
                 onPress={() => {
                   if (!isExecutable(action)) return;
@@ -775,7 +779,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
                 <View style={s.actionContent}>
                   <Text style={s.actionTitle}>{action.label}</Text>
-                  <Text style={s.actionDescription}>{scrubMessage(action.instruction)}</Text>
+                  <Text style={s.actionDescription}>{scrubMessage(stepText(response, actionIndex))}</Text>
                 </View>
                 {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>

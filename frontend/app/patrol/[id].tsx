@@ -64,7 +64,7 @@ import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } fr
 import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
-import { buildReport } from "@/src/domain/reportSections";
+import { buildReport, plainReport, shownPlainEnglish, stepText } from "@/src/domain/reportSections";
 import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { FamilyNotes } from "@/src/components/FamilyNotes";
@@ -147,7 +147,6 @@ const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   // Higgins header
   higginsRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  higginsAvatar: { width: 44, height: 44, borderRadius: 22 },
   higginsName: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
   higginsSub: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
   // Alert banner
@@ -261,6 +260,9 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
   // own (no investigation) uses what it recorded instead.
   const report = useMemo(() => {
     if (response) {
+      // Higgins' plain English when it passed its Fidelity Check; otherwise Apollo's own wording.
+      const plain = shownPlainEnglish(response);
+      if (plain) return plainReport(plain, investigation?.sources, response.sourceIds);
       return buildReport({
         overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
         findings: response.findings, uncertainties: response.uncertainties, scope: response.scope,
@@ -285,7 +287,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
       ? "Nothing to do right now. I'll tell you as soon as the investigation finishes."
       : null;
   const steps = !note && response?.actions.length
-    ? response.actions.map((a) => ({ id: a.id, title: a.label, body: a.instruction }))
+    ? response.actions.map((a, i) => ({ id: a.id, title: a.label, body: stepText(response, i) }))
     : [{ id: "todo", title: null, body: note ?? (noAction ? "Nothing to do." : action) }];
   const hasOutcome = !!outcomeLabel(response?.outcome);
   // "Send to family": the result, what happened, what to do and the website or number — nothing else.

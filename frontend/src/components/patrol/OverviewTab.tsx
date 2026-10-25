@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import CircleCheck from "lucide-react-native/icons/circle-check";
 import Info from "lucide-react-native/icons/info";
 
@@ -9,11 +9,11 @@ import { OriginalItemCard } from "@/src/components/patrol/OriginalItemCard";
 import { scrubMessage } from "@/src/domain/messageVoice";
 import type { HigginsBriefing, PatrolEvent } from "@/src/domain/types";
 import type { PatrolOutcome } from "@/src/domain/patrolOutcomes";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useApollo } from "@/src/store/ApolloContext";
 import { APP_VERSION, buildLabel } from "@/src/config/buildInfo";
 
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 const useStyles = makeStyles((c) => ({
   content: { gap: spacing.lg },
@@ -24,14 +24,6 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.md,
     marginBottom: spacing.sm,
   },
-  higginsAvatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: c.surfaceTertiary,
-  },
-  higginsAvatar: { width: 44, height: 44 },
   higginsTitle: {
     fontFamily: fonts.displayBold,
     fontSize: 17,
@@ -167,9 +159,7 @@ export function OverviewTab({
       {briefing ? (
         <Card style={{ gap: spacing.sm }} testID="briefing-conclusion-card">
           <View style={s.higginsHeader}>
-            <View style={s.higginsAvatarWrap}>
-              <Image source={higginsAvatar} style={s.higginsAvatar} />
-            </View>
+            <HigginsAvatar size={44} />
             <View>
               <Text style={s.higginsTitle}>What this means</Text>
               <Text style={s.higginsSubtitle}>In plain English</Text>

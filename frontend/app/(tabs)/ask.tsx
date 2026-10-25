@@ -51,6 +51,7 @@ import { useProtectionHealth } from "@/src/protection/healthStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { buildDailyActivity } from "@/src/domain/dailyActivity";
 import { investigatorName } from "@/src/domain/messageVoice";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
@@ -64,9 +65,6 @@ const useStyles = makeStyles((c) => ({
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 2 },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  avatarImg: { width: 42, height: 42 },
-  aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
   aboutAvatarImg: { width: "100%", aspectRatio: 0.833, borderRadius: 16, marginBottom: spacing.sm },
   headerText: { flex: 1 },
   name: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface },
@@ -77,7 +75,7 @@ const useStyles = makeStyles((c) => ({
 
   rowHiggins: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, maxWidth: "92%", alignSelf: "flex-start" },
   rowUser: { alignSelf: "flex-end", maxWidth: "88%", alignItems: "flex-end" },
-  miniAvatar: { width: 26, height: 26, borderRadius: 13, overflow: "hidden", backgroundColor: c.navyTint, marginBottom: 16 },
+  miniAvatar: { marginBottom: 16 },
   bubbleHiggins: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderTopLeftRadius: 4, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderWidth: 1, borderColor: c.border, flexShrink: 1 },
   bubbleUser: { backgroundColor: c.brandPrimary, borderRadius: radius.lg, borderTopRightRadius: 4, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   msgHiggins: { fontFamily: fonts.text, fontSize: 16, lineHeight: 24, color: c.onSurface },
@@ -542,7 +540,7 @@ export default function Ask() {
     <View style={{ paddingTop: insets.top + spacing.md }}>
       <View style={s.header} testID="higgins-header">
         <View style={s.headerRow}>
-          <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
+          <HigginsAvatar size={42} />
           <View style={s.headerText}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
               <FitTitle text="Ask Higgins" style={s.name} />
@@ -584,7 +582,7 @@ export default function Ask() {
         {!investigationMode ? chatMessages.map((message) => message.role === "user"
           ? <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowUser} onLayout={(e) => noteRow(message.id, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}><View style={s.bubbleUser}><Text style={s.msgUser}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
           : <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowHiggins} onLayout={(e) => noteRow(message.id, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}>
-              <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
+              <HigginsAvatar size={26} style={s.miniAvatar} />
               <View style={{ flexShrink: 1 }}>
                 <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View>
                 {message.links?.length ? <View style={s.linkRow} testID={`ask-links-${message.id}`}>
@@ -598,7 +596,7 @@ export default function Ask() {
             </View>) : null}
 
         {!investigationMode && chatBusy ? <View style={s.rowHiggins} testID="ask-chat-progress">
-          <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
+          <HigginsAvatar size={26} style={s.miniAvatar} />
           <View style={s.bubbleHiggins}><TypingDots /></View>
         </View> : null}
 

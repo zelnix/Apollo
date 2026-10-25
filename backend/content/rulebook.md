@@ -251,6 +251,40 @@ It can't override what is already established, and it isn't called to move a cas
 - Answering Magnum DI's pending question continues that investigation; it isn't treated as a follow-up.
 - Plain Australian English, no internal codes, 2–4 short paragraphs.
 
+### Plain English and the Fidelity Check
+Every finished TC FlyBy or Magnum DI result is explained in plain English before it is shown. Higgins writes it from the result itself, in Apollo's wording only. No AI is used and it costs nothing. A general question with nothing checked has nothing to explain, so it is shown as answered.
+
+**The evidence lock.** The plain English can't add, drop or change a fact, a link, address, number, date or amount, how sure Apollo is, how serious it is, what to do, or who established it. The result itself is never changed: the explanation sits beside it, and where the two could ever differ the result wins.
+
+**What Higgins may change**
+- Markdown is removed, and formal words are swapped for plain ones from a fixed list ("in order to" → "to", "is unable to" → "can't", "do not" → "don't" and similar). Quoted words and identifiers are never touched.
+- Each point is said once. A sentence already said isn't repeated, but every finding is always listed.
+- The outcome opens the explanation by its label, and how serious it is gets one fixed line for each attention level:
+
+| Attention | Line shown |
+|---|---|
+| None | How serious: nothing needs doing. |
+| Review | How serious: worth a careful look before you act on it. |
+| Action needed | How serious: you need to act. See what you can do. |
+| Urgent | How serious: urgent. Act now. |
+
+- Each finding says who established it and how firmly: "Seen directly by TC FlyBy", "From what you told Apollo" or "Magnum DI's reading of the evidence, not seen directly", then high, medium or low confidence.
+- The first jargon word in a finding (domain, phishing, redirect, registration record, Safe Browsing, IPQualityScore, ABN, PayID, remote access and others) gets one of Apollo's fixed explanations, shown beside the finding, never as evidence.
+
+**The Fidelity Check** runs before anything is shown. It passes only when:
+- the outcome is stated by its label, and no other outcome is named;
+- the severity line matches the attention level word for word;
+- every finding is there, in order, with the same meaning, confidence and investigator;
+- every sentence of the result is said somewhere with the same meaning (the same yes-or-no and the same numbers), and every plain sentence says something the result says;
+- every link, address, number, date and amount is kept, none is added, and quoted words stay word for word;
+- a contradiction in the evidence ("but", "although") stays a contradiction;
+- nothing sounds more certain, safer, milder or more alarming than the result, and the right investigator gets the credit;
+- every step of what to do is kept, and every explanation is one of Apollo's fixed ones.
+
+**On FAIL.** The parts that failed are put back in Apollo's own wording and checked once more. If it still fails, the person sees Apollo's own wording only. A renderer error never fails an investigation; Apollo's wording is shown.
+
+**Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case.
+
 ---
 
 ## 6. Ask Higgins (the chat screen) {#ask-higgins}
@@ -695,4 +729,4 @@ Every result shows **"Settled by TC FlyBy"** or **"Settled by Magnum DI"**, in t
 - Gate and Higgins Triage: 0 AI calls.
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions, 7-day cache).
 - Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
-- Higgins: 0 calls, except one cached call for a general question nothing else answers.
+- Higgins: 0 calls, except one cached call for a general question nothing else answers. Plain English and its Fidelity Check: 0 calls.

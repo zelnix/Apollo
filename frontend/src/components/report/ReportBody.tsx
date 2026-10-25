@@ -2,19 +2,16 @@
 // (see src/domain/reportSections.ts). "What you can do" follows, from the screen that shows it.
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { scrubMessage } from "@/src/domain/messageVoice";
 import type { Report } from "@/src/domain/reportSections";
 import type { SourceReference } from "@/src/investigation/types";
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, spacing } from "@/src/theme";
-
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 const useStyles = makeStyles((c) => ({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.xs },
-  avatarWrap: { width: 48, height: 48, borderRadius: 24, overflow: "hidden", backgroundColor: c.surfaceTertiary },
-  avatar: { width: 48, height: 48 },
   name: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
   time: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
@@ -22,6 +19,8 @@ const useStyles = makeStyles((c) => ({
   finding: { gap: 2, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   findingText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   muted: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted },
+  severity: { fontFamily: fonts.textMedium, fontSize: 15, lineHeight: 22, color: c.onSurface },
+  explain: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, fontStyle: "italic", marginTop: 2 },
   source: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   link: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
 }));
@@ -48,7 +47,7 @@ export function ReportBody({ report, time, ids }: {
   return (
     <View style={{ gap: spacing.sm }}>
       <View style={s.header}>
-        <View style={s.avatarWrap}><Image source={higginsAvatar} style={s.avatar} /></View>
+        <HigginsAvatar size={48} />
         <View>
           <Text style={s.name}>Higgins</Text>
           {time ? <Text style={s.time}>{time}</Text> : null}
@@ -58,6 +57,7 @@ export function ReportBody({ report, time, ids }: {
       {report.answer.map((para, i) => (
         <Text key={`a${i}`} style={s.body} testID={i === 0 ? `${ids}-answer` : `${ids}-answer-${i}`}>{scrubMessage(para)}</Text>
       ))}
+      {report.severity ? <Text style={s.severity} testID={`${ids}-severity`}>{report.severity}</Text> : null}
 
       {report.found.length ? (
         <View testID={`${ids}-findings`}>
@@ -66,6 +66,7 @@ export function ReportBody({ report, time, ids }: {
             <View key={`f${i}`} style={s.finding} testID={`${ids}-finding-${i}`}>
               <Text style={s.findingText}>{scrubMessage(f.text)}</Text>
               {f.detail ? <Text style={s.muted}>{f.detail}</Text> : null}
+              {f.explain ? <Text style={s.explain} testID={`${ids}-finding-${i}-explain`}>{f.explain}</Text> : null}
             </View>
           ))}
         </View>

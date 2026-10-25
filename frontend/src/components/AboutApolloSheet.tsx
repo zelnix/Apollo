@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import React from "react";
 import { Text, View } from "react-native";
 
+import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { Sheet } from "./Sheet";
 
@@ -21,7 +22,7 @@ const useStyles = makeStyles((c) => ({
   gateChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: c.navyTint, borderWidth: 1, borderColor: c.navyBorder },
   gateChipText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   higginsRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm },
-  higginsFace: { width: 72, height: 72, borderRadius: 36, overflow: "hidden", borderWidth: 2, borderColor: c.goldBorder },
+  higginsFace: { borderWidth: 2, borderColor: c.goldBorder },
   higginsName: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
   higginsRole: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
   portrait: { width: "100%", aspectRatio: 900 / 1080, borderRadius: radius.lg, backgroundColor: c.navyTint, marginTop: spacing.sm },
@@ -54,7 +55,7 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
 
       <Text style={s.heading}>👨‍💼 Meet Higgins</Text>
       <View style={s.higginsRow}>
-        <Image source={require("../../assets/images/higgins-avatar.png")} style={s.higginsFace} contentFit="cover" accessibilityLabel="Higgins" />
+        <HigginsAvatar size={72} style={s.higginsFace} />
         <View style={{ flex: 1 }}>
           <Text style={s.higginsName}>Albert Higginstien (Higgins)</Text>
           <Text style={s.higginsRole}>Apollo&apos;s trusted handler</Text>

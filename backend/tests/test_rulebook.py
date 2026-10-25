@@ -281,3 +281,17 @@ def test_every_rule_book_section_opens_on_its_own_in_the_admin_portal(monkeypatc
                    "device-internet", "scam-alerts", "permissions", "settling-rules", "privacy"):
         assert f'<details class="rb-section" id="{anchor}"' in page, anchor
     assert 'data-rb-all="open"' in page and 'data-rb-all="close"' in page and "openFromHash" in page
+
+
+def test_the_plain_english_rules_match_the_code():
+    from services.higgins.explain import words
+    section = BOOK.split("### Plain English and the Fidelity Check", 1)[1].split("\n## ", 1)[0]
+    labels = {"none": "None", "review": "Review", "action_needed": "Action needed", "urgent": "Urgent"}
+    missing = [level for level, line in words.SEVERITY.items() if f"| {labels[level]} | {line} |" not in section]
+    assert not missing, f"The severity lines no longer match the code for: {missing}"
+    for formal, plain in (("in order to", "to"), ("is unable to", "can't"), ("do not", "don't")):
+        assert (formal, plain) in words.PLAIN_SWAPS and f'"{formal}" → "{plain}"' in section
+    for term in ("domain", "phishing", "redirect", "registration record", "Safe Browsing", "IPQualityScore", "ABN", "PayID", "remote access"):
+        assert any(t == term for t, _, _ in words.GLOSSARY) and term in section, term
+    assert words.BASIS["observation"].format(by="TC FlyBy") in section and words.BASIS["user_report"] in section
+    assert words.BASIS["inference"].format(by="Magnum DI") in section

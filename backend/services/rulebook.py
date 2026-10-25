@@ -37,6 +37,12 @@ WATCHED = (
     "backend/services/higgins/jobs.py",
     "backend/services/higgins/presenter.py",
     "backend/services/higgins/chat.py",
+    # Higgins' plain English and its Fidelity Check.
+    "backend/services/higgins/explain/__init__.py",
+    "backend/services/higgins/explain/facts.py",
+    "backend/services/higgins/explain/render.py",
+    "backend/services/higgins/explain/fidelity.py",
+    "backend/services/higgins/explain/words.py",
     "backend/services/rulebook.py",
     # Ask Higgins: what the server does with a chat message, and what it keeps.
     "backend/services/higgins/pipeline_submit.py",

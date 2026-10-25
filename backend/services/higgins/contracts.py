@@ -152,6 +152,46 @@ class ActionProposal(Wire):
     desired_value: Union[bool, str, None] = None
 
 
+class PlainItem(Wire):
+    """One finding, in plain English: its words, who established it and how firmly, and any jargon explained."""
+    text: str
+    detail: str = ""
+    explain: str = ""  # explanatory only, never case evidence (e.g. what a domain is)
+    finding_id: Optional[str] = None
+
+
+class FidelityFailure(Wire):
+    code: str
+    ref: str = ""
+    detail: str = ""
+
+
+class FidelityResult(Wire):
+    status: Literal["PASS", "FAIL"]
+    failures: list[FidelityFailure] = Field(default_factory=list)
+
+
+class PlainEnglish(Wire):
+    """Higgins' plain-English explanation of a validated result (services/higgins/explain). A presentation layer
+    only: the structured result it explains stays authoritative, and wins wherever the two differ.
+    mode: "plain" passed the Fidelity Check first time; "repaired" passed once its failed parts were put back in
+    Apollo's own wording; "literal" failed again, so the person sees Apollo's own wording only."""
+    version: Literal[1] = 1
+    renderer: Literal["apollo"] = "apollo"
+    mode: Literal["plain", "repaired", "literal"]
+    result: str
+    severity: str
+    established: list[PlainItem] = Field(default_factory=list)
+    means: list[str] = Field(default_factory=list)
+    matters: list[str] = Field(default_factory=list)
+    todo: list[str] = Field(default_factory=list)
+    uncertain: list[str] = Field(default_factory=list)
+    how: list[str] = Field(default_factory=list)
+    fidelity: FidelityResult
+    attempts: int = 1
+    attempt_failures: list[list[FidelityFailure]] = Field(default_factory=list)
+
+
 class HigginsResponse(Wire):
     revision: int
     overview: str
@@ -169,6 +209,7 @@ class HigginsResponse(Wire):
     recommended_action_id: Optional[str] = None
     question: Optional[Question] = None
     completion: Completion
+    plain_english: Optional[PlainEnglish] = None
 
 
 class Inventory(Wire):

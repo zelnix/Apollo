@@ -1,3 +1,37 @@
+## Higgins Plain-English Renderer + Fidelity Check, and one Higgins avatar (2026-10-25)
+**Owner's choices:** Apollo's wording only (no AI rewrite, no extra cost); applies to TC FlyBy and Magnum DI results; Fidelity
+Check results visible in the admin portal; on FAIL the person sees Apollo's own wording.
+- **Backend `services/higgins/explain/`:** `facts.py` (authoritative findings from the validated result + routing + sources;
+  core vs allowed identifiers, contradictions, deduped "how"), `words.py` (fixed plain swaps, glossary of 19 jargon terms,
+  4 severity lines, basis/confidence labels, certainty/safety/softener/escalator word lists), `render.py` (deterministic draft:
+  Markdown stripped, swaps outside quotes/identifiers, each point once, every finding kept with "Seen directly by TC FlyBy ·
+  High confidence", fixed jargon explanation, outcome label first, fixed severity line; `literal` parts = Apollo's wording),
+  `fidelity.py` (PASS only if: outcome label, severity line, every finding in order with same meaning/confidence/basis,
+  every result sentence said + no unsupported sentence, identifiers kept/none added, quotes verbatim, contradictions kept,
+  no added certainty/safety/softening/escalation, right investigator, every step kept, glossary-only explanations; failure
+  details are content-free), `__init__.py` (`explain()`: draft → check → one repair with failed parts literal → check →
+  else mode `literal`; `summary()` for routing). General questions (no outcome, no findings) → none.
+- **Contract:** `HigginsResponse.plain_english: PlainEnglish | None` (mode plain/repaired/literal, result, severity,
+  established[PlainItem], means, matters, todo (1:1 with actions), uncertain, how, fidelity, attempts, attempt_failures).
+  Structured result never changed (test). Attached in `coordinator._commit` (`_plain_english`); a renderer error never fails
+  the case (`RENDERER_ERROR`, Apollo's wording). `routing.fidelity` = {status, mode, attempts, attemptFailures, by, revision, at}.
+- **Admin portal:** Investigations cost report → "Higgins Plain English — Fidelity Check" stats (checked / PASS first time /
+  PASS after repair / FAIL) + failure-code table; "Plain English" PASS/FAIL column; drill-down section with mode, per-attempt
+  reasons and both texts side by side (decrypted at view time, redacted; "left the server" note after the 24-hour deletion).
+- **App:** `shownPlainEnglish()` / `plainReport()` / `stepText()` in `src/domain/reportSections.ts`; Ask Higgins
+  (`InvestigationView`) and a threat's Overview (`patrol/[id]`) show the plain English only when PASS and not literal, else
+  Apollo's wording via `buildReport`. `ReportBody` shows the severity line (`{ids}-severity`) and each finding's fixed
+  explanation (`{ids}-finding-N-explain`). Verified in the preview: "Hi Mum" check → "Likely scam. …", severity line,
+  three findings "Seen directly by TC FlyBy · High confidence".
+- **Rule book:** section 5 gained "Plain English and the Fidelity Check" (+ cost line); explain/*.py WATCHED; re-stamped.
+- **Avatar:** new `src/components/HigginsAvatar.tsx` (rounded square, corner = 25% of side) used on Ask Higgins (header +
+  chat), report header, threat Overview briefing, gate details (3), protection details (2), Apollo Protections, Learn header,
+  Learn article, About Apollo. Duplicate/unused avatar styles removed; Retrofit "Higgins report" icon is a rounded square.
+- **Tests:** `backend/tests/test_plain_english.py` (32: renderer, 20 corruption kinds, repair, literal, admin), `test_rulebook.py`
+  +1; frontend `tests/plainEnglish.test.ts` (4), `tests/higginsAvatar.test.ts` (2). Full backend suite 1126 passed; frontend
+  931/931; tsc clean. No testing agent (owner's rule).
+
+
 ## Privacy/redaction and knowledge base rules added to the rule book (2026-10-25)
 - `backend/content/rulebook.md`: new **7. Privacy and redaction** `{#privacy}` (always removed on the phone; removed again on
   the server; the one Gemini boundary: credential fields dropped, personal fields "[personal data withheld]" outside an
