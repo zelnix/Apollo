@@ -11,6 +11,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
+import { LaunchSplash } from "@/src/components/LaunchSplash";
 import { SafeStartScreen } from "@/src/components/SafeStartScreen";
 import { ToastHost } from "@/src/components/Toast";
 import { apiPostEmpty } from "@/src/api/client";
@@ -126,6 +127,7 @@ export default function RootLayout() {
                 </View>
                 <ShareIntakeListener />
                 <ToastHost />
+                <LaunchSplash />
               </ApolloProvider>
             </KeyboardProvider>
           </SafeAreaProvider>

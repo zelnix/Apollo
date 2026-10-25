@@ -124,7 +124,8 @@ module.exports = {
       "./modules/apollo-family-assist/plugin/withApolloFamilyAssist",
       "expo-router",
       ["expo-notifications", { sounds: ["./assets/sounds/apollo_bark.wav", "./assets/sounds/apollo_chime.wav"] }],
-      ["expo-splash-screen", { image: "./assets/images/splash-logo.png", imageWidth: 288, resizeMode: "contain", backgroundColor: "#F5F7FA" }],
+      // Native splash on white, the same white as the full-screen launch artwork (src/components/LaunchSplash.tsx) that follows it on phones.
+      ["expo-splash-screen", { image: "./assets/images/splash-logo.png", imageWidth: 288, resizeMode: "contain", backgroundColor: "#FFFFFF" }],
       "expo-font",
       "expo-asset",
       "expo-image",

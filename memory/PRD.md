@@ -1,3 +1,11 @@
+## Full-screen launch artwork on phones (2026-10-25)
+- Owner's portrait artwork (shield dog + ApolloSG Scam Guard + tagline) saved as `assets/images/splash-full.webp`.
+- Android 12+/iOS native splash can only show a small centred icon, so `src/components/LaunchSplash.tsx` (mounted
+  last in `app/_layout.tsx`) shows the artwork full-screen (contain, white) for 1.8s after the native splash on phones
+  (shortest window side < 600), then fades out over 0.4s; never blocks touches after it fades. Tablets: native splash only.
+- Native splash background changed to `#FFFFFF` (was `#F5F7FA`) to match the artwork; native icon unchanged
+  (`splash-logo.png`). Background change needs a new build; the full-screen artwork also shows in Expo Go/preview.
+
 ## Home header wordmark 25% smaller on phones (2026-10-25)
 - `app/(tabs)/home.tsx` `home-brand-title`: width `min(screenW*0.58, 280) * (screenW < 600 ? 0.75 : 1)`.
   On a 390-wide phone it is now ~170px (was ~226px). Tablets/iPad (≥600) unchanged.
