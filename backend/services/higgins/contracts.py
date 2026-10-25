@@ -113,6 +113,9 @@ class SourceReference(Wire):
     authority_basis: str = ""
     published_at: Optional[datetime] = None
     evidence_ids: list[str] = Field(default_factory=list)
+    # An earlier lookup Apollo reused while still current (services/reusable_intel.py): retrieved_at is when Apollo
+    # last checked it, and the person is shown that.
+    reused: bool = False
 
 
 class Finding(Wire):

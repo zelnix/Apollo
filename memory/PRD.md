@@ -1,3 +1,31 @@
+## KB Reusable Intelligence & Sufficiency (2026-10-25)
+**Owner's choices:** show the person when a reused result was last checked; savings in the admin portal + server logs;
+automated tests only (no testing agent).
+- **Reusable cache** `services/reusable_intel.py` (collection `reusable_intelligence`, NOT the KB): cache_id, subject_key,
+  provider, source_type, info_type, knowledge_class, ai_generated, authoritative=False, simulated, payload, provenance,
+  created_at / last_verified_at / expires_at (from the one `TTL` table) / purge_at (expiry + 90 days, TTL index), hits.
+  Subject keys normalise domains/URLs/entities/ABNs/questions; phone + email are one-way fingerprints. Counters
+  (`intel_reuse_metrics`, per day + call site, content-free) + log line `intel_reuse site=… events=…`.
+- **Sufficiency** `services/sufficiency.py` `assess()` → KNOWN (KB match, or fresh+complete+usable+uncontradicted record
+  for this exact subject) / PARTIAL (expired, missing field, not usable, conflict, `live` check) / UNKNOWN. KB first.
+- **Call sites:** Higgins general question (`chat.py` P4: KB → saved Gemini answer → one Gemini call; `reused` on the reply);
+  TC FlyBy targeted search (`teddy/search.py`: public identifiers only; person/claim/phrase never keyed; legacy
+  `teddy_search_cache` read-only); IPQS phone/URL and RDAP keep their caches, TTL from the table, counted.
+- **KB boundary:** saved Gemini answers moved out of `higgins_knowledge` at startup (`migrate_gemini_answers`, idempotent,
+  dates/provenance/hits kept). Nothing is promoted into the KB.
+- **App:** `src/domain/checkedAgo.ts` `reusedLine()`; Ask Higgins "Saved answer · From Apollo's check 2 hours ago, still
+  current, so it wasn't looked up again" (`ask-reused-{id}`); report sources show it under a reused source (`…-reused`).
+- **Admin portal:** "Intelligence Reuse" page `/api/admin/intel-reuse` (calls avoided/needed, share, by site/day, inventory, TTLs).
+- **Benchmark:** `services/kb_benchmark.py` + `scripts/kb_benchmark.py` (60 cases; baseline top1 0.179, top3 0.196 —
+  `tests/kb_benchmark_baseline.json`).
+- **Rule book:** section 8 gained "Reusable intelligence (not KB knowledge)"; TC FlyBy/Higgins/Your data/cost lines updated;
+  WATCHED += reusable_intel, sufficiency, phonerisk, urlrisk, rdap, checkedAgo.ts; re-stamped.
+- **Tests:** `tests/test_sufficiency.py` (18), `tests/test_reusable_intel.py` (36: metadata, keys, TTL, chat reuse/expiry/KB-first/
+  simulated/personal, AI never in KB, writers allow-list, Magnum/evidence isolation, TC FlyBy reuse/mixed/expired/negative/
+  unsourced/preview, reused sources keep last-checked time, IPQS phone/URL + RDAP, migration, counters, admin page, benchmark),
+  `test_teddy_routing.py` (+reused sources e2e), `test_rulebook.py` (+1); frontend `tests/checkedAgo.test.ts` (4).
+
+
 ## Higgins Plain-English Renderer + Fidelity Check, and one Higgins avatar (2026-10-25)
 **Owner's choices:** Apollo's wording only (no AI rewrite, no extra cost); applies to TC FlyBy and Magnum DI results; Fidelity
 Check results visible in the admin portal; on FAIL the person sees Apollo's own wording.

@@ -22,6 +22,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from core.db import db, now_utc
 from services import kb_sources
@@ -225,6 +226,9 @@ def _apply(check: Check, answer: dict, plan_: Plan) -> None:
     lead = sources[0] if sources else None
     src = ({"publisher": lead["domain"] or lead["title"], "url": lead["url"], "title": lead["title"], "authority": lead["authority"],
             "basis": lead["basis"], "retrieval": "search_result", "all": sources} if lead else None)
+    if src and answer.get("reused"):
+        # An earlier lookup reused while still current: its pages keep the time Apollo last checked them.
+        src.update(reused=True, checkedAt=answer.get("lastVerifiedAt"))
     if status in ("UNANSWERED", "UNSOURCED"):
         check.status = "not_found"
         check.facts.append(fact(f"TC FlyBy's search returned no sourced answer about {check.subject}.", "missing"))
@@ -266,6 +270,14 @@ def _settle(plan_: Plan, issues: list[deciding.Issue]) -> None:
 
 
 # ── Persistence and provenance ──────────────────────────────────────────────
+def _parse_time(value) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 async def _register_sources(owner: str, case_id: str, checks: list[Check]) -> None:
     refs: list[SourceReference] = []
     for check in checks:
@@ -275,11 +287,13 @@ async def _register_sources(owner: str, case_id: str, checks: list[Check]) -> No
             if not pages and (src.get("url") or "").startswith("https://"):
                 pages = [(src["url"], src.get("title") or src.get("publisher"), src.get("authority"), src.get("basis"), src.get("retrieval"))]
             ids = []
+            reused = bool(src.get("reused"))
+            checked = _parse_time(src.get("checkedAt")) if reused else None
             for url, title, authority, basis, retrieval in pages:
-                ref = SourceReference(id=str(uuid.uuid4()), url=url, title=(title or url)[:200], retrieved_at=now_utc(),
+                ref = SourceReference(id=str(uuid.uuid4()), url=url, title=(title or url)[:200], retrieved_at=checked or now_utc(),
                                       retrieval=retrieval if retrieval in ("fetched", "search_result") else "fetched",
                                       authority=authority if authority in ("official", "independent", "self_claimed") else "unknown",
-                                      authority_basis=(basis or "")[:300])
+                                      authority_basis=(basis or "")[:300], reused=reused)
                 refs.append(ref)
                 ids.append(ref.id)
             f["sourceIds"] = ids

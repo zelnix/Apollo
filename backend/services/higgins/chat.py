@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import ConfigDict, Field
@@ -25,6 +26,8 @@ from pydantic.alias_generators import to_camel
 from core.db import db
 from core.redaction import redact_investigation_secrets
 from services import government_alerts, learning
+from services import reusable_intel as intel
+from services import sufficiency
 from services.higgins import app_knowledge, knowledge, presenter
 from services.higgins import context as memory
 from services.higgins import context_tools, provider
@@ -191,6 +194,14 @@ class ChatSource(Wire):
     licence: Optional[str] = None
 
 
+class ReusedResult(Wire):
+    """An earlier result Apollo reused instead of asking its provider again, and when it was last checked."""
+    provider: str
+    ai_generated: bool
+    last_checked_at: datetime
+    expires_at: datetime
+
+
 class ChatReply(Wire):
     turn_id: str
     conversation_id: str
@@ -207,6 +218,7 @@ class ChatReply(Wire):
     sources: list[ChatSource] = Field(default_factory=list)
     # apollo = Apollo's own records; knowledge_base = quoted KB sources; gemini = general-knowledge fallback
     answered_by: Literal["apollo", "knowledge_base", "gemini"] = "apollo"
+    reused: Optional[ReusedResult] = None
     retention: ChatRetention
 
 
@@ -323,17 +335,33 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         result, label, provenance = established
         return await _deterministic(owner, conversation_id, turn_id, clean, result, label, provenance)
 
-    # ── P4: Apollo's knowledge base (Learn, Scam Alerts, cyber.gov.au, saved answers) ──
+    # ── P4: Apollo's knowledge base (Learn, Scam Alerts, cyber.gov.au), then Gemini's saved answers ──
+    # The sufficiency check (services/sufficiency.py) decides whether Apollo already knows enough to skip Gemini.
     entries = await knowledge.search(clean)
-    if entries:
-        answer, sources = knowledge.present(entries, clean)
+    query_terms = knowledge.terms(clean)
+    saved = [] if entries else await intel.find_question(clean, lambda q: knowledge.answers_question(q, query_terms))
+    need = sufficiency.Requirement(saved[0]["subject_key"] if saved else intel.subject_key("question", clean), needs=("answer",))
+    decision = sufficiency.assess(need, kb=entries, cache=saved)
+    if decision.kb:
+        await intel.count(GENERAL_SITE, *decision.events(call_made=False))
+        answer, sources = knowledge.present(decision.kb, clean)
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": answer, "navigate": [], "sources": sources},
-                                    "knowledge_base", [e["kind"] for e in entries], answered_by="knowledge_base")
+                                    "knowledge_base", [e["kind"] for e in decision.kb], answered_by="knowledge_base")
+    if decision.reuse:
+        # Gemini already answered this question and the answer is still current: shown as Gemini's, no new call.
+        record = decision.reuse[0]
+        await intel.used(record)
+        await intel.count(GENERAL_SITE, *decision.events(call_made=False))
+        return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": knowledge.present_saved_answer(record), "navigate": []},
+                                    "saved_answer", ["reusable_intelligence"], answered_by="gemini",
+                                    reused=ReusedResult(provider=record["provider"], ai_generated=bool(record.get("ai_generated")),
+                                                        last_checked_at=record["last_verified_at"], expires_at=record["expires_at"]))
 
     # Nothing Apollo holds answers it. Outside Higgins' scope → fixed reply, no AI.
     if not in_scope(clean):
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": presenter.OUT_OF_SCOPE, "navigate": []},
                                     "out_of_scope", [])
+    await intel.count(GENERAL_SITE, *decision.events(call_made=True))
 
     # ── P5: One Gemini call for a general scam-safety question nothing else covers; saved for reuse ──
     final = await provider.generate(
@@ -368,6 +396,8 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
 
 
 # ── Deterministic helpers ─────────────────────────────────────────────────────
+
+GENERAL_SITE = "higgins_general_question"  # this call site, in the reuse counters
 
 _SCOPE = re.compile(r"\b(scam\w*|fraud\w*|phish\w*|smish\w*|vish\w*|spam|hack\w*|malware|virus\w*|ransomware|spyware|security|secure|safe\w*|cyber\w*|"
                     r"password\w*|passphrase\w*|passkey\w*|pin|two[- ]factor|2fa|mfa|authenticat\w*|identity|id theft|privacy|private|data breach\w*|breach\w*|"
@@ -479,7 +509,8 @@ _ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|
 
 
 async def _deterministic(owner: str, conversation_id: str, turn_id: str, message: str, result: dict, label: str,
-                         provenance: list[str], *, uncertainty: list[str] | None = None, answered_by: str = "apollo") -> ChatReply:
+                         provenance: list[str], *, uncertainty: list[str] | None = None, answered_by: str = "apollo",
+                         reused: ReusedResult | None = None) -> ChatReply:
     """Higgins presents what is already established. No Gemini call is made on this path."""
     expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, message, result["answer"], classification=label,
                                              context_sources=provenance, investigation_available=False)
@@ -488,5 +519,5 @@ async def _deterministic(owner: str, conversation_id: str, turn_id: str, message
                      uncertainty=(uncertainty or []) + limitation, clarification=None,
                      context_used=[ContextUse(source=item, status="ok") for item in provenance], suggested_actions=[],
                      navigation=_navigation(result.get("navigate") or []), sources=[ChatSource(**src) for src in result.get("sources") or []],
-                     investigation_available=False, answered_by=answered_by,
+                     investigation_available=False, answered_by=answered_by, reused=reused,
                      retention=ChatRetention(server_content_expires_at=expires.isoformat()))

@@ -76,6 +76,13 @@ WATCHED = (
     "backend/services/kb_sources.py",
     "backend/services/tavily_client.py",
     "backend/services/higgins/knowledge.py",
+    # Reusable intelligence (not KB knowledge) and the sufficiency check, and the call sites that reuse it.
+    "backend/services/reusable_intel.py",
+    "backend/services/sufficiency.py",
+    "backend/services/phonerisk.py",
+    "backend/services/urlrisk.py",
+    "backend/services/rdap.py",
+    "frontend/src/domain/checkedAgo.ts",
     # Your data: what is kept on the phone and the server, for how long, and Delete My Apollo Data.
     "backend/services/account_deletion.py",
     "backend/services/family_assist/sessions.py",

@@ -1,0 +1,8 @@
+{
+  "cases": 60,
+  "mustFind": 56,
+  "top1": 0.179,
+  "top3": 0.196,
+  "miss": 0.804,
+  "irrelevant": 0.0
+}

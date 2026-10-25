@@ -5,6 +5,7 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { scrubMessage } from "@/src/domain/messageVoice";
+import { reusedLine } from "@/src/domain/checkedAgo";
 import type { Report } from "@/src/domain/reportSections";
 import type { SourceReference } from "@/src/investigation/types";
 import { HigginsAvatar } from "@/src/components/HigginsAvatar";
@@ -33,6 +34,7 @@ function SourceRow({ source, testID }: { source: SourceReference; testID: string
     <Pressable style={s.source} onPress={() => void WebBrowser.openBrowserAsync(source.url)} accessibilityRole="link" testID={testID}>
       <Text style={s.link}>{source.title || source.url}</Text>
       <Text style={s.muted}>{kind} · {scrubMessage(source.retrieval)}</Text>
+      {source.reused ? <Text style={s.muted} testID={`${testID}-reused`}>{reusedLine(source.retrievedAt)}</Text> : null}
     </Pressable>
   );
 }

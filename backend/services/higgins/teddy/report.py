@@ -70,8 +70,12 @@ def _join(items: list[str]) -> str:
 
 def _routes(checks: list[Check]) -> str:
     used = {c.route for c in checks if c.route}
+    searched = [c for c in checks if c.route == "google_search"]
+    reused = [c for c in searched if any((f.get("source") or {}).get("reused") for f in c.facts)]
+    search = ("a targeted web search" if not reused else "Apollo's recent targeted web search, reused while still current"
+              if len(reused) == len(searched) else "a targeted web search, partly reused from Apollo's recent lookups")
     names = [label for route, label in (("official_source", "official source checks"), ("apollo_kb", "Apollo's knowledge base"),
-                                        ("google_search", "a targeted web search")) if route in used]
+                                        ("google_search", search)) if route in used]
     return _join(names) or "official source checks"
 
 

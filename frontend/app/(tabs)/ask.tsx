@@ -26,6 +26,7 @@ import { saveOriginalSource, type OriginalSourceInput, type OriginalSourceKind }
 import { Sheet } from "@/src/components/Sheet";
 import { TypingDots } from "@/src/components/TypingDots";
 import { Body, Button, Card, DevTag, Pill } from "@/src/components/ui";
+import { reusedLine } from "@/src/domain/checkedAgo";
 import { clearHandoffTransfers, takeHandoff } from "@/src/domain/handoffTransfer";
 import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
@@ -81,6 +82,7 @@ const useStyles = makeStyles((c) => ({
   msgHiggins: { fontFamily: fonts.text, fontSize: 16, lineHeight: 24, color: c.onSurface },
   msgUser: { fontFamily: fonts.text, fontSize: 16, lineHeight: 24, color: c.onBrandPrimary },
   time: { fontFamily: fonts.text, fontSize: 11, color: c.muted, marginTop: 3, marginHorizontal: 6 },
+  reused: { fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.muted, marginTop: 4, marginHorizontal: 6 },
 
   // Destinations Higgins offered for an answer — a tap straight to the screen he named.
   linkRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
@@ -283,7 +285,7 @@ export default function Ask() {
     }
     void askHiggins(message, conversationId.current, turnId, previousTurnIds, snapshotRef.current).then((reply) => {
       const links = resolveNavLinks(reply.navigation);
-      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined }]; void saveLocalChat(next); return next; });
+      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined, reusedAt: reply.reused?.lastCheckedAt }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
     }).catch(() => setChatError("Higgins couldn't answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
@@ -585,6 +587,7 @@ export default function Ask() {
               <HigginsAvatar size={26} style={s.miniAvatar} />
               <View style={{ flexShrink: 1 }}>
                 <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View>
+                {message.reusedAt ? <Text style={s.reused} testID={`ask-reused-${message.id}`}>Saved answer · {reusedLine(message.reusedAt)}</Text> : null}
                 {message.links?.length ? <View style={s.linkRow} testID={`ask-links-${message.id}`}>
                   {message.links.map((link, index) => <Pressable key={link.route} testID={`ask-link-${message.id}-${index}`} accessibilityRole="button" accessibilityLabel={`Open ${link.label}`} style={s.linkChip} onPress={() => router.push(link.route as never)}>
                     <Text style={s.linkText} numberOfLines={1}>{link.label}</Text>

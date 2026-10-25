@@ -7,8 +7,9 @@ Every entry keeps its source, link, authority tier, jurisdiction and dates, and 
 - scam_pattern       — established scam patterns as official sources describe them (teddy/patterns.py), with the
                        markers TC FlyBy compares submitted material against
 - researched         — trusted pages found and maintained through Tavily (services/apollo_kb.py), versioned
-- gemini_answer      — an answer cache: Gemini's answer to a general question nothing above covered. It is
-                       labelled as Gemini's and is never treated as sourced knowledge.
+
+Gemini's saved answers to general questions are NOT KB knowledge: they live in the reusable intelligence cache
+(services/reusable_intel.py), labelled as Gemini's, with an expiry, and are never promoted into the KB.
 
 KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
 
@@ -181,22 +182,33 @@ def storable(question: str) -> bool:
     return redact_investigation_secrets(question) == question and not _PERSONAL.search(question)
 
 
+GEMINI_PUBLISHER = "Higgins (written by Gemini, Google's AI)"
+
+
 async def remember_gemini_answer(question: str, answer: str) -> bool:
+    """Gemini's answer to a general question, saved as reusable intelligence (AI-generated, never KB knowledge).
+    A question with personal detail is never saved."""
+    from services import reusable_intel as intel
     if not storable(question):
         return False
-    await upsert("gemini_answer", " ".join(terms(question)), title=question, question=question, body=answer,
-                 publisher="Higgins (written by Gemini, Google's AI)", authority_tier="ai_generated", jurisdiction="INTL",
-                 retrieved_via="gemini", knowledge_class="answer_cache")
+    await intel.put(intel.subject_key("question", question), intel.GEMINI, intel.GENERAL_ANSWER, "general_answer", {"answer": answer},
+                    knowledge_class="ai_generated_answer", ai_generated=True, question=question, provenance={"publisher": GEMINI_PUBLISHER})
+    await intel.count("higgins_general_question", "cache_write")
     return True
+
+
+def answers_question(stored_question: str, query_terms: list[str]) -> float:
+    """A saved answer is reused only for the question it answered: its question must cover the new one."""
+    cover = _coverage(query_terms, stored_question)
+    return cover if cover >= (1.0 if len(query_terms) <= 2 else 0.8) else 0.0
 
 
 # ── Search and verbatim presentation ──────────────────────────────────────────
 
 def _accepts(entry: dict, query_terms: list[str]) -> float:
     """Coverage score if the entry genuinely answers the question, else 0. Stored answers must match the question."""
-    if entry["kind"] == "gemini_answer":
-        question_cover = _coverage(query_terms, entry.get("question") or "")
-        return question_cover if question_cover >= (1.0 if len(query_terms) <= 2 else 0.8) else 0.0
+    if entry["kind"] == "gemini_answer":  # a record not yet moved to the reusable cache
+        return answers_question(entry.get("question") or "", query_terms)
     title_cover = _coverage(query_terms, entry.get("title") or "")
     full_cover = _coverage(query_terms, f"{entry.get('title') or ''} {entry.get('body') or ''}")
     needed = 1.0 if len(query_terms) <= 2 else 0.75
@@ -205,12 +217,15 @@ def _accepts(entry: dict, query_terms: list[str]) -> float:
     return full_cover * (0.85 if entry.get("status") == "historical" else 1.0)  # current knowledge first
 
 
-async def search(question: str, limit: int = 2) -> list[dict]:
+async def search(question: str, limit: int = 2, *, collection=None) -> list[dict]:
+    """KB entries that genuinely answer `question`, best first. `collection`: another collection with the same
+    shape and text index (the retrieval benchmark's fixed corpus)."""
+    coll = db.higgins_knowledge if collection is None else collection
     query_terms = terms(question)
     if not query_terms:
         return []
     try:
-        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}},
+        rows = await coll.find({"$text": {"$search": " ".join(query_terms)}},
                                                {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001 — a missing index means no match, never a crash
         return []
@@ -218,7 +233,7 @@ async def search(question: str, limit: int = 2) -> list[dict]:
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
     picked = [row for _cover, _score, row in scored[:limit]]
     if picked:
-        await db.higgins_knowledge.update_many({"kb_id": {"$in": [row["kb_id"] for row in picked]}}, {"$inc": {"hits": 1}})
+        await coll.update_many({"kb_id": {"$in": [row["kb_id"] for row in picked]}}, {"$inc": {"hits": 1}})
     return picked
 
 
@@ -276,6 +291,15 @@ def excerpt(body: str, query_terms: list[str], max_chars: int = 900) -> str:
     return "\n\n".join(paragraphs[i] for i in sorted(chosen))[: max_chars + 200]
 
 
+SAVED_ANSWER_NOTE = ("(Apollo saved this answer earlier. Gemini, Google's AI, wrote it because Apollo's library didn't cover this "
+                     "question. No official source has checked it.)")
+
+
+def present_saved_answer(record: dict) -> str:
+    """A reused Gemini answer: its words, always labelled as Gemini's and unchecked by any official source."""
+    return f"{(record.get('payload') or {}).get('answer', '')}\n\n{SAVED_ANSWER_NOTE}"
+
+
 GENERAL_KNOWLEDGE_NOTE = "This is general knowledge from Apollo's library. It isn't a finding about anything you've asked Apollo to check."
 
 
@@ -309,9 +333,8 @@ def present(entries: list[dict], question: str) -> tuple[str, list[dict]]:
     blocks: list[str] = []
     sources: list[dict] = []
     for entry in entries:
-        if entry["kind"] == "gemini_answer":
-            blocks.append(f"{entry['body']}\n\n(Apollo saved this answer earlier. Gemini, Google's AI, wrote it because Apollo's library "
-                          "didn't cover this question. No official source has checked it.)")
+        if entry["kind"] == "gemini_answer":  # a record not yet moved to the reusable cache
+            blocks.append(f"{entry['body']}\n\n{SAVED_ANSWER_NOTE}")
             continue
         words = excerpt(entry["body"], query_terms)
         intro = f"{entry['publisher']} — “{entry['title']}”" if entry["kind"] != "learn_article" else f"From the Learn with Higgins article “{entry['title']}”"

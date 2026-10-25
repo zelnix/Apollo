@@ -8,6 +8,7 @@ import re
 from routers import admin_portal
 from routers.ask import ChatRequest
 from services import apollo_kb, kb_sources, rulebook, triage_engine
+from services import reusable_intel as intel
 from services.higgins import capacity, chat, coordinator, evidence, jobs, knowledge, llm_boundary, outcomes, pipeline_submit, presenter
 from services.higgins import context as chat_memory
 from services.higgins.teddy import official, patterns, search
@@ -127,7 +128,7 @@ def test_every_number_in_the_rule_book_matches_the_code():
         f"{official.LOOKUP_SECONDS:g} s per lookup",
         f"There are {len(patterns.PATTERNS)} patterns",
         f"at most {search.MAX_QUESTIONS} questions",
-        f"answers are kept for {search.CACHE_DAYS} days",
+        f"Something found counts as current for {intel.TTL['web_lookup'].days} days, \"nothing found\" for {intel.TTL['web_lookup_negative'].days} day",
         f"over {evidence.EVIDENCE_WORD_LIMIT:,} words",
         f"one retry after {jobs.RETRY_DELAY_SECONDS} seconds",
         f"limit of {coordinator.MAX_GEMINI_CALLS} calls per job",
@@ -235,7 +236,9 @@ def test_the_your_data_rules_match_the_code():
         f"a preference for {_days(expiry['preference'])}, a goal for {_days(expiry['goal'])} and a permission for {_days(expiry['permission'])}",
         f"At most {chat_memory.MAX_PER_CATEGORY} of each kind and {chat_memory.MAX_TOTAL} in all",
         f"a possible threat for {triage_engine._CACHE_TTL[Outcome.POSSIBLE_THREAT].days} days and no threat for {triage_engine._CACHE_TTL[Outcome.NO_THREAT].days} days",
-        f"**TC FlyBy's search answers:** {search.CACHE_DAYS} days",
+        f"**TC FlyBy's search answers:** {intel.TTL['web_lookup'].days} days for something found and {intel.TTL['web_lookup_negative'].days} day for nothing found",
+        f"deleted {intel.STALE_KEPT_FOR.days} days after they expire",
+        f"Current for {intel.TTL['general_answer'].days} days, then deleted {intel.STALE_KEPT_FOR.days} days after that",
         f"valid for {TOKEN_TTL_DAYS} days",
         f"in {len(account_deletion.CATEGORIES)} groups: ",
     ]
@@ -295,3 +298,30 @@ def test_the_plain_english_rules_match_the_code():
         assert any(t == term for t, _, _ in words.GLOSSARY) and term in section, term
     assert words.BASIS["observation"].format(by="TC FlyBy") in section and words.BASIS["user_report"] in section
     assert words.BASIS["inference"].format(by="Magnum DI") in section
+
+
+def test_the_reusable_intelligence_rules_match_the_code():
+    from pathlib import Path
+    section = _section("knowledge-base").split("### Reusable intelligence (not KB knowledge)", 1)[1]
+    days = lambda td: f"{td.days} day{'' if td.days == 1 else 's'}"  # noqa: E731
+    hours = lambda td: f"{int(td.total_seconds() // 3600)} hours"  # noqa: E731
+    rows = [("General question answered by Gemini", days(intel.TTL["general_answer"])),
+            ("TC FlyBy search that found something", days(intel.TTL["web_lookup"])),
+            ("TC FlyBy search that found nothing", days(intel.TTL["web_lookup_negative"])),
+            ("Phone reputation (IPQualityScore)", hours(intel.TTL["phone_reputation"])),
+            ("Link reputation (IPQualityScore)", hours(intel.TTL["url_reputation"])),
+            ("Domain registration (RDAP)", hours(intel.TTL["domain_registration"]))]
+    missing = [f"| {label} | {value} |" for label, value in rows if f"| {label} | {value} |" not in section]
+    assert not missing, f"The freshness table no longer matches services/reusable_intel.py TTL: {missing}"
+    assert len(rows) == len(intel.TTL)
+    assert f"It is deleted {intel.STALE_KEPT_FOR.days} days after it expires" in section
+    # The saved-answer matching rule (knowledge.answers_question): all words for 1-2, else at least 80%.
+    assert "every content word, or at least 80% of them for longer questions" in section
+    assert knowledge.answers_question("why do scammers ask for gift cards", ["scammer", "gift", "card"]) == 1.0
+    assert knowledge.answers_question("why do scammers ask for crypto", ["scammer", "ask", "gift", "card"]) == 0.0
+    # What the person is shown is the app's own sentence.
+    app = (Path(rulebook.ROOT) / "frontend/src/domain/checkedAgo.ts").read_text()
+    assert "From Apollo's check ${when}, still current, so it wasn't looked up again" in app
+    assert "\"From Apollo's check 2 hours ago, still current, so it wasn't looked up again\"" in section
+    assert knowledge.SAVED_ANSWER_NOTE.startswith("(Apollo saved this answer earlier. Gemini, Google's AI, wrote it")
+    assert "Intelligence Reuse" in section and ("Intelligence Reuse", "/api/admin/intel-reuse", "&#9851;") in admin_portal.NAV

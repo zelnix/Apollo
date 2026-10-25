@@ -17,11 +17,13 @@ import httpx
 from core.config import logger
 from core.db import db, now_utc
 from core.models import DomainInfo, DomainInfoCache
+from services import reusable_intel
 from services.outbound import public_get
 
 IANA_BOOTSTRAP_URL = "https://data.iana.org/rdap/dns.json"
 RDAP_TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
-CACHE_TTL = timedelta(hours=48)
+CACHE_TTL = reusable_intel.TTL["domain_registration"]
+SITE = "rdap"  # this call site, in the reuse counters
 NEWLY_REGISTERED_DAYS = 30
 
 # IANA's bootstrap only lists single-label TLDs. A handful of registries delegate registration one
@@ -156,10 +158,13 @@ async def lookup_domain_cached(host: Optional[str]) -> Optional[DomainInfo]:
         if cached:
             dc = DomainInfoCache.from_mongo(cached)
             if dc.expires_at.replace(tzinfo=timezone.utc) > now:
+                await reusable_intel.count(SITE, "cache_hit", "sufficiency_known", "external_call_avoided")
                 return _with_age(DomainInfo(domain=dc.domain, registrar=dc.registrar, registered_at=dc.registered_at, registrant_organization=dc.registrant_organization, rdap_server=dc.rdap_server, available=dc.available, error=dc.error))
+        await reusable_intel.count(SITE, *(("cache_expired", "sufficiency_partial") if cached else ("sufficiency_unknown",)), "external_call_required")
         info = await _fetch_live(domain)
         record = DomainInfoCache(domain=domain, registrar=info.registrar, registered_at=info.registered_at, registrant_organization=info.registrant_organization, rdap_server=info.rdap_server, available=info.available, error=info.error, checked_at=now, expires_at=now + CACHE_TTL)
         await db.domain_info_cache.update_one({"domain": domain}, {"$set": record.to_mongo()}, upsert=True)
+        await reusable_intel.count(SITE, "cache_write")
         return _with_age(info)
     except Exception as exc:  # noqa: BLE001 — best-effort by contract; never propagate to the verdict path.
         logger.info("rdap lookup failed: %s", type(exc).__name__)

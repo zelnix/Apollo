@@ -70,6 +70,13 @@ async def lifespan(_: FastAPI):
     await government_alerts.ensure_indexes()
     from services.higgins import knowledge as higgins_knowledge
     await higgins_knowledge.ensure_indexes()
+    try:
+        # Reusable intelligence (not KB knowledge): its indexes, and the KB's old saved Gemini answers moved into it.
+        from services import reusable_intel
+        await reusable_intel.ensure_indexes()
+        await reusable_intel.migrate_gemini_answers()
+    except Exception:  # noqa: BLE001 — the cache must never block startup
+        logger.warning("reusable intelligence setup failed", exc_info=True)
     await learning.ensure_indexes()
     try:
         # Sources first (article citations are checked against them), then the same Learn library in every

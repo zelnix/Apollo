@@ -131,7 +131,8 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 **Still stops only for a confirmed threat, or an answered general question.**
 
 ### Stage 3: one targeted web search
-- Only open checks with a question get here: at most 6 questions in **one** call to the low-cost model, with Google Search. The cache is checked first; answers are kept for 7 days.
+- Only open checks with a question get here: at most 6 questions in **one** call to the low-cost model, with Google Search.
+- Apollo's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
 - An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as clear.
 - How answers are treated:
@@ -244,7 +245,7 @@ It can't override what is already established, and it isn't called to move a cas
 5. **Patrol records, the phone's live state, recent investigations or Apollo product knowledge** → shown as they are.
 6. **Apollo's KB** → quoted with publisher and link, labelled as general knowledge.
 7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
-8. **A general scam-safety question nothing else answers** → **one** Gemini call with the question alone (no device state, history or case). The answer is cached and reused.
+8. **A general scam-safety question nothing else answers** → **one** Gemini call with the question alone (no device state, history or case). The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
 
 **Rules**
 - The phone's live reading is the truth. Higgins never contradicts it, guesses past it or invents a concern.
@@ -413,7 +414,8 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 | Official guidance | cyber.gov.au guidance shipped with Apollo (CC BY 4.0, attributed) |
 | Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
 | Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
-| Saved AI answers | Gemini's answer to a general question nothing else covered, labelled as Gemini's. Never treated as sourced knowledge |
+
+Gemini's saved answers are **not** in the KB. They are reusable intelligence (below), labelled as Gemini's and never treated as sourced knowledge.
 
 **Trusted sources.** A page on any other website never becomes Apollo knowledge.
 - **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
@@ -452,7 +454,6 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 **How the KB is searched (no AI)**
 - The question's content words are used, with common words removed and word endings lightly trimmed.
 - An entry answers only if it holds every content word (for a question of 1 or 2 content words) or at least 75% of them, and its title shares at least one.
-- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
 - Historical entries rank below current ones. At most 2 entries are used for one answer.
 
 **How it is quoted**
@@ -460,16 +461,47 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - Each quote names the publisher, its authority, where it applies and when it was published or last checked, with a link to read the original.
 - A historical entry says it may be out of date. Guidance from outside Australia says contacts and reporting steps may differ.
 - Every quote ends with: "This is general knowledge from Apollo's library. It isn't a finding about anything you've asked Apollo to check."
-- A saved AI answer says that Gemini wrote it and that no official source has checked it.
-
-**Saving an AI answer**
-- Gemini's answer to a general question is saved only when the question holds no secret and no personal detail: no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address".
-- A simulated answer from the preview is never saved.
 
 **Where the KB is used**
 - **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
-- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; saved AI answers and historical pages never are.
+- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and Gemini's saved answers never are.
 - **Preview:** the simulator answers from the KB instead of calling Gemini, and says so.
+
+### Reusable intelligence (not KB knowledge)
+**Job:** results Apollo already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
+
+**What it holds**
+- Gemini's answer to a general scam-safety question nothing else answered.
+- TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
+- Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
+- Each result records who produced it, by which Apollo process, when Apollo first obtained it, when it was last checked, and when it stops counting as current.
+
+**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated Gemini answer is never saved.
+
+**How long a result counts as current**
+| Information | Current for |
+|---|---|
+| General question answered by Gemini | 90 days |
+| TC FlyBy search that found something | 7 days |
+| TC FlyBy search that found nothing | 1 day |
+| Phone reputation (IPQualityScore) | 24 hours |
+| Link reputation (IPQualityScore) | 12 hours |
+| Domain registration (RDAP) | 48 hours |
+
+An expired result never counts as current. It is deleted 90 days after it expires.
+
+**The sufficiency check (no AI), before every paid call**
+- **Known:** the KB answers, or a current result about this exact subject is complete, backed by a source and not contradicted. It is reused and the call isn't made.
+- **Partial:** something relevant, but expired, incomplete, contradicted, or for a check that must be live. The call runs as before and the result is refreshed.
+- **Unknown:** nothing relevant. The call runs as before.
+- The KB is always checked first. The check only saves calls; it never lowers what a check must establish.
+- A saved Gemini answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
+
+**What the person sees**
+- A reused result says when Apollo last checked it: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again". In Ask Higgins it reads "Saved answer · …"; in a result, it sits under the source.
+- A reused Gemini answer says that Gemini wrote it and that no official source has checked it.
+
+**Staff see** the admin portal's Intelligence Reuse page: calls avoided and still needed, results saved, expired results checked again, by call site and by day, what the store holds and how long each kind stays current. Counts only, never content. The same counts go to the server logs.
 
 ---
 
@@ -519,13 +551,13 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - **What Higgins remembers between chats:** a recent result for 7 days, protection status for 1 hour, a preference for 90 days, a goal for 30 days and a permission for 1 day. At most 25 of each kind and 100 in all.
 - **Threats records:** fixed wording and a domain only (see Privacy and redaction). Kept until the person clears the Threats history, which hides them, or deletes all their data, which deletes them.
 - **Remembered gate results:** a possible threat for 30 days and no threat for 7 days, kept against a fingerprint (a one-way code) of what was checked.
-- **TC FlyBy's search answers:** 7 days, filed under a code made from the question. They are shared, and never tied to the person who asked.
+- **TC FlyBy's search answers:** 7 days for something found and 1 day for nothing found, filed under what was looked up (a one-way code for a phone number or email address). They are shared, never tied to the person who asked, and deleted 90 days after they expire (see Reusable intelligence).
 - **Trusted links:** until the person removes the link.
 - **Gmail:** an encrypted sign-in token, until the person disconnects. Message content is never stored (see Email and accounts).
 - **Family links:** until the person unpairs. A Family Help session is deleted 30 days after it starts.
 - **The phone's anonymous sign-in:** valid for 365 days.
 - **Diagnostics:** device registration, protection-health checks and alert-delivery records, with no personal content. Kept until the person deletes all their data, unless they expire sooner.
-- **Saved AI answers:** kept only when the question holds no secret and no personal detail (see Apollo's knowledge base).
+- **Saved AI answers:** kept only when the question holds no secret and no personal detail. Current for 90 days, then deleted 90 days after that (see Reusable intelligence).
 
 **Deleting everything**
 - **Settings → What Apollo stores → Delete My Apollo Data** first wipes everything Apollo keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so Apollo starts again as a new anonymous device.
@@ -727,6 +759,6 @@ Every result shows **"Settled by TC FlyBy"** or **"Settled by Magnum DI"**, in t
 
 ## Cost guardrails at a glance
 - Gate and Higgins Triage: 0 AI calls.
-- TC FlyBy: at most 1 low-cost search call per case (max 6 questions, 7-day cache).
+- TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
 - Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
-- Higgins: 0 calls, except one cached call for a general question nothing else answers. Plain English and its Fidelity Check: 0 calls.
+- Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.

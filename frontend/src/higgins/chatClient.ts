@@ -4,9 +4,11 @@ import type { DeviceSnapshot } from "./deviceSnapshot";
 
 export interface HigginsChatAction { kind: "app_destination"; destination: "check_it" | "higgins_case"; label: string; purpose: string }
 export interface HigginsContextUse { source: string; status: string; provenance: string[]; observedAt: string | null }
-export interface HigginsChatReply { turnId: string; conversationId: string; answer: string; evidenceBasis: string[]; uncertainty: string[]; clarification: string | null; contextUsed: HigginsContextUse[]; suggestedActions: HigginsChatAction[]; navigation: NavLink[]; investigationAvailable: boolean; investigativeWorkStarted: false; retention: { serverContentExpiresAt: string; localContentMaxSeconds: 3600; receiptOnlyAfterExpiry: true } }
-/** `links` are validated Apollo destinations Higgins offered for this answer. */
-export interface HigginsChatMessage { id: string; turnId: string; role: "user" | "higgins"; content: string; createdAt: string; conversationId: string; links?: NavLink[] }
+/** `reused`: an earlier answer Apollo reused instead of asking its provider again, and when it was last checked. */
+export interface HigginsReused { provider: string; aiGenerated: boolean; lastCheckedAt: string; expiresAt: string }
+export interface HigginsChatReply { turnId: string; conversationId: string; answer: string; evidenceBasis: string[]; uncertainty: string[]; clarification: string | null; contextUsed: HigginsContextUse[]; suggestedActions: HigginsChatAction[]; navigation: NavLink[]; investigationAvailable: boolean; investigativeWorkStarted: false; reused?: HigginsReused | null; retention: { serverContentExpiresAt: string; localContentMaxSeconds: 3600; receiptOnlyAfterExpiry: true } }
+/** `links` are validated Apollo destinations Higgins offered for this answer. `reusedAt`: the answer was reused, last checked then. */
+export interface HigginsChatMessage { id: string; turnId: string; role: "user" | "higgins"; content: string; createdAt: string; conversationId: string; links?: NavLink[]; reusedAt?: string }
 
 export function askHiggins(message: string, conversationId: string, turnId: string, previousTurnIds: string[], deviceSnapshot?: DeviceSnapshot) {
   return apiPost<HigginsChatReply>("/higgins/chat", "higgins_chat", { turnId, message, conversationId, previousTurnIds, ...(deviceSnapshot ? { deviceSnapshot } : {}) });

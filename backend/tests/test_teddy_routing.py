@@ -10,6 +10,7 @@
 Run: cd /app/backend && python -m pytest tests/test_teddy_routing.py -q
 """
 import uuid
+from datetime import datetime
 
 import pytest
 from google.genai import types
@@ -208,11 +209,12 @@ async def test_a_general_question_is_answered_from_apollo_kb(monkeypatch):
 async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
     monkeypatch.setattr(search, "run", REAL_SEARCH)
     await db.teddy_search_cache.delete_many({})
+    await db.reusable_intelligence.delete_many({"source_type": "tc_flyby_lookup"})
     text, grounding = _grounded(
         ["Q1 | WARNING | ASIC's Moneysmart lists Zenith Quantum Markets on its Investor Alert List (added March 2026)."],
         [("https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", "moneysmart.gov.au")])
     calls = _gateway(monkeypatch, text, grounding)
-    _owner, case, response, _ = await _case([("text", "Zenith Quantum Markets offers 3% daily returns. Message us on WhatsApp to start.")])
+    owner, case, response, _ = await _case([("text", "Zenith Quantum Markets offers 3% daily returns. Message us on WhatsApp to start.")])
     assert [c["purpose"] for c in calls] == [Purpose.TEDDY_SEARCH], "one low-cost search call, and no Magnum DI call"
     assert calls[0]["model"] == provider.TEDDY_MODEL and calls[0]["tools"][0].google_search is not None
     assert response["assessment"] == "concern_found" and "Investor Alert List" in response["overview"]
@@ -223,9 +225,16 @@ async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
 
     # The same lookup in another case is served from Teddy's cache: no second paid search.
     calls.clear()
-    _owner, case2, response2, _ = await _case([("text", "Zenith Quantum Markets: 3% daily returns, guaranteed.")])
+    owner2, case2, response2, _ = await _case([("text", "Zenith Quantum Markets: 3% daily returns, guaranteed.")])
     assert calls == [] and case2["routing"]["teddy"]["cacheHits"] == 1
     assert response2["assessment"] == "concern_found"
+    # The reused lookup's page is shown with the time Apollo last checked it, not as a new lookup.
+    first, later = await repo.sources(owner, case["case_id"]), await repo.sources(owner2, case2["case_id"])
+    searched = [s for s in first if "grounding-api-redirect" in s["url"]]
+    reused = [s for s in later if "grounding-api-redirect" in s["url"]]
+    assert searched and not any(s["reused"] for s in first)
+    assert reused and all(s["reused"] for s in reused) and not any(s["reused"] for s in later if s not in reused)
+    assert datetime.fromisoformat(reused[0]["retrievedAt"]) <= datetime.fromisoformat(searched[0]["retrievedAt"]), "when it was last checked"
 
 
 # ── Magnum DI receives only the unresolved slice ────────────────────────────
@@ -236,6 +245,7 @@ INVOICE = ("Hi, it's Sarah from Brightline Accounts. Our bank details have chang
 async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_search_off(monkeypatch):
     monkeypatch.setattr(search, "run", REAL_SEARCH)
     await db.teddy_search_cache.delete_many({})
+    await db.reusable_intelligence.delete_many({"source_type": "tc_flyby_lookup"})
     text, grounding = _grounded(
         ["Q1 | NO_WARNING_FOUND | No scam or security warning names brightline-docs.net."],
         [("https://vertexaisearch.cloud.google.com/grounding-api-redirect/x", "example.com")])

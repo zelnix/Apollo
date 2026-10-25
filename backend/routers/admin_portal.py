@@ -55,6 +55,7 @@ NAV = [
     ("Investigations",  "/api/admin/investigations-cost", "&#128200;"),
     ("Triage",          "/api/admin/triage",           "&#9878;"),
     ("Knowledge Base",  "/api/admin/knowledge",        "&#128218;"),
+    ("Intelligence Reuse", "/api/admin/intel-reuse",   "&#9851;"),
     ("Rule Book",       "/api/admin/rule-book",        "&#128214;"),
     ("Play Store",      "/api/admin/play-console",     "&#9654;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
@@ -2901,6 +2902,78 @@ async def knowledge_page(request: Request):
 
 
 _KB_TASKS: set = set()  # keeps a manual refresh alive until it finishes
+
+
+# ── Intelligence Reuse: what Apollo reused instead of paying to ask again ─────
+_REUSE_SITES = {"higgins_general_question": "Higgins general question (Gemini)", "tc_flyby_search": "TC FlyBy targeted search (Gemini + Google Search)",
+                "ipqs_phone": "Phone reputation (IPQualityScore)", "ipqs_url": "Link reputation (IPQualityScore)", "rdap": "Domain registration (RDAP)"}
+
+
+def _reuse_totals(rows: list[dict]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for row in rows:
+        for event, n in (row.get("counts") or {}).items():
+            totals[event] = totals.get(event, 0) + n
+    return totals
+
+
+@router.get("/admin/intel-reuse", response_class=HTMLResponse)
+async def intel_reuse_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import reusable_intel
+    esc = html_mod.escape
+    rows = await reusable_intel.metrics(14)
+    totals = _reuse_totals(rows)
+    events = reusable_intel.EVENTS
+    by_site: dict[str, list[dict]] = {}
+    by_day: dict[str, list[dict]] = {}
+    for row in rows:
+        by_site.setdefault(row["site"], []).append(row)
+        by_day.setdefault(row["day"], []).append(row)
+    head = "".join(f"<th>{esc(e.replace('_', ' '))}</th>" for e in events)
+    cells = lambda t: "".join(f"<td style='text-align:right;'>{t.get(e, 0):,}</td>" for e in events)  # noqa: E731
+    site_rows = "".join(f"<tr><td>{esc(_REUSE_SITES.get(site, site))}</td>{cells(_reuse_totals(items))}</tr>" for site, items in sorted(by_site.items()))
+    day_rows = "".join(f"<tr><td>{esc(day)}</td>{cells(_reuse_totals(items))}</tr>" for day, items in sorted(by_day.items(), reverse=True))
+    inventory = "".join(
+        f"<tr><td>{esc(str(r['_id'].get('provider')))}</td><td>{esc(str(r['_id'].get('source_type')))}</td>"
+        f"<td>{'AI-derived' if r['_id'].get('ai') else 'Provider data'}</td><td style='text-align:right;'>{r['records']:,}</td>"
+        f"<td style='text-align:right;'>{r['fresh']:,}</td><td style='text-align:right;'>{r['records'] - r['fresh']:,}</td>"
+        f"<td style='text-align:right;'>{r['hits']:,}</td></tr>" for r in await reusable_intel.inventory())
+    ttl_rows = "".join(f"<tr><td>{esc(k.replace('_', ' '))}</td><td>{esc(_ttl_words(v))}</td></tr>" for k, v in reusable_intel.TTL.items())
+    avoided, required = totals.get("external_call_avoided", 0), totals.get("external_call_required", 0)
+    body = f"""
+    <h2 data-testid="intel-reuse-heading">Intelligence Reuse</h2>
+    <p style="font-size:0.9em;color:var(--muted);">Before a paid external call, Apollo checks its knowledge base, then results it already bought that are
+    still current. The sufficiency check answers KNOWN (reuse, no call), PARTIAL (stale, incomplete or contradicted: call as before) or UNKNOWN (call as
+    before). Reused results are never promoted into the knowledge base, AI-derived ones stay labelled as AI-derived, and private case evidence is never stored.
+    Counts only; no content is recorded.</p>
+    <div class="stats-grid">
+        {_stat_card(f"{avoided:,}", "Calls avoided (14 days)")}
+        {_stat_card(f"{required:,}", "Calls still needed (14 days)")}
+        {_stat_card(f"{(avoided / (avoided + required) * 100) if (avoided + required) else 0:.0f}%", "Share avoided")}
+        {_stat_card(f"{totals.get('cache_write', 0):,}", "Results saved for reuse")}
+        {_stat_card(f"{totals.get('cache_expired', 0):,}", "Expired, checked again")}
+    </div>
+    <h2>By call site (14 days)</h2>
+    <table data-testid="intel-reuse-sites"><tr><th>Call site</th>{head}</tr>{site_rows or f'<tr><td colspan="{len(events) + 1}">No activity yet</td></tr>'}</table>
+    <h2>By day</h2>
+    <table data-testid="intel-reuse-days"><tr><th>Day</th>{head}</tr>{day_rows or f'<tr><td colspan="{len(events) + 1}">No activity yet</td></tr>'}</table>
+    <h2>What the reusable cache holds</h2>
+    <table data-testid="intel-reuse-inventory"><tr><th>Provider</th><th>Process</th><th>Kind</th><th>Records</th><th>Current</th><th>Expired (history only)</th><th>Times reused</th></tr>
+    {inventory or '<tr><td colspan="7">Empty</td></tr>'}</table>
+    <p style="font-size:0.82em;color:var(--muted);">Phone, URL and domain lookups keep their own established caches; they are counted here and their
+    freshness comes from the same table below.</p>
+    <h2>How long a result counts as current</h2>
+    <table data-testid="intel-reuse-ttl"><tr><th>Information</th><th>Current for</th></tr>{ttl_rows}</table>
+    """
+    return _shell("Intelligence Reuse", "/api/admin/intel-reuse", body, admin=adm)
+
+
+def _ttl_words(value) -> str:
+    hours = int(value.total_seconds() // 3600)
+    return f"{hours // 24} days" if hours % 24 == 0 and hours >= 48 else f"{hours} hours"
 
 
 @router.post("/admin/knowledge/refresh")

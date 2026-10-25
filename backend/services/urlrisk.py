@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import timedelta, timezone
+from datetime import timezone
 from typing import Optional
 from urllib.parse import urlparse, unquote
 
@@ -20,8 +20,10 @@ import httpx
 
 from core.config import IPQS_API_KEY, IPQS_URL_ENDPOINT, logger
 from core.db import db, now_utc
+from services import reusable_intel
 
-CACHE_TTL = timedelta(hours=12)  # URL risk signals change; refresh twice a day
+CACHE_TTL = reusable_intel.TTL["url_reputation"]  # URL risk signals change; refresh twice a day
+SITE = "ipqs_url"  # this call site, in the reuse counters
 MAX_RETRIES = 1
 RETRY_BACKOFF = 1.0
 
@@ -122,10 +124,12 @@ async def check_url_risk(url: str) -> Optional[dict]:
         expires = cached.get("expires_at")
         if expires and expires.replace(tzinfo=timezone.utc) > ts:
             logger.debug("url_risk cache hit url=%s", url[:60])
+            await reusable_intel.count(SITE, "cache_hit", "sufficiency_known", "external_call_avoided")
             result = dict(cached)
             result.pop("_id", None)
             result["cached"] = True
             return result
+    await reusable_intel.count(SITE, *(("cache_expired", "sufficiency_partial") if cached else ("sufficiency_unknown",)), "external_call_required")
 
     # Live query
     last_exc: Exception | None = None
@@ -166,6 +170,7 @@ async def check_url_risk(url: str) -> Optional[dict]:
                 {"$set": {**result, "expires_at": ts + CACHE_TTL}},
                 upsert=True,
             )
+            await reusable_intel.count(SITE, "cache_write")
             logger.info("url_risk checked url=%s score=%s decision=%s", url[:60], result["risk_score"], result["decision"])
             return result
 

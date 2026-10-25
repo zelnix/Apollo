@@ -13,7 +13,7 @@ claims to have blocked anything; it only scores.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 from typing import Optional
 
 import asyncio
@@ -24,8 +24,10 @@ from fastapi import HTTPException
 from core.config import IPQS_API_KEY, IPQS_ENDPOINT, logger
 from core.db import db, now_utc
 from core.models import CallRiskResponse, PhoneRiskCache
+from services import reusable_intel
 
-CACHE_TTL = timedelta(hours=24)  # IPQS risk/abuse signals change; don't cache indefinitely
+CACHE_TTL = reusable_intel.TTL["phone_reputation"]  # IPQS risk/abuse signals change; don't cache indefinitely
+SITE = "ipqs_phone"  # this call site, in the reuse counters
 MAX_RETRIES = 2                  # retry up to 2 more times on transient failures
 RETRY_BACKOFF = 1.0              # seconds; doubled each retry
 
@@ -148,6 +150,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
     if cached:
         rc = PhoneRiskCache.from_mongo(cached)
         if rc.expires_at.replace(tzinfo=timezone.utc) > ts:
+            await reusable_intel.count(SITE, "cache_hit", "sufficiency_known", "external_call_avoided")
             return CallRiskResponse(
                 number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
                 risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
@@ -155,6 +158,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
                 higgins=_higgins(_decision(rc.model_dump()), rc.model_dump()),
             )
 
+    await reusable_intel.count(SITE, *(("cache_expired", "sufficiency_partial") if cached else ("sufficiency_unknown",)), "external_call_required")
     try:
         data = await _query_ipqs(phone)
     except HTTPException:
@@ -188,6 +192,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
     )
     if persist_cache:
         await db.phone_risk_cache.update_one({"phone_e164": phone}, {"$set": record.to_mongo()}, upsert=True)
+        await reusable_intel.count(SITE, "cache_write")
     logger.info("phone risk checked (score=%s, decision=%s)", record.fraud_score, _decision(record.model_dump()))
     return CallRiskResponse(
         number=phone, valid=record.valid, active=record.active, fraud_score=record.fraud_score, recent_abuse=record.recent_abuse,
