@@ -14,8 +14,6 @@ import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
-import CircleAlert from "lucide-react-native/icons/circle-alert";
-import CircleCheck from "lucide-react-native/icons/circle-check";
 import Clock from "lucide-react-native/icons/clock";
 import FileText from "lucide-react-native/icons/file-text";
 import Globe from "lucide-react-native/icons/globe";
@@ -28,14 +26,14 @@ import Phone from "lucide-react-native/icons/phone";
 import Search from "lucide-react-native/icons/search";
 import Shield from "lucide-react-native/icons/shield";
 import Smartphone from "lucide-react-native/icons/smartphone";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Image, Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
 import * as Clipboard from "expo-clipboard";
-import { Body, Button, Card, Pill } from "@/src/components/ui";
+import { Body, Button, Card } from "@/src/components/ui";
 import { scrubMessage } from "@/src/domain/messageVoice";
 import {
   threatCaseId,
@@ -48,6 +46,7 @@ import {
   sourceLabel,
   buildTimeline,
   formatDateTime,
+  formatTime,
   type ThreatCaseStatus,
   type TimelineEntry,
 } from "@/src/domain/threatCase";
@@ -56,16 +55,16 @@ import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
 import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
-import { subjectDescriptor, threatSubject } from "@/src/domain/threatSubject";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
-import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
-import { SettledReasonLine } from "@/src/components/SettledReasonLine";
-import { ServerCopyNote } from "@/src/components/ServerCopyNote";
+import { ReportBody } from "@/src/components/report/ReportBody";
+import { ReportHeader } from "@/src/components/report/ReportHeader";
+import { checkKind } from "@/src/components/report/checkKind";
+import { buildReport } from "@/src/domain/reportSections";
 import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
@@ -75,8 +74,6 @@ import { listImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEv
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 type TabKey = "overview" | "evidence" | "history" | "di";
 const TAB_LABELS: { id: TabKey; label: string }[] = [
@@ -101,22 +98,6 @@ function sourceIcon(cat: string, meta?: SourceMetadata | null) {
     case "device": case "network": return { Icon: Shield, bg: "#FEE2E2", fg: "#991B1B", label: "Device" };
     default: return { Icon: Shield, bg: "#F3F4F6", fg: "#374151", label: "Security" };
   }
-}
-
-function sourceTitle(event: PatrolEvent, original?: OriginalSource | null): string {
-  const meta = event.source_metadata;
-  if (meta?.subject) return meta.subject;
-  if (meta?.preview) return meta.preview.length > 60 ? meta.preview.slice(0, 60) + "…" : meta.preview;
-  // The synced copy of this event is privacy-minimised ("a text message"). The real item is held on
-  // this device, so name it from that rather than leaving the person with a category.
-  const local = (original?.text ?? "").trim().replace(/\s+/g, " ");
-  if (local) return local.length > 60 ? local.slice(0, 60) + "…" : local;
-  if (original?.url) return original.url;
-  if (meta?.url) return meta.url;
-  if (event.headline && !looksLikeInternalCode(event.headline)) return event.headline;
-  if (event.indicator_host) return event.indicator_host;
-  if (event.category === "call" && event.local_indicator) return `Call from ${event.local_indicator}`;
-  return categoryLabel(event.category) + " threat detected";
 }
 
 function sourceSubtitle(event: PatrolEvent, original?: OriginalSource | null): string {
@@ -179,6 +160,12 @@ const useStyles = makeStyles((c) => ({
   alertBody: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
   // Status section
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, marginTop: spacing.sm },
+  // Report sections and steps — the same look as Ask Higgins
+  reportSectionHeader: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, marginTop: spacing.md },
+  actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md },
+  actionIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  actionTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
+  actionDescription: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   // Investigation progress
   progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   progressDot: { width: 10, height: 10, borderRadius: 5 },
@@ -260,136 +247,75 @@ function CollapseSection({ icon, iconBg, iconFg, title, subtitle, badge, badgeCo
 
 // ── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewContent({ event, status, shownWhatToDo, original }: { event: PatrolEvent; status: ThreatCaseStatus; shownWhatToDo: string; original: OriginalSource | null }) {
+function OverviewContent({ event, status, shownWhatToDo, original, investigation }: { event: PatrolEvent; status: ThreatCaseStatus; shownWhatToDo: string; original: OriginalSource | null; investigation: DeviceInvestigation | null }) {
   const s = useStyles();
   const { colors } = useTheme();
   const record = event.patrol_record;
   const briefing = record?.higginsBriefing;
-  const risk = riskLevel(event.state);
-  const hasInvestigation = !!(event.investigation_case_id ?? record?.investigationCaseId);
+  const response = investigation?.response ?? null;
 
-  // The actual thing this case is about — the recorded identifier when there is one, else the
-  // finding statement itself. Never a category name.
-  const subject = threatSubject(event);
-  const localSender = original?.fields?.find((f) => /from|sender|number/i.test(f.label))?.value?.trim();
-  const localText = (original?.text ?? "").trim();
-  const headline = (event.headline || "").trim();
-  const subjectLine = subject
-    ? subjectDescriptor(subject)
-    : localSender
-      ? `${categoryLabel(event.category, record?.recordClass)} from ${localSender}`
-      : localText
-        ? localText.replace(/\s+/g, " ").slice(0, 80) + (localText.length > 80 ? "…" : "")
-        : headline && !looksLikeInternalCode(headline) ? headline : categoryLabel(event.category, record?.recordClass);
+  // Higgins' report, built exactly as Ask Higgins builds it: each fact once. A threat Apollo recorded on its
+  // own (no investigation) uses what it recorded instead.
+  const report = useMemo(() => {
+    if (response) {
+      return buildReport({
+        overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
+        findings: response.findings, uncertainties: response.uncertainties, scope: response.scope,
+        sources: investigation?.sources, sourceIds: response.sourceIds, alreadySaid: [investigation?.settledReason?.sentence],
+      });
+    }
+    const headline = (event.headline || "").trim();
+    const established = (briefing?.established ?? event.what_happened ?? "").trim();
+    return buildReport({
+      overview: established || (headline && !looksLikeInternalCode(headline) ? headline : ""),
+      fallbackFound: [...(event.why ?? []), ...(briefing?.evidence_points ?? [])].filter((line) => !!line && !looksLikeInternalCode(line)),
+      fallbackMeans: briefing?.meaning ?? null,
+    });
+  }, [response, investigation, event, briefing]);
 
-  // Higgins' summary of the evidence — what Apollo established, and what it means where that was
-  // separately recorded. Never duplicated.
-  const established = (briefing?.established ?? event.what_happened ?? "").trim();
-  const meaning = (briefing?.meaning ?? "").trim();
-  const evidenceSummary = [established, meaning !== established ? meaning : ""].filter(Boolean);
-
-  // What Apollo actually found — the recorded findings for this case. The stored investigation adds
-  // what it could not settle. Never a restatement of the summary above.
-  const investigation = useCaseInvestigation(event);
-  const findings = Array.from(new Set([
-    ...(event.why ?? []),
-    ...(briefing?.evidence_points ?? []),
-    ...(investigation?.response?.findings ?? []).map((f) => f.text),
-  ].map((line) => (line ?? "").trim()).filter((line) => !!line && !looksLikeInternalCode(line) && line !== established && line !== meaning)));
-  const uncertainties = (investigation?.response?.uncertainties ?? []).map((u) => u.trim()).filter(Boolean);
-
-  // What to do — or an explicit statement that nothing needs doing.
+  // What to do — the investigation's own steps, or an explicit statement that nothing needs doing.
   const action = (shownWhatToDo || "").trim();
   const noAction = !action || /^no action required\.?$/i.test(action);
-  const todo = event.resolved_at
+  const note = event.resolved_at
     ? "Nothing to do — this case is closed."
     : status === "investigating"
       ? "Nothing to do right now. I'll tell you as soon as the investigation finishes."
-      : noAction ? "Nothing to do." : action;
+      : null;
+  const steps = !note && response?.actions.length
+    ? response.actions.map((a) => ({ id: a.id, title: a.label, body: a.instruction }))
+    : [{ id: "todo", title: null, body: note ?? (noAction ? "Nothing to do." : action) }];
+  const hasOutcome = !!outcomeLabel(response?.outcome);
 
   return (
     <View style={s.content}>
-      {/* Higgins report — names the actual thing, summarises the evidence, and states what to do
-          (or that there's nothing to do). Deliberately uncoloured: the status pill carries severity. */}
-      <Card style={{ gap: spacing.sm }} testID="tc-overview-briefing">
-        <View style={s.higginsRow}>
-          <Image source={higginsAvatar} style={s.higginsAvatar} />
-          <View>
-            <Text style={s.higginsName}>Higgins</Text>
-            <Text style={s.higginsSub}>Here&apos;s what we know so far...</Text>
-          </View>
-        </View>
-        <View style={s.report} testID="tc-overview-alert">
-          <Text style={s.reportSubject} testID="tc-overview-subject">{subjectLine}</Text>
-          {/* The investigation's result, in the same words as everywhere else, with what it means. */}
-          {investigation?.response?.outcome && outcomeLabel(investigation.response.outcome) ? (
-            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: spacing.md }} testID="tc-overview-outcome">
-              <Pill label={outcomeLabel(investigation.response.outcome)!} tone={outcomeTone(investigation.response.outcome)} />
-              <OutcomeExplainerLink outcome={investigation.response.outcome} testID="tc-overview-outcome-explainer" />
+      {/* Higgins' report — the same template and sections as Ask Higgins. */}
+      <Card style={{ gap: spacing.md }} testID="tc-overview-briefing">
+        <ReportBody report={report} time={investigation ? formatTime(investigation.completedAt || investigation.createdAt) : null} ids="tc-overview" />
+        <Text style={s.reportSectionHeader}>What you can do</Text>
+        <View style={{ gap: spacing.sm }} testID="tc-overview-todo">
+          {steps.map((step) => (
+            <View key={step.id} style={s.actionCard} testID={`tc-overview-action-${step.id}`}>
+              <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                {step.title ? <Text style={s.actionTitle}>{scrubMessage(step.title)}</Text> : null}
+                <Text style={step.title ? s.actionDescription : s.reportBody}>{scrubMessage(step.body)}</Text>
+              </View>
             </View>
-          ) : null}
-          {investigation?.response ? <SettledReasonLine reason={investigation.settledReason} testID="tc-overview-settled-reason" /> : null}
-          {investigation?.response ? <ServerCopyNote caseId={investigation.caseId} testID="tc-overview-server-copy" /> : null}
-          {evidenceSummary.map((para, i) => (
-            <Text key={i} style={s.reportBody} testID={`tc-overview-summary-${i}`}>{para}</Text>
           ))}
-          <Text style={s.reportLabel}>What to do</Text>
-          <Text style={s.reportBody} testID="tc-overview-todo">{todo}</Text>
         </View>
       </Card>
-
-      {/* The actual item being checked, held on this device and shown verbatim. While an
-          investigation is running this is the only thing Apollo can state as fact. */}
-      {localText || original?.url ? (
-        <Card style={{ gap: spacing.xs }} testID="tc-overview-checking">
-          <Text style={s.sectionTitle}>{status === "investigating" ? "What Apollo is checking" : "What Apollo checked"}</Text>
-          {localSender ? <Text style={s.reportBody} testID="tc-overview-checking-sender">From: {localSender}</Text> : null}
-          {localText ? (
-            <Text style={s.reportBody} testID="tc-overview-checking-text" selectable>
-              {redactInvestigationSecrets(localText)}
-            </Text>
-          ) : null}
-          {original?.url ? <Text style={s.reportBody} testID="tc-overview-checking-url" selectable>{purposeLimitedUrl(original.url)}</Text> : null}
-        </Card>
-      ) : null}
-
-      {/* What Apollo found — the actual findings recorded for this case, never a summary of them. */}
-      {findings.length ? (
-        <Card style={{ gap: spacing.xs }} testID="tc-overview-findings">
-          <Text style={s.sectionTitle}>What Apollo found</Text>
-          {findings.map((finding, i) => (
-            <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
-              <Text style={{ color: colors.muted, marginTop: 1 }}>•</Text>
-              <Text style={[s.reportBody, { flex: 1 }]} testID={`tc-overview-finding-${i}`}>{finding}</Text>
-            </View>
-          ))}
-          {uncertainties.length ? (
-            <>
-              <Text style={s.reportLabel}>What isn&apos;t settled</Text>
-              {uncertainties.map((item, i) => (
-                <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <Text style={{ color: colors.muted, marginTop: 1 }}>•</Text>
-                  <Text style={[s.reportBody, { flex: 1 }]} testID={`tc-overview-uncertainty-${i}`}>{item}</Text>
-                </View>
-              ))}
-            </>
-          ) : null}
-        </Card>
-      ) : null}
 
       {/* Actions */}
       {event.resolved_at ? <ReopenCase event={event} /> : <EventActions event={event} hideAsk />}
       {!event.resolved_at && event.reopened_at ? <RecheckCase event={event} /> : null}
 
-      {/* Patrol facts */}
+      {/* Patrol facts — only what the top card doesn't already say. */}
       <Card style={{ gap: 0 }} testID="tc-overview-facts">
-        <FactRow icon={Shield} label="Detected" value={formatDateTime(event.occurred_at)} />
-        <FactRow icon={MessageSquare} label="Source" value={sourceLabel(event)} />
+        <FactRow icon={MessageSquare} label="Source" value={sourceLabel(event)} isLast={!(event.category === "call" && event.local_indicator) && hasOutcome} />
         {event.category === "call" && event.local_indicator ? (
-          <FactRow icon={Phone} label="Number" value={event.local_indicator} />
+          <FactRow icon={Phone} label="Number" value={event.local_indicator} isLast={hasOutcome} />
         ) : null}
-        <FactRow icon={CircleAlert} label="Category" value={categoryLabel(event.category, record?.recordClass)} />
-        <FactRow icon={Search} label="Risk level" value={risk.label} valueColor={risk.color} isLast />
+        {!hasOutcome ? <FactRow icon={Search} label="Risk level" value={riskLevel(event.state).label} valueColor={riskLevel(event.state).color} isLast /> : null}
       </Card>
 
       {/* Repeat checks of this device: one case, every check listed. */}
@@ -599,8 +525,8 @@ function ScentSection({ event }: { event: PatrolEvent }) {
 // ── Sources used ─────────────────────────────────────────────────────────────
 
 /** Loads the saved Magnum DI investigation for this case, when there is one. */
-function useCaseInvestigation(event: PatrolEvent): DeviceInvestigation | null {
-  const caseId = event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null;
+function useCaseInvestigation(event: PatrolEvent | undefined): DeviceInvestigation | null {
+  const caseId = event?.investigation_case_id ?? event?.patrol_record?.investigationCaseId ?? null;
   const [inv, setInv] = useState<DeviceInvestigation | null>(null);
   useEffect(() => {
     if (!caseId) { setInv(null); return; }
@@ -1188,6 +1114,7 @@ export default function ThreatCaseScreen() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
   const { events, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
+  const investigation = useCaseInvestigation(event);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   // The item itself, as held on this device. Nothing here comes from the server's minimised copy.
   const [original, setOriginal] = useState<OriginalSource | null>(null);
@@ -1215,9 +1142,12 @@ export default function ThreatCaseScreen() {
   const caseId = threatCaseId(event);
   const status = threatCaseStatus(event);
   const statusColor = STATUS_COLORS[status];
-  const si = sourceIcon(event.category, event.source_metadata);
-  const title = sourceTitle(event, original);
   const subtitle = sourceSubtitle(event, original);
+  // The same top card as Ask Higgins: kind of check, result and status, when, what it means, who settled it.
+  const outcome = outcomeLabel(investigation?.response?.outcome);
+  const tone = outcomeTone(investigation?.response?.outcome);
+  const outcomeColors = { resting: [colors.restingTint, colors.restingText], barking: [colors.barkingTint, colors.barkingText], ears_up: [colors.ears_upTint, colors.ears_upText], sniffing: [colors.sniffingTint, colors.sniffingText] }[tone] ?? [colors.sniffingTint, colors.sniffingText];
+  const kind = checkKind(investigation?.gates?.[0] ?? event.source_metadata?.type ?? event.category);
 
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   const hasSubstantiveData = !!(event.what_happened && event.what_happened.length > 30);
@@ -1239,23 +1169,22 @@ export default function ThreatCaseScreen() {
         </Text>
       </View>
 
-      {/* Source identity card */}
-      <View style={s.sourceCard} testID="tc-source-card">
-        <View style={[s.sourceIconWrap, { backgroundColor: si.bg }]}>
-          <si.Icon size={22} color={si.fg} />
-        </View>
-        <View style={s.sourceInfo}>
-          <View style={s.sourceBadgeRow}>
-            <View style={s.sourceBadge}><Text style={s.sourceBadgeText}>{si.label}</Text></View>
-            <View style={[s.statusPill, { backgroundColor: statusColor.bg }]} testID="tc-status-pill">
-              <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
-            </View>
-          </View>
-          <Text style={s.sourceTitle} numberOfLines={2}>{title}</Text>
-          {subtitle ? <Text style={s.sourceSub} numberOfLines={1}>{subtitle}</Text> : null}
-          <Text style={s.sourceTime}>{formatDateTime(event.occurred_at)}</Text>
-          <SettledByBadge event={event} testID="tc-settled" />
-        </View>
+      {/* Top card — shared with Ask Higgins */}
+      <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.xs, gap: spacing.xs }}>
+        <ReportHeader
+          kind={kind} subtitle={subtitle || null} testID="tc-source-card"
+          ids={{ explainer: "tc-overview-outcome-explainer", settled: "tc-overview-settled-reason", serverCopy: "tc-overview-server-copy" }}
+          badges={[
+            ...(outcome ? [{ label: outcome, bg: outcomeColors[0], fg: outcomeColors[1], testID: "tc-outcome" }] : []),
+            { label: STATUS_LABELS[status], bg: statusColor.bg, fg: statusColor.text, testID: "tc-status-pill" },
+          ]}
+          time={formatDateTime(event.occurred_at)}
+          outcome={outcome ? investigation?.response?.outcome : null}
+          settledReason={investigation?.response ? investigation.settledReason : null}
+          serverCopyCaseId={investigation?.caseId} showServerCopy={!!investigation?.response}
+        />
+        {/* Who settled it, for results saved before the reason was recorded. */}
+        {!investigation?.settledReason ? <SettledByBadge event={event} testID="tc-settled" /> : null}
       </View>
 
       {/* A simulated answer is labelled above every tab, in every build. */}
@@ -1279,7 +1208,7 @@ export default function ThreatCaseScreen() {
       {/* Tab content */}
       <ScrollView contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xl }} testID="tc-scroll">
         {activeTab === "overview" ? (
-          <OverviewContent event={event} status={status} shownWhatToDo={shownWhatToDo} original={original} />
+          <OverviewContent event={event} status={status} shownWhatToDo={shownWhatToDo} original={original} investigation={investigation} />
         ) : activeTab === "evidence" ? (
           <EvidenceContent event={event} />
         ) : activeTab === "history" ? (

@@ -3451,3 +3451,14 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Root cause: the FTC feed (`ftc-consumer-alerts`) puts a rendered `<a href="…">view</a>` in `<link>`, percent-encoded after the site address, so 23 items got addresses like `https://consumer.ftc.gov/%3Ca%20href%3D%22…` (open nothing), and 10 articles had two feed items sharing one broken address → duplicate React keys on `app/higgins/scams.tsx`.
 - `learning_feeds._feed_link()` reads the href inside a wrapped link (escaped or percent-encoded); `repair_feed_links()` (startup, server.py) fixed feed items, candidates, Learn citations and KB entries, and kept one feed item per address. `government_alerts.snapshot()` now shows each official address once. Rule book (Scam Alerts) says so; stamped.
 - Tests: `test_environment_parity.py::test_a_link_the_feed_wraps_in_page_code_reads_as_the_articles_own_address`. Verified: 0 broken URLs, 0 duplicates, no duplicate-key warning on Scam Alerts.
+
+## Name: "Apollo SG" (2026-10)
+- Every user-facing "Apollo Scam Guard" now reads "Apollo SG": About screen title (`app/about.tsx`), investigation report PDF author + footer (`services/higgins/pdf_export.py`), compliance docs (`docs/compliance/*`). Home-screen app label stays "Apollo" (`app.config.js`).
+
+## Fix: Higgins answer scrubbed before the shared report is built (2026-10)
+- `InvestigationView.tsx` and `app/patrol/[id].tsx` pass `scrubMessage(response.overview)` / `scrubMessage(response.explanationMarkdown)` into `buildReport`, so both screens dedupe and show the same cleaned text. `tests/messageGuardrails.test.ts` passes again (917/917).
+
+## Report: the same point in other words is said once (2026-10)
+- `reportSections.ts` `Said.repeats()` also drops a sentence when ¾ of its meaningful words (stop words removed, light plural stem) are in one sentence already said, with the same yes/no (a negation is never merged into its opposite). The "not taken further" reason is attached to the How sentence that gives the same reason in other words.
+- TC FlyBy (`teddy/report.py`): "How Apollo checked" and the scope share one sentence (`_checked()`), and the official-threat reason uses one phrase in both places.
+- Verified with a live AusPost phishing check: Ask Higgins and the Threat detail show the identical report: "What it means" once, How once with the reason once. Tests: `tests/reportSections.test.ts` (2 new), frontend 919/919, backend teddy/triage 42 pass.

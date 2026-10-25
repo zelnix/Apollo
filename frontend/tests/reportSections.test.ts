@@ -1,0 +1,87 @@
+// Ask Higgins and a threat's Overview build their report the same way, and say each fact once.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { buildReport, sentences } from "../src/domain/reportSections.ts";
+
+// The Linkt check from the preview, exactly as TC FlyBy settled it.
+const linkt = {
+  overview: "What you sent raises a concern: linkt-au-pay.top carries Linkt's name, but it is not Linkt's domain (linkt.com.au). Nothing here proves it's a scam, but don't act on it until you've checked it through a channel you trust.",
+  explanationMarkdown: "**What was found**\n- linkt-au-pay.top carries Linkt's name, but it is not Linkt's domain (linkt.com.au).\n\n**What it means**\nApollo's checks established the warning sign above. That's reason to be careful, but not enough to call it a scam.\n\n**How Apollo checked**\nTC FlyBy checked what you sent using Apollo's knowledge base and a targeted web search. Magnum DI's deeper analysis wasn't needed, because it couldn't change the outcome or what to do.",
+  attentionReason: "Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
+  findings: [{ id: "f1", text: "linkt-au-pay.top carries Linkt's name, but it is not Linkt's domain (linkt.com.au).", basis: "observation" as const, confidence: "medium" as const, evidenceIds: [], sourceIds: [] }],
+  uncertainties: [
+    "TC FlyBy's search found no record for linkt-au-pay.top: Apollo's knowledge base has nothing on linkt-au-pay.top.",
+    "Not taken further, because it couldn't change the outcome or what to do: impersonation: whether the material genuinely comes from Linkt.",
+    "Not taken further, because it couldn't change the outcome or what to do: message and deception analysis of the submitted material (requests, pressure, persuasion, intent).",
+  ],
+  scope: "TC FlyBy checked the submitted material using Apollo's knowledge base and a targeted web search. Nothing was opened or fetched from the destination, no one was contacted and no account was accessed.",
+  alreadySaid: ["Settled by TC FlyBy — Established warning signs: its checks found real warning signs, but not enough to call it a scam."],
+};
+
+test("each fact appears once: the finding the answer states, the rule's restatement and the repeated scope are gone", () => {
+  const r = buildReport(linkt);
+  assert.deepEqual(r.answer, [linkt.overview]);
+  assert.deepEqual(r.found, [], "the only finding is already in the answer");
+  assert.deepEqual(r.means, [linkt.attentionReason], "'What it means' kept only what the Settled-by line doesn't say");
+  assert.deepEqual(r.uncertain, [linkt.uncertainties[0]]);
+  assert.equal(r.how.length, 1);
+  const how = r.how[0];
+  assert.match(how, /^TC FlyBy checked what you sent using Apollo's knowledge base and a targeted web search\. Magnum DI's deeper analysis wasn't needed/);
+  assert.match(how, /So these weren't taken further: impersonation \(whether the material genuinely comes from Linkt\); message and deception analysis/);
+  assert.match(how, /Nothing was opened or fetched from the destination, no one was contacted and no account was accessed\.$/);
+  assert.equal((how.match(/couldn't change the outcome/g) ?? []).length, 1, "the reason is said once");
+  assert.equal((how.match(/targeted web search/g) ?? []).length, 1, "'What this covered' merged into 'How Apollo checked'");
+});
+
+// The AusPost link check from the preview: an official source already lists it (stored with the older wording).
+const auspost = {
+  overview: "Apollo's blocklist and Google Safe Browsing lists testsafebrowsing.appspot.com as a phishing (social engineering) site. Don't act on it — if you need to, contact AusPost yourself.",
+  explanationMarkdown: "**What was found**\n- Apollo's blocklist and Google Safe Browsing lists testsafebrowsing.appspot.com as a phishing (social engineering) site.\n\n**What it means**\nAn official safety source has already identified this as dangerous, so there's nothing left to weigh up: acting on it would put your money, accounts or device at risk.\n\n**How Apollo checked**\nTC FlyBy settled this with official source checks. Magnum DI's deeper analysis wasn't needed, because the result above already settles what to do.",
+  attentionReason: "An official source has already identified it as dangerous, so acting on it puts your money or accounts at risk.",
+  uncertainties: ["Not taken further, because the official result already settles what to do: impersonation: whether the material genuinely comes from AusPost."],
+  scope: "TC FlyBy checked the submitted material using official source checks. Nothing was opened or fetched from the destination, no one was contacted and no account was accessed.",
+};
+
+test("the same point in other words is said once: 'What it means' and the reason a question wasn't taken further", () => {
+  const r = buildReport(auspost);
+  assert.deepEqual(r.means, ["An official safety source has already identified this as dangerous, so there's nothing left to weigh up: acting on it would put your money, accounts or device at risk."]);
+  const how = r.how[0];
+  assert.match(how, /because the result above already settles what to do\. So these weren't taken further: impersonation \(whether the material genuinely comes from AusPost\)\./);
+  assert.equal((how.match(/settles what to do/g) ?? []).length, 1, "the reason is said once");
+});
+
+test("a negation is never merged into the statement it contradicts", () => {
+  const r = buildReport({ overview: "Apollo found the link on an official safety list of phishing sites.", attentionReason: "Apollo found the link was not on any official safety list of phishing sites." });
+  assert.equal(r.means.length, 1);
+});
+
+
+test("a finding the answer doesn't state is listed, with how it was established", () => {
+  const r = buildReport({ ...linkt, findings: [...linkt.findings, { id: "f2", text: "The domain was registered 3 days ago.", basis: "observation", confidence: "high", evidenceIds: [], sourceIds: [] }] });
+  assert.deepEqual(r.found, [{ text: "The domain was registered 3 days ago.", detail: "Observed · High confidence" }]);
+});
+
+test("a threat with no investigation uses what Apollo recorded, still once each", () => {
+  const r = buildReport({ overview: "Apollo blocked a suspicious connection.", fallbackFound: ["Apollo blocked a suspicious connection.", "The address is on Apollo's blocklist."], fallbackMeans: "Nothing reached your phone from it." });
+  assert.deepEqual(r.answer, ["Apollo blocked a suspicious connection."]);
+  assert.deepEqual(r.found, [{ text: "The address is on Apollo's blocklist.", detail: null }]);
+  assert.deepEqual(r.means, ["Nothing reached your phone from it."]);
+  assert.deepEqual(r.how, []);
+});
+
+test("other sections an investigation writes keep their heading; sources are the ones it used", () => {
+  const r = buildReport({
+    overview: "This matches a known toll scam.",
+    explanationMarkdown: "**What Apollo's knowledge base adds** (general knowledge, not evidence about what you sent)\n- Toll scams ask you to pay a small fee.",
+    sources: [{ id: "s1", url: "https://scamwatch.gov.au", title: "Scamwatch", retrievedAt: "", retrieval: "fetched", authority: "official", authorityBasis: "" },
+              { id: "s2", url: "https://x.example", title: "X", retrievedAt: "", retrieval: "fetched", authority: "unknown", authorityBasis: "" }],
+    sourceIds: ["s1"],
+  });
+  assert.deepEqual(r.more, [{ title: "What Apollo's knowledge base adds", paragraphs: ["(general knowledge, not evidence about what you sent)", "Toll scams ask you to pay a small fee."] }]);
+  assert.deepEqual(r.sources.map((s) => s.id), ["s1"]);
+});
+
+test("sentences split at a full stop followed by a space, never inside an address", () => {
+  assert.deepEqual(sentences("It is not linkt.com.au. Check it."), ["It is not linkt.com.au.", "Check it."]);
+});

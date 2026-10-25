@@ -197,15 +197,16 @@ class TestEnforcementEvidenceGate:
         assert any(e["event_id"] == eid and e["state"] == "barking" and e["verified_block"] is False for e in rg.json())
 
     def test_patch_can_touch_other_fields_on_an_already_verified_biting_event(self):
-        # Current contract is stricter: patching state/status of a verified-biting event can be
-        # rejected when stored packet evidence cannot be re-validated.
+        # The stored packet evidence re-validates (its times read back with their zone), so an already
+        # verified block can be resolved by PATCH — and it stays a verified block.
         did, auth = _device()
         eid = f"evt_{uuid.uuid4().hex[:10]}"
         ev = _evidence(device_id=did)
         r = requests.post(f"{API}/patrol/events", json=_event_payload(did, eid, "biting", ev), headers=auth, timeout=15)
         assert r.status_code == 200 and r.json()["verified_block"] is True
         rp = requests.patch(f"{API}/patrol/events/{eid}", params={"device_id": did}, json={"state": "biting", "status": "resolved"}, headers=auth, timeout=15)
-        assert rp.status_code == 422, rp.text
+        assert rp.status_code == 200, rp.text
+        assert rp.json()["status"] == "resolved" and rp.json()["state"] == "biting" and rp.json()["verified_block"] is True
 
     def test_patch_can_no_longer_set_verified_block_directly(self):
         did, auth = _device()

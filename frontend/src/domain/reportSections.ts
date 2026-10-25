@@ -1,0 +1,206 @@
+// One report, two screens: Ask Higgins and a threat's Overview show an investigation the same way, and each fact once.
+//   Answer → What was found → What it means → (anything else written) → What isn't certain → How Apollo checked.
+// The top card already says who settled it and why, so nothing below repeats that. A finding the answer already states
+// isn't listed again; "How Apollo checked" and "What this covered" are one section; the reasons a question wasn't taken
+// further are said once there. Pure: no React, no native imports.
+import type { Finding, SourceReference } from "../investigation/types";
+
+export interface ReportFinding { text: string; detail: string | null }
+export interface ReportSection { title: string; paragraphs: string[] }
+export interface Report {
+  answer: string[];
+  found: ReportFinding[];
+  means: string[];
+  more: ReportSection[];
+  uncertain: string[];
+  how: string[];
+  sources: SourceReference[];
+}
+
+export interface ReportInput {
+  overview: string;
+  explanationMarkdown?: string | null;
+  attentionReason?: string | null;
+  findings?: Finding[];
+  /** What was found when there is no investigation (a threat Apollo recorded on its own). */
+  fallbackFound?: string[];
+  fallbackMeans?: string | null;
+  uncertainties?: string[];
+  scope?: string | null;
+  sources?: SourceReference[];
+  sourceIds?: string[];
+  /** Already said in the top card (the settled-by sentence), so never repeated below. */
+  alreadySaid?: (string | null | undefined)[];
+}
+
+const BASIS: Record<string, string> = { observation: "Observed", user_report: "You reported", inference: "Inferred" };
+const CONFIDENCE: Record<string, string> = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
+
+/** Markdown to plain text, line by line (bullets kept as "- "). */
+function plainLine(line: string): string {
+  return line.replace(/^#{1,6}\s*/, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1")
+    .replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)").trim();
+}
+
+interface Block { title: string | null; lines: string[] }
+
+/** The explanation's own sections: a "**Title**" or "# Title" line starts one. */
+function blocks(markdown: string): Block[] {
+  const out: Block[] = [{ title: null, lines: [] }];
+  for (const raw of markdown.split("\n")) {
+    const heading = raw.match(/^\s*(?:#{1,6}\s+(.+?)|\*\*(.+?)\*\*\s*(.*))\s*$/);
+    if (heading && (heading[1] || (heading[2] && !/[.!?]$/.test(heading[2])))) {
+      const title = plainLine(heading[1] ?? heading[2]);
+      out.push({ title, lines: heading[3] ? [plainLine(heading[3])] : [] });
+    } else if (raw.trim()) {
+      out[out.length - 1].lines.push(raw.trim());
+    }
+  }
+  return out.filter((b) => b.title || b.lines.length);
+}
+
+const isBullet = (line: string) => /^[-*•]\s+/.test(line);
+const unbullet = (line: string) => plainLine(line.replace(/^[-*•]\s+/, ""));
+
+/** Paragraphs of a block; consecutive bullets stay separate items. */
+function paragraphs(lines: string[]): string[] {
+  return lines.map((l) => (isBullet(l) ? unbullet(l) : plainLine(l))).filter(Boolean);
+}
+
+/** Sentences, split only where a full stop is followed by a space — "linkt.com.au" stays whole. */
+export function sentences(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if ((ch === "." || ch === "!" || ch === "?") && (i + 1 === text.length || /\s/.test(text[i + 1]))) {
+      out.push(text.slice(start, i + 1).trim());
+      start = i + 1;
+    }
+  }
+  const rest = text.slice(start).trim();
+  if (rest) out.push(rest);
+  return out.filter(Boolean);
+}
+
+const words = (text: string) => text.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9'\s]/g, " ").split(/\s+/).filter(Boolean);
+const normal = (text: string) => words(text).join(" ");
+const grams = (w: string[], n = 4) => w.length < n ? [w.join(" ")] : Array.from({ length: w.length - n + 1 }, (_, i) => w.slice(i, i + n).join(" "));
+// Words that carry no meaning of their own. Negations ("not", "no", "isn't") are kept: they change what's said.
+const STOP = new Set(("a an the this that these those it its it's is are was were be been being so to of on in at or and but with for by as " +
+  "from your you there there's here what which who how would will can could has have had do does did if then than also just into about").split(" "));
+const stem = (w: string) => w.replace(/'s$/, "").replace(/(?<=[a-z]{3})s$/, "");
+const meaning = (text: string) => new Set(words(text).filter((w) => !STOP.has(w)).map(stem));
+/** Share of `a`'s meaningful words that `b` also has. */
+const overlap = (a: Set<string>, b: Set<string>) => { let hit = 0; for (const w of a) if (b.has(w)) hit++; return a.size ? hit / a.size : 0; };
+const negated = (m: Set<string>) => [...m].some((w) => w === "not" || w === "no" || w === "never" || w.endsWith("n't"));
+/** The same point in other words: three quarters of its meaningful words, and the same yes-or-no. */
+const sameMeaning = (a: Set<string>, b: Set<string>) => overlap(a, b) >= 0.75 && negated(a) === negated(b);
+
+class Said {
+  private texts: string[] = [];
+  private gramSet = new Set<string>();
+  private meanings: Set<string>[] = [];
+  add(text: string) {
+    const n = normal(text); if (!n) return;
+    this.texts.push(n);
+    for (const g of grams(n.split(" "))) this.gramSet.add(g);
+    for (const s of sentences(text)) { const m = meaning(s); if (m.size) this.meanings.push(m); }
+  }
+  /** Already said word for word, inside something longer. */
+  contains(text: string) { const n = normal(text); return !!n && this.texts.some((t) => t.includes(n)); }
+  /** Mostly said already: word for word, in other words (three quarters of its meaningful words are in one
+   *  sentence already said), or half or more of its four-word runs have appeared. */
+  repeats(text: string) {
+    if (this.contains(text)) return true;
+    const m = meaning(text);
+    if (m.size >= 5 && this.meanings.some((said) => sameMeaning(m, said))) return true;
+    const g = grams(words(text));
+    if (g.length < 2) return false;
+    return g.filter((x) => this.gramSet.has(x)).length / g.length >= 0.5;
+  }
+}
+
+const NOT_TAKEN = /^Not taken further, because (.+?): (.+)$/i;
+
+/** "impersonation: whether it's from Linkt" reads as "impersonation (whether it's from Linkt)". */
+function topic(text: string): string {
+  const t = text.trim().replace(/\.$/, "");
+  const m = t.match(/^([^:()]{1,40}): (.+)$/);
+  return m ? `${m[1]} (${m[2]})` : t;
+}
+
+export function buildReport(input: ReportInput): Report {
+  const said = new Said();
+  for (const line of input.alreadySaid ?? []) if (line) said.add(line);
+
+  const explanation = blocks(input.explanationMarkdown ?? "");
+  const section = (re: RegExp) => explanation.filter((b) => b.title && re.test(b.title)).flatMap((b) => paragraphs(b.lines));
+  const FOUND = /^what (was|apollo|tc flyby|magnum di) found/i, MEANS = /^what it means/i, HOW = /^how apollo (checked|answered)/i;
+
+  // 1. The answer: Higgins' overview, then anything the explanation says before its first heading.
+  const answer: string[] = [];
+  for (const para of [input.overview, ...explanation.filter((b) => !b.title).flatMap((b) => paragraphs(b.lines))]) {
+    const kept = sentences(para).filter((s) => !said.repeats(s));
+    if (kept.length) { answer.push(kept.join(" ")); kept.forEach((s) => said.add(s)); }
+  }
+
+  // 2. What was found — each fact once; one the answer already states isn't listed again.
+  const candidates: ReportFinding[] = input.findings?.length
+    ? input.findings.map((f) => ({ text: plainLine(f.text), detail: [BASIS[f.basis] ?? f.basis, CONFIDENCE[f.confidence] ?? f.confidence].filter(Boolean).join(" · ") || null }))
+    : [...section(FOUND), ...(input.fallbackFound ?? [])].map((text) => ({ text: plainLine(text), detail: null }));
+  const found: ReportFinding[] = [];
+  for (const f of candidates) {
+    if (!f.text || said.contains(f.text)) continue;
+    found.push(f);
+    said.add(f.text);
+  }
+
+  // 3. What it means — a paragraph that mostly restates what's above is left out.
+  const means: string[] = [];
+  for (const para of [...section(MEANS), ...(input.fallbackMeans ? [input.fallbackMeans] : []), ...(input.attentionReason ? [input.attentionReason] : [])]) {
+    const all = sentences(para);
+    const kept = all.filter((s) => !said.repeats(s));
+    if (!kept.length || kept.length * 2 <= all.length && all.length > 1) continue;
+    means.push(kept.join(" "));
+    kept.forEach((s) => said.add(s));
+  }
+
+  // Anything else the investigation wrote, under its own heading, once.
+  const more: ReportSection[] = [];
+  for (const b of explanation) {
+    if (!b.title || FOUND.test(b.title) || MEANS.test(b.title) || HOW.test(b.title)) continue;
+    const paras = paragraphs(b.lines).filter((p) => !said.repeats(p));
+    if (paras.length) { more.push({ title: b.title, paragraphs: paras }); paras.forEach((p) => said.add(p)); }
+  }
+
+  // 4. What isn't certain. Questions not taken further are explained once, under how Apollo checked.
+  const notTaken = new Map<string, string[]>();
+  const uncertain: string[] = [];
+  for (const raw of input.uncertainties ?? []) {
+    const line = plainLine(raw);
+    const m = line.match(NOT_TAKEN);
+    if (m) { notTaken.set(m[1], [...(notTaken.get(m[1]) ?? []), topic(m[2])]); continue; }
+    if (!line || said.repeats(line)) continue;
+    uncertain.push(line);
+    said.add(line);
+  }
+
+  // 5. How Apollo checked — its method, what it left alone and what it didn't open, in one place.
+  const how: string[] = [];
+  for (const s of [...section(HOW), input.scope ?? ""].flatMap((p) => sentences(p))) {
+    if (said.repeats(s)) continue;
+    how.push(s);
+    said.add(s);
+  }
+  for (const [reason, topics] of notTaken) {
+    // Said right after the sentence that already gives the reason (in the same or other words), else on its own.
+    const why = meaning(reason);
+    const at = how.findIndex((s) => { const after = normal(s).split(" because ")[1]; return !!after && sameMeaning(why, meaning(after)); });
+    if (at >= 0) how.splice(at + 1, 0, `So these weren't taken further: ${topics.join("; ")}.`);
+    else how.push(`Not taken further, because ${reason}: ${topics.join("; ")}.`);
+  }
+
+  const used = new Set(input.sourceIds ?? []);
+  return { answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) };
+}

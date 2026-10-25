@@ -10,7 +10,7 @@ provider timeout handling, hard expiry, migration.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -29,7 +29,7 @@ def _make_indicator(
     expiry_delta: timedelta = timedelta(hours=23),
     consecutive_failures: int = 0,
 ) -> dict:
-    ts = datetime.utcnow()
+    ts = datetime.now(timezone.utc)
     return {
         "indicator_id": f"ti-test-{secrets.token_hex(8)}",
         "hostname": hostname,

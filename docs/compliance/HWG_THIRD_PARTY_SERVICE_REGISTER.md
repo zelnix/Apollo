@@ -5,7 +5,7 @@
 **Status**: Active
 **Effective**: June 2026
 **Accountable Organisation**: Harmony Wellness Group (HWG)
-**App**: Apollo Scam Guard (Apollo)
+**App**: Apollo SG (Apollo)
 **Review Cycle**: Quarterly or upon service change
 
 ---
@@ -89,7 +89,7 @@ The exact infrastructure providers, active integrations and applicable privacy d
 
 ### Changes to Third-Party Services and Integrations
 
-Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo Scam Guard.
+Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo SG.
 
 Such changes may be made to improve security protection, investigative accuracy, service reliability, performance, privacy, functionality or cost efficiency, or to respond to changes in provider availability, technology or regulatory requirements.
 

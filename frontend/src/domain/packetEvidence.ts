@@ -1,6 +1,9 @@
 // Consumer policy, deliberately separate from the frozen public SDK contract.
 import type { EnforcementEvidence } from '../security/PlatformCapabilityProfile';
 import type { PatrolEnforcementEvidence, PatrolEvent } from './types';
+import { asUtc } from './utcTime.ts';
+
+const TIME_FIELDS = ['occurred_at', 'resolved_at', 'reopened_at', 'previously_resolved_at', 'detection_updated_at', 'investigation_completed_at'] as const;
 
 export const evidenceToken = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$/.test(v);
 export const domainOnly = (v: unknown): v is string => typeof v === 'string' && v.length <= 253 &&
@@ -33,7 +36,10 @@ export function eventHasPacketProof(event: PatrolEvent): boolean {
     (!e!.device_id || e!.device_id === event.device_id) && Date.parse(e!.observed_at) === Date.parse(event.occurred_at);
 }
 
-export function normalizeHistoricalEvent(e: PatrolEvent): PatrolEvent {
+export function normalizeHistoricalEvent(input: PatrolEvent): PatrolEvent {
+  // Earlier server copies sent these times without their zone; they are UTC, so they're marked as such.
+  const e: PatrolEvent = { ...input };
+  for (const key of TIME_FIELDS) if (typeof e[key] === 'string') (e as unknown as Record<string, unknown>)[key] = asUtc(e[key] as string);
   if ((e.state === 'biting' || e.verified_block) && !eventHasPacketProof(e)) return {
     ...e, state: 'barking', verified_block: false, evidence_provenance: 'incomplete',
     status: e.resolved_at ? 'resolved' : 'active', enforcement_evidence: null,

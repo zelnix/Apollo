@@ -250,7 +250,7 @@ async def repair_feed_links() -> dict:
         {"$group": {"_id": "$url", "n": {"$sum": 1}, "rows": {"$push": {"id": "$_id", "seen": "$last_checked_at", "explained": {"$ifNull": ["$scam_analysis", False]}}}}},
         {"$match": {"n": {"$gt": 1}}}])
     async for group in copies:
-        rank = lambda r: (bool(r["explained"]), r["seen"] or datetime.min)  # noqa: E731
+        rank = lambda r: (bool(r["explained"]), r["seen"] or datetime.min.replace(tzinfo=timezone.utc))  # noqa: E731
         keep = max(group["rows"], key=rank)["id"]
         result = await db.learning_feed_items.delete_many({"_id": {"$in": [r["id"] for r in group["rows"] if r["id"] != keep]}})
         fixed["copies_removed"] += result.deleted_count

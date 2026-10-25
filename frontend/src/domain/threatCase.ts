@@ -390,3 +390,9 @@ export function formatDateTime(iso: string | null | undefined): string {
     hour: "numeric", minute: "2-digit",
   });
 }
+
+/** Just the time of day, as Ask Higgins shows it under "Higgins". */
+export function formatTime(iso: string | null | undefined): string | null {
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
+}

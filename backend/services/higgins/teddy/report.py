@@ -79,10 +79,14 @@ def _subject(plan_: Plan) -> str:
     return (", ".join(plan_.entities.hosts[:3]) or "the link") if plan_.link_only else "what you sent"
 
 
-def _scope(plan_: Plan, how: str) -> str:
+def _checked(plan_: Plan, how: str) -> str:
+    """One sentence, used word for word by "How Apollo checked" and the scope, so the report says it once."""
     examined = "the submitted link" + ("s" if len(plan_.entities.hosts) > 1 else "") if plan_.link_only else "the submitted material"
-    return (f"TC FlyBy checked {examined} using {how}. Nothing was opened or fetched from the destination, no one was contacted "
-            "and no account was accessed.")
+    return f"TC FlyBy checked {examined} using {how}."
+
+
+def _scope(plan_: Plan, how: str) -> str:
+    return f"{_checked(plan_, how)} Nothing was opened or fetched from the destination, no one was contacted and no account was accessed."
 
 
 def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, route: str) -> dict:
@@ -109,14 +113,14 @@ def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_it
     means = ("An official safety source has already identified this as dangerous, so there's nothing left to weigh up: "
              "acting on it would put your money, accounts or device at risk.")
     found = "\n".join(f"- {f['text']}" for _, f in decisive)
+    settled = "the official result already settles what to do"
     explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n"
-                   f"**How Apollo checked**\nTC FlyBy settled this with {ROUTE_LABEL[route]}. Magnum DI's deeper analysis wasn't needed, "
-                   "because the result above already settles what to do.")
+                   f"**How Apollo checked**\n{_checked(plan_, ROUTE_LABEL[route])} Magnum DI's deeper analysis wasn't needed, because {settled}.")
     return {
         "overview": f"{lead['text']} Don't act on it" + (f" — if you need to, contact {brand} yourself." if brand else "."),
         "explanationMarkdown": explanation, "assessment": "concern_found", "outcome": "confirmed_threat", "attention": "action_needed",
         "attentionReason": "An official source has already identified it as dangerous, so acting on it puts your money or accounts at risk.",
-        "findings": findings[:8], "uncertainties": _missing(checks, "the official result already settles what to do")[:4] or
+        "findings": findings[:8], "uncertainties": _missing(checks, settled)[:4] or
         ["Anything outside the submitted material — earlier messages or the sender's history — wasn't examined."],
         "scope": _scope(plan_, ROUTE_LABEL[route]), "sourceIds": sorted({s for f in findings for s in f["sourceIds"]}),
         "remainingEvidenceIds": [], "actions": actions, "recommendedActionIndex": 0, "question": None, "completion": "complete",
@@ -143,7 +147,7 @@ def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item
         uncertainties = ["Apollo can't confirm who actually sent this."]
     found = "\n".join(f"- {f['text']}" for _, f in facts) or "- No warning signs in anything Apollo checked."
     explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n**How Apollo checked**\n"
-                   f"TC FlyBy settled this with {ROUTE_LABEL[route]}; nothing in it needed Magnum DI's deeper analysis.")
+                   f"{_checked(plan_, ROUTE_LABEL[route])} Nothing in it needed Magnum DI's deeper analysis.")
     return {
         "overview": overview, "explanationMarkdown": explanation, "assessment": "no_concern_found_within_scope", "outcome": "no_scam_indicators",
         "attention": "none", "attentionReason": None, "findings": findings[:8],
@@ -215,7 +219,7 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
                   f"Don't use the link — go to {brand} directly through their official app or website."),
         means=(f"A genuine {brand} message has no reason to send you to another domain, and what's known about that address backs that up. "
                "That's enough to treat it as concerning without weighing up the wording."),
-        how=f"TC FlyBy checked the material using {_routes(checks)}. {_NOT_NEEDED}",
+        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
         reason=f"Anything typed into that link goes to whoever runs {place}, not {brand}.",
         actions=[_action("Don't use the link", f"Don't open {place} and don't enter anything on it."),
                  _action(f"Contact {brand} yourself", f"Contact {brand} using their official app, a website address you type yourself, or the number on your card or statement."),
@@ -242,7 +246,7 @@ def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
                   "it until you've checked it through a channel you trust."),
         means=(f"Apollo's checks established the warning sign{'s' if len(facts) > 1 else ''} above. That's reason to be careful, but not enough "
                "to call it a scam."),
-        how=f"TC FlyBy checked {subject} using {_routes(checks)}. {_NOT_NEEDED}",
+        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
         reason="Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
         uncertainties=[*_missing(checks, "it couldn't change the outcome or what to do"),
                        *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
@@ -259,7 +263,7 @@ def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], ted
         overview=(f"Apollo couldn't establish enough about {subject} to say either way. Nothing it found raises a concern, but that isn't the same "
                   f"as it being safe — {after}"),
         means="Some of what would settle this couldn't be checked, so the available evidence can't establish more.",
-        how=f"TC FlyBy checked {subject} using {_routes(checks)}. {_NOT_NEEDED}",
+        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
         reason="Something Apollo couldn't fully check may still be unsafe.",
         uncertainties=[*_missing(checks, None), *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
 

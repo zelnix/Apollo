@@ -4,7 +4,7 @@
 **Version**: 2.0
 **Status**: Post-Implementation Consolidation — Internal Conformity Assessment
 **Effective**: June 2026 (consolidation of Packages 1–8, originally adopted February 2026)
-**App**: Apollo Scam Guard (Apollo)
+**App**: Apollo SG (Apollo)
 **Accountable Organisation**: Harmony Wellness Group (HWG)
 **Owner**: Apollo Engineering
 **Review Cycle**: Quarterly or upon material architecture change
@@ -123,7 +123,7 @@ Apollo is a mobile-first cybersecurity application comprising:
 
 Harmony Wellness Group is responsible for Apollo's overall privacy, cybersecurity, information security, AI governance, regulatory obligations and third-party service arrangements.
 
-Apollo Scam Guard is responsible for implementing and enforcing the applicable technical controls within the application and its supporting services.
+Apollo SG is responsible for implementing and enforcing the applicable technical controls within the application and its supporting services.
 
 Application compliance is assessed against functionality, security controls, privacy protections and verifiable implementation evidence.
 
@@ -356,7 +356,7 @@ Privacy controls must not compromise Apollo's security evidence or Higgins' inve
 
 ## 6. Third-Party Services and Data Sharing
 
-**App**: Apollo Scam Guard (Apollo)
+**App**: Apollo SG (Apollo)
 **Accountable Organisation**: Harmony Wellness Group (HWG)
 
 Harmony Wellness Group is accountable for Apollo's use of third-party services, including their selection, configuration, data-sharing arrangements and oversight.
@@ -384,7 +384,7 @@ The exact infrastructure providers, active integrations and applicable privacy d
 
 ### Changes to Third-Party Services and Integrations
 
-Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo Scam Guard.
+Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo SG.
 
 Such changes may be made to improve security protection, investigative accuracy, service reliability, performance, privacy, functionality or cost efficiency, or to respond to changes in provider availability, technology or regulatory requirements.
 

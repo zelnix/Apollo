@@ -30,20 +30,19 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
-import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
-import { SettledReasonLine } from "@/src/components/SettledReasonLine";
-import { ServerCopyNote } from "@/src/components/ServerCopyNote";
-import { assessmentLabel, attentionLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
+import { ReportBody } from "@/src/components/report/ReportBody";
+import { ReportHeader } from "@/src/components/report/ReportHeader";
+import { checkKind } from "@/src/components/report/checkKind";
+import { buildReport, type Report } from "@/src/domain/reportSections";
+import { assessmentLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
 import { listLocalReports, saveLocalReport, deleteLocalReport } from "@/src/investigation/localReports";
 import { canResubmit, resubmitLabels, resubmitWaitSeconds } from "@/src/investigation/resubmit";
-import type { ActionProposal, Attention, EvidenceItem, Gate, SourceReference } from "@/src/investigation/types";
+import type { ActionProposal, Attention, EvidenceItem } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
-
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,12 +175,7 @@ const useStyles = makeStyles((c) => ({
 /** Attention projection → Apollo tone. */
 export function attentionTone(attention: Attention): Tone { return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting"; }
 
-const BASIS_LABEL: Record<string, string> = { observation: "Observed", user_report: "You reported", inference: "Inferred" };
-const CONFIDENCE_LABEL: Record<string, string> = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
-
-function plain(markdown: string) {
-  return scrubMessage(markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)"));
-}
+const EMPTY_REPORT: Report = { answer: [], found: [], means: [], more: [], uncertain: [], how: [], sources: [] };
 
 /** Build a copyable diagnostics record from failure data. */
 function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefined, caseId?: string): string {
@@ -245,23 +239,6 @@ function higginsExplanation(failure: Record<string, unknown> | null | undefined,
   if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
   if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
   return "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing.";
-}
-
-/** Gate-specific display info for the status card. */
-function gateInfo(gates: Gate[] | undefined): { title: string; IconComponent: React.ComponentType<{ size: number; color: string }>; iconBg: string; iconColor: string } {
-  const primary = gates?.[0];
-  switch (primary) {
-    case "text": return { title: "Message check", IconComponent: MessageSquare, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A" };
-    case "call": return { title: "Call check", IconComponent: Phone, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "email": return { title: "Email check", IconComponent: Mail, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "site": case "link": return { title: "Website check", IconComponent: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "file": return { title: "File check", IconComponent: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "app": return { title: "App check", IconComponent: Search, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "device": return { title: "Device check", IconComponent: Shield, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "account": return { title: "Account check", IconComponent: Shield, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    case "network": return { title: "Network check", IconComponent: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-    default: return { title: "Investigation", IconComponent: Search, iconBg: "#DBEAFE", iconColor: "#1E3A5F" };
-  }
 }
 
 /** Investigation status for the badge. */
@@ -399,13 +376,6 @@ function timelineDotColor(type: string): string {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
-
-function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeof useStyles> }) {
-  return <Pressable style={s.source} onPress={() => void WebBrowser.openBrowserAsync(source.url)} accessibilityRole="link" testID={`inv-source-${source.id}`}>
-    <Text style={s.link}>{source.title || source.url}</Text>
-    <Text style={s.muted}>{source.authority === "official" ? "Official platform/vendor source" : source.authority === "self_claimed" ? "Fetched from the destination itself \u2014 not independent" : "Search result \u2014 publisher not independently verified"} \u00B7 {scrubMessage(source.retrieval)}</Text>
-  </Pressable>;
-}
 
 /** Single row in the diagnostic detail display. */
 function DiagRow({ label, value, s }: { label: string; value: unknown; s: ReturnType<typeof useStyles> }) {
@@ -684,16 +654,22 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const showResubmit = phase === "failed" && canResubmit(failure);
   const resubmit = resubmitLabels(waitSeconds, retrying);
   const resubmitDisabled = retrying || waitSeconds > 0;
-  const usedSources = sources.filter((src) => response?.sourceIds.includes(src.id));
   const inventory = caseData?.inventory;
   const showTabs = !!(response || (failure && caseData && !working));
+  // Higgins' report, built the same way as a threat's Overview: each fact once.
+  const report = useMemo(() => response ? buildReport({
+    overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
+    findings: response.findings, uncertainties: response.uncertainties, scope: response.scope, sources, sourceIds: response.sourceIds,
+    alreadySaid: [caseData?.settledReason?.sentence],
+  }) : null, [response, sources, caseData?.settledReason]);
+  const higginsTime = caseData ? new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   // ── Categorised evidence items ──
   const originalEvidence = useMemo(() => evidenceItems.filter((e) => e.origin === "user_submission" || e.origin === "device_observation"), [evidenceItems]);
   const derivedEvidence = useMemo(() => evidenceItems.filter((e) => e.origin !== "user_submission" && e.origin !== "device_observation"), [evidenceItems]);
 
   // ── Status info ──
-  const gate = gateInfo(caseData?.gates as Gate[] | undefined);
+  const kind = checkKind(caseData?.gates?.[0]);
   const status = statusInfo(phase, response, failure);
   const timeline = useMemo(() => buildTimeline(state), [state]);
 
@@ -734,34 +710,19 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
 
     {/* ── Status Card + Four-Tab Report ── */}
     {showTabs ? <>
-      {/* ── Status Card ── */}
-      <View style={s.statusCard} testID="inv-status-card">
-        <View style={s.statusRow}>
-          <View style={[s.statusIconWrap, { backgroundColor: gate.iconBg }]}>
-            <gate.IconComponent size={16} color={gate.iconColor} />
-          </View>
-          <Text style={s.statusTitle}>{gate.title}</Text>
-        </View>
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: "row" as const, flexWrap: "wrap" as const, gap: spacing.sm }}>
-            {outcome ? <View style={[s.statusBadge, { backgroundColor: outcomeBg }]} testID="inv-outcome" accessibilityLabel={`Outcome: ${outcome}`}>
-              <OutcomeIcon size={12} color={outcomeColor} />
-              <Text style={[s.statusBadgeText, { color: outcomeColor }]}>{outcome}</Text>
-            </View> : null}
-            <View style={[s.statusBadge, { backgroundColor: statusBadgeBg }]}>
-              <StatusIcon size={12} color={statusBadgeColor} />
-              <Text style={[s.statusBadgeText, { color: statusBadgeColor }]}>{status.label}</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md }}>
-            {caseData ? <Text style={s.statusTimestamp}>{new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text> : null}
-            <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
-          </View>
-          {outcome ? <OutcomeExplainerLink outcome={response?.outcome} testID="inv-outcome-explainer" /> : null}
-          {response ? <SettledReasonLine reason={caseData?.settledReason} testID="inv-settled-reason" /> : null}
-          {response && !response.question ? <ServerCopyNote caseId={caseData?.id} live={caseData} testID="inv-server-copy" /> : null}
-        </View>
-      </View>
+      {/* ── Status Card ── (shared with a threat's Overview) */}
+      <ReportHeader
+        kind={kind} testID="inv-status-card" ids={{ explainer: "inv-outcome-explainer", settled: "inv-settled-reason", serverCopy: "inv-server-copy" }}
+        badges={[
+          ...(outcome ? [{ label: outcome, bg: outcomeBg, fg: outcomeColor, Icon: OutcomeIcon, testID: "inv-outcome" }] : []),
+          { label: status.label, bg: statusBadgeBg, fg: statusBadgeColor, Icon: StatusIcon, testID: "inv-status" },
+        ]}
+        time={caseData ? new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null}
+        meta={outcome ? null : `Confidence: ${response ? assessmentLabel(response.assessment) : "Unavailable"}`}
+        outcome={outcome ? response?.outcome : null}
+        settledReason={response ? caseData?.settledReason : null}
+        serverCopyCaseId={caseData?.id} liveCase={caseData} showServerCopy={!!response && !response.question}
+      />
 
       {/* A simulated answer is labelled on every tab, in every build. */}
       {caseData && response ? <SimulatedAnswerNotice caseId={caseData.id} refreshKey={response.revision} /> : null}
@@ -772,59 +733,13 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {/* ━━━━ TAB 1: OVERVIEW — Higgins' Briefing ━━━━ */}
       {activeTab === "overview" ? (
         <Card style={[s.card, { gap: spacing.md }]} testID="inv-tab-overview-content">
-          {/* Higgins header */}
-          <View style={s.higginsHeader}>
-            <View style={s.higginsAvatarWrap}>
-              <Image source={higginsAvatar} style={s.higginsAvatarImg} />
-            </View>
-            <View>
-              <Text style={s.higginsName}>Higgins</Text>
-              {caseData ? <Text style={s.higginsTime}>{new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text> : null}
-            </View>
-          </View>
-
-          {/* Conversational briefing */}
-          {response ? (
-            <Text style={s.briefingText} testID="inv-overview">{scrubMessage(response.overview)}</Text>
-          ) : failure ? (
+          {/* Higgins' report — the same sections, each said once, as a threat's Overview. */}
+          <View testID={response ? "inv-overview" : undefined}><ReportBody report={report ?? EMPTY_REPORT} time={higginsTime} ids="inv" /></View>
+          {!response && failure ? (
             <Text style={s.briefingText} testID="inv-overview">{higginsExplanation(failure as unknown as Record<string, unknown>, false)}</Text>
-          ) : error ? (
+          ) : !response && error ? (
             <Text style={s.briefingText} testID="inv-overview">{error}</Text>
           ) : null}
-
-          {/* Everything else Magnum DI returned, in full — nothing summarised away. */}
-          {response?.explanationMarkdown?.trim() ? (
-            <Text style={s.briefingText} testID="inv-explanation">{plain(response.explanationMarkdown)}</Text>
-          ) : null}
-
-          {response?.attentionReason ? <>
-            <View style={s.divider} />
-            <Text style={s.sectionTitle}>{attentionLabel(response.attention)}</Text>
-            <Text style={s.briefingText} testID="inv-attention-reason">{scrubMessage(response.attentionReason)}</Text>
-          </> : null}
-
-          {response?.findings.length ? <View style={{ gap: spacing.sm }} testID="inv-findings">
-            <Text style={s.sectionHeader}>What {investigator} found</Text>
-            {response.findings.map((finding, i) => <View key={finding.id || i} style={s.findingRow} testID={`inv-finding-${i}`}>
-              <Text style={s.text}>{scrubMessage(finding.text)}</Text>
-              <Text style={s.muted}>{BASIS_LABEL[finding.basis] ?? finding.basis} · {CONFIDENCE_LABEL[finding.confidence] ?? finding.confidence}</Text>
-            </View>)}
-          </View> : null}
-
-          {response?.uncertainties.length ? <View style={{ gap: spacing.xs }} testID="inv-uncertainties">
-            <Text style={s.sectionHeader}>What isn&apos;t certain</Text>
-            {response.uncertainties.map((line, i) => <Text key={i} style={s.briefingText}>{"\u2022"} {scrubMessage(line)}</Text>)}
-          </View> : null}
-
-          {response?.scope?.trim() ? <View style={{ gap: spacing.xs }} testID="inv-scope">
-            <Text style={s.sectionHeader}>What this covered</Text>
-            <Text style={s.briefingText}>{scrubMessage(response.scope)}</Text>
-          </View> : null}
-
-          {usedSources.length ? <View testID="inv-sources">
-            <Text style={s.sectionHeader}>Sources {investigator} used</Text>
-            {usedSources.map((source) => <SourceRow key={source.id} source={source} s={s} />)}
-          </View> : null}
 
           {/* What you can do */}
           <Text style={s.sectionHeader}>What you can do</Text>

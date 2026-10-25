@@ -52,7 +52,7 @@ export default function About() {
           />
         </View>
         <View style={s.section}>
-          <Text style={s.title}>Apollo Scam Guard</Text>
+          <Text style={s.title}>Apollo SG</Text>
           <Text style={s.body}>
             Apollo is your personal scam protection companion. With Higgins by your side, Apollo watches over your digital life — checking messages, calls, emails and websites for scams and threats.
           </Text>

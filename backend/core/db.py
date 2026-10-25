@@ -10,7 +10,9 @@ import os
 
 import core.config  # noqa: F401  (loads .env)
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+# tz_aware: every time read back is UTC-aware, so the API always sends it with its offset. A naive value went out
+# as "2026-10-25T05:33:00" and the phone read it as 5:33 in its own zone — UTC digits shown as local time.
+client = AsyncIOMotorClient(os.environ["MONGO_URL"], tz_aware=True)
 db = client[os.environ["DB_NAME"]]
 
 
