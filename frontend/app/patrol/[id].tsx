@@ -65,6 +65,8 @@ import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport } from "@/src/domain/reportSections";
+import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
+import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
@@ -285,6 +287,14 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
     ? response.actions.map((a) => ({ id: a.id, title: a.label, body: a.instruction }))
     : [{ id: "todo", title: null, body: note ?? (noAction ? "Nothing to do." : action) }];
   const hasOutcome = !!outcomeLabel(response?.outcome);
+  // "Send to family": the result, what happened, what to do and the website or number — nothing else.
+  const summary: FamilySummary = {
+    eventId: event.event_id, state: event.state, result: outcomeLabel(response?.outcome) ?? STATUS_LABELS[status],
+    headline: event.headline && !looksLikeInternalCode(event.headline) ? scrubMessage(event.headline) : (report.answer[0] ?? "A threat Apollo found"),
+    whatHappened: shortText(report.answer.join(" "), 400),
+    whatToDo: shortText(scrubMessage(note ?? (noAction ? "Nothing to do." : action)), 300),
+    involved: involvedIn(event), caseRef: threatCaseId(event), occurredAt: event.occurred_at,
+  };
 
   return (
     <View style={s.content}>
@@ -304,6 +314,8 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
           ))}
         </View>
       </Card>
+
+      <ShareWithFamily summary={summary} when={formatDateTime(event.occurred_at)} />
 
       {/* Actions */}
       {event.resolved_at ? <ReopenCase event={event} /> : <EventActions event={event} hideAsk />}

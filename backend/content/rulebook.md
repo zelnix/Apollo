@@ -523,7 +523,8 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - **Biting only for a real block** (see Apollo detection). The server rejects any Biting claim without the block evidence, and an edit can never turn a record into Biting.
 - A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
 - Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
-- **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content.
+- **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content, unless the person sends them a summary (below).
+- **Send to family** (on every threat): one tap sends linked family in Apollo a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. Apollo sends no email for this.
 - **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
 
 ---

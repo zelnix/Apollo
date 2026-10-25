@@ -35,7 +35,7 @@ const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnviron
 module.exports = {
   expo: {
   // ── core identity ────────────────────────────────────────────────────
-  name: "Apollo",
+  name: "Apollo SG",
     owner: EAS_OWNER,
     slug: EAS_SLUG,
     version: "1.1.0",

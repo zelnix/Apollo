@@ -21,6 +21,8 @@ import { CloseButton } from "@/src/components/CloseButton";
 export interface SharedAlert {
   event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string;
   indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string;
+  // Set when the person sent this summary themselves ("Send to family").
+  shared_by_owner?: boolean; result?: string; what_happened?: string; involved_label?: "Website" | "Number" | null; involved?: string | null; case_ref?: string;
 }
 
 const useStyles = makeStyles((c) => ({
@@ -88,8 +90,12 @@ export default function FamilyAlert() {
                 <Body>{alert.from_label} · {new Date(alert.occurred_at).toLocaleString()}</Body>
               </View>
               <Text style={s.headline} testID="family-alert-headline">{scrubMessage(alert.headline)}</Text>
-              <Body>{scrubMessage(alert.what_to_do)}</Body>
-              {alert.indicator_host ? <Body>Website involved: {alert.indicator_host}</Body> : null}
+              {alert.result ? <Body testID="family-alert-result">Result: {alert.result}</Body> : null}
+              {alert.what_happened && alert.what_happened !== alert.headline ? <Body testID="family-alert-what-happened">{scrubMessage(alert.what_happened)}</Body> : null}
+              <Body>{alert.result ? "What to do: " : ""}{scrubMessage(alert.what_to_do)}</Body>
+              {alert.involved ? <Body testID="family-alert-involved">{alert.involved_label ?? "Website"} involved: {alert.involved}</Body>
+                : alert.indicator_host ? <Body>Website involved: {alert.indicator_host}</Body> : null}
+              {alert.shared_by_owner ? <Body testID="family-alert-sent-by">{alert.from_label} sent you this summary{alert.case_ref ? ` (case ${alert.case_ref})` : ""}. The original message, its links and pictures stayed on their phone.</Body> : null}
               {alert.acknowledged_at ? <Pill tone="resting" label={`${alert.ack_label} · ${new Date(alert.acknowledged_at).toLocaleDateString()}`} testID="family-alert-ack-done" /> : null}
             </Card>
 

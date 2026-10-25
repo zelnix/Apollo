@@ -1,6 +1,5 @@
 // Learn with Higgins — Full Article Reading Screen.
-// Redesigned to match the approved mock-up with article header, hero illustration,
-// key takeaways, structured content sections, and share functionality.
+// Article header, structured content sections and share functionality.
 
 import * as Linking from "expo-linking";
 import * as Sharing from "expo-sharing";
@@ -10,8 +9,6 @@ import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import Clock from "lucide-react-native/icons/clock";
 import Share2 from "lucide-react-native/icons/share-2";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
-import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -61,9 +58,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// ── Takeaway icons ──────────────────────────────────────────────────────────
-const TAKEAWAY_ICONS = [TriangleAlert, ShieldCheck, CircleAlert];
-
 // ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -101,18 +95,18 @@ const useStyles = makeStyles((c) => ({
   badgeText: { fontFamily: fonts.textSemibold, fontSize: 11 },
   metaText: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
 
-  // Title area with Higgins
+  // Title area: Higgins on the left of the title, as a rounded square
   titleArea: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   titleTextBlock: { flex: 1, gap: spacing.xs },
   articleTitle: { fontFamily: fonts.displayBold, fontSize: 26, lineHeight: 32, color: c.onSurface },
   articleSummary: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
-  higginsWrap: { width: 110, height: 120, overflow: "hidden" },
-  higginsImg: { width: 110, height: 120 },
+  higginsWrap: { width: 72, height: 72, borderRadius: radius.md, overflow: "hidden", backgroundColor: c.surfaceTertiary },
+  higginsImg: { width: 72, height: 72 },
   higginsQuote: {
     fontFamily: fonts.text,
     fontSize: 12,
@@ -122,47 +116,6 @@ const useStyles = makeStyles((c) => ({
     paddingRight: spacing.lg,
     paddingBottom: spacing.xs,
   },
-
-  // Hero illustration card
-  heroCard: {
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    flexDirection: "row",
-  },
-  heroLeft: {
-    flex: 1,
-    padding: spacing.lg,
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  heroRight: {
-    flex: 1,
-    padding: spacing.lg,
-    justifyContent: "center",
-    gap: spacing.xs,
-  },
-  heroBoldText: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface },
-  heroSubText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
-
-  // Key takeaways
-  takeawaysCard: {
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    flexDirection: "row",
-    gap: spacing.md,
-  },
-  takeawayItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  takeawayIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: "center", justifyContent: "center",
-  },
-  takeawayText: { fontFamily: fonts.textSemibold, fontSize: 13, textAlign: "center", color: c.onSurface, lineHeight: 18 },
 
   // Section headings
   sectionHeading: {
@@ -342,19 +295,6 @@ export default function LearningArticleScreen() {
   const readingTime = article ? estimateReadingTime(article) : "";
   const updatedDate = article ? formatDate(article.updatedAt) : "";
 
-  // Key takeaways: first 3 section headings
-  const takeaways = article
-    ? article.sections.slice(0, 3).map((sec) => sec.heading)
-    : [];
-
-  // Hero text derived from article
-  const heroTitle = article
-    ? article.sections[0]?.heading || "Stay informed."
-    : "";
-  const heroBody = article
-    ? article.sections[0]?.paragraphs[0]?.slice(0, 80) || "Knowledge is your best defence."
-    : "";
-
   const handleShare = async () => {
     if (!article) return;
     try {
@@ -455,51 +395,17 @@ export default function LearningArticleScreen() {
           <Text style={s.metaText}>Updated {updatedDate}</Text>
         </View>
 
-        {/* Title area with Higgins */}
+        {/* Title area: Higgins on the left */}
         <View style={s.titleArea}>
+          <View style={s.higginsWrap} testID="article-higgins">
+            <Image source={higginsHeadshot} style={s.higginsImg} resizeMode="cover" accessibilityLabel="Higgins" />
+          </View>
           <View style={s.titleTextBlock}>
             <Text style={s.articleTitle} testID="article-title">{article.title}</Text>
             <Text style={s.articleSummary}>{article.summary}</Text>
           </View>
-          <View style={s.higginsWrap}>
-            <Image source={higginsHeadshot} style={s.higginsImg} resizeMode="contain" />
-          </View>
         </View>
         <Text style={s.higginsQuote}>Stay alert, stay safer together. — Higgins</Text>
-
-        {/* Hero illustration card */}
-        <View style={[s.heroCard, { backgroundColor: "#EDF2F7" }]}>
-          <View style={s.heroLeft}>
-            <TriangleAlert size={32} color="#E74C3C" />
-            <Text style={{ fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: colors.onSurfaceSecondary }}>
-              Example suspicious message
-            </Text>
-          </View>
-          <View style={s.heroRight}>
-            <Text style={s.heroBoldText}>Think before you tap.</Text>
-            <Text style={s.heroSubText}>Scammers often use urgent messages to trick you.</Text>
-          </View>
-        </View>
-
-        {/* Key takeaways */}
-        {takeaways.length > 0 ? (
-          <View style={{ gap: spacing.sm }}>
-            <Text style={s.sectionHeading}>Key takeaways</Text>
-            <View style={[s.takeawaysCard, { backgroundColor: "#E8F4FD" }]}>
-              {takeaways.map((t, i) => {
-                const Icon = TAKEAWAY_ICONS[i % TAKEAWAY_ICONS.length];
-                return (
-                  <View key={i} style={s.takeawayItem}>
-                    <View style={[s.takeawayIcon, { backgroundColor: "rgba(45,125,210,0.12)" }]}>
-                      <Icon size={22} color="#2D7DD2" />
-                    </View>
-                    <Text style={s.takeawayText}>{t}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
 
         {/* Review warning */}
         {article.reviewStatus === "due" ? (

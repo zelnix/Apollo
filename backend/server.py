@@ -299,6 +299,9 @@ app.include_router(seed_images_router, prefix="/api", tags=["learning-seed"])
 # Learning images are public (no auth needed for serving cached images)
 app.include_router(learning_router.public_router, prefix="/api", tags=["learning-public"])
 app.include_router(usage.router, prefix="/api", tags=["usage"])
+# The Apollo SG banner that emails load (public: a mail app has no device credential).
+from routers import brand as brand_router
+app.include_router(brand_router.router, prefix="/api", tags=["brand"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router

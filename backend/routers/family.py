@@ -477,3 +477,47 @@ async def list_shared_scam_alerts(device_id: str = Query(min_length=8, max_lengt
     linked = {rid for rid, _ in await _family_recipients(device_id)}
     docs = await db.shared_scam_alerts.find({"recipient_device_id": device_id}, {"_id": 0}).sort("shared_at", -1).to_list(50)
     return [{k: v for k, v in d.items() if k != "sender_device_id"} for d in docs if d.get("sender_device_id") in linked]
+
+
+
+# --------------------------------------------------------------------------- Send a threat to family (in-app)
+class ShareThreatIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    event_id: str = Field(min_length=8, max_length=64)
+    state: ApolloState
+    result: str = Field(min_length=1, max_length=60)
+    headline: str = Field(min_length=1, max_length=200)
+    what_happened: str = Field(default="", max_length=600)
+    what_to_do: str = Field(default="", max_length=400)
+    involved_label: Optional[Literal["Website", "Number"]] = None
+    involved: Optional[str] = Field(default=None, max_length=253)
+    case_ref: str = Field(default="", max_length=40)
+    occurred_at: datetime
+
+
+@router.post("/family/threats/share")
+async def share_threat(body: ShareThreatIn):
+    """The person sends one threat's short summary to their linked family: the result, what happened, what to do and
+    the website or number involved. The original message, its links and pictures never leave the phone."""
+    if bool(body.involved_label) != bool(body.involved):
+        raise HTTPException(status_code=422, detail="Say what was involved together with whether it's a website or a number.")
+    recipients = await _family_recipients(body.device_id)
+    ts = now_utc()
+    for rid, label in recipients:
+        await db.shared_events.update_one({"event_id": body.event_id, "guardian_device_id": rid}, {
+            "$set": {"event_id": body.event_id, "guardian_device_id": rid, "protected_device_id": body.device_id, "from_label": label,
+                     "state": body.state, "result": body.result, "headline": body.headline, "what_happened": body.what_happened,
+                     "what_to_do": body.what_to_do, "involved_label": body.involved_label, "involved": body.involved,
+                     "indicator_host": body.involved if body.involved_label == "Website" else None,
+                     "case_ref": body.case_ref, "occurred_at": body.occurred_at, "shared_by_owner": True, "shared_at": ts},
+            # Sent again, it's a fresh ask: the family member can answer it again.
+            "$unset": {"acknowledged_at": "", "ack_label": ""},
+            "$setOnInsert": {"created_at": ts}}, upsert=True)
+        try:
+            await send_push(recipients=[rid],
+                            data={"title": f"{label} sent you a threat to look at", "message": body.headline,
+                                  "subtext": "Tap to see what happened and what to do.", "action_url": f"/family/alert/{body.event_id}", **PUSH_FAMILY},
+                            idempotency_key=f"threat-share-{body.event_id}-{rid}-{ts.isoformat()[:16]}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("threat share push failed (non-blocking): %s", type(exc).__name__)
+    return {"shared_with": len(recipients)}

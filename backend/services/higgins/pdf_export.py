@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core import local_time
-
+from core.brand import BANNER_HEIGHT, BANNER_PATH, BANNER_WIDTH
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -57,21 +57,10 @@ GREY_LIGHT = rl_colors.HexColor("#D7E0EA")
 SURFACE = rl_colors.HexColor("#F5F7FA")
 WHITE = rl_colors.HexColor("#FFFFFF")
 
-LOGO_PATH = Path(__file__).parent.parent.parent / "logo" / "apollo_logo.png"
-# Fallback: look in the frontend assets
-FRONTEND_LOGO = Path("/app/frontend/assets/images/logo.png")
-
 ASSESSMENT_COLOURS = {
     "critical": RED, "high": RED, "elevated": AMBER,
     "moderate": AMBER, "low": GREEN, "informational": GREY_TEXT,
 }
-
-
-def _get_logo_path() -> Optional[str]:
-    for p in [LOGO_PATH, FRONTEND_LOGO]:
-        if p.exists():
-            return str(p)
-    return None
 
 
 def _clean_markdown(text: str) -> str:
@@ -173,19 +162,9 @@ def generate_pdf(
     response = case.get("response") or {}
     page_width = A4[0] - 40 * mm
 
-    # ── Header: Logo + Title ──
-    logo_path = _get_logo_path()
-    header_items = []
-    if logo_path:
-        try:
-            header_items.append(RLImage(logo_path, width=36, height=36))
-        except Exception:
-            pass
-    header_items.append(Paragraph("APOLLO SCAM GUARD", ParagraphStyle("LogoText", fontSize=9, textColor=GOLD,
-                                                                        spaceAfter=0, leading=12, fontName="Helvetica-Bold")))
-    # Simple header
-    for item in header_items:
-        story.append(item)
+    # ── Header: the Apollo SG banner ──
+    banner_width = page_width * 0.62
+    story.append(RLImage(str(BANNER_PATH), width=banner_width, height=banner_width * BANNER_HEIGHT / BANNER_WIDTH, hAlign="LEFT"))
     story.append(Spacer(1, 4))
     story.append(GoldBar(page_width))
     story.append(Spacer(1, 10))

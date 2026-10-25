@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 
 from core.db import db, now_utc
 from core import local_time
+from core.brand import BANNER_ALT, BANNER_PATH
 from services.higgins import provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
@@ -3088,6 +3089,7 @@ pre {{ background: #f5f5f5; padding: 8px; font-size: 9px; overflow-wrap: break-w
 strong {{ color: #000; }}
 .footer {{ margin-top: 24px; font-size: 9px; color: #999; border-top: 1px solid #ccc; padding-top: 8px; }}
 </style></head><body>
+<img src="{BANNER_PATH}" width="320" height="109" alt="{BANNER_ALT}" />
 <h1>{title}</h1>
 <p style="font-size:9px;color:#666;">Generated: {local_time.label(now_utc(), tz)} — Apollo Admin Portal. Times are local time ({local_time.zone_label(tz)}).</p>
 {body}
