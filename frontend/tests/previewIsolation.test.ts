@@ -17,6 +17,9 @@ import { simulation as absent } from "../src/simulationAbsent.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
+// The sandbox .env is not committed (it carries this workspace's URLs), so a CI checkout has none.
+// Its checks apply where it exists; everywhere else there is nothing to check.
+const SANDBOX_ENV = existsSync(join(ROOT, ".env")) ? read(".env") : null;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -65,7 +68,7 @@ test("the obsolete preview switches are gone from code and configuration", () =>
     for (const name of retired) assert.ok(!code.includes(name), `${file} still references the retired switch ${name}`);
   }
   for (const name of retired) {
-    assert.ok(!read(".env").includes(name), `.env still sets ${name}`);
+    if (SANDBOX_ENV !== null) assert.ok(!SANDBOX_ENV.includes(name), `.env still sets ${name}`);
     assert.ok(!read("eas.json").includes(name), `eas.json still sets ${name}`);
     assert.ok(!read("scripts/security-preflight.mjs").includes(name), `security-preflight still checks ${name}`);
   }
@@ -83,7 +86,7 @@ test("one build-level mechanism decides, and it is not __DEV__", () => {
   const vars = [...code.matchAll(/EXPO_PUBLIC_[A-Z_]+/g)].map((m) => m[0]);
   assert.deepEqual([...new Set(vars)].sort(), ["EXPO_PUBLIC_BACKEND_URL", "EXPO_PUBLIC_PREVIEW_BUILD"]);
   // The preview is the build that includes it; every EAS profile excludes it.
-  assert.match(read(".env"), /EXPO_PUBLIC_PREVIEW_BUILD=included/);
+  if (SANDBOX_ENV !== null) assert.match(SANDBOX_ENV, /EXPO_PUBLIC_PREVIEW_BUILD=included/);
   assert.match(read("eas.json"), /"EXPO_PUBLIC_PREVIEW_BUILD": "excluded"/);
   // The deploy pipeline copies the sandbox .env (PREVIEW_BUILD=included) into the EAS job and selects
   // its own profile, so the flag alone cannot be trusted: a store build must settle it structurally.
