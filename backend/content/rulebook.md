@@ -631,7 +631,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
 - **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
-- **iPhone:** Apple lets no app screen calls. ApolloSG says so rather than suggesting protection it can't give.
+- **iPhone:** Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
 
 **Text Guard**
 - **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.

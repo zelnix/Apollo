@@ -344,9 +344,9 @@ export default function Home() {
       <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.sm }]}>
         <View style={s.headerRow}>
           <Image
-            source={require("@/assets/images/apollo-sg-logo.png")}
-            style={{ width: Math.min(screenW * 0.58, 280), aspectRatio: 1200 / 392 }}
-            accessibilityLabel="ApolloSG Scam Guard"
+            source={require("@/assets/images/apollosg-wordmark.png")}
+            style={{ width: Math.min(screenW * 0.58, 280), aspectRatio: 1200 / 282 }}
+            accessibilityLabel="ApolloSG"
             contentFit="contain"
             testID="home-brand-title"
           />

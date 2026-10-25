@@ -12,8 +12,8 @@ test("iOS target inventory has unique canonical identifiers and one shared App G
   assert.equal(app.expo.android.package, "app.apollo.hwg");
   assert.equal(app.expo.orientation, "default");
   const extensions = app.expo.extra.eas.build.experimental.ios.appExtensions;
-  assert.deepEqual(extensions.map((row: { targetName: string }) => row.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter", "ApolloLiveCallerID"]);
-  assert.equal(new Set(extensions.map((row: { bundleIdentifier: string }) => row.bundleIdentifier)).size, 6);
+  assert.deepEqual(extensions.map((row: { targetName: string }) => row.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]);
+  assert.equal(new Set(extensions.map((row: { bundleIdentifier: string }) => row.bundleIdentifier)).size, 5);
   for (const row of extensions) assert.deepEqual(row.entitlements["com.apple.security.application-groups"], ["group.app.apollo.hwg.apollo"]);
   const share = app.expo.plugins.find((entry: unknown) => Array.isArray(entry) && entry[0] === "expo-share-intent")[1];
   assert.equal(share.iosAppGroupIdentifier, "group.app.apollo.hwg.apollo");
@@ -74,6 +74,24 @@ test("Call Directory requires E.164, sorts, deduplicates and separates reload st
   assert.match(module, /canonicalPhoneNumber/);
   assert.match(module, /reloadState/);
   assert.match(module, /Call Directory reload timed out/);
+});
+
+test("iPhone blocks only the person's block list and labels high-risk numbers instead", () => {
+  const handler = read("../plugins/ios/ApolloCallDirectory/CallDirectoryHandler.swift");
+  assert.match(handler, /suspectedLabel = "Suspected scam"/);
+  assert.match(handler, /let blocked = Set\(lists\["block"\] \?\? \[\]\)\.subtracting\(allow\)/);
+  assert.match(handler, /let suspected = Set\(lists\["autoRisky"\] \?\? \[\]\)\.subtracting\(allow\)\.subtracting\(blocked\)/);
+  assert.match(handler, /Array\(Set\(suspected\.compactMap \{ Self\.toPhoneNumber\(\$0\) \}\)\)\.sorted\(\)/);
+  assert.match(handler, /addIdentificationEntry\(withNextSequentialPhoneNumber: number, label: Self\.suspectedLabel\)/);
+  assert.doesNotMatch(handler, /union\(Set\(lists\["autoRisky"\]/);
+  const module = read("../modules/apollo-security/ios/ApolloSecurityModule.swift");
+  assert.match(module, /"callerIdentification": enabled \? "supported" : "permission_required"/);
+});
+
+test("live caller ID stays out of the iPhone build until Apple approves it", () => {
+  const pluginNames = app.expo.plugins.map((entry: unknown) => Array.isArray(entry) ? entry[0] : entry);
+  assert.ok(!pluginNames.includes("./plugins/withLiveCallerID"));
+  assert.doesNotMatch(JSON.stringify(app.expo), /live-caller-id-lookup|ApolloLiveCallerID/);
 });
 
 test("Message Filter derives its App Group and deduplicates redacted events", () => {

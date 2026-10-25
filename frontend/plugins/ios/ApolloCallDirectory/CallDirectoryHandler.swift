@@ -5,29 +5,34 @@ import Foundation
 ///
 /// Reads a plain JSON file ({"block": [...], "allow": [...], "autoRisky": [...]} of E.164 phone
 /// number strings) written by the main app into the shared App Group container (see
-/// ApolloSecurityModule.swift's loadCallLists/saveCallLists). `allow` numbers are always excluded
-/// from the blocking set, even if they also appear in `block`/`autoRisky`.
+/// ApolloSecurityModule.swift's loadCallLists/saveCallLists). `allow` numbers are always excluded,
+/// even if they also appear in `block`/`autoRisky`.
+///
+/// - `block` (the person's own block list): iPhone blocks these calls.
+/// - `autoRisky` (numbers this phone looked up earlier and found high-risk): a risk score is a
+///   likelihood, never proof, so these still ring — with the label "Suspected scam" on the
+///   incoming-call screen. A number on the block list is blocked, not labelled.
 ///
 /// This ALWAYS does a full (non-incremental) reload rather than an incremental update — Apple
-/// requires blocking entries to be added in strictly ascending CXCallDirectoryPhoneNumber (Int64)
-/// order within a single request, and a full reload is the simplest way to guarantee that every
-/// time, given the underlying list is small (personal block list + this device's own past risk
-/// lookups) rather than a huge synced database.
-///
-/// No caller-ID label source is populated in this build, so no identification entries are added —
-/// see ApolloSecurityModule.getCallProtectionCapabilities()'s `callerIdentification` field, which is
-/// intentionally reported the same way as `callScreening` (both depend on the SAME extension being
-/// enabled) rather than claiming a labelling capability that doesn't exist yet.
+/// requires blocking and identification entries to be added in strictly ascending
+/// CXCallDirectoryPhoneNumber (Int64) order within a single request, and a full reload is the
+/// simplest way to guarantee that every time, given the underlying lists are small (personal block
+/// list + this device's own past risk lookups) rather than a huge synced database.
 class CallDirectoryHandler: CXCallDirectoryProvider {
+  static let suspectedLabel = "Suspected scam"
+
   override func beginRequest(with context: CXCallDirectoryExtensionContext) {
     context.delegate = self
 
     let lists = Self.loadLists()
     let allow = Set(lists["allow"] ?? [])
-    let blocked = Set(lists["block"] ?? []).union(Set(lists["autoRisky"] ?? [])).subtracting(allow)
-    let numbers = Array(Set(blocked.compactMap { Self.toPhoneNumber($0) })).sorted()
-    for number in numbers {
+    let blocked = Set(lists["block"] ?? []).subtracting(allow)
+    let suspected = Set(lists["autoRisky"] ?? []).subtracting(allow).subtracting(blocked)
+    for number in Array(Set(blocked.compactMap { Self.toPhoneNumber($0) })).sorted() {
       context.addBlockingEntry(withNextSequentialPhoneNumber: number)
+    }
+    for number in Array(Set(suspected.compactMap { Self.toPhoneNumber($0) })).sorted() {
+      context.addIdentificationEntry(withNextSequentialPhoneNumber: number, label: Self.suspectedLabel)
     }
 
     context.completeRequest()

@@ -1376,9 +1376,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
         why,
         what_to_do: isAvoid
-          ? (autoBlockConfirmed
-              ? "Apollo will reject future calls from this number automatically. You can also add it to your block list."
-              : `Add this number to your block list — Apollo has NOT started blocking it automatically. ${autoBlockDetail ?? "Automatic screening isn't active on this device."}`)
+          ? (Platform.OS === "ios"
+              ? (autoBlockConfirmed
+                  ? "Future calls from this number will ring with the label “Suspected scam” on this iPhone. Add it to your block list to stop it ringing."
+                  : `Add this number to your block list — future calls won't show a “Suspected scam” label yet. ${autoBlockDetail ?? "Call Blocking & Identification isn't turned on for ApolloSG on this iPhone."}`)
+              : autoBlockConfirmed
+                ? "Apollo will reject future calls from this number automatically. You can also add it to your block list."
+                : `Add this number to your block list — Apollo has NOT started blocking it automatically. ${autoBlockDetail ?? "Automatic screening isn't active on this device."}`)
           : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,

@@ -229,15 +229,15 @@ public class ApolloSecurityModule: Module {
     // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported
     // enabled status for ApolloCallDirectory — never assumed. `numberReputation` is always
     // "supported": the lookup is backend-proxied (POST /api/call/risk-check) and works regardless of
-    // extension state. `callerIdentification` is reported as "unsupported" because the
-    // CXCallDirectoryExtension adds NO identification entries in this build — only blocking entries.
-    // Claiming identification capability when no labels are supplied would misrepresent the feature.
+    // extension state. `callerIdentification` follows the SAME extension: when it is enabled,
+    // numbers this phone found high-risk ring with the label "Suspected scam" (identification
+    // entries), while the person's own block list is blocked.
     AsyncFunction("getCallProtectionCapabilities") { (promise: Promise) in
       CXCallDirectoryManager.sharedInstance().getEnabledStatusForExtension(withIdentifier: self.callDirectoryId) { status, _ in
         let enabled = status == .enabled
         promise.resolve(self.json([
           "callScreening": enabled ? "supported" : "permission_required",
-          "callerIdentification": "unsupported",
+          "callerIdentification": enabled ? "supported" : "permission_required",
           "numberReputation": "supported",
           "voicemailTranscript": "unsupported",
           "liveTranscript": "unsupported",

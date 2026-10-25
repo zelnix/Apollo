@@ -19,6 +19,28 @@ barks…, its findings and protections); Higgins explains. **Owner's choice for 
   because it also sets the Xcode target name (`ApolloShareExtension`) that the build setup depends on.
 - Known, unrelated: a local `expo prebuild --platform ios` fails inside `plugins/withLiveCallerID.js`
   (`addResourceFile` returns null). Not caused by the rename; check it on the next real iOS build.
+
+## iPhone calls: live caller ID out of the build, "Suspected scam" labels (2026-10-25)
+- **Live caller ID removed from the build (owner's choice):** `./plugins/withLiveCallerID` and the `ApolloLiveCallerID`
+  appExtensions entry were removed from app.config.js. Why: its `addResourceFile(Info.plist)` crashed `expo prebuild` (Expo's
+  template has no "Resources" group), so the WHOLE iOS build failed. Also its Swift was compiled into the main app (the target
+  had no build phases), it used an API that doesn't exist (`LiveCallerIDLookup`/`LiveCallerIDLookupExtension`; Apple's is
+  `IdentityLookup.LiveCallerIDLookupProtocol` + an ExtensionKit `com.apple.live-lookup` extension), it needs an
+  Apple-reviewed entitlement, and there is no PIR server + Privacy Pass issuer. Plugin + Swift files are kept for later;
+  `extra.pirServer` / `configurePirServerUrl` stay as unused leftovers (the URL is empty).
+- Verified locally: `expo prebuild --platform ios` now finishes; targets = main app + FamilyAssistBroadcast, ShareExtension,
+  ContentBlocker, CallDirectory, MessageFilter; no live-caller-id entitlement anywhere.
+- **Call Directory (ApolloCallDirectory):** the person's `block` list is still blocked. `autoRisky` numbers (an "avoid" lookup
+  on this phone) are no longer silently blocked on iPhone: they ring with the identification label "Suspected scam"
+  (`addIdentificationEntry`, ascending order). `allow` always wins; a blocked number is never labelled.
+  `callerIdentification` capability = same extension status ("supported"/"permission_required"). The finding's
+  "what to do" text on iOS says so. Android is unchanged (still rejects block/autoRisky). Rule book §13 iPhone line updated.
+- Needs a real iPhone build to see (Call Directory extensions don't run in Expo Go/web).
+
+## Home header wordmark (2026-10-25)
+- Home tab header now uses the owner's "ApolloSG" wordmark: `assets/images/apollosg-wordmark.png` (white background removed,
+  trimmed, 1200×282). Onboarding/About still use `BrandBanner` with the shield + "SCAM GUARD" logo (`apollo-sg-logo.png`);
+  the splash screen is unchanged.
 - Rule book re-stamped. Tests updated for new wording: backend 1212 passed; frontend 935/935; tsc clean.
 
 

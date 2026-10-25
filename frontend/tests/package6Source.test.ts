@@ -11,7 +11,7 @@ const app = createRequire(import.meta.url)("../app.config.js");
 test("Package 6 iOS configuration registers all native extension targets under app.apollo.hwg", () => {
   assert.equal(app.expo.ios.bundleIdentifier, "app.apollo.hwg");
   const extensions = app.expo.extra.eas.build.experimental.ios.appExtensions;
-  assert.deepEqual(extensions.map((item: { targetName: string }) => item.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter", "ApolloLiveCallerID"]);
+  assert.deepEqual(extensions.map((item: { targetName: string }) => item.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]);
   for (const item of extensions) assert.ok(item.bundleIdentifier.startsWith("app.apollo.hwg."));
   assert.ok(app.expo.plugins.includes("./plugins/withApolloTextGuard"));
   assert.ok(app.expo.plugins.includes("./plugins/withApolloShareIntake"));

@@ -135,7 +135,6 @@ module.exports = {
       "./plugins/withApolloCallGuard",
       "./plugins/withApolloTextGuard",
       "./plugins/withGuardDogEngine",
-      "./plugins/withLiveCallerID",
       "./plugins/withRestrictedPhonePermissions",
       "expo-sharing",
       ["expo-camera", { cameraPermission: "Scan QR codes and photograph suspicious items for Apollo to check", microphonePermission: false, recordAudioAndroid: false }],
@@ -174,7 +173,8 @@ module.exports = {
                 { targetName: "ApolloContentBlocker", bundleIdentifier: "app.apollo.hwg.contentblocker", entitlements: { "com.apple.security.application-groups": ["group.app.apollo.hwg.apollo"] } },
                 { targetName: "ApolloCallDirectory", bundleIdentifier: "app.apollo.hwg.calldirectory", entitlements: { "com.apple.security.application-groups": ["group.app.apollo.hwg.apollo"] } },
                 { targetName: "ApolloMessageFilter", bundleIdentifier: "app.apollo.hwg.messagefilter", entitlements: { "com.apple.security.application-groups": ["group.app.apollo.hwg.apollo"] } },
-                { targetName: "ApolloLiveCallerID", bundleIdentifier: "app.apollo.hwg.ApolloLiveCallerID", entitlements: { "com.apple.developer.live-caller-id-lookup": true, "com.apple.security.application-groups": ["group.app.apollo.hwg.apollo"] } },
+                // Live caller ID (plugins/withLiveCallerID.js) is out of the build until Apple approves its
+                // entitlement and a private lookup server exists. Re-add the plugin and this target together.
               ],
             },
           },
