@@ -1,3 +1,18 @@
+## CI fix: "Native dependency singleton guard" (run 40196879565) (2026-10-25)
+- **Cause 1 (the failing step, "Install without changing the lockfile"):** the committed `frontend/yarn.lock`
+  was last committed in 2f99e32 and lacked `expo-background-task` / `expo-task-manager` (added to package.json in
+  5f88451), so `yarn install --frozen-lockfile` failed. The workspace lockfile was already correct but the automatic
+  saves never include `frontend/yarn.lock`. **Fix:** committed it explicitly (commit f53eaf7).
+  ⚠️ Whenever a package is added/removed, commit `frontend/yarn.lock` by hand (`git add frontend/yarn.lock && git commit`).
+- **Cause 2 (next step, masked by cause 1):** `tests/previewIsolation.test.ts` read the uncommitted sandbox `.env`
+  (ENOENT in CI). Those two assertions now run only where `.env` exists.
+- Verified by rebuilding the exact CI checkout (`git archive HEAD` + new lockfile) in /tmp/ci and running every
+  workflow step: clean-CNG check, frozen install (with scripts), native-dependency audit, 51 guard/security tests,
+  security preflight, no-simulation (production) and simulation-present (preview) exports, GuardDog sha256 — all pass.
+- **Pending (not started):** Family Help Android restoration, steps 1–5 (null-safe ConcurrentHashMap state,
+  WebRTC lifecycle repair, `org.jitsi:webrtc:124.0.0` inside the module, regression checks, keep Android exclusion);
+  plan sent for confirmation, the user has not answered yet.
+
 ## Apple compliance: privacy wording, permissions, web privacy policy, no Android wording on iPhone (2026-10-25)
 **Owner's choices:** hide Android wording on iPhone; fix the permission details; privacy policy on a web page (no
 existing URL, so ApolloSG's server hosts it); keep iPad support. "We redact all personal information going to Google AI"
