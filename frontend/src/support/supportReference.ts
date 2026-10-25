@@ -13,8 +13,8 @@ const HISTORY_CAP = 25;
 
 export interface SupportRequestRef { reference: string; createdAt: string }
 
-function utcDateStamp(d = new Date()): string {
-  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+function localDateStamp(d = new Date()): string {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Mint a new reference. 16 bytes (128 bits) of CSPRNG entropy, uppercase hex. */
@@ -22,7 +22,7 @@ export function mintSupportReference(d = new Date()): string {
   const bytes = Crypto.getRandomBytes(16);
   let hex = "";
   for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return `AP-${utcDateStamp(d)}-${hex.toUpperCase()}`;
+  return `AP-${localDateStamp(d)}-${hex.toUpperCase()}`;
 }
 
 /** Past support requests, newest first — the Support Inbox (spec: remember past references). */

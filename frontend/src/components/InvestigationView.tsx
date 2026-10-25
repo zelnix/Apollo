@@ -633,7 +633,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     try {
       const token = await getDeviceToken();
       if (!token) { setPdfNote("Device not registered. Please restart Apollo."); return; }
-      const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf`;
+      // Times in the report are this phone's local time.
+      const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf?tzOffset=${-new Date().getTimezoneOffset()}`;
       const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
       const fileUri = (FileSystemLegacy.cacheDirectory ?? "") + filename;
       const result = await FileSystemLegacy.downloadAsync(url, fileUri, { headers: { Authorization: `Bearer ${token}` } });

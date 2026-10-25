@@ -161,7 +161,9 @@ export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
 
   return {
     platform: Platform.OS,
-    checkedAt: health.checkedAt ?? undefined,
+    // Higgins repeats this time word for word, so it goes as this phone's local time, never UTC.
+    checkedAt: health.checkedAt && Number.isFinite(Date.parse(health.checkedAt))
+      ? clip(new Date(health.checkedAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }), 40) : undefined,
     protectionOn: health.protection ? health.protection.operational : undefined,
     adapter: input.adapterLabel ? clip(input.adapterLabel, 80) : undefined,
     gates: health.gates.map(gateLine).slice(0, 14),

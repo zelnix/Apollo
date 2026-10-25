@@ -24,6 +24,10 @@ import { ApolloProvider } from "@/src/store/ApolloContext";
 import { loadPersonalData } from "@/src/store/personalDataStore";
 import { startDeviceProtectionMonitor } from "@/src/store/deviceProtectionStore";
 import { useTheme } from "@/src/theme";
+import { installTwelveHourClock } from "@/src/utils/twelveHourClock";
+
+// Every time Apollo shows is on the 12-hour clock, in this phone's own time zone.
+installTwelveHourClock();
 
 // Production: suppress LogBox entirely. Development: keep it active for diagnosis.
 if (!__DEV__) LogBox.ignoreAllLogs(true);

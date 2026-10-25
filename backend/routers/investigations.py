@@ -16,6 +16,7 @@ from pydantic import Field, TypeAdapter, ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from core import local_time
 from core.config import HIBP_API_KEY, IPQS_API_KEY, SAFE_BROWSING_API_KEY
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
@@ -530,7 +531,13 @@ async def export_investigation_pdf(case_id: str, request: Request):
     evidence_wire = [repo.evidence_view(r).wire() for r in evidence_rows]
     subject = (case_wire.get("response") or {}).get("subject", "Investigation")
     simulated = any(r.get("simulated") for r in await get_di_records(owner, case_id))
-    pdf_bytes = generate_pdf(case_wire, evidence_wire, subject=subject, simulated=simulated)
+    # Every time in the report is the phone's local time: the offset it sends now, else the one it registered.
+    sent = request.query_params.get("tzOffset", "")
+    if re.fullmatch(r"-?\d{1,3}", sent):
+        tz_offset = int(sent)
+    else:
+        tz_offset = ((await db.devices.find_one({"device_id": owner}, {"_id": 0, "tz_offset_minutes": 1})) or {}).get("tz_offset_minutes", 0)
+    pdf_bytes = generate_pdf(case_wire, evidence_wire, subject=subject, simulated=simulated, tz_offset_minutes=local_time.clamp(tz_offset))
     safe_subject = re.sub(r'[^\w\s-]', '', subject)[:40].strip().replace(" ", "_") or "report"
     filename = f"Apollo_{safe_subject}_{case_id[:8]}.pdf"
     return Response(

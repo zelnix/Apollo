@@ -24,6 +24,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from core.db import db, now_utc
+from core import local_time
 from services.higgins import provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
@@ -239,7 +240,7 @@ async def dashboard(request: Request):
     activity_rows = ""
     for r in recent:
         ts = r.get("timestamp", "")
-        activity_rows += f"<tr><td>{str(ts)[:19]}</td><td>{html_mod.escape(r.get('action',''))}</td><td>{html_mod.escape(str(r.get('detail',''))[:80])}</td></tr>"
+        activity_rows += f"<tr><td>{_t(ts)}</td><td>{html_mod.escape(r.get('action',''))}</td><td>{html_mod.escape(str(r.get('detail',''))[:80])}</td></tr>"
 
     # Reports
     report_links = ""
@@ -253,7 +254,7 @@ async def dashboard(request: Request):
     <div class="overall-banner" style="border-left:4px solid {overall_color};">
         <span class="dot" style="background:{overall_color};"></span>
         <span><strong>Apollo Status:</strong> {overall.upper()}</span>
-        <span style="color:var(--muted);font-size:0.85em;margin-left:auto;">{h.get('timestamp','')[:19]} UTC</span>
+        <span style="color:var(--muted);font-size:0.85em;margin-left:auto;">{_t(h.get('timestamp'))}</span>
     </div>
     {attn_html}
 
@@ -432,7 +433,8 @@ async def integrations(request: Request):
         extras = ""
         for k, v in info.items():
             if k not in ("name", "status", "detail"):
-                extras += f"<span style='color:var(--muted);font-size:0.82em;'>{k}: {v}</span> "
+                shown = _t(v) if _is_time(v) else html_mod.escape(str(v))
+                extras += f"<span style='color:var(--muted);font-size:0.82em;'>{k}: {shown}</span> "
         rows += f"""<tr>
             <td><span class="dot" style="background:{c};"></span> {html_mod.escape(info.get('name', key))}</td>
             <td><span class="badge" style="background:{c}22;color:{c};">{_integration_label(st)}</span></td>
@@ -538,8 +540,8 @@ async def reconciliation(request: Request):
 
     earliest_rec = await db.gemini_usage.find_one({}, {"timestamp": 1}, sort=[("timestamp", 1)])
     latest_rec = await db.gemini_usage.find_one({}, {"timestamp": 1}, sort=[("timestamp", -1)])
-    earliest_ts = str(earliest_rec["timestamp"])[:19] if earliest_rec else "N/A"
-    latest_ts = str(latest_rec["timestamp"])[:19] if latest_rec else "N/A"
+    earliest_ts = _t(earliest_rec["timestamp"]) if earliest_rec else "N/A"
+    latest_ts = _t(latest_rec["timestamp"]) if latest_rec else "N/A"
 
     boundary_html = f"""
     <h2>1. Timestamp Boundary Analysis</h2>
@@ -552,9 +554,9 @@ async def reconciliation(request: Request):
     <table>
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-            <tr><td>Report generated at (UTC)</td><td><code>{now.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
-            <tr><td>"Today" boundary (midnight UTC)</td><td><code>{today_start.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
-            <tr><td>Rolling 24h cutoff</td><td><code>{rolling_24h.strftime('%Y-%m-%d %H:%M:%S')}</code></td></tr>
+            <tr><td>Report generated at</td><td><code>{_t(now)}</code></td></tr>
+            <tr><td>"Today" boundary (midnight UTC)</td><td><code>{_t(today_start)}</code></td></tr>
+            <tr><td>Rolling 24h cutoff</td><td><code>{_t(rolling_24h)}</code></td></tr>
             <tr><td>Earliest gemini_usage record</td><td><code>{earliest_ts}</code></td></tr>
             <tr><td>Latest gemini_usage record</td><td><code>{latest_ts}</code></td></tr>
         </tbody>
@@ -604,8 +606,8 @@ async def reconciliation(request: Request):
             <td style="text-align:right;">{r['thinking_tokens']:,}</td>
             <td style="text-align:right;">{r['cached_tokens']:,}</td>
             <td style="text-align:right;">${r['cost']:.4f}</td>
-            <td>{str(r['first'])[:19]}</td>
-            <td>{str(r['last'])[:19]}</td>
+            <td>{_t(r['first'])}</td>
+            <td>{_t(r['last'])}</td>
         </tr>"""
 
     purpose_html = f"""
@@ -816,8 +818,8 @@ async def reconciliation(request: Request):
             <td style="text-align:right;">{g['thinking_tokens']:,}</td>
             <td style="text-align:right;">{g['cached_tokens']:,}</td>
             <td style="text-align:right;">${g['cost']:.4f}</td>
-            <td style="font-size:0.82em;">{str(g['first_call'])[:19]}</td>
-            <td style="font-size:0.82em;">{str(g['last_call'])[:19]}</td>
+            <td style="font-size:0.82em;">{_t(g['first_call'])}</td>
+            <td style="font-size:0.82em;">{_t(g['last_call'])}</td>
             <td style="font-size:0.82em;">{html_mod.escape(models)}</td>
             <td style="font-size:0.82em;">{html_mod.escape(source)}</td>
         </tr>"""
@@ -874,7 +876,7 @@ async def reconciliation(request: Request):
                     <div><span style="color:var(--muted);font-size:0.78em;">Model(s)</span><br/><strong style="font-size:0.88em;">{html_mod.escape(', '.join(g['models']))}</strong></div>
                 </div>
                 <div style="font-size:0.8em;color:var(--muted);margin-top:6px;">
-                    First: {str(g['first_call'])[:19]} &mdash; Last: {str(g['last_call'])[:19]}
+                    First: {_t(g['first_call'])} &mdash; Last: {_t(g['last_call'])}
                 </div>
             </div>"""
 
@@ -897,8 +899,8 @@ async def reconciliation(request: Request):
             <td>{html_mod.escape(str(f['_id']['purpose'] or 'N/A'))}</td>
             <td><code>{html_mod.escape(str(f['_id']['failure_code'] or 'N/A'))}</code></td>
             <td style="text-align:right;">{f['count']:,}</td>
-            <td>{str(f['first'])[:19]}</td>
-            <td>{str(f['last'])[:19]}</td>
+            <td>{_t(f['first'])}</td>
+            <td>{_t(f['last'])}</td>
         </tr>"""
 
     fail_html = f"""
@@ -1054,7 +1056,7 @@ async def reconciliation(request: Request):
             <td style="font-size:0.82em;"><code>{html_mod.escape(str(r.get('_id', '')))}</code></td>
             <td style="font-size:0.82em;"><code>{html_mod.escape(str(r.get('case_id', r.get('correlation_id', ''))))}</code></td>
             <td>{html_mod.escape(str(r.get('status', '')))}</td>
-            <td>{str(r.get('created_at', ''))[:19]}</td>
+            <td>{_t(r.get('created_at'))}</td>
         </tr>"""
 
     schema_sample = await db.investigation_reports.find_one({})
@@ -1101,7 +1103,7 @@ async def reconciliation(request: Request):
     recon_check_html = f"""
     <h2>9. Dashboard Reconciliation Check</h2>
     <p style="color:var(--muted);font-size:0.88em;">
-        Dashboard "Cost Today" filter: <code>gemini_usage.timestamp &ge; {today_start.strftime('%Y-%m-%d %H:%M:%S')} UTC</code>,
+        Dashboard "Cost Today" filter: <code>gemini_usage.timestamp &ge; {_t(today_start)}</code> (midnight UTC),
         <code>success = true</code>
     </p>
     <table>
@@ -1132,7 +1134,7 @@ async def reconciliation(request: Request):
 
     body = f"""
     <div class="topbar-row">
-        <span style="font-size:0.88em;color:var(--muted);">Generated {now.strftime('%Y-%m-%d %H:%M:%S')} UTC</span>
+        <span style="font-size:0.88em;color:var(--muted);">Generated {_t(now)}</span>
         <a href="/api/admin/reconciliation/pdf" class="btn btn-sm">Download PDF</a>
     </div>
     {boundary_html}
@@ -1163,6 +1165,7 @@ async def reconciliation_pdf(request: Request):
 
     now = now_utc()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tz = _tz_param(request)
 
     # Gather same data as the HTML page
     total_today_ok = await db.gemini_usage.count_documents({"timestamp": {"$gte": today_start}, "success": True})
@@ -1225,8 +1228,8 @@ async def reconciliation_pdf(request: Request):
                         f"<td>{g['input_tokens']:,}</td><td>{g['output_tokens']:,}</td>"
                         f"<td>{g['thinking_tokens']:,}</td><td>{g['cached_tokens']:,}</td>"
                         f"<td>${g['cost']:.4f}</td>"
-                        f"<td style='font-size:8px;'>{str(g['first_call'])[:19]}</td>"
-                        f"<td style='font-size:8px;'>{str(g['last_call'])[:19]}</td>"
+                        f"<td style='font-size:8px;'>{local_time.label(g['first_call'], tz)}</td>"
+                        f"<td style='font-size:8px;'>{local_time.label(g['last_call'], tz)}</td>"
                         f"<td style='font-size:8px;'>{models}</td></tr>")
 
     recon_tbody += (f"<tr style='font-weight:bold;'><td colspan='2'>TOTALS ({len(inv_groups)} IDs)</td>"
@@ -1237,8 +1240,8 @@ async def reconciliation_pdf(request: Request):
 
     pdf_body = f"""
     <h2>Timestamp Boundaries</h2>
-    <p>Report: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC<br/>
-    "Today" boundary: {today_start.strftime('%Y-%m-%d %H:%M:%S')} UTC (midnight)<br/>
+    <p>Report: {local_time.label(now, tz)}<br/>
+    "Today" boundary: {local_time.label(today_start, tz)} (midnight UTC)<br/>
     gemini_usage today: {total_today_ok + total_today_fail:,} ({total_today_ok:,} ok, {total_today_fail:,} fail)<br/>
     investigation_reports (24h): {inv_reports_24h:,}</p>
 
@@ -1254,7 +1257,7 @@ async def reconciliation_pdf(request: Request):
     <tbody>{recon_tbody}</tbody></table>
     """
 
-    full_html = _pdf_html("Usage Reconciliation Report", pdf_body)
+    full_html = _pdf_html("Usage Reconciliation Report", pdf_body, tz)
 
     from xhtml2pdf import pisa
     pdf_buffer = io.BytesIO()
@@ -1265,7 +1268,7 @@ async def reconciliation_pdf(request: Request):
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="apollo_reconciliation_{now.strftime("%Y%m%d_%H%M")}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="apollo_reconciliation_{now.astimezone(timezone(timedelta(minutes=tz))).strftime("%Y%m%d_%I%M%p")}.pdf"'},
     )
 
 
@@ -1383,30 +1386,15 @@ async def backfill_gates(request: Request):
 
 # ── Gemini Investigation Cost Report ─────────────────────────────────────────
 
-import pytz as _pytz
 from services.capability_registry import GATES as _GATES
-
-_ADMIN_TZ = _pytz.timezone("Australia/Perth")
-_ADMIN_TZ_LABEL = "AWST"
 
 
 def _to_local(dt: datetime | None) -> str:
-    """Convert a UTC datetime to the admin display timezone string."""
-    if not dt:
-        return "—"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    local = dt.astimezone(_ADMIN_TZ)
-    return local.strftime("%Y-%m-%d %H:%M:%S")
+    return _t(dt)
 
 
 def _to_local_short(dt: datetime | None) -> str:
-    if not dt:
-        return "—"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    local = dt.astimezone(_ADMIN_TZ)
-    return local.strftime("%d %b %H:%M")
+    return _t(dt, "short")
 
 
 def _gate_display(gate_ids: list | None) -> str:
@@ -1902,7 +1890,7 @@ async def investigations_cost_report(request: Request):
             {_period_btn("oct17", "17 Oct Incident")}
         </div>
         <div style="font-size:0.82em;color:var(--muted);">
-            {_to_local(start_utc)} &mdash; {_to_local(end_utc)} {_ADMIN_TZ_LABEL}
+            {_to_local(start_utc)} &mdash; {_to_local(end_utc)} ({_TZ_NAME})
         </div>
     </div>
     <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;font-size:0.82em;">
@@ -1929,7 +1917,7 @@ async def investigations_cost_report(request: Request):
     env_indicator = f"""<div class="alert {'alert-warning' if pmode == 'preview' else 'alert-ok'}" style="margin-bottom:16px;">
         <strong>Environment:</strong> {'Preview (simulated — no paid Gemini calls)' if pmode == 'preview'
             else 'Production'} &nbsp;|&nbsp;
-        <strong>Timezone:</strong> {_ADMIN_TZ_LABEL} &nbsp;|&nbsp;
+        <strong>Times:</strong> {_TZ_NAME} ("Today" starts at midnight UTC) &nbsp;|&nbsp;
         <strong>Period:</strong> {period_label}
     </div>"""
 
@@ -2135,18 +2123,9 @@ async def investigations_cost_report(request: Request):
             row_style = 'style="background:rgba(220,60,60,0.12);"' if is_hot else ""
             srcs = ", ".join(sorted(d["sources"])) or "—"
             purposes = ", ".join(sorted(d["purposes"]))
-            # Format minute for AWST display
-            try:
-                min_dt = datetime.strptime(minute_str, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
-                min_local = min_dt.astimezone(_ADMIN_TZ)
-                min_display_utc = minute_str[11:]  # HH:MM
-                min_display_local = min_local.strftime("%H:%M")
-            except Exception:
-                min_display_utc = minute_str
-                min_display_local = "—"
+            # The minute bucket (grouped in UTC) as a time on the admin's own clock.
             burst_tbody += f"""<tr {row_style}>
-                <td><code>{html_mod.escape(minute_str)}</code></td>
-                <td>{min_display_local} {_ADMIN_TZ_LABEL}</td>
+                <td>{_t(minute_str, "short")}</td>
                 <td style="text-align:right;font-weight:{'700' if is_hot else 'normal'};">{d['calls']:,}</td>
                 <td style="text-align:right;">{_fmt_tokens(d['input_tokens'])}</td>
                 <td style="text-align:right;">${d['cost']:.4f}</td>
@@ -2169,7 +2148,7 @@ async def investigations_cost_report(request: Request):
         <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
         <table>
             <thead><tr>
-                <th>Minute (UTC)</th><th>Local</th><th>Calls</th><th>Input Tokens</th><th>Est. Cost</th>
+                <th>Minute</th><th>Calls</th><th>Input Tokens</th><th>Est. Cost</th>
                 <th>Purpose(s)</th><th>Source(s)</th><th>Distinct CorrIDs</th>
             </tr></thead>
             <tbody>{burst_tbody}</tbody>
@@ -2288,7 +2267,7 @@ async def investigation_drilldown(request: Request, case_id: str):
 
     # ── Timestamps section ──
     time_html = f"""
-    <h2>Timestamps ({_ADMIN_TZ_LABEL})</h2>
+    <h2>Timestamps ({_TZ_NAME})</h2>
     <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">
         <div class="stat-card"><div class="stat-value" style="font-size:0.95rem;">{_to_local(created_at)}</div><div class="stat-label">Created</div></div>
         <div class="stat-card"><div class="stat-value" style="font-size:0.95rem;">{_to_local(started_at)}</div><div class="stat-label">Started</div></div>
@@ -2829,7 +2808,7 @@ async def releases(request: Request):
 
     mig_rows = ""
     for m in recent_migrations:
-        mig_rows += f"<tr><td>{html_mod.escape(str(m.get('name','')))}</td><td>{str(m.get('applied_at',''))[:19]}</td></tr>"
+        mig_rows += f"<tr><td>{html_mod.escape(str(m.get('name','')))}</td><td>{_t(m.get('applied_at'))}</td></tr>"
 
     body = f"""
     <h2>Application Versions</h2>
@@ -2866,7 +2845,7 @@ async def diagnostics(request: Request):
 
     err_rows = ""
     for e in recent_errors:
-        err_rows += f"<tr><td>{str(e.get('timestamp',''))[:19]}</td><td>{e.get('purpose','')}</td><td>{e.get('failure_code','')}</td><td>{e.get('model','')}</td></tr>"
+        err_rows += f"<tr><td>{_t(e.get('timestamp'))}</td><td>{e.get('purpose','')}</td><td>{e.get('failure_code','')}</td><td>{e.get('model','')}</td></tr>"
 
     body = f"""
     <h2>Recent Gemini Errors</h2>
@@ -2890,7 +2869,7 @@ async def audit(request: Request):
     rows_data = await db.admin_audit.find({}, {"_id": 0}).sort("timestamp", -1).limit(100).to_list(100)
     rows = ""
     for r in rows_data:
-        rows += f"<tr><td>{str(r.get('timestamp',''))[:19]}</td><td>{html_mod.escape(r.get('email',''))}</td><td>{html_mod.escape(r.get('action',''))}</td><td>{html_mod.escape(str(r.get('detail',''))[:120])}</td></tr>"
+        rows += f"<tr><td>{_t(r.get('timestamp'))}</td><td>{html_mod.escape(r.get('email',''))}</td><td>{html_mod.escape(r.get('action',''))}</td><td>{html_mod.escape(str(r.get('detail',''))[:120])}</td></tr>"
 
     body = f"""
     <h2>Admin Audit Log</h2>
@@ -2979,8 +2958,8 @@ async def admin_settings(request: Request):
     <table>
         <tr><td>Email</td><td><code>{html_mod.escape(adm.get('email',''))}</code></td></tr>
         <tr><td>Name</td><td>{html_mod.escape(adm.get('name',''))}</td></tr>
-        <tr><td>Session created</td><td>{str(adm.get('created_at',''))[:19]}</td></tr>
-        <tr><td>Session expires</td><td>{str(adm.get('expires_at',''))[:19]}</td></tr>
+        <tr><td>Session created</td><td>{_t(adm.get('created_at'))}</td></tr>
+        <tr><td>Session expires</td><td>{_t(adm.get('expires_at'))}</td></tr>
         <tr><td>Active sessions</td><td>{session_count}</td></tr>
     </table>
     <form method="post" action="/api/admin/logout" style="margin-top:16px;">
@@ -3028,7 +3007,7 @@ async def admin_report_pdf(request: Request, report_name: str):
         return HTMLResponse("Report file not found", status_code=404)
 
     html_body = _render_md(md_file)
-    full_html = _pdf_html(title, html_body)
+    full_html = _pdf_html(title, html_body, _tz_param(request))
 
     from xhtml2pdf import pisa
     pdf_buffer = io.BytesIO()
@@ -3048,6 +3027,45 @@ async def admin_report_pdf(request: Request, report_name: str):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
+_TZ_NAME = '<span class="tz-name">your local time</span>'
+
+# Times are sent in UTC and shown on the admin's own computer clock, 12-hour, by _LOCAL_TIME_SCRIPT.
+_LOCAL_TIME_SCRIPT = """<script>
+(function(){
+  var styles={full:{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true},
+              short:{day:'numeric',month:'short',hour:'numeric',minute:'2-digit',hour12:true}};
+  document.querySelectorAll('time.lt').forEach(function(el){var d=new Date(el.getAttribute('datetime'));
+    if(!isNaN(d.getTime()))el.textContent=d.toLocaleString(undefined,styles[el.getAttribute('data-f')]||styles.full);});
+  var zone=(Intl.DateTimeFormat().resolvedOptions().timeZone)||'your local time';
+  document.querySelectorAll('.tz-name').forEach(function(el){el.textContent=zone;});
+  var offset=-new Date().getTimezoneOffset();
+  document.querySelectorAll('a[href$="/pdf"]').forEach(function(a){a.setAttribute('href',a.getAttribute('href')+'?tz='+offset);});
+})();
+</script>"""
+
+
+def _is_time(value: Any) -> bool:
+    return isinstance(value, datetime) or (isinstance(value, str) and bool(_ISO.match(value)))
+
+
+def _t(value: Any, style: str = "full") -> str:
+    """A stored time, shown in the admin's own time zone on the 12-hour clock (by _LOCAL_TIME_SCRIPT).
+    Without JavaScript the page still reads it, in UTC and labelled as such."""
+    dt = local_time.parse(value) if _is_time(value) else None
+    if not dt:
+        return "—"
+    utc = dt.astimezone(timezone.utc)
+    fallback = f"{local_time.label(utc, 0)} UTC"
+    return f'<time class="lt" data-f="{style}" datetime="{utc.isoformat()}">{fallback}</time>'
+
+
+def _tz_param(request: Request) -> int:
+    """The admin browser's UTC offset in minutes, sent with a PDF link (?tz=). UTC when absent."""
+    sent = request.query_params.get("tz", "")
+    return local_time.clamp(sent) if re.fullmatch(r"-?\d{1,3}", sent) else 0
+
+
 def _render_md(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
     text = text.replace("\u2705", "[DONE]").replace("\u23f3", "[PENDING]")
@@ -3055,7 +3073,8 @@ def _render_md(path: Path) -> str:
     return markdown.markdown(text, extensions=["tables", "fenced_code", "toc"])
 
 
-def _pdf_html(title: str, body: str) -> str:
+def _pdf_html(title: str, body: str, tz: int = 0) -> str:
+    """A printable admin report. Its times are the admin's local time (the browser's offset, sent as ?tz=)."""
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title>
 <style>
 body {{ font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #222; padding: 20px; }}
@@ -3070,7 +3089,7 @@ strong {{ color: #000; }}
 .footer {{ margin-top: 24px; font-size: 9px; color: #999; border-top: 1px solid #ccc; padding-top: 8px; }}
 </style></head><body>
 <h1>{title}</h1>
-<p style="font-size:9px;color:#666;">Generated: {now_utc().strftime('%Y-%m-%d %H:%M UTC')} — Apollo Admin Portal</p>
+<p style="font-size:9px;color:#666;">Generated: {local_time.label(now_utc(), tz)} — Apollo Admin Portal. Times are local time ({local_time.zone_label(tz)}).</p>
 {body}
 <div class="footer">Apollo Admin Portal — Confidential</div>
 </body></html>"""
@@ -3224,4 +3243,5 @@ article table{{width:100%;}} article h1{{font-size:1.5rem;}} article h2{{font-si
 </style></head><body>
 {sidebar}
 <div class="{main_cls}">{mode_bar}{body}</div>
+{_LOCAL_TIME_SCRIPT}
 </body></html>"""
