@@ -1,3 +1,9 @@
+## Bottom tab labels on one line on every phone (2026-10-25)
+- `app/(tabs)/_layout.tsx`: tab label `numberOfLines={1}`, `adjustsFontSizeToFit` (minimumFontScale 0.75),
+  `maxFontSizeMultiplier 1.2`; size = clamp(9, (screenW/5 − 10)/6.1, 11) so "Ask Higgins" fits its column
+  (11pt from ~390 wide, 10.2pt at 360, 9pt at 320). Was wrapping to two lines at 360 and below, making that
+  tab taller/offset. Five equal columns, evenly spaced. iOS 26 native tabs unchanged (system layout).
+
 ## Full-screen launch artwork on phones (2026-10-25)
 - Owner's portrait artwork (shield dog + ApolloSG Scam Guard + tagline) saved as `assets/images/splash-full.webp`.
 - Android 12+/iOS native splash can only show a small centred icon, so `src/components/LaunchSplash.tsx` (mounted
