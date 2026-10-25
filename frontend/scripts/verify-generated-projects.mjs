@@ -10,6 +10,9 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const requireMatch = (text, expression, message) => { if (!expression.test(text)) throw new Error(message); };
 const requireFile = (relative) => { if (!fs.existsSync(path.join(root, relative))) throw new Error(`missing_generated_file:${relative}`); };
 
+// Family Help is linked on Android only once its native repairs are proven (package.json expo.autolinking.android.exclude).
+const familyAssistExcluded = (JSON.parse(read("package.json")).expo?.autolinking?.android?.exclude ?? []).includes("apollo-family-assist");
+
 function verifyAndroid() {
   const manifestPath = fs.existsSync(path.join(root, "android/app/build/intermediates/merged_manifests/release/processReleaseMainManifest/AndroidManifest.xml"))
     ? "android/app/build/intermediates/merged_manifests/release/processReleaseMainManifest/AndroidManifest.xml" : "android/app/src/main/AndroidManifest.xml";
@@ -23,8 +26,13 @@ function verifyAndroid() {
   if (/app\.apollo\.guarddog\.acceptance(?:Enabled|RootId|RootKey)/.test(manifest)) throw new Error("acceptance_trust_must_be_absent");
   // Trust meta-data (trustDomain, primaryRootId, etc.) was removed with the signing-key infrastructure.
   // Only the production-enabled boolean remains.
-  for (const permission of ["android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION", "android.permission.POST_NOTIFICATIONS"]) requireMatch(manifest, new RegExp(permission), `ff10_permission_missing:${permission}`);
-  if (manifestPath.includes("merged_manifests")) requireMatch(manifest, /FamilyAssistProjectionService/, "ff10_projection_service_missing");
+  requireMatch(manifest, /android\.permission\.POST_NOTIFICATIONS/, "permission_missing:android.permission.POST_NOTIFICATIONS");
+  if (familyAssistExcluded) {
+    if (/FamilyAssistProjectionService/.test(manifest)) throw new Error("ff10_projection_service_present_while_excluded");
+  } else {
+    requireMatch(manifest, /android\.permission\.FOREGROUND_SERVICE_MEDIA_PROJECTION/, "ff10_permission_missing:android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION");
+    if (manifestPath.includes("merged_manifests")) requireMatch(manifest, /FamilyAssistProjectionService/, "ff10_projection_service_missing");
+  }
   for (const project of [":guarddog-core", ":guarddog-vpn"]) requireMatch(settings, new RegExp(project.replace("-", "\\-")), `native_module_missing:${project}`);
   const dependencySource = read("modules/apollo-security/android/build.gradle");
   requireMatch(dependencySource, /project\(':guarddog-core'\)/, "guarddog_core_dependency_missing"); requireMatch(dependencySource, /project\(':guarddog-vpn'\)/, "guarddog_vpn_dependency_missing");
@@ -39,7 +47,9 @@ function verifyAndroid() {
   const resolved = spawnSync("npx", ["expo-modules-autolinking", "resolve", "--platform", "android", "--json"], { cwd: root, encoding: "utf8" });
   if (resolved.status !== 0) throw new Error("expo_module_autolinking_failed");
   const modules = JSON.parse(resolved.stdout).modules.map((entry) => entry.packageName);
-  for (const name of ["apollo-security", "apollo-family-assist"]) if (modules.filter((item) => item === name).length !== 1) throw new Error(`duplicate_or_missing_expo_module:${name}`);
+  if (modules.filter((item) => item === "apollo-security").length !== 1) throw new Error("duplicate_or_missing_expo_module:apollo-security");
+  const familyAssistLinks = modules.filter((item) => item === "apollo-family-assist").length;
+  if (familyAssistLinks !== (familyAssistExcluded ? 0 : 1)) throw new Error(`family_assist_link_mismatch:${familyAssistLinks}`);
 }
 
 function verifyIos() {

@@ -8,96 +8,248 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
-import org.webrtc.*
+import org.webrtc.CandidatePairChangeEvent
+import org.webrtc.DataChannel
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.MediaStream
+import org.webrtc.PeerConnection
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.RtpReceiver
+import org.webrtc.RtpTransceiver
+import org.webrtc.SdpObserver
+import org.webrtc.SessionDescription
+import org.webrtc.VideoSource
+import org.webrtc.VideoTrack
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * One Family Help WebRTC session (sharer or viewer).
+ *
+ * Ownership: this peer builds its own PeerConnectionFactory through [FamilyAssistWebRtc] and disposes it — with
+ * the peer connection, the local track and the video source — when it closes. A sharer's screen track is made
+ * by this same factory ([createScreenSource]), never by a second one.
+ *
+ * Threads: signaling messages and teardown run on one private executor. Nothing here touches a view.
+ * After [close] every callback is ignored, and every state change is fenced by session and generation.
+ *
+ * Ending: the peer never tears itself down. When the far side terminates, signaling fails or the transport
+ * fails, it reports [onEnded] once; the owner stops its capture first and then calls [close], so a capturer is
+ * never left feeding a disposed video source.
+ */
 class FamilyAssistRtcPeer(
-  private val context: Context, private val values: Map<String, String>, private val sharer: Boolean, private val localTrack: VideoTrack?,
-  private val onFailure: (String) -> Unit = {},
+  context: Context,
+  private val values: Map<String, String>,
+  private val sharer: Boolean,
+  private val onEnded: (reason: String) -> Unit,
 ) : WebSocketListener(), PeerConnection.Observer {
+  private val sessionId = values.getValue("sessionId")
+  private val generation = values.getValue("generation")
   private val executor = Executors.newSingleThreadScheduledExecutor()
   private val client = OkHttpClient.Builder().pingInterval(java.time.Duration.ofSeconds(20)).build()
+  private val factory: PeerConnectionFactory = FamilyAssistWebRtc.createFactory(context)
+  private val closed = AtomicBoolean(false)
+  // Set the moment the owner closes or terminates, before teardown runs: from then on no callback may change state.
+  private val closing = AtomicBoolean(false)
+  private val ended = AtomicBoolean(false)
+  private val sequence = AtomicInteger(0)
   private var socket: WebSocket? = null
-  private var factory: PeerConnectionFactory? = null
   private var peer: PeerConnection? = null
-  private var sequence = 0
+  private var source: VideoSource? = null
+  private var localTrack: VideoTrack? = null
   private var refreshFuture: ScheduledFuture<*>? = null
 
+  /** Sharer only, once, before [connect]: the source the screen capturer feeds, from this session's factory. */
+  fun createScreenSource(): VideoSource {
+    check(sharer && source == null) { "screen_source_already_created" }
+    val created = factory.createVideoSource(true)
+    source = created
+    localTrack = factory.createVideoTrack("apollo-screen", created)
+    return created
+  }
+
   fun connect() {
+    if (closed.get()) return
     val base = values.getValue("signalingBaseUrl").replace("https://", "wss://").replace("http://", "ws://").trimEnd('/')
     val ticket = URLEncoder.encode(values.getValue("ephemeralSignalingTicket"), StandardCharsets.UTF_8.toString())
-    val url = "$base/family/assist/sessions/${values.getValue("sessionId")}/signal?ticket=$ticket"
+    val url = "$base/family/assist/sessions/$sessionId/signal?ticket=$ticket"
     socket = client.newWebSocket(Request.Builder().url(url).build(), this)
   }
 
-  override fun onMessage(webSocket: WebSocket, text: String) { executor.execute { handle(JSONObject(text)) } }
+  // ── Signaling ──
+  override fun onMessage(webSocket: WebSocket, text: String) {
+    post {
+      try {
+        handle(JSONObject(text))
+      } catch (error: Exception) {
+        end("signaling_invalid")
+      }
+    }
+  }
+
+  override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { end("signaling_failed") }
+  override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null); end("signaling_closed") }
+  override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { end("signaling_closed") }
+
   private fun handle(message: JSONObject) {
+    // A message that names another generation belongs to an older session: ignore it.
+    val messageGeneration = message.optString("generation", "")
+    if (messageGeneration.isNotEmpty() && messageGeneration != generation) return
     when (message.optString("type")) {
-      "ready" -> createPeer(message.getJSONObject("relay"))
-      "relay_credentials" -> applyRelay(message.getJSONObject("relay"), refresh = true)
+      "ready" -> if (peer == null) createPeer(message.getJSONObject("relay")) else applyRelay(message.getJSONObject("relay"))
+      "relay_credentials" -> applyRelay(message.getJSONObject("relay"))
       "offer" -> if (!sharer) setRemote(message.getString("sdp"), SessionDescription.Type.OFFER, answer = true)
       "answer" -> if (sharer) setRemote(message.getString("sdp"), SessionDescription.Type.ANSWER, answer = false)
       "ice_candidate" -> peer?.addIceCandidate(IceCandidate("0", 0, message.getString("candidate")))
-      "pause_state" -> FamilyAssistRenderer.view?.visibility = if (message.optBoolean("paused")) android.view.View.INVISIBLE else android.view.View.VISIBLE
-      "terminate" -> close()
+      "pause_state" -> if (!sharer) FamilyAssistRenderer.setPaused(message.optBoolean("paused"))
+      "terminate" -> end(message.optString("reason", "helper_left").ifEmpty { "helper_left" })
     }
   }
+
   private fun createPeer(relay: JSONObject) {
-    PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).setEnableInternalTracer(false).createInitializationOptions())
-    factory = PeerConnectionFactory.builder()
-      .setVideoEncoderFactory(DefaultVideoEncoderFactory(FamilyAssistRenderer.egl.eglBaseContext, true, true))
-      .setVideoDecoderFactory(DefaultVideoDecoderFactory(FamilyAssistRenderer.egl.eglBaseContext)).createPeerConnectionFactory()
-    peer = factory?.createPeerConnection(configuration(relay), this)
+    val created = factory.createPeerConnection(configuration(relay), this) ?: return end("transport_failed")
+    peer = created
     scheduleRelayRefresh(relay)
-    if (sharer && localTrack != null) { peer?.addTrack(localTrack, listOf("apollo-family-assist")); createOffer() }
+    val track = localTrack
+    if (sharer && track != null) {
+      created.addTrack(track, listOf("apollo-family-assist"))
+      createOffer()
+    }
   }
+
   private fun configuration(relay: JSONObject): PeerConnection.RTCConfiguration {
     require(relay.getString("provider") == "cloudflare") { "unexpected_relay_provider" }
     val rows = relay.getJSONArray("iceServers")
     val servers = (0 until rows.length()).map { index ->
-      val row = rows.getJSONObject(index); val urls = row.getJSONArray("urls").strings(); val builder = PeerConnection.IceServer.builder(urls)
+      val row = rows.getJSONObject(index)
+      val builder = PeerConnection.IceServer.builder(row.getJSONArray("urls").strings())
       if (row.has("username")) builder.setUsername(row.getString("username")).setPassword(row.getString("credential"))
       builder.createIceServer()
     }
-    return PeerConnection.RTCConfiguration(servers).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN; continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY }
+    return PeerConnection.RTCConfiguration(servers).apply {
+      sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+    }
   }
-  private fun applyRelay(relay: JSONObject, refresh: Boolean) {
+
+  private fun applyRelay(relay: JSONObject) {
     val current = peer ?: return
-    if (!current.setConfiguration(configuration(relay))) return FamilyAssistRuntime.update("failed", "capture_failed", "relay_refresh_rejected")
+    if (!current.setConfiguration(configuration(relay))) return end("relay_refresh_rejected")
     scheduleRelayRefresh(relay)
-    if (refresh && sharer) { current.restartIce(); createOffer() }
+    if (sharer) {
+      current.restartIce()
+      createOffer()
+    }
   }
+
   private fun scheduleRelayRefresh(relay: JSONObject) {
     refreshFuture?.cancel(false)
     val expiry = java.time.Instant.parse(relay.getString("expiresAt")).toEpochMilli()
     val lead = if (sharer) 300_000L else 360_000L
     val delay = maxOf(30_000L, expiry - System.currentTimeMillis() - lead)
-    refreshFuture = executor.schedule({ requestRelayRefresh() }, delay, TimeUnit.MILLISECONDS)
+    refreshFuture = try {
+      executor.schedule({ if (!closed.get()) send(envelope("relay_refresh")) }, delay, TimeUnit.MILLISECONDS)
+    } catch (_: RejectedExecutionException) { null }
   }
-  private fun requestRelayRefresh() = send(JSONObject().put("type", "relay_refresh").put("sequence", sequence++).put("generation", values.getValue("generation")))
-  private fun createOffer() { peer?.createOffer(SdpCallback { description -> peer?.setLocalDescription(VoidSdpCallback { sendSdp("offer", description.description) }, description) }, MediaConstraints()) }
-  private fun createAnswer() { peer?.createAnswer(SdpCallback { description -> peer?.setLocalDescription(VoidSdpCallback { sendSdp("answer", description.description) }, description) }, MediaConstraints()) }
-  private fun setRemote(sdp: String, type: SessionDescription.Type, answer: Boolean) { peer?.setRemoteDescription(VoidSdpCallback { if (answer) createAnswer() }, SessionDescription(type, sdp)) }
-  private fun sendSdp(type: String, sdp: String) = send(JSONObject().put("type", type).put("sequence", sequence++).put("generation", values.getValue("generation")).put("sdp", sdp))
-  fun sendPause(paused: Boolean) = send(JSONObject().put("type", "pause_state").put("sequence", sequence++).put("generation", values.getValue("generation")).put("paused", paused))
+
+  private fun createOffer() {
+    peer?.createOffer(SdpCallback({ description -> setLocal(description, "offer") }, ::end), MediaConstraints())
+  }
+
+  private fun createAnswer() {
+    peer?.createAnswer(SdpCallback({ description -> setLocal(description, "answer") }, ::end), MediaConstraints())
+  }
+
+  private fun setLocal(description: SessionDescription, type: String) {
+    if (closed.get()) return
+    peer?.setLocalDescription(VoidSdpCallback({ send(envelope(type).put("sdp", description.description)) }, ::end), description)
+  }
+
+  private fun setRemote(sdp: String, type: SessionDescription.Type, answer: Boolean) {
+    peer?.setRemoteDescription(VoidSdpCallback({ if (answer) post { createAnswer() } }, ::end), SessionDescription(type, sdp))
+  }
+
+  private fun envelope(type: String) = JSONObject().put("type", type).put("sequence", sequence.getAndIncrement()).put("generation", generation)
+  private fun send(body: JSONObject) { if (!closed.get()) socket?.send(body.toString()) }
+
+  // ── Owner commands ──
+  /** Sharer: pause or resume the outgoing picture and tell the helper. */
+  fun setPaused(paused: Boolean) = post {
+    localTrack?.setEnabled(!paused)
+    send(envelope("pause_state").put("paused", paused))
+  }
+
+  /** Tell the far side the session is over, then close shortly after so the message can leave. */
   fun terminate(reason: String) {
-    send(JSONObject().put("type", "terminate").put("sequence", sequence++).put("generation", values.getValue("generation")).put("reason", reason))
-    executor.schedule({ closeNow() }, 750, TimeUnit.MILLISECONDS)
+    closing.set(true)
+    post {
+      send(envelope("terminate").put("reason", if (reason in WIRE_REASONS) reason else "transport_failed"))
+      localTrack?.setEnabled(false)
+      try { executor.schedule({ closeNow() }, 750, TimeUnit.MILLISECONDS) } catch (_: RejectedExecutionException) { closeNow() }
+    }
   }
-  private fun send(body: JSONObject) { socket?.send(body.toString()) }
-  fun close() { executor.execute { closeNow() } }
-  private fun closeNow() { refreshFuture?.cancel(false); refreshFuture = null; localTrack?.setEnabled(false); peer?.close(); peer = null; factory?.dispose(); factory = null; socket?.close(1000, "ended"); socket = null; client.dispatcher.executorService.shutdown(); executor.shutdown() }
-  override fun onIceCandidate(candidate: IceCandidate) { send(JSONObject().put("type", "ice_candidate").put("sequence", sequence++).put("generation", values.getValue("generation")).put("candidate", candidate.sdp)) }
+
+  /** Close now. Idempotent; every later callback is ignored. */
+  fun close() {
+    closing.set(true)
+    if (!post { closeNow() }) closeNow()
+  }
+
+  private fun closeNow() {
+    if (!closed.compareAndSet(false, true)) return
+    refreshFuture?.cancel(false); refreshFuture = null
+    socket?.close(1000, "ended"); socket = null
+    // Order: the connection first (it releases its senders), then the track and source it used, then the factory.
+    peer?.dispose(); peer = null
+    localTrack?.dispose(); localTrack = null
+    source?.dispose(); source = null
+    factory.dispose()
+    client.dispatcher.executorService.shutdown()
+    client.connectionPool.evictAll()
+    executor.shutdown()
+  }
+
+  /** Runs [block] on the peer's executor unless the peer is closed. Returns false if it could not be queued. */
+  private fun post(block: () -> Unit): Boolean {
+    if (closed.get()) return true
+    return try {
+      executor.execute { if (!closed.get()) block() }
+      true
+    } catch (_: RejectedExecutionException) { false }
+  }
+
+  private fun end(reason: String) {
+    if (closing.get() || closed.get() || !ended.compareAndSet(false, true)) return
+    onEnded(reason)
+  }
+
+  private fun update(captureState: String, eventName: String, helperConnected: Boolean? = null) {
+    if (closing.get() || closed.get()) return
+    FamilyAssistRuntime.update(sessionId, generation, captureState, eventName, helperConnected = helperConnected)
+  }
+
+  // ── PeerConnection.Observer (WebRTC signaling thread) ──
+  override fun onIceCandidate(candidate: IceCandidate) { send(envelope("ice_candidate").put("candidate", candidate.sdp)) }
   override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
-    if (state == PeerConnection.PeerConnectionState.CONNECTED) FamilyAssistRuntime.update("active", if (sharer) "helper_connected" else "capture_started")
-    if (state == PeerConnection.PeerConnectionState.DISCONNECTED) FamilyAssistRuntime.update("starting", "transport_degraded")
-    if (state == PeerConnection.PeerConnectionState.FAILED) { FamilyAssistRuntime.update("failed", "capture_failed", "transport_failed"); onFailure("transport_failed") }
+    when (state) {
+      PeerConnection.PeerConnectionState.CONNECTED ->
+        if (sharer) update("active", "helper_connected", helperConnected = true) else update("active", "capture_started")
+      PeerConnection.PeerConnectionState.DISCONNECTED -> update("starting", "transport_degraded")
+      PeerConnection.PeerConnectionState.FAILED -> end("transport_failed")
+      else -> Unit
+    }
   }
-  override fun onTrack(transceiver: RtpTransceiver) { (transceiver.receiver.track() as? VideoTrack)?.addSink(FamilyAssistRenderer.view) }
+  override fun onTrack(transceiver: RtpTransceiver) {
+    if (closing.get() || closed.get() || sharer) return
+    (transceiver.receiver.track() as? VideoTrack)?.addSink(FamilyAssistRenderer)
+  }
   override fun onSignalingChange(v: PeerConnection.SignalingState) {}
   override fun onIceConnectionChange(v: PeerConnection.IceConnectionState) {}
   override fun onStandardizedIceConnectionChange(v: PeerConnection.IceConnectionState) {}
@@ -108,17 +260,29 @@ class FamilyAssistRtcPeer(
   override fun onRemoveStream(v: MediaStream) {}
   override fun onDataChannel(v: DataChannel) { v.close() }
   override fun onRenegotiationNeeded() {}
-  override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) { (receiver.track() as? VideoTrack)?.addSink(FamilyAssistRenderer.view) }
+  override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
   override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent) {}
   override fun onRemoveTrack(receiver: RtpReceiver) {}
 
-  private class SdpCallback(private val success: (SessionDescription) -> Unit) : SdpObserver {
-    override fun onCreateSuccess(v: SessionDescription) = success(v); override fun onSetSuccess() {}
-    override fun onCreateFailure(v: String) { FamilyAssistRuntime.update("failed", "capture_failed", "sdp_failed") }; override fun onSetFailure(v: String) { FamilyAssistRuntime.update("failed", "capture_failed", "sdp_failed") }
+  private class SdpCallback(private val success: (SessionDescription) -> Unit, private val fail: (String) -> Unit) : SdpObserver {
+    override fun onCreateSuccess(v: SessionDescription) = success(v)
+    override fun onSetSuccess() {}
+    override fun onCreateFailure(v: String) = fail("sdp_failed")
+    override fun onSetFailure(v: String) = fail("sdp_failed")
   }
-  private class VoidSdpCallback(private val success: (() -> Unit)? = null) : SdpObserver {
-    override fun onCreateSuccess(v: SessionDescription) {}; override fun onSetSuccess() { success?.invoke() }
-    override fun onCreateFailure(v: String) {}; override fun onSetFailure(v: String) {}
+
+  private class VoidSdpCallback(private val success: () -> Unit, private val fail: (String) -> Unit) : SdpObserver {
+    override fun onCreateSuccess(v: SessionDescription) {}
+    override fun onSetSuccess() = success()
+    override fun onCreateFailure(v: String) = fail("sdp_failed")
+    override fun onSetFailure(v: String) = fail("sdp_failed")
+  }
+
+  companion object {
+    /** Termination reasons the signaling server accepts (backend services/family_assist/signaling.py). */
+    val WIRE_REASONS = setOf("owner_stopped", "helper_left", "capture_revoked", "relationship_revoked", "timeout", "transport_failed", "os_terminated", "app_terminated")
+    /** Endings that are failures, not a person's choice. */
+    val FAILURE_REASONS = setOf("capture_failed", "transport_failed", "signaling_failed", "signaling_invalid", "signaling_closed", "sdp_failed", "relay_refresh_rejected")
   }
 }
 

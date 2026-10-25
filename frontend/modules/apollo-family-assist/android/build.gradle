@@ -14,7 +14,10 @@ android {
 }
 
 dependencies {
-  implementation project(':react-native-webrtc')
+  // WebRTC belongs to Family Help alone: the Jitsi build of WebRTC M124 (Maven Central), the same release the
+  // iOS side uses (JitsiWebRTC ~> 124.0.0 in ios/ApolloFamilyAssist.podspec). No app-wide react-native-webrtc.
+  implementation 'org.jitsi:webrtc:124.0.0'
   implementation 'androidx.core:core-ktx:1.13.1'
   implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+  testImplementation 'junit:junit:4.13.2'
 }
