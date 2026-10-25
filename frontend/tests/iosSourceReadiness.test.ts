@@ -42,6 +42,8 @@ test("Apollo Share Extension uses bounded protected atomic multi-item handoff", 
   assert.doesNotMatch(swift, /UserDefaults\(suiteName:.*\)\?\.set\(.*shared/i);
   const plugin = read("../plugins/withApolloShareIntake.js");
   assert.match(plugin, /Missing generated target directory/);
+  assert.match(plugin, /SHARE_SHEET_NAME = "ApolloSG"/);
+  assert.match(plugin, /CFBundleDisplayName/);
   assert.match(plugin, /IPHONEOS_DEPLOYMENT_TARGET = "16\.4"/);
 });
 

@@ -14,7 +14,11 @@ barks…, its findings and protections); Higgins explains. **Owner's choice for 
   "You told Apollo:" (old saved events) and "You told ApolloSG:".
 - Email sender name is now fixed in code as "ApolloSG" (`core/config.py`; owner skipped the settings card). The old
   `EMAIL_FROM_NAME` env value is no longer read and was removed from the parity settings list.
-- Not changed (build impact): iOS `iosShareExtensionName: "Apollo Share Extension"` in app.config.js.
+- iPhone share sheet label is "ApolloSG": `plugins/withApolloShareIntake.js` rewrites the share extension's
+  CFBundleDisplayName after expo-share-intent generates it. `iosShareExtensionName: "Apollo Share Extension"` stays,
+  because it also sets the Xcode target name (`ApolloShareExtension`) that the build setup depends on.
+- Known, unrelated: a local `expo prebuild --platform ios` fails inside `plugins/withLiveCallerID.js`
+  (`addResourceFile` returns null). Not caused by the rename; check it on the next real iOS build.
 - Rule book re-stamped. Tests updated for new wording: backend 1212 passed; frontend 935/935; tsc clean.
 
 
