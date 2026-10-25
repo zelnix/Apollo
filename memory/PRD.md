@@ -1,3 +1,7 @@
+## Home header wordmark 25% smaller on phones (2026-10-25)
+- `app/(tabs)/home.tsx` `home-brand-title`: width `min(screenW*0.58, 280) * (screenW < 600 ? 0.75 : 1)`.
+  On a 390-wide phone it is now ~170px (was ~226px). Tablets/iPad (≥600) unchanged.
+
 ## CI fix: "Native dependency singleton guard" (run 40196879565) (2026-10-25)
 - **Cause 1 (the failing step, "Install without changing the lockfile"):** the committed `frontend/yarn.lock`
   was last committed in 2f99e32 and lacked `expo-background-task` / `expo-task-manager` (added to package.json in

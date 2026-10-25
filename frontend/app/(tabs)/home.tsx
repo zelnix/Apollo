@@ -345,7 +345,7 @@ export default function Home() {
         <View style={s.headerRow}>
           <Image
             source={require("@/assets/images/apollosg-wordmark.png")}
-            style={{ width: Math.min(screenW * 0.58, 280), aspectRatio: 1200 / 282 }}
+            style={{ width: Math.min(screenW * 0.58, 280) * (screenW < 600 ? 0.75 : 1), aspectRatio: 1200 / 282 }}
             accessibilityLabel="ApolloSG"
             contentFit="contain"
             testID="home-brand-title"
