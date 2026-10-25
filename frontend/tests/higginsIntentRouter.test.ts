@@ -213,4 +213,24 @@ describe("Ambiguous Messages", () => {
     // Should ask for clarification or default to knowledge, not blindly investigate
     assert.notEqual(result.route, "investigation");
   });
+
+  // Context words count only as whole words: "on" inside "someone", "phone" or "money" is not "on".
+  it('"How do I report someone?" is not read as a protection-status question', () => {
+    const result = classifyIntent("How do I report someone?");
+    assert.notEqual(result.route, "local_diagnostic");
+    assert.equal(result.route, "ask_higgins");
+  });
+
+  it("words inside longer words never count; whole words still do", () => {
+    assert.notEqual(classifyIntent("What about my money").route, "local_diagnostic");
+    assert.notEqual(classifyIntent("Can I trust a phone contact").route, "local_diagnostic");
+    assert.equal(classifyIntent("Is it on").route, "local_diagnostic");
+    assert.equal(classifyIntent("Everything seems broken").route, "local_diagnostic");
+  });
+
+  it("threat words count in their usual forms", () => {
+    assert.equal(classifyIntent("I got scammed").route, "investigation");
+    assert.equal(classifyIntent("my email was hacked").route, "investigation");
+    assert.equal(classifyIntent("Is my phone hacked?").route, "investigation");
+  });
 });

@@ -266,15 +266,19 @@ const KNOWLEDGE_PATTERNS: PatternRule[] = [
 
 // ── Context-aware routing (Layer 2) ──────────────────────────────────────────
 
+// Matched as whole words only, so "on" never matches inside "someone", "phone" or "money".
 const CONTEXT_KEYWORDS_DIAGNOSTIC = [
   "working", "running", "active", "on", "off", "enabled", "disabled",
   "status", "state", "ok", "fine", "healthy", "broken", "down",
 ];
 
 const CONTEXT_KEYWORDS_INVESTIGATION = [
-  "scam", "phishing", "fraud", "suspicious", "malware", "virus",
-  "hacked", "compromised", "stolen", "unsafe", "dangerous",
+  "scam", "scams", "scammed", "scammer", "scammers", "phishing", "fraud", "fraudulent",
+  "suspicious", "malware", "virus", "viruses", "hacked", "hacker", "hackers",
+  "compromised", "stolen", "unsafe", "dangerous",
 ];
+
+const hasWord = (text: string, words: string[]) => words.some((word) => new RegExp(`\\b${word}\\b`, "i").test(text));
 
 /** Short ambiguous questions that should be resolved via context. */
 function resolveAmbiguous(
@@ -285,8 +289,8 @@ function resolveAmbiguous(
 
   // Very short questions like "Is it working?", "Am I protected?", "What about the VPN?"
   if (lower.length < 60) {
-    const hasDeviceContext = CONTEXT_KEYWORDS_DIAGNOSTIC.some((kw) => lower.includes(kw));
-    const hasThreatContext = CONTEXT_KEYWORDS_INVESTIGATION.some((kw) => lower.includes(kw));
+    const hasDeviceContext = hasWord(lower, CONTEXT_KEYWORDS_DIAGNOSTIC);
+    const hasThreatContext = hasWord(lower, CONTEXT_KEYWORDS_INVESTIGATION);
 
     if (hasDeviceContext && !hasThreatContext) {
       // Likely asking about Apollo/device — route to diagnostic

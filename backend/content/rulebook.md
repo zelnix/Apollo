@@ -272,7 +272,7 @@ It can't override what is already established, and it isn't called to move a cas
 5. **Something suspicious, described without the form** ("is this a scam?", "I got a dodgy text", "someone called me…") → Higgins on the server.
 6. **About Apollo itself:** how Apollo works, who Higgins or Magnum DI is, the protections, finding your way around, or what Apollo's states mean → a fixed answer on the phone, with taps to the right screens.
 7. **A short message that's still unclear:**
-   - Under 60 characters: words about the phone working (working, running, active, on, off, enabled, disabled, status, state, ok, fine, healthy, broken, down) → its protection status, on the phone. Words about a threat (scam, phishing, fraud, suspicious, malware, virus, hacked, compromised, stolen, unsafe, dangerous) → Higgins on the server. Both kinds, or neither, → the next step. These words are matched anywhere in the message, even inside a longer word ("on" in "someone").
+   - Under 60 characters: words about the phone working (working, running, active, on, off, enabled, disabled, status, state, ok, fine, healthy, broken, down) → its protection status, on the phone. Words about a threat (scam, scams, scammed, scammer, scammers, phishing, fraud, fraudulent, suspicious, malware, virus, viruses, hacked, hacker, hackers, compromised, stolen, unsafe, dangerous) → Higgins on the server. Both kinds, or neither, → the next step. Only whole words count, so "on" inside "someone" or "phone" doesn't.
    - Under 40 characters with no question mark → one question back: "Do you mean whether Apollo is protecting your phone, or would you like me to investigate something specific?"
 8. **Everything else** → Higgins on the server, in the order set out under Higgins above.
 

@@ -15,8 +15,9 @@
   a test checks every watched file exists. Re-stamped.
 - Tests: `test_rulebook.py` +3 (watched files exist, Ask Higgins numbers/off-topic text match the server, typed-check rule);
   `ruleBook.test.ts` +1 (quick-question count, clarifying question word for word, form routing, form names). All pass; tsc clean.
-- **Known quirk documented, not fixed (awaiting owner):** the short-message rule matches words inside longer words, so
-  "How do I report someone?" ("on" in "someone") is answered as protection status (`intentRouter.ts resolveAmbiguous`).
+- **Known quirk fixed (2026-10-25):** the short-message rule (`intentRouter.ts resolveAmbiguous`) now matches whole words
+  only, so "How do I report someone?" goes to Higgins, not protection status. Threat words list their usual forms (scammed,
+  hacker…). Rule book updated and re-stamped; `higginsIntentRouter.test.ts` +3 tests.
 
 ## Investigation rule book written (2026-06)
 - Owner asked for copy-paste rules for Apollo detection, Higgins Triage, TC FlyBy, Magnum DI and Higgins: processes,
