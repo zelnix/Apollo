@@ -19,7 +19,11 @@ const TAB_COUNT = 5;
 // Hidden tabs (accessible via routes but not in the tab bar): check-it, guard, protection, settings
 export default function TabsLayout() {
   const { colors } = useTheme();
-  const { width: screenW } = useWindowDimensions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // Tablets (shortest side 600pt or more) have room for the longer tab names.
+  const isTablet = Math.min(screenW, screenH) >= 600;
+  const alertsTitle = isTablet ? "Scam Alerts" : "Alerts";
+  const learnTitle = isTablet ? "Learn with Higgins" : "Learn";
   const { ready, setupDone } = useApollo();
   useAccountMonitorDueCheck();
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
@@ -29,9 +33,9 @@ export default function TabsLayout() {
       <NativeTabs>
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>{alertsTitle}</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Ask Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="learn"><NativeTabs.Trigger.Icon sf="book.fill" /><NativeTabs.Trigger.Label>Learn</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="learn"><NativeTabs.Trigger.Icon sf="book.fill" /><NativeTabs.Trigger.Label>{learnTitle}</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
   }
@@ -75,9 +79,9 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
       <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats") }} />
-      <Tabs.Screen name="scams" options={{ title: "Alerts", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel("Alerts") }} />
+      <Tabs.Screen name="scams" options={{ title: alertsTitle, tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel(alertsTitle) }} />
       <Tabs.Screen name="ask" options={{ title: "Ask Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Ask Higgins") }} />
-      <Tabs.Screen name="learn" options={{ title: "Learn", tabBarButtonTestID: "tab-learn", tabBarIcon: tabIcon(BookOpen), tabBarLabel: tabLabel("Learn") }} />
+      <Tabs.Screen name="learn" options={{ title: learnTitle, tabBarButtonTestID: "tab-learn", tabBarIcon: tabIcon(BookOpen), tabBarLabel: tabLabel(learnTitle) }} />
       {/* Hidden tabs — still routable for deep links and backwards compatibility */}
       <Tabs.Screen name="check-it" options={{ href: null }} />
       <Tabs.Screen name="guard" options={{ href: null }} />

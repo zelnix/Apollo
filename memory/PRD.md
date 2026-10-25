@@ -1,3 +1,8 @@
+## Longer tab names on tablets (2026-10-25)
+- `app/(tabs)/_layout.tsx`: when the shortest window side is ≥ 600 (tablet/iPad), the Alerts tab reads
+  "Scam Alerts" and Learn reads "Learn with Higgins" (both the JS tab bar and iOS 26 native tabs). Phones keep
+  "Alerts" / "Learn". Verified in preview at 390×844 (phone) and 820×1180 (tablet).
+
 ## Bottom tab labels on one line on every phone (2026-10-25)
 - `app/(tabs)/_layout.tsx`: tab label `numberOfLines={1}`, `adjustsFontSizeToFit` (minimumFontScale 0.75),
   `maxFontSizeMultiplier 1.2`; size = clamp(9, (screenW/5 − 10)/6.1, 11) so "Ask Higgins" fits its column
