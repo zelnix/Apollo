@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { parseInline, parseRuleBook, plainText, reviewedLabel, type Block } from "../src/domain/ruleBook.ts";
+import { parseInline, parseRuleBook, plainText, reviewedLabel, sectionsOf, type Block } from "../src/domain/ruleBook.ts";
+import { DEVICE_STATUS } from "../src/domain/deviceAnalysis.ts";
+import { FILE_SIZE_LIMIT } from "../src/domain/fileInspection.ts";
 import { detectCheckIntent } from "../src/higgins/checkIntent.ts";
 import { classifyIntent } from "../src/higgins/intentRouter.ts";
 import { QUICK_QUESTIONS } from "../src/higgins/quickQuestions.ts";
@@ -94,4 +96,53 @@ test("the privacy rules in the book match what the phone removes and refuses", (
   // Links keep their path; secret values and the part after "#" go.
   const link = purposeLimitedUrl("https://user:pw@evil.example/login/page?token=abc&id=7#frag");
   assert.ok(link.includes("/login/page") && !link.includes("abc") && !link.includes("frag") && !link.includes("pw@"));
+});
+
+test("the book opens as closed sections: the intro, then one card per part, each with its own id", () => {
+  const { intro, sections } = sectionsOf(parseRuleBook(BOOK));
+  assert.ok(intro.some((b) => b.kind === "heading" && b.level === 1), "the intro keeps the title");
+  assert.ok(!intro.some((b) => b.kind === "heading" && b.level === 2));
+  assert.equal(sections.length, BOOK.split("\n## ").length - 1);
+  const ids = sections.map((section) => section.id);
+  assert.equal(new Set(ids).size, ids.length, "section ids are unique");
+  for (const id of ["your-data", "threats-list", "websites-links", "call-text-guard", "email-accounts", "apps-files", "device-internet", "scam-alerts", "permissions", "settling-rules", "privacy"]) {
+    assert.ok(ids.includes(id), `missing section: ${id}`);
+  }
+  for (const section of sections) {
+    assert.ok(section.blocks.length > 0, `empty section: ${section.title}`);
+    assert.notEqual(section.blocks[0].kind, "rule");
+    assert.notEqual(section.blocks[section.blocks.length - 1].kind, "rule");
+  }
+});
+
+const sectionText = (id: string) => BOOK.split(`{#${id}}`, 2)[1]?.split("\n## ", 1)[0] ?? "";
+const read = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), "utf8");
+
+test("the phone's own limits in the book match the phone", () => {
+  const yourData = sectionText("your-data");
+  const minutes = Number(/MAX_AGE_MS = (\d+) \* 60 \* 1000/.exec(read("src/higgins/chatMemory.ts"))?.[1]);
+  assert.equal(minutes, 60);
+  assert.ok(yourData.includes("Up to 1 hour, and at most the last 40 messages") && read("src/higgins/chatMemory.ts").includes(".slice(-40)"));
+  const screening = read("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloCallScreeningService.kt");
+  const kept = Number(/MAX_SCREENED = (\d+)/.exec(screening)?.[1]);
+  const days = Number(/SCREENED_RETENTION_MS = (\d+)L \* 24/.exec(screening)?.[1]);
+  const queued = Number(/MAX_PENDING = (\d+)/.exec(screening)?.[1]);
+  assert.ok(yourData.includes(`The last ${kept} calls, for up to ${days} days`));
+  assert.ok(sectionText("call-text-guard").includes(`the last ${kept} calls, for up to ${days} days`) && sectionText("call-text-guard").includes(`queued (up to ${queued})`));
+  assert.ok(yourData.includes(`The last ${/HISTORY_CAP = (\d+)/.exec(read("src/store/accountMonitorStore.ts"))?.[1]} scans are kept`));
+  assert.ok(sectionText("apps-files").includes(`Files can be up to ${FILE_SIZE_LIMIT / (1024 * 1024)} MB`));
+  const snoozeDays = Number(/GATE_SNOOZE_MS = (\d+) \* 24/.exec(read("src/domain/gatePermissions.ts"))?.[1]);
+  assert.ok(sectionText("permissions").includes(`after about ${snoozeDays} days`));
+});
+
+test("the device results and permission wording in the book are the app's own, word for word", () => {
+  const device = sectionText("device-internet");
+  for (const status of Object.values(DEVICE_STATUS)) assert.ok(device.includes(`| ${status.title} | ${status.meaning} |`), status.title);
+  const permissions = sectionText("permissions");
+  const config = read("app.config.js");
+  for (const key of ["NSUserNotificationsUsageDescription", "cameraPermission", "photosPermission"]) {
+    const wording = new RegExp(`${key}: "([^"]+)"`).exec(config)?.[1];
+    assert.ok(wording && permissions.includes(`| ${wording} |`), `${key}: ${wording}`);
+  }
+  assert.ok(/microphonePermission: false/.test(config) && permissions.includes("**Never asked for:** the microphone"));
 });

@@ -68,10 +68,6 @@ def test_the_privacy_rules_match_the_code():
     expected = [
         f"other values over {llm_boundary._MAX_PARAM_VALUE_LEN} characters are cut",
         f"any link over {llm_boundary._MAX_URL_LEN} characters is cut",
-        f"expires {capacity.LIFETIME_SECONDS // 60} minutes after it opens",
-        f"deleted from the server within {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours of the investigation finishing",
-        f"The database removes it by itself at {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours",
-        f"the question and answer for {int(chat_memory.CHAT_CONTENT_TTL.total_seconds() // 60)} minutes",
     ]
     missing = [phrase for phrase in expected if phrase not in section]
     assert not missing, f"The privacy rules no longer match the code on: {missing}"
@@ -218,3 +214,70 @@ def test_each_case_shows_its_reason_in_the_admin_portal():
     row = admin_portal._settled_reason_html(routing)
     assert 'data-testid="settled-reason"' in row and "FLYBY-PATTERN" in row and "/api/admin/rule-book#settling-rules" in row
     assert "Not recorded" in admin_portal._settled_reason_html({})
+
+
+# ── Your data, the Threats list and the check areas ─────────────────────────
+def _days(delta) -> str:
+    return f"{delta.days} days" if delta.days != 1 else "1 day"
+
+
+def test_the_your_data_rules_match_the_code():
+    from core.config import TOKEN_TTL_DAYS
+    from services import account_deletion
+    section = _section("your-data")
+    expiry = chat_memory.EXPIRY
+    expected = [
+        f"expires {capacity.LIFETIME_SECONDS // 60} minutes after it opens",
+        f"deleted from the server within {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours of the investigation finishing",
+        f"The database removes it by itself at {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours",
+        f"the question and answer for {int(chat_memory.CHAT_CONTENT_TTL.total_seconds() // 60)} minutes, then a receipt with no content for {chat_memory.CHAT_RECEIPT_TTL.days} days",
+        f"a recent result for {_days(expiry['recent_outcome'])}, protection status for {int(expiry['protection_state'].total_seconds() // 3600)} hour, "
+        f"a preference for {_days(expiry['preference'])}, a goal for {_days(expiry['goal'])} and a permission for {_days(expiry['permission'])}",
+        f"At most {chat_memory.MAX_PER_CATEGORY} of each kind and {chat_memory.MAX_TOTAL} in all",
+        f"a possible threat for {triage_engine._CACHE_TTL[Outcome.POSSIBLE_THREAT].days} days and no threat for {triage_engine._CACHE_TTL[Outcome.NO_THREAT].days} days",
+        f"**TC FlyBy's search answers:** {search.CACHE_DAYS} days",
+        f"valid for {TOKEN_TTL_DAYS} days",
+        f"in {len(account_deletion.CATEGORIES)} groups: ",
+    ]
+    missing = [phrase for phrase in expected if phrase not in section]
+    assert not missing, f"The Your data rules no longer match the code on: {missing}"
+    for group in account_deletion.CATEGORIES.values():
+        assert group["label"] in section, f"Delete My Apollo Data group missing from the book: {group['label']}"
+
+
+def test_the_check_area_rules_match_the_code():
+    import inspect
+    from routers.analysis import AppAnalyseIn
+    from services import feed_health, gmail, government_alerts, intel, mailbox_monitor
+    count = lambda category: sum(1 for rule in RULES.values() if rule["category"] == category)  # noqa: E731
+    expected = {
+        "websites-links": [f"up to {inspect.signature(intel.expand_redirects_detailed).parameters['max_hops'].default} redirects",
+                           f"There are {count('link')} link rules"],
+        "call-text-guard": [f"{count('message')} message rules", f"Calls have {count('call')} rules"],
+        "email-accounts": [f"the sign-in link expires after {int(gmail.OAUTH_STATE_TTL.total_seconds() // 60)} minutes",
+                           f"every {mailbox_monitor.SCAN_SECONDS // 60} minutes, Apollo reads the next "
+                           f"{inspect.signature(gmail.scan_inbox_page).parameters['limit'].default} messages",
+                           f"There are {count('email')} email rules"],
+        "apps-files": [f"There are {count('file')} file rules", f"There are {count('app')} app rules",
+                       f"Up to {AppAnalyseIn.model_json_schema()['properties']['hosts']['maxItems']} web addresses"],
+        "device-internet": [f"There are {count('device')} device rules", f"There are {count('network')} network rules"],
+        "scam-alerts": [f"dated more than {government_alerts.RECENCY_CUTOFF.days} days ago",
+                        f"more than {int(government_alerts.STALE_AFTER.total_seconds() // 3600)} hours old",
+                        f"no successful read in {int(feed_health.STALE_AFTER.total_seconds() // 3600)} hours",
+                        f"up to {inspect.signature(government_alerts.snapshot).parameters['limit'].default}"],
+    }
+    missing = [f"{anchor}: {phrase}" for anchor, phrases in expected.items() for phrase in phrases if phrase not in _section(anchor)]
+    assert not missing, f"The check-area rules no longer match the code on: {missing}"
+    assert gmail.SCOPE.endswith("/gmail.readonly") and "Read-only access only" in _section("email-accounts")
+
+
+def test_every_rule_book_section_opens_on_its_own_in_the_admin_portal(monkeypatch):
+    monkeypatch.setattr(rulebook, "changed", lambda: [])
+    page = admin_portal._rule_book_html()
+    sections = BOOK.count("\n## ")
+    assert page.count('<details class="rb-section"') == sections
+    assert "<details class=\"rb-section\" open" not in page, "every section starts closed"
+    for anchor in ("your-data", "threats-list", "websites-links", "call-text-guard", "email-accounts", "apps-files",
+                   "device-internet", "scam-alerts", "permissions", "settling-rules", "privacy"):
+        assert f'<details class="rb-section" id="{anchor}"' in page, anchor
+    assert 'data-rb-all="open"' in page and 'data-rb-all="close"' in page and "openFromHash" in page

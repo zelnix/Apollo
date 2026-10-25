@@ -70,6 +70,43 @@ WATCHED = (
     "backend/services/kb_sources.py",
     "backend/services/tavily_client.py",
     "backend/services/higgins/knowledge.py",
+    # Your data: what is kept on the phone and the server, for how long, and Delete My Apollo Data.
+    "backend/services/account_deletion.py",
+    "backend/services/family_assist/sessions.py",
+    "backend/core/config.py",
+    "frontend/src/higgins/chatMemory.ts",
+    "frontend/src/domain/privacyData.ts",
+    "frontend/src/domain/serverCopyNote.ts",
+    # Threats list: one record per check, statuses, Biting, repeats and alerts.
+    "backend/routers/patrol.py",
+    "backend/routers/push.py",
+    "backend/services/patrol_records.py",
+    "frontend/src/domain/threatCase.ts",
+    # The check areas: websites and links, messages and calls, email and accounts, apps and files, device and internet.
+    "backend/services/intel.py",
+    "backend/services/triage/catalogue.py",
+    "backend/routers/analysis.py",
+    "backend/services/gmail.py",
+    "backend/services/mailbox_monitor.py",
+    "backend/services/breach_check.py",
+    "frontend/src/domain/screenedCalls.ts",
+    "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloCallScreeningService.kt",
+    "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSmsListenerService.kt",
+    "frontend/src/store/accountMonitorStore.ts",
+    "frontend/src/domain/fileAnalysis.ts",
+    "frontend/src/domain/fileInspection.ts",
+    "frontend/src/domain/appAnalysis.ts",
+    "frontend/src/domain/deviceAnalysis.ts",
+    "frontend/src/domain/deviceReview.ts",
+    "frontend/src/domain/networkAnalysis.ts",
+    # Scam Alerts and the government feeds.
+    "backend/services/government_alerts.py",
+    "backend/services/feed_health.py",
+    "backend/services/learning_feeds.py",
+    # Phone permissions: what is declared, what is asked for, and when.
+    "frontend/app.config.js",
+    "frontend/plugins/withRestrictedPhonePermissions.js",
+    "frontend/src/domain/gatePermissions.ts",
 )
 
 _REVIEWED = re.compile(r"^_Last reviewed against the code: (\d{4}-\d{2}-\d{2})\._$", re.M)

@@ -1372,18 +1372,22 @@ async def confirm_settings_plan(case_id: str, plan_id: str, request: Request, co
 @router.post("/investigations/{case_id}/confirm-commit", status_code=200)
 async def confirm_commit(case_id: str, request: Request):
     """Device confirms it has successfully committed the complete investigation locally.
-    The server purges all associated working data for this case."""
+    The server purges all associated working data for this case and says when (`removedAt`), for the result's note."""
     owner = owner_of(request)
     case = await db.investigation_cases.find_one(
         {"owner_id": owner, "case_id": case_id, "deleted": {"$ne": True}},
         {"_id": 0, "owner_id": 1, "case_id": 1, "response_ciphertext": 1, "status": 1, "cleanup_status": 1})
     if not case:
-        # Already purged or never existed — idempotent success
-        return JSONResponse({"purged": True, "status": "already_clean"}, headers=NO_STORE)
+        # Already purged or never existed — idempotent success. A purged case's record says when it was removed.
+        gone = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id, "deleted": True, "cleanup_status": "complete"},
+                                                     {"_id": 0, "updated_at": 1})
+        removed_at = repo.utc(gone["updated_at"]).isoformat() if gone and gone.get("updated_at") else None
+        return JSONResponse({"purged": True, "status": "already_clean", "removedAt": removed_at}, headers=NO_STORE)
     # Only purge if the investigation has a completed response
     if not case.get("response_ciphertext"):
         raise http(409, "conflict", "Cannot confirm commit for an investigation that has no completed response.")
     # Purge: revoke the case (marks deleted, rotates epoch) then run cleanup
     await repo.revoke(owner, case_id, "expired")
     cleanup_status = await repo.run_cleanup(owner, case_id)
-    return JSONResponse({"purged": True, "status": cleanup_status}, headers=NO_STORE)
+    removed_at = now_utc().isoformat() if cleanup_status == "complete" else None  # a failed clean-up is retried; no time is claimed
+    return JSONResponse({"purged": True, "status": cleanup_status, "removedAt": removed_at}, headers=NO_STORE)

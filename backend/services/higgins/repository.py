@@ -232,7 +232,8 @@ async def case_view(doc: dict) -> InvestigationCase:
                              retention_class=doc.get("retention_class", ""),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
                              cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=(doc.get("routing") or {}).get("answeredBy"),
-                             settled_reason=rulebook.settled_reason(doc.get("routing")) if response else None)
+                             settled_reason=rulebook.settled_reason(doc.get("routing")) if response else None,
+                             content_delete_by=utc(doc["content_delete_by"]) if doc.get("content_delete_by") else None)
 
 
 def device_profile(doc: dict) -> Optional[dict]:

@@ -363,12 +363,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - **Handing a result to Higgins:** at most 8 findings and 4 actions, each line short. Secrets, the person's own details and IP addresses are removed.
 - **My Personal Data:** the person's own saved details (such as their name, email address or phone number) are replaced with a label, such as "[Email address redacted]", in message and email checks and in what a result hands to Higgins. IP addresses become "[ip address]".
 
-**What the server keeps, and for how long**
-- **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
-- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if Apollo's own clean-up has stopped, and it is never served after that.
-- **On the phone, the person decides.** The pictures and originals kept on the phone stay until the person removes them or deletes the check they belong to.
-- **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content (see Ask Higgins).
-- **Saved AI answers:** kept only when the question holds no secret and no personal detail (see Apollo's knowledge base).
+**What is kept, and for how long:** see Your data.
 
 ---
 
@@ -465,6 +460,221 @@ Every finished result can show one plain sentence naming the rule that settled i
 | MAGNUM-SAFETY-NET | Safety net | Magnum DI | TC FlyBy's own result didn't pass Apollo's checks, so Magnum DI looked at the whole case. |
 
 When Magnum DI was needed for more than one reason, the sentence names them together, for example "Reading and reasoning". Results recorded before these rules existed show no sentence rather than a guessed one.
+
+---
+
+## 10. Your data: what is kept and for how long {#your-data}
+
+**The rule:** what the person sends Apollo lives on their phone. The server keeps only what a feature needs, only for as long as it needs it, and the person can delete all of it.
+
+**On the phone (the person decides)**
+| What | How long |
+|---|---|
+| Finished results | Until the person deletes the check, or deletes all their data |
+| Pictures, files and originals sent for a check | Never deleted automatically. They stay until the person removes them, deletes the check they belong to, or deletes all their data |
+| Ask Higgins chat | Up to 1 hour, and at most the last 40 messages |
+| Calls Apollo screened (Android) | The last 50 calls, for up to 30 days |
+| Email addresses watched for breaches | Until the person removes them. The last 12 scans are kept |
+| Settings and preferences | Until the person deletes all their data or uninstalls Apollo |
+
+**On Apollo's server**
+- **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
+- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if Apollo's own clean-up has stopped, and it is never served after that.
+- **The note on each result.** Every saved result says when its pictures and files were removed from Apollo's server, or the latest time they will leave it. Results saved before this note existed say only that they have left, once 24 hours have passed.
+- **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content for 30 days (see Ask Higgins).
+- **What Higgins remembers between chats:** a recent result for 7 days, protection status for 1 hour, a preference for 90 days, a goal for 30 days and a permission for 1 day. At most 25 of each kind and 100 in all.
+- **Threats records:** fixed wording and a domain only (see Privacy and redaction). Kept until the person clears the Threats history, which hides them, or deletes all their data, which deletes them.
+- **Remembered gate results:** a possible threat for 30 days and no threat for 7 days, kept against a fingerprint (a one-way code) of what was checked.
+- **TC FlyBy's search answers:** 7 days, filed under a code made from the question. They are shared, and never tied to the person who asked.
+- **Trusted links:** until the person removes the link.
+- **Gmail:** an encrypted sign-in token, until the person disconnects. Message content is never stored (see Email and accounts).
+- **Family links:** until the person unpairs. A Family Help session is deleted 30 days after it starts.
+- **The phone's anonymous sign-in:** valid for 365 days.
+- **Diagnostics:** device registration, protection-health checks and alert-delivery records, with no personal content. Kept until the person deletes all their data, unless they expire sooner.
+- **Saved AI answers:** kept only when the question holds no secret and no personal detail (see Apollo's knowledge base).
+
+**Deleting everything**
+- **Settings → What Apollo stores → Delete My Apollo Data** first wipes everything Apollo keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so Apollo starts again as a new anonymous device.
+- The same screen counts what the server holds in each group before anything is deleted.
+
+---
+
+## 11. Threats list {#threats-list}
+
+**Job:** one record for each check, showing what Apollo found and what to do next.
+
+**One record, never twins**
+- Each check creates exactly one entry. The phone's first detection and the later investigation update the same card.
+- Records that name the same investigation are one case. Repeat checks of the same subject show as one case with the latest result, and every check stays in its history.
+- Two records are the same finding only when they share an investigation, an explicit link between them, or the same verified indicator. A brand, website or scenario in common never merges two findings.
+- The same issue with the same details again within 24 hours is recorded as a repeat, not a new finding.
+
+**What each status means**
+| Status | When |
+|---|---|
+| Investigating | Only while an investigation is actually running |
+| Blocked | Only when real block evidence confirms it |
+| Needs you | Apollo is Barking or Biting |
+| Keeping watch | Apollo is Growling, or something is worth a closer look |
+| Handled | The person resolved it |
+| No threat | It was resolved with nothing found |
+
+**Rules**
+- **Biting only for a real block** (see Apollo detection). The server rejects any Biting claim without the block evidence, and an edit can never turn a record into Biting.
+- A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
+- Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
+- **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content.
+- **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
+
+---
+
+## 12. Websites and links {#websites-links}
+
+**Job:** check a link before it is opened.
+
+**How a link is checked**
+- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. A link that redirects more than 5 times is judged as given, and the gap is recorded.
+- The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
+- Every link Apollo checks, in a message, an email or on its own, gets the same check.
+- There are 21 link rules, covering links, QR codes, data links and real-time phishing relays.
+- **Never a threat on their own:** an http link, a bare IP address, punycode, an unusual port, a risky TLD, a link shortener, a long link, deep subdomains, encoded characters, a newly registered domain, a QR code itself, and data or blob links.
+- **QR codes:** the address inside is checked as a link. The QR code itself is never a threat.
+- A link the person checks themselves opens an investigation, which TC FlyBy and Magnum DI pick up as usual.
+
+**Website protection (Android)**
+- An on-device filter, run through Android's private VPN, blocks known dangerous websites before they load. Browsing is checked on the phone and never sent anywhere.
+- A blocked website reaches Biting only when the filter actually blocked the connection.
+
+**Trusted links**
+- Trust covers only the exact link the person chose. Removing it ends the trust.
+
+---
+
+## 13. Messages and calls: Call Guard and Text Guard {#call-text-guard}
+
+**Call Guard (Android)**
+- Works only when the person makes Apollo the phone's caller ID & spam app. Android then hands Apollo each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
+- Apollo never listens to a call and never reads the call log. It sees only the one incoming number.
+- It compares that number with three lists kept on the phone: numbers the person blocked, numbers they allowed, and numbers this phone looked up earlier and found high-risk.
+- An allowed number always rings. For a blocked or high-risk number, Apollo asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
+- Every other call rings normally. Apollo never delays or silences a call on a guess, and if screening fails the call rings.
+- A number with no local signal is queued (up to 20) and looked up the next time Apollo is open. Android allows only a few seconds to answer, which is too short for the lookup.
+- A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
+- **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
+- **iPhone:** Apple lets no app screen calls. Apollo says so rather than suggesting protection it can't give.
+
+**Text Guard**
+- **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
+- Store builds of Apollo never ask to read text messages or the call log.
+- **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to Apollo where the app offers Share.
+- Every message goes through the same checks as a pasted one: 30 message rules, plus the link check for each link. Calls have 16 rules of their own.
+- **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, a job, investment or romance discussion without scam mechanics, an unknown caller, a number that isn't in contacts, and a number's reputation without matching behaviour.
+
+---
+
+## 14. Email and accounts {#email-accounts}
+
+**Gmail**
+- Read-only access only. Apollo never sends, deletes, labels or changes anything in the mailbox, and never sees or stores the mailbox password.
+- The person connects through Google's own sign-in, and the sign-in link expires after 10 minutes. More than one account can be connected.
+- The connection, an encrypted token, is kept until the person disconnects. Disconnecting also cancels it with Google.
+- **Monitoring:** every 15 minutes, Apollo reads the next 15 messages of each connected account and gives each one the same checks as a pasted email.
+- Message content is used for that check only and never written to Apollo's database. A receipt for each message, with no content, stops it from being checked twice.
+- An attachment is checked by its fingerprint when the file-reputation service is connected; the attachment itself isn't uploaded.
+- There are 19 email rules. **Never a threat on their own:** a calendar invitation, a form-builder domain, valid sender checks (SPF, DKIM and DMARC) from a form provider, and an address appearing in a breach.
+
+**Account checks**
+- The email addresses the person watches stay on the phone.
+- Each scan sends an address once to the breach service, Have I Been Pwned when it is connected and XposedOrNot otherwise, and the address isn't stored or logged.
+- Apollo never asks for a password. Anything in a pasted account alert that looks like one is removed before it is checked.
+- Links in a pasted account alert are compared with the organisation's official websites.
+- "No breach found" is never called proof that the account is safe.
+
+---
+
+## 15. Apps and files {#apps-files}
+
+**Files**
+- **Trust the file, not its name.** The phone compares the file's real type with its name, and looks for double extensions, right-to-left name tricks, archives, app packages, profiles, certificates and links inside.
+- Files can be up to 10 MB. The phone reads the start of the file and a text sample; nothing is uploaded for this first look.
+- Links inside a file are checked as links.
+- If the file is sent for an investigation, the server decides its type from its own bytes, not its name, and records any mismatch.
+- Apollo only ever cleans up the copy its own picker made. A shared original is never touched.
+- There are 19 file rules. **Never a threat on their own:** encryption or password protection, ordinary file characteristics, and a QR code itself.
+- Apollo never calls a file 100% safe, and unknown never means malicious.
+
+**Apps**
+- Apollo doesn't judge an app by its name. It looks at what the app is allowed to do, where it came from and what happened around the install.
+- It works from what the person tells Apollo plus what the phone's security checks can see, and never pretends to read other apps.
+- Up to 10 web addresses the app uses are checked against the same reputation sources as a link.
+- A remote-access app matters when it follows a suspicious call, message or website.
+- There are 14 app rules. **Never a threat on their own:** an app from an official store, permissions the app is expected to need, and installing a web app.
+
+---
+
+## 16. Device and internet {#device-internet}
+
+**Device check**
+- Apollo shows only what this phone and this version of Apollo can truly see, plus what the person reports. It is never a full scan. Anything it can't see is shown as not visible, never as safe.
+
+| Result | Meaning |
+|---|---|
+| Protected | No meaningful issues detected within what Apollo can see here. |
+| Review recommended | Some permissions or settings deserve attention. |
+| Action required | A high-risk configuration or app was detected. |
+| Recovery | Risky access was already granted. Follow the steps — Apollo stays with you. |
+
+- **Security & Privacy Review:** the same 9 areas on every kind of device. Each setting gets one of: Checked, Review recommended, Action required, Manual review required, Unavailable or Not applicable. The review is never one blanket "Protected".
+- **Protection changes** say only what changed, never who changed it or why. A setting Apollo couldn't read is never counted as a change, and Apollo's own protection VPN is recognised as Apollo's.
+- There are 15 device rules. **Never a threat on their own:** expected management or device administration, expected accessibility access, Apollo or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
+
+**Internet (Check this network)**
+- Apollo uses only what the phone reports: connection type, Wi-Fi security, a sign-in page (captive portal) and VPN status. The person adds where they are (home, work or school, a public place, or not sure), the network name they expect, and whether they turned the VPN on.
+- Public isn't malicious, open isn't intercepted, and a VPN the person chose is fine.
+- There are 9 network rules. **Never a threat on their own:** public Wi-Fi, open or WEP Wi-Fi, an unknown Wi-Fi network, a lookalike network name, a captive portal, a trusted home or work connection, and a mobile data connection.
+
+---
+
+## 17. Scam Alerts and government feeds {#scam-alerts}
+
+**Job:** show the specific scams that official sources are reporting, each explained from the source itself.
+
+**Where alerts come from**
+- Recognised government and official cyber-authority sources in Australia, the USA, the UK and the EU, plus Tier 1 pages found for Apollo's knowledge base (see Apollo's knowledge base).
+- Each source is named in full, never as a bare acronym.
+
+**How often feeds are read**
+- Each feed is read on its own schedule, between every 15 minutes and once a day (hourly unless set otherwise).
+- An item stays for 90 days after it was last seen in its feed.
+- In the app, a feed shows as stale when its last successful read is more than 6 hours old, or its latest read failed.
+- For staff, a feed is healthy, stale (no successful read in 24 hours) or failing (its latest read failed, with the error in plain words).
+
+**What is shown**
+- Only items that have been read and explained. An item that hasn't been read yet is never shown as a scam alert.
+- Only specific scam campaigns and emerging patterns. General scam education goes to Learn with Higgins.
+- Only recent reports: an item dated more than 180 days ago is left out. An undated item stays, because its age can't be proven.
+- The most recent first, up to 50.
+- **Growling for an alert:** only for a specific scam rated High or Extreme that has reached Australia, or that may reach Australia and was reported within the last 180 days.
+
+---
+
+## 18. Phone permissions {#permissions}
+
+**The rule:** Apollo asks only when the person chooses something that needs the permission, and says why first. If the person says no, Apollo asks once more at most, when the phone allows it, and after that offers Open Settings. Saying no only switches off that one feature.
+
+| Permission | What it's for | When Apollo asks |
+|---|---|---|
+| Notifications | Receive important threat and family alerts | During setup, or with Allow security alerts in Settings |
+| Camera | Scan QR codes and photograph suspicious items for Apollo to check | When the person scans a code or takes a photo |
+| Photos | Pick images of suspicious content for Apollo to investigate | When the person chooses a picture or a screenshot |
+| Website protection (Android) | Run Apollo's on-device VPN filter | When the person turns on website protection |
+| Notification access (Android) | Text Guard reads new text-message notifications | When the person turns on message screening |
+| Caller ID & spam app (Android) | Call Guard screens incoming calls | When the person turns on call screening |
+| Gmail read-only (an account, not a phone permission) | Check a connected mailbox | When the person connects Gmail |
+
+- **Never asked for:** the microphone and location. Store builds never ask to read text messages or the call log.
+- Where a phone hides Wi-Fi details without location permission, Apollo shows them as unknown rather than asking.
+- A reminder to set up a protection the person skipped comes back after about 3 days, only while it is still off.
 
 ---
 

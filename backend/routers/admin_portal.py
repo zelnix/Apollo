@@ -8,6 +8,7 @@ Truthfulness: every status from a real source; 'Unknown' when unverifiable.
 from __future__ import annotations
 
 import html as html_mod
+import re
 import io
 import os
 import secrets
@@ -2901,16 +2902,57 @@ async def audit(request: Request):
 
 # ── Rule Book ────────────────────────────────────────────────────────────────
 
+_RULE_BOOK_STYLE = """<style>
+.rb-tools{display:flex;gap:8px;margin:12px 0;}
+details.rb-section{border:1px solid var(--border);border-radius:10px;margin:10px 0;background:var(--card);}
+details.rb-section>summary{cursor:pointer;padding:12px 16px;list-style:none;display:flex;align-items:center;gap:10px;}
+details.rb-section>summary::-webkit-details-marker{display:none;}
+details.rb-section>summary::before{content:"\\25B8";font-size:0.9rem;color:var(--muted);}
+details.rb-section[open]>summary::before{content:"\\25BE";}
+details.rb-section>summary h2{display:inline;margin:0;font-size:1.1rem;}
+details.rb-section>.rb-body{padding:0 16px 12px;}
+</style>"""
+
+_RULE_BOOK_SCRIPT = """<script>
+(function(){
+  function openFromHash(){var id=decodeURIComponent(location.hash.slice(1));var el=id&&document.getElementById(id);if(el&&el.tagName==='DETAILS'){el.open=true;el.scrollIntoView();}}
+  window.addEventListener('hashchange',openFromHash);openFromHash();
+  document.querySelectorAll('[data-rb-all]').forEach(function(b){b.addEventListener('click',function(){var open=b.getAttribute('data-rb-all')==='open';document.querySelectorAll('details.rb-section').forEach(function(d){d.open=open;});});});
+})();
+</script>"""
+
+_SECTION_HEADING = re.compile(r"^##\s+(.*?)(?:\s*\{#([\w-]+)\})?\s*$")
+
+
+def _rule_book_sections(text: str) -> str:
+    """The intro stays open; every `## ` section becomes its own closed <details>, opened by a tap, by
+    "Open all", or by a link to its id (#settling-rules)."""
+    intro, *sections = text.split("\n## ")
+    md = lambda part: markdown.markdown(part, extensions=["tables", "fenced_code", "toc", "attr_list"])  # noqa: E731
+    out = [md(intro), '<div class="rb-tools"><button class="btn btn-sm" type="button" data-rb-all="open" data-testid="rule-book-open-all">Open all</button>'
+           '<button class="btn btn-sm" type="button" data-rb-all="close" data-testid="rule-book-close-all">Close all</button></div>']
+    for section in sections:
+        heading, _, body = section.partition("\n")
+        match = _SECTION_HEADING.match(f"## {heading}")
+        title, anchor = (match.group(1), match.group(2)) if match else (heading, None)
+        anchor = anchor or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        body = re.sub(r"\n-{3,}\s*$", "", body.rstrip())
+        out.append(f'<details class="rb-section" id="{html_mod.escape(anchor)}" data-testid="rule-book-section-{html_mod.escape(anchor)}">'
+                   f'<summary><h2>{html_mod.escape(title)}</h2></summary><div class="rb-body">{md(body)}</div></details>')
+    return "".join(out)
+
+
 def _rule_book_html() -> str:
-    """The shared rule book (content/rulebook.md), word for word — the same file the app shows in Settings."""
+    """The shared rule book (content/rulebook.md), word for word — the same file the app shows in Settings.
+    Each section starts closed, as in the app."""
     from services import rulebook
     behind = rulebook.changed()
     banner = (f'<div class="alert alert-warning" data-testid="rule-book-behind">The rule book is behind the code: '
               f'{", ".join(html_mod.escape(p) for p in behind)} changed since it was last reviewed. Update '
               f'<code>backend/content/rulebook.md</code>, then run <code>python scripts/rulebook_stamp.py</code>.</div>' if behind else
               '<div class="alert alert-ok" data-testid="rule-book-in-step">In step with the code: every rule-defining file matches the last review.</div>')
-    body = markdown.markdown(rulebook.read()["markdown"], extensions=["tables", "fenced_code", "toc", "attr_list"])
-    return f'{banner}<article data-testid="rule-book">{body}</article>'
+    body = _rule_book_sections(rulebook.read()["markdown"])
+    return f'{_RULE_BOOK_STYLE}{banner}<article data-testid="rule-book">{body}</article>{_RULE_BOOK_SCRIPT}'
 
 
 @router.get("/admin/rule-book", response_class=HTMLResponse)

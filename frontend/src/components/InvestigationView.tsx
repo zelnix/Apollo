@@ -32,6 +32,7 @@ import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefact
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { SettledReasonLine } from "@/src/components/SettledReasonLine";
+import { ServerCopyNote } from "@/src/components/ServerCopyNote";
 import { assessmentLabel, attentionLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -757,6 +758,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           </View>
           {outcome ? <OutcomeExplainerLink outcome={response?.outcome} testID="inv-outcome-explainer" /> : null}
           {response ? <SettledReasonLine reason={caseData?.settledReason} testID="inv-settled-reason" /> : null}
+          {response && !response.question ? <ServerCopyNote caseId={caseData?.id} live={caseData} testID="inv-server-copy" /> : null}
         </View>
       </View>
 

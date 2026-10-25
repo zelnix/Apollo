@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
 import { forgetCase } from "./caseIndex";
-import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendingConfirmCommits, deleteInvestigation, getInvestigation, type DeviceInvestigation } from "./deviceStore";
+import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendingConfirmCommits, deleteInvestigation, getInvestigation, recordServerCopyRemoved, type DeviceInvestigation } from "./deviceStore";
+import { serverLeavesBy } from "@/src/domain/serverCopyNote";
 import { deleteImageEvidenceFor } from "@/src/store/imageEvidence";
 import { deleteReportProgress } from "@/src/store/reportProgress";
 import { deleteOriginalSource } from "@/src/store/originalSource";
@@ -59,10 +60,11 @@ async function commitAnswered(caseId: string, caseData: InvestigationCase, quest
       response: caseData.response, sources: sourcesData.items,
       turns: turnsData.items, evidenceItems,
       patrolEventId: null, committedAt: new Date().toISOString(), answeredBy: caseData.answeredBy ?? null, settledReason: caseData.settledReason ?? null,
+      serverCopy: { removedAt: null, leavesBy: serverLeavesBy(caseData) },
     };
     await commitInvestigation(snapshot);
-    // Tell the server to purge — failures are queued for retry
-    try { await api.confirmCommit(caseId); }
+    // Tell the server to purge — failures are queued for retry. A confirmed removal time goes on the result's note.
+    try { const { removedAt } = await api.confirmCommit(caseId); if (removedAt) await recordServerCopyRemoved(caseId, removedAt); }
     catch { await enqueueConfirmCommit(caseId); }
   } catch { /* local commit failed — server data remains as recovery fallback */ }
 }
@@ -106,7 +108,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     update({ undeleted: (await pendingDeletions())[0] ?? null });
     // Also flush pending confirm-commits (device committed locally but server purge failed)
     for (const caseId of await pendingConfirmCommits()) {
-      try { await api.confirmCommit(caseId); await dequeueConfirmCommit(caseId); }
+      try { const { removedAt } = await api.confirmCommit(caseId); if (removedAt) await recordServerCopyRemoved(caseId, removedAt); await dequeueConfirmCommit(caseId); }
       catch (error: unknown) { if (error instanceof ApiError && (error.status === 404 || error.status === 410)) await dequeueConfirmCommit(caseId); }
     }
   }, []);

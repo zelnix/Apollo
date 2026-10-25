@@ -69,7 +69,7 @@ export function getEvidence(caseId: string, evidenceId: string) { return apiGet<
 /** Returns the URL for fetching evidence content bytes (images, files). Must be fetched with auth headers. */
 export function evidenceContentUrl(caseId: string, evidenceId: string) { return `${API_BASE}/investigations/${caseId}/evidence/${evidenceId}/content`; }
 export function deleteCase(caseId: string) { return apiDelete<void>(`/investigations/${caseId}`); }
-export function confirmCommit(caseId: string) { return apiPost<{ purged: boolean; status: string }>(`/investigations/${caseId}/confirm-commit`, "investigation", {}); }
+export function confirmCommit(caseId: string) { return apiPost<{ purged: boolean; status: string; removedAt?: string | null }>(`/investigations/${caseId}/confirm-commit`, "investigation", {}); }
 export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string, signal?: AbortSignal) {
   // A follow-up on a finished investigation comes back answered from its record, with no job (no Magnum DI call).
   return postWithKey<{ job: Job | null; followUp?: FollowUpAnswer; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);

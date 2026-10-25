@@ -13,6 +13,7 @@
  *   apollo.device.investigation.{caseId} → DeviceInvestigation
  */
 import { storage } from "@/src/utils/storage";
+import type { ServerCopy } from "@/src/domain/serverCopyNote";
 import type { EvidenceItem, HigginsResponse, SourceReference, TurnCommit } from "./types";
 
 // ── Public types ────────────────────────────────────────────────────────
@@ -42,6 +43,8 @@ export interface DeviceInvestigation {
   answeredBy?: string | null;
   /** The rule that settled it, as one plain sentence. Absent on results saved before it was recorded. */
   settledReason?: import("./types").SettledReason | null;
+  /** When the server's copy of what was sent was removed, or the latest time it will be. Absent on older results. */
+  serverCopy?: ServerCopy;
 }
 
 export interface DeviceInvestigationMeta {
@@ -163,6 +166,14 @@ export async function deleteInvestigation(caseId: string): Promise<boolean> {
 export async function hasInvestigation(caseId: string): Promise<boolean> {
   const raw = await storage.getItem<string | null>(caseKey(caseId), null).catch(() => null);
   return raw !== null;
+}
+
+/** The server confirmed it deleted its copy of this check: record when, for the note on the result. */
+export async function recordServerCopyRemoved(caseId: string, removedAt: string): Promise<void> {
+  const inv = await getInvestigation(caseId);
+  if (!inv || inv.serverCopy?.removedAt) return;
+  await storage.setItem(caseKey(caseId), JSON.stringify({ ...inv, serverCopy: { leavesBy: inv.serverCopy?.leavesBy ?? null, removedAt } }));
+  notify();
 }
 
 // ── Confirm-commit queue ────────────────────────────────────────────────

@@ -208,6 +208,8 @@ class InvestigationCase(Wire):
     answered_by: Optional[str] = None
     # The rule that settled it, as one plain sentence (services/rulebook.py). None when the record doesn't say.
     settled_reason: Optional[SettledReason] = None
+    # The latest moment the server keeps what was submitted: 24 hours after the investigation finished (None while it runs).
+    content_delete_by: Optional[datetime] = None
 
 
 class RetryAttempt(Wire):

@@ -295,3 +295,29 @@ class TestReportRetentionNotice:
         # The retention notice should exist and be a string
         notice = report.get("retentionNotice", "")
         assert isinstance(notice, str)
+
+
+class TestTheResultNoteKnowsWhenTheServerCopyWent:
+    """The phone's note on each saved result: the case says its 24-hour deadline, and confirm-commit says when it was removed."""
+
+    def test_a_finished_case_carries_its_deadline_and_removal_time(self):
+        import time
+        _, headers = register_device()
+        body = {"gate": "text", "question": "Is this a scam?", "initialFindingRefs": [], "initialFindings": [], "deviceProfile": None,
+                "submissions": [{"clientItemId": str(uuid.uuid4()), "kind": "text",
+                                 "value": "Your parcel is held. Pay the $2.99 fee now at http://auspost-redelivery.top/pay to release it."}]}
+        created = httpx.post(f"{BASE}/investigations", json=body, headers={**headers, "Idempotency-Key": str(uuid.uuid4())}, timeout=60)
+        assert created.status_code == 201, created.text
+        case_id = created.json()["case"]["id"]
+        case = {}
+        for _ in range(45):
+            case = httpx.get(f"{BASE}/investigations/{case_id}", headers=headers, timeout=20).json()["case"]
+            if case["status"] in ("complete", "partial"):
+                break
+            time.sleep(2)
+        assert case["status"] in ("complete", "partial"), case["status"]
+        assert case["contentDeleteBy"], "a finished case says when its content must be gone"
+        confirmed = httpx.post(f"{BASE}/investigations/{case_id}/confirm-commit", headers=headers, timeout=20).json()
+        assert confirmed["purged"] is True and confirmed["status"] == "complete" and confirmed["removedAt"]
+        again = httpx.post(f"{BASE}/investigations/{case_id}/confirm-commit", headers=headers, timeout=20).json()
+        assert again["status"] == "already_clean" and again["removedAt"], "a purged case still says when it was removed"

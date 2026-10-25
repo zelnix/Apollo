@@ -7,9 +7,9 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppMenuButton } from "@/src/components/AppMenu";
-import { RuleBookView } from "@/src/components/RuleBookView";
+import { RuleBookSections } from "@/src/components/RuleBookSections";
 import { Body, Button, Card } from "@/src/components/ui";
-import { parseRuleBook, reviewedLabel } from "@/src/domain/ruleBook";
+import { parseRuleBook, reviewedLabel, sectionsOf } from "@/src/domain/ruleBook";
 import { ruleBook, type RuleBook } from "@/src/higgins/hubClient";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -64,7 +64,7 @@ export default function RuleBookScreen() {
   // Tried at once; tried again when this device's credential arrives (a moment after a cold start).
   useEffect(() => { void load(); }, [load, deviceId]);
 
-  const blocks = useMemo(() => (book ? parseRuleBook(book.markdown) : []), [book]);
+  const { intro, sections } = useMemo(() => sectionsOf(book ? parseRuleBook(book.markdown) : []), [book]);
   const reviewed = reviewedLabel(book?.reviewedAt);
 
   const goToSection = useCallback(() => {
@@ -90,7 +90,8 @@ export default function RuleBookScreen() {
               {fromPhone && error ? "Showing the copy saved on this phone. Apollo couldn't reach its server just now." : reviewed ? `Reviewed against how Apollo works on ${reviewed}.` : "Apollo's current rule book."}
             </Text>
             <View collapsable={false} onLayout={(e) => { bookY.current = e.nativeEvent.layout.y; goToSection(); }}>
-              <RuleBookView blocks={blocks} onHeadingLayout={(id, y) => { if (id === section) { sectionY.current = y; goToSection(); } }} />
+              <RuleBookSections intro={intro} sections={sections} initiallyOpen={section}
+                onSectionLayout={(id, y) => { if (id === section) { sectionY.current = y; goToSection(); } }} />
             </View>
           </>
         ) : loading ? (

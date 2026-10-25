@@ -106,3 +106,25 @@ export function reviewedLabel(isoDate: string | null | undefined): string | null
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   return `${d} ${months[m - 1]} ${y}`;
 }
+
+export interface RuleBookSection { id: string; title: string; blocks: Block[] }
+
+const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** The book as the app shows it: the intro, then one section per level-2 heading, each opened by a tap.
+ *  The "---" lines between sections are dropped, because each section is its own card. */
+export function sectionsOf(blocks: Block[]): { intro: Block[]; sections: RuleBookSection[] } {
+  const intro: Block[] = [];
+  const sections: RuleBookSection[] = [];
+  for (const block of blocks) {
+    if (block.kind === "heading" && block.level === 2) sections.push({ id: block.id ?? slug(block.text), title: block.text, blocks: [] });
+    else (sections.length ? sections[sections.length - 1].blocks : intro).push(block);
+  }
+  const trim = (list: Block[]) => {
+    while (list.length && list[list.length - 1].kind === "rule") list.pop();
+    while (list.length && list[0].kind === "rule") list.shift();
+  };
+  trim(intro);
+  sections.forEach((section) => trim(section.blocks));
+  return { intro, sections };
+}
