@@ -43,6 +43,52 @@ _AUSTRALIA = re.compile(r"\b(Australia|Australians?|New South Wales|NSW|Victoria
 _PLACES = re.compile(r"\b(Australia|New South Wales|NSW|Victoria|Queensland|Tasmania|South Australia|Western Australia|Northern Territory|Canberra|Sydney|Melbourne|Brisbane|Perth|Adelaide|Hobart|Darwin|United States|USA|United Kingdom|England|Scotland|Wales|Europe|European Union|New Zealand|Canada)\b")
 _WATCH = re.compile(r"\b(be wary|beware|watch (?:out )?for|look out|be suspicious|signs? of|red flags?|may (?:claim|say|ask|pretend|appear)|pretend(?:s|ing)? to be|pos(?:e|es|ing) as|impersonat\w+|claim(?:s|ing)? to be|asks? you to|will ask|might ask|unexpected|out of the blue|too good to be true)\b", re.I)
 _DO = re.compile(r"^(?:do not|don't|never|always|report|contact|call|visit|check|block|delete|change|stop|hang up|go to|if you(?:'ve| have| think| are)|protect|keep|use|turn on|enable|update|ignore|verify)\b|\b(you should|we recommend|we encourage|we urge|make sure)\b", re.I)
+
+
+def _words(body: str) -> re.Pattern:
+    """Whole words or phrases. Acronyms are matched as capitals only; anything inside (?i:…) in any case."""
+    return re.compile(rf"(?<!\w)(?:{body})(?!\w)")
+
+
+# ── Where an alert applies (no AI) ────────────────────────────────────────────
+# An alert applies everywhere unless its headline or summary names something only its source's country has: a
+# national agency, benefit, payment service, election, state or its people ("FTC" makes an FTC alert US-only).
+_US_STATES = ("alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|"
+              "kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|"
+              "new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|"
+              "south carolina|south dakota|tennessee|texas|utah|vermont|virginia|wisconsin|wyoming")
+_LOCAL_TO = {
+    "US": _words(r"FTC|IRS|SSA|SSN|FBI|USPS|USCIS|SNAP|FAFSA|DMV|U\.S\.|US|(?i:united states|americans?|federal trade commission|"
+                 r"internal revenue service|social security|medicare|medicaid|postal service|justice department|department of justice|"
+                 r"federal (?:jury|grand jury|court|prosecutors?|agents?|agency|charges)|grand jury|affordable care act|open enrollment|"
+                 rf"student loans?|stimulus|zelle|venmo|cash app|e-?zpass|midterms?|green card|{_US_STATES})"),
+    "UK": _words(r"HMRC|NHS|DVLA|DWP|(?i:hm revenue|national insurance|council tax|universal credit|tv licen[cs](?:e|ing)|royal mail|"
+                 r"action fraud|gov\.uk|ofcom|ofgem|britons|british (?:people|public|residents|citizens|households|consumers)|in the uk|"
+                 r"uk (?:residents|citizens|consumers|households|people|public|businesses|taxpayers)|england|scotland|wales|northern ireland)"),
+    "AU": _words(r"ATO|NSW|(?i:australia|australians?|mygov|centrelink|medicare|services australia|australia post|linkt|superannuation|"
+                 r"national anti-scam centre|new south wales|victoria|queensland|tasmania|south australia|western australia|northern territory)"),
+    "NZ": _words(r"IRD|NZTA|(?i:new zealand(?:ers?)?|kiwis|inland revenue|nz post|waka kotahi|myir|realme)"),
+    "CA": _words(r"CRA|SIN|(?i:canada|canadians?|canada revenue agency|service canada|canada post|interac)"),
+    "EU": _words(r"(?i:eu (?:citizens|residents|consumers|member states)|in the eu|european (?:citizens|consumers)|sepa)"),
+}
+# Naming another country as well means the alert spans countries, so it isn't local to one.
+_COUNTRY = {
+    "AU": _words(r"(?i:australia|australians?)"), "US": _words(r"U\.S\.|(?i:united states|americans?)"),
+    "UK": _words(r"(?i:united kingdom|britain|britons)"), "NZ": _words(r"(?i:new zealand)"),
+    "CA": _words(r"(?i:canada|canadians?)"), "EU": _words(r"(?i:europe|european union)"),
+}
+
+
+def applies_in(title: str, summary: str, region: str) -> tuple[str, str]:
+    """("everywhere", "") or (the source's country, the words that make it local to it)."""
+    head = f"{title}. {summary}"
+    local = _LOCAL_TO.get(region)
+    found = local.search(head) if local else None
+    if not found or any(pattern.search(head) for other, pattern in _COUNTRY.items() if other != region):
+        return "everywhere", ""
+    return region, found.group(0)
+
+
 _SOURCE_SEVERITY = {"critical": "EXTREME", "extreme": "EXTREME", "high": "HIGH", "medium": "MODERATE", "moderate": "MODERATE", "low": "LOW"}
 _MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"], 1)}
 _DAY_DATE = re.compile(r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (20\d\d)\b")

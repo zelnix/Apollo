@@ -104,7 +104,15 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
     sections = analysis.get("sections") or {}
     severity = analysis.get("severity", "LOW")
     relevance = analysis.get("australianRelevance", "unknown")
+    relevance_reason = analysis.get("australianRelevanceReason") or ""
     source_name = _source_name(row["source_id"], source.get("name"))
+    # Where it applies: everywhere, or only in its source's country when it names something only that country has.
+    applies, named = scam_analysis.applies_in(row.get("title") or "", row.get("summary") or "", region)
+    applies_label = scam_intel.REGION_LABEL.get(applies, applies)
+    place = f"the {applies_label}" if applies_label.startswith(("United ", "European ")) else applies_label
+    applies_reason = f'It names "{named}", which is specific to {place}.' if named else "It doesn't name anything specific to one country."
+    if applies not in ("everywhere", "AU"):  # local to another country: it can't reach Australia, so it never growls
+        relevance, relevance_reason = "overseas_only", f"Only applies in {place}. {applies_reason}"
     fresh = bool(effective and (now - effective) <= RECENCY_CUTOFF)
     # A specific High/Extreme campaign growls when there's real Australian exposure. Confirmed-AU campaigns
     # growl regardless of date (official AU sources are often undated listings); overseas "potential"
@@ -133,7 +141,8 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
         "tier": analysis.get("tier", "general_education"), "facts": analysis.get("facts") or {},
         "severity": severity, "severityReason": analysis.get("severityReason") or "", "severityConfidence": analysis.get("confidence") or "low",
         "sourceSeverity": row.get("source_severity"),
-        "australianRelevance": relevance, "australianRelevanceReason": analysis.get("australianRelevanceReason") or "",
+        "australianRelevance": relevance, "australianRelevanceReason": relevance_reason,
+        "appliesIn": applies, "appliesInLabel": "Everywhere" if applies == "everywhere" else applies_label, "appliesInReason": applies_reason,
         "growling": growling, "higgins": higgins,
     }
 

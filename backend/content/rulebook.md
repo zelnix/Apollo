@@ -725,6 +725,9 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - Only recent reports: an item dated more than 180 days ago is left out. An undated item stays, because its age can't be proven.
 - The most recent first, up to 50.
 - Each alert once: an article its feed lists twice is shown once, and a link a feed wraps in page code is read for the article's real address.
+- **Where an alert applies (no AI):** an alert is local to its source's country when its headline or summary names something only that country has: a national agency (FTC, IRS, HMRC, ATO…), a benefit, a payment service, an election, a state or its people. Naming another country as well makes it apply everywhere. Otherwise it applies everywhere.
+- **Home is the phone's region setting** (Apollo never asks for location). The main list shows alerts that apply everywhere or in the home country. An alert local to another country is hidden there but stays under that country's filter, and the list says how many are hidden.
+- An alert local to a country other than Australia is labelled Overseas only and never growls.
 - **Growling for an alert:** only for a specific scam rated High or Extreme that has reached Australia, or that may reach Australia and was reported within the last 180 days.
 
 ---

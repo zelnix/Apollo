@@ -3543,3 +3543,12 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Ranking order (strict, user chose "ranking rules win"): current before historical → titles that name something before vague titles → score → text-index score (`_rank`).
 - Benchmark: main top1 17.9% → 83.9% (top3 89.3%); holdout top1 16.7% → 61.9%. Ranking rules cost 0 points.
 - Tests: `tests/test_kb_search.py` (11 pass), baseline `tests/kb_benchmark_baseline.json`; rulebook updated + stamped.
+
+## Learn article header (June 2026) — DONE
+- `frontend/app/higgins/learning/[slug].tsx`: "Learn with Higgins" now sits centred in the top bar like "Scam Alert"; Higgins picture beside the title removed.
+
+## Scam Alerts: where an alert applies (June 2026) — DONE
+- Word rules, no AI (`scam_analysis.applies_in`): an alert counts as local to its source's country if its headline or summary names something only that country has (agency, benefit, payment service, election, state, its people). If it also names another country, it applies everywhere.
+- `government_alerts._alert` adds `appliesIn` / `appliesInLabel` / `appliesInReason`. An alert local to a country other than Australia becomes overseas_only and never growls.
+- Frontend: home is the phone's region setting (`homeRegion()`; GB counts as UK, EU members as EU). The "All" list hides alerts that are local to another country and shows a count of hidden ones. Each stays under its country's filter. The Home priority notice follows the same rule. The detail Source tab shows "Where it applies".
+- Tests: `backend/tests/test_scam_scope.py`. Rulebook §17 updated and stamped.

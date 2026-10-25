@@ -8,6 +8,7 @@ import Phone from "lucide-react-native/icons/phone";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import ShoppingCart from "lucide-react-native/icons/shopping-cart";
 import type React from "react";
+import * as Localization from "expo-localization";
 import { Share } from "react-native";
 
 import { apiGet, apiPost } from "@/src/api/client";
@@ -26,6 +27,15 @@ export const openScamAlert = (router: { push: (href: never) => void }, url: stri
 const REGION_KEY = "apollo.scamAlerts.region";
 export const loadRegionFilter = () => storage.getItem<string>(REGION_KEY, "ALL");
 export const saveRegionFilter = (id: string) => storage.setItem(REGION_KEY, id);
+
+const EU_MEMBERS = new Set("AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE".split(" "));
+/** Home for Scam Alerts: the phone's region setting (no location permission). GB is the UK; EU members are the EU. */
+export function homeRegion(): string {
+  const code = (Localization.getLocales()[0]?.regionCode ?? "AU").toUpperCase();
+  return code === "GB" ? "UK" : EU_MEMBERS.has(code) ? "EU" : code;
+}
+/** An alert belongs in the main list when it applies everywhere or only in the phone's own country. */
+export const appliesHere = (a: GovernmentAlert, home: string) => a.appliesIn === "everywhere" || a.appliesIn === home;
 
 export const SEVERITY_TONE: Record<GovernmentAlert["severity"], Tone> = { EXTREME: "barking", HIGH: "growling", MODERATE: "ears_up", LOW: "neutral" };
 export const SEVERITY_RANK: Record<GovernmentAlert["severity"], number> = { EXTREME: 3, HIGH: 2, MODERATE: 1, LOW: 0 };

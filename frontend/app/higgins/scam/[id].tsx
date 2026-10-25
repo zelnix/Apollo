@@ -122,6 +122,7 @@ function SourceTab({ a }: { a: GovernmentAlert }) {
       <KV label="Last checked by Apollo" value={fmt(a.lastCheckedAt)} />
       <KV label="Region" value={[a.regionLabel, a.higgins.whereHappening].filter(Boolean).join(" — ")} />
       <KV label="Australian relevance" value={[RELEVANCE_LABEL[a.australianRelevance], a.australianRelevanceReason].filter(Boolean).join(" — ")} />
+      <KV label="Where it applies" value={`${a.appliesIn === "everywhere" ? "Everywhere" : `${a.appliesInLabel} only`} — ${a.appliesInReason}`} />
       <KV label="Severity" value={[severityLabel(a.severity), a.severityReason].filter(Boolean).join(" — ")} />
       <KV label="Official alert" value={a.url} onPress={() => void Linking.openURL(a.url)} />
       {a.sourceUrl && a.sourceUrl !== a.url ? <KV label="Source website" value={a.sourceUrl} onPress={() => void Linking.openURL(a.sourceUrl)} /> : null}

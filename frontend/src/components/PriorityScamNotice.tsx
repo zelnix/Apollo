@@ -11,6 +11,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
+import { appliesHere, homeRegion } from "@/src/higgins/scamAlertUi";
 import { alertFreshness } from "@/src/domain/alertFreshness";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -54,7 +55,7 @@ function deduplicateAlerts(alerts: GovernmentAlert[]): GovernmentAlert[] {
   return Array.from(seen.values());
 }
 
-/** Filter to only current, high-priority, region-relevant alerts. */
+/** Filter to only current, high-priority alerts that apply where the phone is. */
 function filterPriorityAlerts(alerts: GovernmentAlert[]): GovernmentAlert[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - MAX_AGE_DAYS);
@@ -63,8 +64,6 @@ function filterPriorityAlerts(alerts: GovernmentAlert[]): GovernmentAlert[] {
   return alerts.filter((alert) => {
     // Must be HIGH or EXTREME severity
     if (alert.severity !== "HIGH" && alert.severity !== "EXTREME") return false;
-    // Must be region-relevant (not overseas-only)
-    if (alert.australianRelevance === "overseas_only") return false;
     // Must not be too old
     const date = alert.updatedAt ?? alert.publishedAt;
     if (date && date < cutoffISO) return false;
@@ -101,13 +100,14 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
 
   const priorityAlert = useMemo(() => {
     if (!loaded || !items.length) return null;
-    const deduplicated = deduplicateAlerts(items);
+    // Only alerts that apply everywhere or in the phone's own country (its region setting).
+    const home = homeRegion();
+    const deduplicated = deduplicateAlerts(items.filter((a) => appliesHere(a, home)));
     const priority = filterPriorityAlerts(deduplicated);
     if (!priority.length) {
       // No HIGH/EXTREME alerts — fall back to the single most relevant current alert
       // Prefer Australian-relevant over global
-      const fallback = deduplicateAlerts(items)
-        .filter((a) => a.australianRelevance !== "overseas_only")
+      const fallback = deduplicated
         .sort((a, b) => {
           const sevRank = (s: string) => (s === "EXTREME" ? 4 : s === "HIGH" ? 3 : s === "MODERATE" ? 2 : 1);
           const r = sevRank(b.severity) - sevRank(a.severity);

@@ -24,7 +24,6 @@ import { AppMenuButton } from "@/src/components/AppMenu";
 import { Body, Button, Card } from "@/src/components/ui";
 import { learningArticle, type LearningArticle, type LearningSection } from "@/src/higgins/hubClient";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 
@@ -62,26 +61,13 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { gap: spacing.lg },
 
-  // Header
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  headerBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  // Header: same layout as the Scam Alert screen
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingBottom: spacing.sm, backgroundColor: c.surface },
+  headerTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
+  headerBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   headerActions: { flexDirection: "row", alignItems: "center" },
 
-  // Label + meta
-  sectionLabel: {
-    fontFamily: fonts.textSemibold,
-    fontSize: 12,
-    letterSpacing: 1,
-    color: c.muted,
-    textTransform: "uppercase",
-    paddingHorizontal: spacing.lg,
-  },
+  // Meta
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -94,14 +80,7 @@ const useStyles = makeStyles((c) => ({
   badgeText: { fontFamily: fonts.textSemibold, fontSize: 11 },
   metaText: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
 
-  // Title area: Higgins on the left of the title, as a rounded square
-  titleArea: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-  },
-  titleTextBlock: { flex: 1, gap: spacing.xs },
+  titleArea: { paddingHorizontal: spacing.lg, gap: spacing.xs },
   articleTitle: { fontFamily: fonts.displayBold, fontSize: 26, lineHeight: 32, color: c.onSurface },
   articleSummary: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   higginsQuote: {
@@ -305,18 +284,41 @@ export default function LearningArticleScreen() {
     } catch {}
   };
 
+  // ── Fixed header, the same in every state ──
+  const header = (
+    <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        testID="article-back"
+        onPress={() => goBackOrHome(router)}
+        style={s.headerBtn}
+      >
+        <ChevronLeft size={24} color={colors.onSurface} />
+      </Pressable>
+      <Text style={s.headerTitle} testID="article-header-title">Learn with Higgins</Text>
+      <View style={s.headerActions}>
+        {article ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share article"
+            testID="article-share"
+            onPress={handleShare}
+            style={s.headerBtn}
+          >
+            <Share2 size={22} color={colors.onSurface} />
+          </Pressable>
+        ) : <View style={s.headerBtn} />}
+        <AppMenuButton testID="article-menu" />
+      </View>
+    </View>
+  );
+
   // ── Loading / error states ──
   if (!article && !error) {
     return (
       <View style={s.root} testID="learning-article-screen">
-        <View style={{ paddingTop: insets.top + spacing.xs }}>
-          <View style={s.headerRow}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.headerBtn}>
-              <ChevronLeft size={24} color={colors.onSurface} />
-            </Pressable>
-            <AppMenuButton testID="article-menu" />
-          </View>
-        </View>
+        {header}
         <View style={s.centerWrap}>
           <ActivityIndicator testID="learning-article-loading" color={colors.brand} />
         </View>
@@ -327,14 +329,7 @@ export default function LearningArticleScreen() {
   if (error || !article) {
     return (
       <View style={s.root} testID="learning-article-screen">
-        <View style={{ paddingTop: insets.top + spacing.xs }}>
-          <View style={s.headerRow}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => goBackOrHome(router)} style={s.headerBtn}>
-              <ChevronLeft size={24} color={colors.onSurface} />
-            </Pressable>
-            <AppMenuButton testID="article-menu" />
-          </View>
-        </View>
+        {header}
         <View style={s.centerWrap}>
           <Card><Body>This article is unavailable right now.</Body></Card>
         </View>
@@ -344,41 +339,13 @@ export default function LearningArticleScreen() {
 
   return (
     <View style={s.root} testID="learning-article-screen">
-      {/* ── Fixed header ── */}
-      <View style={{ paddingTop: insets.top + spacing.xs, backgroundColor: colors.surface }}>
-        <View style={s.headerRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            testID="article-back"
-            onPress={() => goBackOrHome(router)}
-            style={s.headerBtn}
-          >
-            <ChevronLeft size={24} color={colors.onSurface} />
-          </Pressable>
-          <View style={s.headerActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Share article"
-              testID="article-share"
-              onPress={handleShare}
-              style={s.headerBtn}
-            >
-              <Share2 size={22} color={colors.onSurface} />
-            </Pressable>
-            <AppMenuButton testID="article-menu" />
-          </View>
-        </View>
-      </View>
+      {header}
 
       {/* ── Scrollable content ── */}
       <ScrollView
         testID="learning-article-scroll"
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 90 }]}
       >
-        {/* Section label */}
-        <Text style={s.sectionLabel}>Learn with Higgins</Text>
-
         {/* Type badge + meta */}
         <View style={s.metaRow}>
           {badge ? (
@@ -392,13 +359,9 @@ export default function LearningArticleScreen() {
           <Text style={s.metaText}>Updated {updatedDate}</Text>
         </View>
 
-        {/* Title area: Higgins on the left */}
         <View style={s.titleArea}>
-          <HigginsAvatar size={72} testID="article-higgins" />
-          <View style={s.titleTextBlock}>
-            <Text style={s.articleTitle} testID="article-title">{article.title}</Text>
-            <Text style={s.articleSummary}>{article.summary}</Text>
-          </View>
+          <Text style={s.articleTitle} testID="article-title">{article.title}</Text>
+          <Text style={s.articleSummary}>{article.summary}</Text>
         </View>
         <Text style={s.higginsQuote}>Stay alert, stay safer together. — Higgins</Text>
 

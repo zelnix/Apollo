@@ -12,7 +12,7 @@ import Megaphone from "lucide-react-native/icons/megaphone";
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
 import { alertFreshness } from "@/src/domain/alertFreshness";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
-import { alertIcon, alertTime, familyScamAlerts, loadRegionFilter, openScamAlert, rememberAlerts, saveRegionFilter, SEVERITY_RANK, SEVERITY_TONE, severityLabel, type SharedScamAlert } from "@/src/higgins/scamAlertUi";
+import { alertIcon, alertTime, appliesHere, familyScamAlerts, homeRegion, loadRegionFilter, openScamAlert, rememberAlerts, saveRegionFilter, SEVERITY_RANK, SEVERITY_TONE, severityLabel, type SharedScamAlert } from "@/src/higgins/scamAlertUi";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -21,8 +21,10 @@ const REGIONS: { id: RegionFilter; label: string }[] = [
   { id: "ALL", label: "All" }, { id: "AU", label: "Australia" }, { id: "US", label: "USA" },
   { id: "UK", label: "UK" }, { id: "EU", label: "EU" }, { id: "GLOBAL", label: "Global" },
 ];
+const HOME = homeRegion();
+// "All" holds what applies everywhere or at home; an alert local to another country stays under that country.
 const regionMatch = (a: GovernmentAlert, f: RegionFilter) =>
-  f === "ALL" ? true : f === "AU" ? a.region === "AU" || a.australianRelevance === "confirmed" : a.region === f;
+  f === "ALL" ? appliesHere(a, HOME) : f === "AU" ? a.region === "AU" || a.australianRelevance === "confirmed" : a.region === f;
 
 type SortMode = "latest" | "severity";
 const COMPACT_WIDTH = 430; // below this the six region chips overflow the screen
@@ -119,6 +121,7 @@ export default function GovernmentScamsScreen() {
     sort === "severity" ? SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || alertTime(b) - alertTime(a) : alertTime(b) - alertTime(a));
   const shown = useMemo(() => arrange(alerts), [alerts, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownEmerging = useMemo(() => arrange(emerging), [emerging, region, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hiddenLocal = useMemo(() => [...alerts, ...emerging].filter((a) => !appliesHere(a, HOME)).length, [alerts, emerging]);
   const info = { title: "About Scam Alerts", body: [coverage || "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself.", "Emerging patterns are techniques appearing across several reports with no single named campaign yet."] };
   const titleIcon = <HeaderIconTile icon={Megaphone} color={colors.growling} fg={colors.onBrand} testID="higgins-scams-title-icon" />;
 
@@ -190,6 +193,11 @@ export default function GovernmentScamsScreen() {
                 <Text style={s.sortText}>{SORT_LABEL[sort]}</Text><ChevronDown size={16} color={colors.onSurface} />
               </Pressable>
             </View>
+            {region === "ALL" && hiddenLocal > 0 ? (
+              <Text style={s.meta} testID="higgins-scams-local-hidden">
+                {`${hiddenLocal} alert${hiddenLocal === 1 ? " only applies" : "s only apply"} in another country, so ${hiddenLocal === 1 ? "it's" : "they're"} not listed here. Pick that country to see ${hiddenLocal === 1 ? "it" : "them"}.`}
+              </Text>
+            ) : null}
           </View>
         }
         renderItem={({ item, index }) => <AlertRow item={item} index={index} />}
