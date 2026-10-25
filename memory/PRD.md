@@ -3558,3 +3558,5 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Home header (`app/(tabs)/home.tsx`) now uses it at 58% of screen width, capped at 280.
 - Splash: `assets/images/splash-logo.png`, a 1024 square with the logo kept inside Android 12's circle safe zone. `app.config.js` uses imageWidth 288 on #F5F7FA. It only shows in a new native build.
 - Removed the old `apollo-scam-guard-logo.png` and `splash-image.png`.
+- Setup welcome (onboarding) and About now show the new logo through `BrandBanner` (white rounded panel, padding md). Old `apollo_sg_banner.jpg` removed.
+- App icon change was tried and then reverted at the user's request. `icon.png`, `adaptive-icon.png` and `favicon.png` are back to the originals.
