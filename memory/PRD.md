@@ -1,3 +1,8 @@
+## Tablet launch artwork (2026-10-25)
+- Owner's landscape artwork saved as `assets/images/splash-full-tablet.webp` (1672×941). `LaunchSplash` now runs on
+  every device: tablets (shortest side ≥ 600) show the landscape artwork, phones the portrait one
+  (`launch-splash-tablet` / `launch-splash-phone` testIDs). Same 1.8s + 0.4s fade, white background.
+
 ## Longer tab names on tablets (2026-10-25)
 - `app/(tabs)/_layout.tsx`: when the shortest window side is ≥ 600 (tablet/iPad), the Alerts tab reads
   "Scam Alerts" and Learn reads "Learn with Higgins" (both the JS tab bar and iOS 26 native tabs). Phones keep
