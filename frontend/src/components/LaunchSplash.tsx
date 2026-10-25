@@ -6,22 +6,40 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, useWindowDimensions } from "react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 
+import { useApollo } from "@/src/store/ApolloContext";
+
 const PHONE_ARTWORK = require("@/assets/images/splash-full.webp");
 const TABLET_ARTWORK = require("@/assets/images/splash-full-tablet.webp");
 // The artwork's own white, so the edges around it are invisible in light and dark themes alike.
 const ARTWORK_WHITE = "#FFFFFF";
-const SHOW_MS = 1800;
+// The artwork stays until ApolloSG has finished starting (its saved state is loaded), so the person never sees
+// a half-built screen. It shows for at least MIN_MS (never a flash) and at most MAX_MS (a slow start never
+// hides the app), then waits SETTLE_MS for the first screen to draw before fading.
+const MIN_MS = 1000;
+const MAX_MS = 8000;
+const SETTLE_MS = 300;
 const FADE_MS = 400;
 
 export function LaunchSplash() {
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
+  const { ready } = useApollo();
   const [visible, setVisible] = useState(true);
+  const [minShown, setMinShown] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const opacity = useSharedValue(1);
 
   useEffect(() => {
-    opacity.value = withDelay(SHOW_MS, withTiming(0, { duration: FADE_MS }, (done) => { if (done) runOnJS(setVisible)(false); }));
-  }, [opacity]);
+    const min = setTimeout(() => setMinShown(true), MIN_MS);
+    const max = setTimeout(() => setTimedOut(true), MAX_MS);
+    return () => { clearTimeout(min); clearTimeout(max); };
+  }, []);
+
+  const done = (ready && minShown) || timedOut;
+  useEffect(() => {
+    if (!done) return;
+    opacity.value = withDelay(SETTLE_MS, withTiming(0, { duration: FADE_MS }, (finished) => { if (finished) runOnJS(setVisible)(false); }));
+  }, [done, opacity]);
 
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
   if (!visible) return null;

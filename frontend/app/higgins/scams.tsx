@@ -1,7 +1,7 @@
-import { router, useSegments } from "expo-router";
+import { router, useFocusEffect, useSegments } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,6 +12,7 @@ import Megaphone from "lucide-react-native/icons/megaphone";
 import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
 import { alertFreshness } from "@/src/domain/alertFreshness";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
+import { getNewSevereAlertCount, markScamAlertsSeen } from "@/src/higgins/scamAlertBadge";
 import { alertIcon, alertTime, appliesHere, familyScamAlerts, homeRegion, loadRegionFilter, openScamAlert, rememberAlerts, saveRegionFilter, SEVERITY_RANK, SEVERITY_TONE, severityLabel, type SharedScamAlert } from "@/src/higgins/scamAlertUi";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -107,11 +108,15 @@ export default function GovernmentScamsScreen() {
     if (deviceId) void familyScamAlerts(deviceId).then(setFromFamily).catch(() => undefined);
     void governmentScams().then((result) => {
       rememberAlerts([...result.alerts, ...result.emerging]);
+      // Open and showing these: they no longer count on the Scam Alerts tab.
+      void markScamAlertsSeen([...result.alerts, ...result.emerging]);
       setAlerts(result.alerts); setEmerging(result.emerging); setPendingCount(result.pendingCount);
       setCoverage(result.coverage); setLastSourced(result.lastSourcedAt);
     }).catch(() => setError(true)).finally(() => { setLoading(false); setRefreshing(false); });
   };
   useEffect(() => load(), [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Coming back to Scam Alerts while the tab shows a count: load the new alerts, which also clears the count.
+  useFocusEffect(useCallback(() => { if (getNewSevereAlertCount() > 0) load(); }, [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sourced = useMemo(() => alertFreshness(lastSourced), [lastSourced]);
   const sourcedLabel = sourced.exact

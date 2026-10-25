@@ -122,7 +122,10 @@ test("Support build details read installed native metadata", () => {
 
 test("root navigation parity remains Home Threats Alerts Ask Higgins Learn", () => {
   const source = read("../app/(tabs)/_layout.tsx");
-  const expected = ["Home", "Threats", "Alerts", "Ask Higgins", "Learn"];
+  // Phones show "Alerts" and "Learn"; tablets the longer names. Both tab bars read the same two variables.
+  assert.match(source, /const alertsTitle = isTablet \? "Scam Alerts" : "Alerts";/);
+  assert.match(source, /const learnTitle = isTablet \? "Learn with Higgins" : "Learn";/);
+  const expected = [["Home", '"Home"'], ["Threats", '"Threats"'], ["{alertsTitle}", "alertsTitle"], ["Ask Higgins", '"Ask Higgins"'], ["{learnTitle}", "learnTitle"]];
   let nativeCursor = 0; let standardCursor = source.indexOf("<Tabs");
-  for (const label of expected) { nativeCursor = source.indexOf(`>${label}</NativeTabs.Trigger.Label>`, nativeCursor); assert.ok(nativeCursor >= 0, `Native tab '${label}' not found in order`); standardCursor = source.indexOf(`title: "${label}"`, standardCursor); assert.ok(standardCursor >= 0, `Standard tab '${label}' not found in order`); }
+  for (const [native, standard] of expected) { nativeCursor = source.indexOf(`>${native}</NativeTabs.Trigger.Label>`, nativeCursor); assert.ok(nativeCursor >= 0, `Native tab '${native}' not found in order`); standardCursor = source.indexOf(`title: ${standard},`, standardCursor); assert.ok(standardCursor >= 0, `Standard tab '${standard}' not found in order`); }
 });

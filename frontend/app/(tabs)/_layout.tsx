@@ -4,9 +4,11 @@ import { NativeTabs } from "expo-router/unstable-native-tabs";
 // and web). Lucide is outline-only by design; faking "solid" with thicker strokes looks wrong, so
 // Lucide stays for secondary in-screen actions only (see other screens) and never the tab bar.
 import { ChatBubbleLeftRight, Home, Megaphone, ShieldExclamation, BookOpen } from "@nandorojo/heroicons/24/solid";
-import React from "react";
+import React, { useMemo } from "react";
 import { Platform, Text, useWindowDimensions } from "react-native";
 
+import { badgeText, countNeedingYou } from "@/src/domain/tabBadges";
+import { useNewSevereAlertCount } from "@/src/higgins/scamAlertBadge";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useAccountMonitorDueCheck } from "@/src/hooks/useAccountMonitorDueCheck";
 import { fonts, useTheme } from "@/src/theme";
@@ -24,7 +26,12 @@ export default function TabsLayout() {
   const isTablet = Math.min(screenW, screenH) >= 600;
   const alertsTitle = isTablet ? "Scam Alerts" : "Alerts";
   const learnTitle = isTablet ? "Learn with Higgins" : "Learn";
-  const { ready, setupDone } = useApollo();
+  const { ready, setupDone, events, deviceId } = useApollo();
+  // Tab counts: threats that still need the person, and new High/Extreme scam alerts they haven't seen.
+  const needYou = useMemo(() => countNeedingYou(events), [events]);
+  const newAlerts = useNewSevereAlertCount(deviceId);
+  const threatsBadge = badgeText(needYou);
+  const alertsBadge = badgeText(newAlerts);
   useAccountMonitorDueCheck();
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
@@ -32,8 +39,8 @@ export default function TabsLayout() {
     return (
       <NativeTabs>
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>{alertsTitle}</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label>{threatsBadge ? <NativeTabs.Trigger.Badge>{threatsBadge}</NativeTabs.Trigger.Badge> : null}</NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>{alertsTitle}</NativeTabs.Trigger.Label>{alertsBadge ? <NativeTabs.Trigger.Badge>{alertsBadge}</NativeTabs.Trigger.Badge> : null}</NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Ask Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="learn"><NativeTabs.Trigger.Icon sf="book.fill" /><NativeTabs.Trigger.Label>{learnTitle}</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
@@ -48,6 +55,7 @@ export default function TabsLayout() {
   // less the tab's 5pt side padding; "Ask Higgins" is ~6 font-px per point at this weight), so it fits on
   // narrow phones too; a large system text size is capped for the same reason.
   const labelSize = Math.max(9, Math.min(11, (screenW / TAB_COUNT - 10) / 6.1));
+  const badgeStyle = { backgroundColor: colors.barking, color: colors.onBrand, fontFamily: fonts.textSemibold, fontSize: 10 };
   const tabLabel = (title: string) =>
     function TabLabel({ focused }: { focused: boolean }) {
       return (
@@ -78,8 +86,8 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
-      <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats") }} />
-      <Tabs.Screen name="scams" options={{ title: alertsTitle, tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel(alertsTitle) }} />
+      <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats"), tabBarBadge: threatsBadge, tabBarBadgeStyle: badgeStyle, tabBarAccessibilityLabel: needYou ? `Threats, ${needYou} need you` : "Threats" }} />
+      <Tabs.Screen name="scams" options={{ title: alertsTitle, tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel(alertsTitle), tabBarBadge: alertsBadge, tabBarBadgeStyle: badgeStyle, tabBarAccessibilityLabel: newAlerts ? `${alertsTitle}, ${newAlerts} new serious alerts` : alertsTitle }} />
       <Tabs.Screen name="ask" options={{ title: "Ask Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Ask Higgins") }} />
       <Tabs.Screen name="learn" options={{ title: learnTitle, tabBarButtonTestID: "tab-learn", tabBarIcon: tabIcon(BookOpen), tabBarLabel: tabLabel(learnTitle) }} />
       {/* Hidden tabs — still routable for deep links and backwards compatibility */}
