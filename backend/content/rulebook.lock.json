@@ -22,7 +22,7 @@
   "backend/services/higgins/explain/render.py": "3ce3e2a09b65036837f894bc3cd556934ded19c10c783658a380ee685168eae2",
   "backend/services/higgins/explain/words.py": "562d341f4a619510a536786b8084e1283c8a280f49b8f54014629cc7dee2a4cb",
   "backend/services/higgins/jobs.py": "72354540eb850dcf2ec499f4837c134249b7357d80491c61110d8c8d6d0b30e4",
-  "backend/services/higgins/knowledge.py": "2b9f713a1c8871114aa66dc830342452945328694fd6328c5a58e6d69c5e1e9f",
+  "backend/services/higgins/knowledge.py": "60cddd1e72752faeec62db77e8ba38b1819c78fbe7d90b2f0202fb90cbbb079e",
   "backend/services/higgins/llm_boundary.py": "66e3b13502558db5acc3e2781b6436f2cac22a9022fc88162dbc0b5a2f82d896",
   "backend/services/higgins/outcomes.py": "0e47fa9a7e4c48b90d165c6f7d26c53c43c304a795504f77a0eeb43102af582a",
   "backend/services/higgins/pipeline_submit.py": "57cba7455e99403a363010b14f3698dd5c28b3b142ee9df06ade1966b58b2246",

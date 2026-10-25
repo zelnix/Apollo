@@ -452,9 +452,12 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - **Learn with Higgins:** only from a source whose licence allows it, with at least 3 sections, practical bullet points and a summary, passing Learn's quality checks. It ends with a "Source and licence" section. An article staff archived is never brought back.
 
 **How the KB is searched (no AI)**
-- The question's content words are used, with common words removed and word endings lightly trimmed.
-- An entry answers only if it holds every content word (for a question of 1 or 2 content words) or at least 75% of them, and its title shares at least one.
-- Historical entries rank below current ones. At most 2 entries are used for one answer.
+- The question and each entry are reduced to the same concepts: common words removed, word endings trimmed, and everyday words for the same thing made one (bitcoin and crypto, rang and called, mum and family, itunes and gift card). Words that only frame a question (want, said, real, safe, Australia) don't count.
+- Each concept counts by how rare it is in the KB: "toll" or "anydesk" tells more than "email" or "money".
+- An entry answers only if it holds at least 30% of the question's weight, its title shares a concept with the question, and its score is at least 0.3. The score is 0.4 × the share of the question it holds, plus 0.25 × the share in its title, plus 0.35 × how much of what its title names the question asks about.
+- A match on how something arrived alone (phone, call, text, message, email, online, website, app, money, payment, account, number) doesn't count, unless that is the whole question.
+- Order, strictest first: every current entry ranks above every historical one, then an entry whose title names something ranks above one whose title names nothing in particular ("What is a scam?"), then the score. At most 2 entries are used for one answer.
+- **Measured:** a fixed benchmark of 60 questions and 47 held-out ones checks every change. Before this rule, the right article came back for about 1 in 5 questions. Now it comes back for about 9 in 10 of the benchmark questions and 2 in 3 of the held-out ones, with fewer than 1 in 20 answers pointing to the wrong article.
 
 **How it is quoted**
 - In the source's own words: the passages that best match the question, in their original order.

@@ -1,8 +1,41 @@
 {
-  "cases": 60,
-  "mustFind": 56,
-  "top1": 0.179,
-  "top3": 0.196,
-  "miss": 0.804,
-  "irrelevant": 0.0
+  "before": {
+    "note": "Lexical rule before 2026-10-25 (every content word, or 75%, in the entry). Kept for comparison; not checked by tests.",
+    "main": {
+      "cases": 60,
+      "mustFind": 56,
+      "top1": 0.179,
+      "top3": 0.196,
+      "miss": 0.804,
+      "irrelevant": 0.0,
+      "offTopicReturned": 0
+    },
+    "holdout": {
+      "cases": 47,
+      "mustFind": 42,
+      "top1": 0.167,
+      "top3": 0.19,
+      "miss": 0.81,
+      "irrelevant": 0.111,
+      "offTopicReturned": 0
+    }
+  },
+  "main": {
+    "cases": 60,
+    "mustFind": 56,
+    "top1": 0.839,
+    "top3": 0.893,
+    "miss": 0.107,
+    "irrelevant": 0.038,
+    "offTopicReturned": 1
+  },
+  "holdout": {
+    "cases": 47,
+    "mustFind": 42,
+    "top1": 0.619,
+    "top3": 0.667,
+    "miss": 0.333,
+    "irrelevant": 0.034,
+    "offTopicReturned": 0
+  }
 }

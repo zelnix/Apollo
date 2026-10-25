@@ -13,16 +13,17 @@ Gemini's saved answers to general questions are NOT KB knowledge: they live in t
 
 KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
 
-Search is deterministic: a MongoDB text index narrows candidates, then a fixed term-coverage rule decides
-whether an entry really answers the question. Stored answers must match the question itself, so an answer
-is never reused for a different question.
+Search is deterministic, with no AI: a MongoDB text index narrows candidates, then a fixed weighted rule decides
+whether an entry really answers the question (see "Matching a question to an entry" below).
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import math
 import re
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -73,6 +74,130 @@ def _coverage(query_terms: list[str], text: str) -> float:
         return 0.0
     have = set(terms(text))
     return sum(1 for term in query_terms if term in have) / len(query_terms)
+
+
+# ── Matching a question to an entry ───────────────────────────────────────────
+# A person asks in their own words; a source writes in its own. Both are reduced to concepts the same way: common
+# words dropped, endings trimmed, and everyday words for the same thing (bitcoin / crypto, rang / called) made one.
+# terms() above is unchanged: it stays the key for saved answers.
+_PHRASES = (("wi-fi", "wifi"), ("e-mail", "email"), ("pop-up", "popup"), ("same password", "reused password"), ("one-time", "onetime"))
+_TWO_LETTER = {"qr", "ai", "id", "pc"}
+_SAME_THING = {
+    "crypto": "bitcoin btc ethereum crypto cryptocurrency cryptocurrencies usdt tether",
+    "government": "government govt ato mygov centrelink",
+    "identity": "identity passport passports licence license medicare",
+    "scam": "scam scams scammer scammers scammed scamming",
+    "pay": "pay paid paying payment payments",
+    "reuse": "reuse reused reusing",
+    "verify": "verify verified verifying check checking checked confirm",
+    "steal": "steal stole stolen theft",
+    "warn": "warn warning warnings popup popups",
+    "romance": "dating romance romantic boyfriend girlfriend lover",
+    "call": "call called caller callers calling rang",
+    "text": "text texts texted sms msg txt",
+    "gift": "gift itunes giftcard giftcards",
+    "remote": "anydesk teamviewer",
+    "computer": "computer laptop pc",
+    "family": "mum mom dad son daughter grandson granddaughter kid child children family",
+    "takeover": "hack hacked hacker hijack hijacked takeover compromised",
+    "social": "instagram facebook tiktok snapchat social",
+    "marketplace": "gumtree ebay marketplace",
+    "rental": "landlord rent rental renting apartment accommodation airbnb",
+    "job": "job jobs recruiter recruitment recruiting employer hiring",
+    "delivery": "parcel parcels package delivery deliver delivered courier",
+    "toll": "toll tolls linkt",
+    "bank": "bank banks banking commbank westpac anz nab",
+    "code": "code codes otp passcode",
+    "malware": "malware virus viruses infected infection trojan",
+    "pressure": "urgency urgent rush rushing hurry pressure",
+    "prize": "prize prizes lottery winnings jackpot",
+    "charity": "charity charities donation donations donate fundraising",
+    "subscription": "subscription subscriptions trial renew renewal renewed",
+    "shame": "embarrassed embarrassing ashamed shame stupid",
+    "evidence": "evidence screenshot screenshots",
+    "older": "elderly older grandparents grandparent seniors senior aged",
+    "deepfake": "deepfake deepfakes clone cloned",
+    "breach": "breach breaches leak leaked exposed",
+    "blackmail": "blackmail sextortion extortion extort threaten threatening threatened",
+}
+# Words in a question that don't say what it's about: asking, telling, wanting, and Australia (Apollo's home).
+_CHATTER = set("""want wants wanted wanting say says said saying told tell need needs needed show shows showed showing good bad last ever
+give gave given make made makes real legit okay fine now unless time one use used using everywhere latest someone somebody stranger person
+people ask asks asked asking get gets getting come came take took look looking try trying see think put let going goes went day today week
+tonight yesterday morning even still already first safe australia australian australians aussie""".split())
+
+MIN_COVERAGE = 0.3   # weighted share of the question's concepts the entry must hold
+MIN_SCORE = 0.3      # 0.4 × coverage + 0.25 × the question's share in the title + 0.35 × the title's share in the question
+UNKNOWN_WEIGHT = 1.0  # a word no entry holds still counts against a match
+WEIGHTS_FOR = timedelta(hours=1)
+
+
+def _trim(word: str) -> str:
+    for suffix, keep in (("ies", "y"), ("ing", ""), ("ed", ""), ("es", ""), ("s", "")):
+        if word.endswith(suffix) and len(word) > len(suffix) + 2 and not (suffix == "s" and word.endswith(("ss", "us"))):
+            word = word[: -len(suffix)] + keep
+            if suffix in ("ing", "ed") and len(word) > 3 and word[-1] == word[-2] and word[-1] not in "lsz":
+                word = word[:-1]  # scammed → scam, not scamm
+            break
+    return word[:-1] if len(word) > 4 and word.endswith("e") else word
+
+
+_CONCEPT: dict[str, str] = {}
+for _canon, _words in _SAME_THING.items():
+    for _w in _words.split():
+        _CONCEPT[_w] = _CONCEPT[_trim(_w)] = _canon
+_ALIASES: dict[str, list[str]] = {}
+for _w, _canon in _CONCEPT.items():
+    _ALIASES.setdefault(_canon, []).append(_w)
+
+
+def concepts(text: str, *, query: bool = False) -> list[str]:
+    """What `text` is about, as concepts in order. `query`: also drop the question's own chatter."""
+    text = (text or "").lower().replace("’", "'")
+    for phrase, same in _PHRASES:
+        text = text.replace(phrase, same)
+    out: list[str] = []
+    for word in _WORD.findall(text):
+        word = word.split("'")[0]
+        if (len(word) < 3 and word not in _TWO_LETTER) or word in _STOP or (query and word in _CHATTER):
+            continue
+        concept = _CONCEPT.get(word) or _CONCEPT.get(_trim(word)) or _trim(word)
+        if concept not in out:
+            out.append(concept)
+    return out
+
+
+# Concepts that say how something arrived, not what it is: an entry matched on these alone isn't on the subject.
+GENERIC = {c for w in "scam phone call text message email online money pay number account app website internet fake device change".split()
+           for c in concepts(w)}
+
+
+def search_words(question: str) -> str:
+    """What the text index is asked for: the question's words and the everyday words for the same concepts."""
+    words = terms(question) + [w for c in concepts(question, query=True) for w in _ALIASES.get(c, ())]
+    return " ".join(dict.fromkeys(words))
+
+
+_WEIGHTS: dict[str, tuple] = {}
+
+
+async def _weights(coll) -> tuple[int, dict[str, int]]:
+    """How many entries hold each concept (rarer = more telling), counted over the whole collection, kept an hour."""
+    cached = _WEIGHTS.get(coll.full_name)
+    if cached and now_utc() - cached[0] < WEIGHTS_FOR:
+        return cached[1], cached[2]
+    held: dict[str, int] = {}
+    n = 0
+    async for doc in coll.find({"kind": {"$ne": "gemini_answer"}}, {"_id": 0, "title": 1, "body": 1}):
+        n += 1
+        for concept in set(concepts(f"{doc.get('title') or ''} {doc.get('body') or ''}")):
+            held[concept] = held.get(concept, 0) + 1
+    _WEIGHTS[coll.full_name] = (now_utc(), n, held)
+    return n, held
+
+
+def forget_weights() -> None:
+    _WEIGHTS.clear()
 
 
 def _kb_id(kind: str, key: str) -> str:
@@ -172,6 +297,7 @@ async def refresh() -> dict:
     from services.higgins.teddy import patterns
     result = {"learn": await sync_learn_articles(), "alerts": await sync_scam_alerts(), "guidance": await load_official_guidance(),
               "patterns": await patterns.load()}
+    forget_weights()
     log.info("knowledge_refresh %s", result)
     return result
 
@@ -205,33 +331,55 @@ def answers_question(stored_question: str, query_terms: list[str]) -> float:
 
 # ── Search and verbatim presentation ──────────────────────────────────────────
 
-def _accepts(entry: dict, query_terms: list[str]) -> float:
-    """Coverage score if the entry genuinely answers the question, else 0. Stored answers must match the question."""
-    if entry["kind"] == "gemini_answer":  # a record not yet moved to the reusable cache
-        return answers_question(entry.get("question") or "", query_terms)
-    title_cover = _coverage(query_terms, entry.get("title") or "")
-    full_cover = _coverage(query_terms, f"{entry.get('title') or ''} {entry.get('body') or ''}")
-    needed = 1.0 if len(query_terms) <= 2 else 0.75
-    if full_cover < needed or title_cover == 0:
+def _accepts(entry: dict, query: list[str], weights: tuple[int, dict[str, int]]) -> float:
+    """How well the entry answers the question (its concepts `query`), or 0 when it doesn't.
+
+    Each concept is weighted by how rare it is in the KB. The entry must hold at least MIN_COVERAGE of the
+    question's weight, its title must share a concept with the question, and a match on generic concepts alone
+    (phone, email, money…) counts only when it is the whole question. Ranking order is search()'s job."""
+    n, held = weights
+    weight = lambda c: math.log(n / held[c]) if held.get(c) else UNKNOWN_WEIGHT  # noqa: E731
+    total = sum(weight(c) for c in query)
+    if not total:
         return 0.0
-    return full_cover * (0.85 if entry.get("status") == "historical" else 1.0)  # current knowledge first
+    title = set(concepts(entry.get("title") or ""))
+    body = title | set(concepts(entry.get("body") or ""))
+    hit = [c for c in query if c in body]
+    coverage = sum(weight(c) for c in hit) / total
+    in_title = sum(weight(c) for c in query if c in title) / total
+    named = [c for c in title if c not in GENERIC]  # what the title is about: "What is a scam?" names nothing in particular
+    title_weight = sum(weight(c) for c in named)
+    title_covered = sum(weight(c) for c in named if c in query) / title_weight if title_weight else 0.0
+    on_subject = any(c not in GENERIC for c in hit) or len(hit) == len(query)
+    score = 0.4 * coverage + 0.25 * in_title + 0.35 * title_covered
+    if not in_title or coverage < MIN_COVERAGE or score < MIN_SCORE or not on_subject:
+        return 0.0
+    return score
+
+
+def _rank(entry: dict, score: float) -> tuple:
+    """Rulebook order, strictest first: current before historical, then a title that names something before one
+    that names nothing in particular ("What is a scam?"), then the score, then the text index's own score."""
+    names_something = any(c not in GENERIC for c in concepts(entry.get("title") or ""))
+    return (entry.get("status") != "historical", names_something, score, entry["score"])
 
 
 async def search(question: str, limit: int = 2, *, collection=None) -> list[dict]:
-    """KB entries that genuinely answer `question`, best first. `collection`: another collection with the same
-    shape and text index (the retrieval benchmark's fixed corpus)."""
+    """KB entries that answer `question`, best first. Gemini's saved answers are never KB knowledge and never
+    returned. `collection`: another collection with the same shape and text index (the benchmark's corpus)."""
     coll = db.higgins_knowledge if collection is None else collection
-    query_terms = terms(question)
-    if not query_terms:
+    query = concepts(question, query=True)
+    if not query:
         return []
     try:
-        rows = await coll.find({"$text": {"$search": " ".join(query_terms)}},
-                                               {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
+        rows = await coll.find({"$text": {"$search": search_words(question)}, "kind": {"$ne": "gemini_answer"}},
+                               {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001 — a missing index means no match, never a crash
         return []
-    scored = [(coverage, row["score"], row) for row in rows if (coverage := _accepts(row, query_terms)) > 0]
-    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    picked = [row for _cover, _score, row in scored[:limit]]
+    weights = await _weights(coll)
+    scored = [(_rank(row, score), row) for row in rows if (score := _accepts(row, query, weights)) > 0]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    picked = [row for _rank_key, row in scored[:limit]]
     if picked:
         await coll.update_many({"kb_id": {"$in": [row["kb_id"] for row in picked]}}, {"$inc": {"hits": 1}})
     return picked
@@ -333,9 +481,6 @@ def present(entries: list[dict], question: str) -> tuple[str, list[dict]]:
     blocks: list[str] = []
     sources: list[dict] = []
     for entry in entries:
-        if entry["kind"] == "gemini_answer":  # a record not yet moved to the reusable cache
-            blocks.append(f"{entry['body']}\n\n{SAVED_ANSWER_NOTE}")
-            continue
         words = excerpt(entry["body"], query_terms)
         intro = f"{entry['publisher']} — “{entry['title']}”" if entry["kind"] != "learn_article" else f"From the Learn with Higgins article “{entry['title']}”"
         meta = provenance_line(entry)

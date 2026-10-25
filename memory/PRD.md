@@ -3537,3 +3537,9 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Banner in app: `src/components/BrandBanner.tsx` (white rounded panel, both themes) on About (replaces logo + "Apollo SG" title) and onboarding step 1 (replaces logo + eyebrow). Asset `frontend/assets/images/apollo_sg_banner.jpg`.
 - Family Reply Notes: `POST/GET /api/family/shared-events/{event_id}/notes` (family.py, collection `threat_notes`; kinds calling / wait / custom ≤140; max 20 per family member per alert; push to owner → `/patrol/{event_id}`; also latest answer in `family_acks`). Family alert screen: "Send {name} a quick note" (I'm calling you now, Don't do anything yet, Write your own note + "Never send codes or passwords" hint). Owner threat detail: "From your family" card (`src/components/FamilyNotes.tsx`, refetch 30s). Ack endpoint now reaches the owner for threats that exist only on the phone (uses the shared copy's owner) and labels via `_label_of`.
 - Verified in preview: owner shares → family member sends preset + own note → owner's threat shows both. Tests: frontend 925/925, backend family/banner/email 11 pass. Rule book §11 updated + stamped.
+
+## Better Article Search (Apollo KB, word rules only, no AI) — DONE (June 2026)
+- New concept-based lexical search in `backend/services/higgins/knowledge.py` (everyday-word synonyms, rarity weights, chatter removal, generic-only rule).
+- Ranking order (strict, user chose "ranking rules win"): current before historical → titles that name something before vague titles → score → text-index score (`_rank`).
+- Benchmark: main top1 17.9% → 83.9% (top3 89.3%); holdout top1 16.7% → 61.9%. Ranking rules cost 0 points.
+- Tests: `tests/test_kb_search.py` (11 pass), baseline `tests/kb_benchmark_baseline.json`; rulebook updated + stamped.

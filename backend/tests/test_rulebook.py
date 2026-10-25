@@ -7,7 +7,7 @@ import re
 
 from routers import admin_portal
 from routers.ask import ChatRequest
-from services import apollo_kb, kb_sources, rulebook, triage_engine
+from services import apollo_kb, kb_benchmark, kb_sources, rulebook, triage_engine
 from services import reusable_intel as intel
 from services.higgins import capacity, chat, coordinator, evidence, jobs, knowledge, llm_boundary, outcomes, pipeline_submit, presenter
 from services.higgins import context as chat_memory
@@ -101,6 +101,9 @@ def test_the_knowledge_base_rules_match_the_code():
         f"fails to load on {apollo_kb.FAILED_CHECKS_BEFORE_HISTORICAL} re-reads",
         f"published more than {apollo_kb.ALERT_HISTORICAL_AFTER.days // 365} years ago",
         f"published within the last {apollo_kb.ALERT_MAX_AGE.days} days",
+        f"holds at least {round(knowledge.MIN_COVERAGE * 100)}% of the question's weight",
+        f"its score is at least {knowledge.MIN_SCORE:g}",
+        f"a fixed benchmark of {len(kb_benchmark.cases())} questions and {len(kb_benchmark.cases(holdout=True))} held-out ones",
     ]
     missing = [phrase for phrase in expected if phrase not in section]
     assert not missing, f"The knowledge base rules no longer match the code on: {missing}"

@@ -561,15 +561,26 @@ async def test_admin_portal_shows_reuse_and_savings(store, monkeypatch):
 
 
 # ── Apollo KB lexical retrieval benchmark ────────────────────────────────────
-async def test_the_kb_retrieval_benchmark_reproduces_its_baseline():
-    baseline = json.loads((BACKEND / "tests/kb_benchmark_baseline.json").read_text())
+@pytest.mark.parametrize("held_out", [False, True], ids=["main", "holdout"])
+async def test_the_kb_retrieval_benchmark_reproduces_its_baseline(held_out):
+    saved = json.loads((BACKEND / "tests/kb_benchmark_baseline.json").read_text())
+    baseline = saved["holdout" if held_out else "main"]
     name = f"kb_benchmark_test_{uuid.uuid4().hex[:8]}"
     try:
-        result = await kb_benchmark.run(collection_name=name)
+        result = await kb_benchmark.run(holdout=held_out, collection_name=name)
     finally:
         await db[name].drop()
-    assert {k: result[k] for k in baseline} == baseline, "lexical retrieval changed; re-record with scripts/kb_benchmark.py --record"
-    cases = kb_benchmark.cases()
+    assert {k: result[k] for k in baseline} == baseline, "KB retrieval changed; re-record with scripts/kb_benchmark.py --record"
+    cases = kb_benchmark.cases(holdout=held_out)
     assert all({"id", "area", "query", "expected", "must_find"} <= set(c) for c in cases)
     assert any(not c["must_find"] for c in cases), "off-topic questions must find nothing"
-    assert result["offTopicReturned"] == 0
+    # The owner's bar: find far more than before, with at most about 1 in 20 answers pointing to the wrong article.
+    before = saved["before"]["holdout" if held_out else "main"]
+    assert result["top3"] >= before["top3"] + 0.4 and result["irrelevant"] <= 0.05 and result["offTopicReturned"] <= 1
+
+
+def test_the_held_out_questions_are_new():
+    main = {c["query"].lower() for c in kb_benchmark.cases()}
+    held = kb_benchmark.cases(holdout=True)
+    assert len(held) >= 40 and not main & {c["query"].lower() for c in held}
+    assert not {c["id"] for c in kb_benchmark.cases()} & {c["id"] for c in held}

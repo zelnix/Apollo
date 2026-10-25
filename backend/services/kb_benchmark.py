@@ -24,11 +24,13 @@ from services.higgins import knowledge
 from services.higgins.teddy import patterns
 
 CASES_FILE = Path(__file__).resolve().parents[1] / "content" / "kb_benchmark_cases.json"
+# Questions written after the main set and never used to tune the search rule: they show whether a change carries over.
+HOLDOUT_FILE = Path(__file__).resolve().parents[1] / "content" / "kb_benchmark_holdout.json"
 CORPUS = "kb_benchmark_corpus"
 
 
-def cases() -> list[dict]:
-    return json.loads(CASES_FILE.read_text())["cases"]
+def cases(*, holdout: bool = False) -> list[dict]:
+    return json.loads((HOLDOUT_FILE if holdout else CASES_FILE).read_text())["cases"]
 
 
 def corpus_records() -> list[dict]:
@@ -46,6 +48,7 @@ def corpus_records() -> list[dict]:
 async def build_corpus(name: str = CORPUS):
     collection = db[name]
     await collection.drop()
+    knowledge.forget_weights()
     await collection.create_index([("title", "text"), ("question", "text"), ("body", "text")],
                                   weights={"title": 6, "question": 8, "body": 1}, name="kb_text", default_language="english")
     await collection.insert_many([{**r, "kb_id": f"{r['kind']}:{r['key']}", "question": "", "status": "current", "hits": 0} for r in corpus_records()])
@@ -57,30 +60,29 @@ def _label(row: dict) -> str:
 
 
 async def _candidates(collection, query: str) -> list[dict]:
-    """The text index's own ranking (what knowledge.search starts from), before the coverage rule."""
-    words = knowledge.terms(query)
-    if not words:
+    """The text index's own ranking (what knowledge.search starts from), before the acceptance rule."""
+    if not knowledge.concepts(query, query=True):
         return []
-    return await collection.find({"$text": {"$search": " ".join(words)}}, {"_id": 0, "kind": 1, "key": 1, "title": 1, "body": 1, "status": 1,
-                                                                            "score": {"$meta": "textScore"}}
+    return await collection.find({"$text": {"$search": knowledge.search_words(query)}},
+                                 {"_id": 0, "kind": 1, "key": 1, "title": 1, "body": 1, "status": 1, "score": {"$meta": "textScore"}}
                                  ).sort([("score", {"$meta": "textScore"}), ("kb_id", 1)]).limit(25).to_list(25)
 
 
 async def _diagnose(collection, query: str, expected: set[str]) -> str:
-    words = knowledge.terms(query)
     rows = await _candidates(collection, query)
     offered = [r for r in rows if _label(r) in expected]
     if not offered:
         return "no_text_candidates"
-    if not any(knowledge._accepts(r, words) > 0 for r in offered):
+    weights = await knowledge._weights(collection)
+    if not any(knowledge._accepts(r, knowledge.concepts(query, query=True), weights) > 0 for r in offered):
         return "coverage_rule"
     return "outranked"
 
 
-async def run(*, live: bool = False, collection_name: str = CORPUS) -> dict:
+async def run(*, live: bool = False, holdout: bool = False, collection_name: str = CORPUS) -> dict:
     collection = db.higgins_knowledge if live else await build_corpus(collection_name)
     results = []
-    for case in cases():
+    for case in cases(holdout=holdout):
         found = await knowledge.search(case["query"], limit=3, collection=collection)
         labels = [_label(r) for r in found]
         expected = set(case["expected"])
@@ -100,7 +102,7 @@ async def run(*, live: bool = False, collection_name: str = CORPUS) -> dict:
     for r in must:
         if "why" in r:
             why[r["why"]] = why.get(r["why"], 0) + 1
-    return {"corpus": "live_kb" if live else "shipped", "cases": len(results), "mustFind": len(must),
+    return {"corpus": "live_kb" if live else "shipped", "set": "holdout" if holdout else "main", "cases": len(results), "mustFind": len(must),
             "top1": rate(sum(r["top1"] for r in must), len(must)), "top3": rate(sum(r["top3"] for r in must), len(must)),
             "miss": rate(sum(not r["top3"] for r in must), len(must)), "irrelevant": rate(sum(r["irrelevant"] for r in returned), len(returned)),
             "offTopicReturned": sum(1 for r in results if not r["mustFind"] and r["returned"]), "missReasons": why,
