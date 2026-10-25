@@ -64,6 +64,7 @@ import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefact
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
+import { SettledReasonLine } from "@/src/components/SettledReasonLine";
 import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
@@ -326,6 +327,7 @@ function OverviewContent({ event, status, shownWhatToDo, original }: { event: Pa
               <OutcomeExplainerLink outcome={investigation.response.outcome} testID="tc-overview-outcome-explainer" />
             </View>
           ) : null}
+          {investigation?.response ? <SettledReasonLine reason={investigation.settledReason} testID="tc-overview-settled-reason" /> : null}
           {evidenceSummary.map((para, i) => (
             <Text key={i} style={s.reportBody} testID={`tc-overview-summary-${i}`}>{para}</Text>
           ))}

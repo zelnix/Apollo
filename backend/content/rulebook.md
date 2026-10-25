@@ -1,6 +1,10 @@
-# Apollo investigation rule book (internal)
+# Apollo rule book
 
-How a check moves through Apollo, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the current code.
+How a check moves through Apollo, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
+
+_Last reviewed against the code: 2026-10-25._
+
+This is the only copy. Whenever a rule or process changes, this book is updated in the same change. An automatic check stops the change until it is.
 
 **The path of every check**
 
@@ -59,7 +63,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
    - financial claims and quoted phrases
    - payment details (BSB, account, PayID, crypto wallet), amounts and urgency
    - how items relate: organisation ↔ link, email or number; company ↔ ABN or licence; person ↔ company
-4. **Requests to act.** A request counts only when an action is tied to what it asks for. Negated requests ("we will never ask for your password") don't count. The nine types are:
+4. **Requests to act.** A request counts only when an action is tied to what it asks for. Negated requests ("we will never ask for your password") don't count. The 9 types are:
    - payment
    - credentials
    - personal details
@@ -234,19 +238,113 @@ It can't override what is already established, and it isn't called to move a cas
    - Anything new (a link, email or phone number) is named as not covered: "start a new check".
    - A general question about that kind of scam is answered from the KB, labelled as general knowledge and kept apart from the case.
    - The answer credits whoever settled the check: TC FlyBy or Magnum DI.
-2. **Something to check** → goes to the pipeline.
+2. **Something to check** → goes to the pipeline. What counts as something to check is set out under Ask Higgins below.
 3. **A scam alert** the person opened → shown in the source's own words.
 4. **A Learn article** → shown in its own words.
 5. **Patrol records, the phone's live state, recent investigations or Apollo product knowledge** → shown as they are.
 6. **Apollo's KB** → quoted with publisher and link, labelled as general knowledge.
-7. **Off-topic** → a fixed reply.
+7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
 8. **A general scam-safety question nothing else answers** → **one** Gemini call with the question alone (no device state, history or case). The answer is cached and reused.
 
 **Rules**
 - The phone's live reading is the truth. Higgins never contradicts it, guesses past it or invents a concern.
 - Answering Magnum DI's pending question continues that investigation; it isn't treated as a follow-up.
-- An "Ask Higgins" handoff without a case is explained on the phone. "Ask Magnum DI to investigate" starts a new check only on tap.
 - Plain Australian English, no internal codes, 2–4 short paragraphs.
+
+---
+
+## 6. Ask Higgins (the chat screen) {#ask-higgins}
+
+**Job:** the one place to talk to Higgins. A question gets an answer. Something to check goes into the same investigation pipeline as every other check. Ask Higgins never decides whether something is a scam.
+
+**Before anything is sent**
+- Passwords, PINs and one-time codes are removed from the message on the phone.
+- A message can be up to 4,000 characters.
+- A question to Higgins carries only the question and a state-only reading of this phone: protections, permissions, threat counts, alerts and settings. It never carries messages, screenshots, files or secrets.
+
+**Where a message goes (first that applies)**
+1. **An investigation is open on screen.** The message goes to that case. Answering Magnum DI's question continues the investigation. Anything else about a finished case is answered on the phone from its record, as in Higgins step 1.
+2. **"I want something checked."** The message has a check word *and* a subject word. The matching form opens, and the first subject mentioned wins. Higgins only says what to add, never a verdict. The person still supplies the item, and it goes through the full check.
+   - Check words: check, checked, scan, investigate, verify, look at, have a look, "is this / that / it", scam, phishing, suspicious, legit, and safe to open / use / click / pay.
+   - Subject words: screenshot, photo, picture, image or QR code; email, inbox or mailbox; message, text, SMS, call, caller, voicemail, number or WhatsApp; link, website, URL, web page, domain or site; app, file, attachment, download, APK or PDF; device, Wi-Fi, internet, network or router.
+3. **Where something is, or how to do something** ("where is…", "how do I turn on…", "take me to…", "which screen…") → Higgins on the server, who answers with a tap straight to the screen.
+4. **This phone's state:** protection status, device health, website, call, text or app protection, the VPN, permissions, current issues or the last check → answered on the phone from its live reading. Nothing is sent.
+5. **Something suspicious, described without the form** ("is this a scam?", "I got a dodgy text", "someone called me…") → Higgins on the server.
+6. **About Apollo itself:** how Apollo works, who Higgins or Magnum DI is, the protections, finding your way around, or what Apollo's states mean → a fixed answer on the phone, with taps to the right screens.
+7. **A short message that's still unclear:**
+   - Under 60 characters: words about the phone working (working, running, active, on, off, enabled, disabled, status, state, ok, fine, healthy, broken, down) → its protection status, on the phone. Words about a threat (scam, phishing, fraud, suspicious, malware, virus, hacked, compromised, stolen, unsafe, dangerous) → Higgins on the server. Both kinds, or neither, → the next step. These words are matched anywhere in the message, even inside a longer word ("on" in "someone").
+   - Under 40 characters with no question mark → one question back: "Do you mean whether Apollo is protecting your phone, or would you like me to investigate something specific?"
+8. **Everything else** → Higgins on the server, in the order set out under Higgins above.
+
+**What starts a check from a typed message (on the server)**
+- The message has to ask plainly: "is this / could this be" with scam, phishing, fraud, legit, safe, fake, suspicious, malicious or dodgy; or check, investigate, look at, look into, scan, verify, inspect or analyse; or "should I / is it safe to" with click, open, respond, reply, call or trust.
+- *And* it has to hold something to check: a link, an email address, a phone number of 8 or more characters, or at least 30 characters of text.
+- If either is missing, the message is answered as a question. Missing a check is preferred to starting one by accident.
+- Higgins then says the check has started, and offers "View Investigation". If the check can't be started, the message is answered as a question instead.
+
+**The + button: one form per kind of check**
+| Form | What the person adds | The question if none is typed |
+|---|---|---|
+| Screenshot or photo | A screenshot, or a photo of a QR code, letter or screen | Is this a scam? |
+| Websites & Links | A link, pasted or shared | Is this website safe? |
+| Messages & Calls | A message, number or call details | Is this message a scam? |
+| Email & Accounts | An email, pasted or picked from a connected inbox | Is this email legitimate? |
+| Apps & Files | An app, file, download or attachment | Is this app safe to use? |
+| Device & Internet | Anything noticed (optional) | Check my device and internet connection for security issues. |
+
+- **Pictures.** The phone reads the text in the picture first, and that text goes with it. A picture showing a password, PIN or one-time code isn't sent, and nor is any picture when the phone's text reader isn't available.
+- **Size.** A file or picture over 10 MB is refused. An email's attachments over 10 MB in total aren't downloaded; they are listed, with advice to check each one on its own.
+
+**Coming in from elsewhere in Apollo**
+- **A scam alert:** its title, source, summary and official link go in as the first message, and Higgins answers in the source's own words.
+- **A Learn article:** shown in its own words.
+- **A Patrol finding, an incident or a Device Check result with no case:** explained on the phone from Apollo's own findings, in fixed wording, with no AI and no investigation. "Ask Apollo to investigate" starts a separate check only when tapped.
+- **A result that has a case:** that case opens, and the question goes to it.
+- **A screenshot from Check It:** starts a check straight away.
+
+**Taps and offers**
+- An answer offers at most 2 screens to tap, and only real Apollo screens.
+- "Investigate this" or "Open Check It" appears only when the general-knowledge answer suggests it. Nothing starts until it is tapped.
+- A general-knowledge answer is up to 2,000 characters.
+
+**What is kept, and for how long**
+- On the phone: the conversation for 1 hour, up to the last 40 messages, in the phone's secure storage.
+- On the server: the question and answer for 5 minutes, then only a receipt with no content for 30 days.
+- **Clear chat** (the bin icon, after a confirm) deletes the conversation on the phone and on the server, and forgets the person's most-asked questions. It doesn't delete investigations.
+
+**Suggestions**
+- There are 20 quick questions. Four show while the chat is empty, and the person's own most-asked questions (asked at least twice) take up to 2 of those places.
+- Once a conversation has started, up to 3 of the person's most-asked questions show above the message box while it is empty.
+- Apollo remembers up to 30 asked questions, skipping any under 6 or over 120 characters.
+
+**When something goes wrong**
+- Higgins can't answer: "Higgins couldn't answer right now. No investigation was started.", with Try again.
+- A general-knowledge answer comes back unreadable: Higgins says so, and nothing is made up in its place.
+- **A stopped investigation** (both Magnum DI calls failed): once it can be resubmitted, one quiet note shows above the conversation. The note goes when the case is resubmitted, answered, removed, dismissed or past its expiry. There is no pop-up anywhere else.
+
+---
+
+## 7. Settling rules: the reason shown on each result {#settling-rules}
+
+Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
+
+| Rule ID | Rule | Settled by | When it applies |
+|---|---|---|---|
+| FLYBY-THREAT | Confirmed threat | TC FlyBy | A direct safety check, an official scam advisory, or an official source found by the search names this exact link, number, address or company as a scam or threat. |
+| FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in Apollo's knowledge base, and nothing contradicts it. |
+| FLYBY-IMPERSONATION | Corroborated impersonation | TC FlyBy | An organisation is named, a link isn't its website, and a separate check on that link backs this up. |
+| FLYBY-OPENING | Known scam opening | TC FlyBy | The message opens like the family "new number" scam but hasn't asked for anything yet. |
+| FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found real warning signs, but not enough to call it a scam. |
+| FLYBY-CLEAR | Nothing found, everything checked | TC FlyBy | Every planned check ran over everything sent and none found a scam indicator. |
+| FLYBY-UNKNOWN | Can't establish more | TC FlyBy | The checks couldn't establish more, and a deeper look couldn't change what to do. |
+| FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by Apollo's knowledge base or a sourced search. |
+| MAGNUM-READING | Reading | Magnum DI | Part of what was sent (a picture or scanned page) had to be read directly. |
+| MAGNUM-REASONING | Reasoning | Magnum DI | The material asks for money, details or access through a route no official source verified. |
+| MAGNUM-RELATING | Relating | Magnum DI | TC FlyBy's findings pointed in different directions and needed weighing up. |
+| MAGNUM-QUESTION | Open general question | Magnum DI | Neither the knowledge base nor a targeted search could answer a general question. |
+| MAGNUM-SAFETY-NET | Safety net | Magnum DI | TC FlyBy's own result didn't pass Apollo's checks, so Magnum DI looked at the whole case. |
+
+When Magnum DI was needed for more than one reason, the sentence names them together, for example "Reading and reasoning". Results recorded before these rules existed show no sentence rather than a guessed one.
 
 ---
 

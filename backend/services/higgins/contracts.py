@@ -180,6 +180,14 @@ class Inventory(Wire):
     content_expired: int = 0
 
 
+class SettledReason(Wire):
+    """The rule that settled a result, as one plain sentence (services/rulebook.py)."""
+    rule_id: str
+    rule: str
+    by: Literal["TC FlyBy", "Magnum DI"]
+    sentence: str
+
+
 class InvestigationCase(Wire):
     schema_version: Literal[1] = 1
     id: str
@@ -198,6 +206,8 @@ class InvestigationCase(Wire):
     cleanup_status: Literal["not_due", "pending", "complete", "failed"] = "not_due"
     # Who settled the latest result: "magnum_di", or TC FlyBy by route ("teddy_official", "teddy_kb", "teddy_search").
     answered_by: Optional[str] = None
+    # The rule that settled it, as one plain sentence (services/rulebook.py). None when the record doesn't say.
+    settled_reason: Optional[SettledReason] = None
 
 
 class RetryAttempt(Wire):

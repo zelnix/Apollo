@@ -17,6 +17,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from core.db import db, now_utc
+from services import rulebook
 from services.higgins.capacity import (
     LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS,
     EVIDENCE_RETENTION_SECONDS,
@@ -224,7 +225,8 @@ async def case_view(doc: dict) -> InvestigationCase:
                              evidence_expires_at=utc(doc["evidence_expires_at"]) if doc.get("evidence_expires_at") else None,
                              retention_class=doc.get("retention_class", ""),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
-                             cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=(doc.get("routing") or {}).get("answeredBy"))
+                             cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=(doc.get("routing") or {}).get("answeredBy"),
+                             settled_reason=rulebook.settled_reason(doc.get("routing")) if response else None)
 
 
 def device_profile(doc: dict) -> Optional[dict]:

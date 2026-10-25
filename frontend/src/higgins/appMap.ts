@@ -54,6 +54,7 @@ export const APOLLO_DESTINATIONS: Record<string, string> = {
   "/settings/personal-data": "My personal data",
   "/settings/email-accounts": "Email accounts",
   "/settings/feed-health": "Feed health",
+  "/settings/rule-book": "Rule book",
   "/privacy-data": "What Apollo stores",
   "/privacy-disclosure": "Privacy statement",
   "/third-party-register": "Third-party services",

@@ -1,3 +1,23 @@
+## Ask Higgins rules added to the rule book (2026-10-25)
+- New section **6. Ask Higgins (the chat screen)** `{#ask-higgins}` in `backend/content/rulebook.md` (Settling rules is now 7):
+  what's removed/sent before anything leaves the phone (4,000-character limit, state-only reading); where a message goes,
+  first that applies (open case → "I want something checked" form → wayfinding → phone state on the phone → suspicious
+  described → fixed Apollo answers → short/unclear → server); what starts a check from a typed message (plain ask AND a
+  link/email/phone ≥8 chars/≥30 chars of text); the six + forms with default questions; picture and 10 MB rules; handoffs
+  (scam alert, Learn, Patrol/incident/Device Check, case, screenshot); taps and offers (≤2 screens, nothing starts until
+  tapped, 2,000-char general answer); retention (phone 1 h / 40 messages; server 5 min, receipt 30 days; Clear chat);
+  suggestions (20 quick questions, 4 shown, own most-asked); failures and the resubmit note. Section 5 now quotes the
+  off-topic reply word for word; the stale "Ask Magnum DI to investigate" label is now "Ask Apollo to investigate".
+- Auto-sync: `services/rulebook.py` WATCHED is now project-root relative and includes the Ask Higgins files on the server
+  (`pipeline_submit.py`, `context.py`) and on the phone (`ask.tsx`, `checkIntent.ts`, `intentRouter.ts`, `localResponder.ts`,
+  `issueExplanation.ts`, `followUp.ts`, `chatMemory.ts`, `quickQuestions.ts`, `starterMemoryCore.ts`, `HigginsCheckSheet.tsx`,
+  `HigginsArtifactInput.tsx`, `resubmit.ts`). Files absent on a server (published backend without app code) are skipped;
+  a test checks every watched file exists. Re-stamped.
+- Tests: `test_rulebook.py` +3 (watched files exist, Ask Higgins numbers/off-topic text match the server, typed-check rule);
+  `ruleBook.test.ts` +1 (quick-question count, clarifying question word for word, form routing, form names). All pass; tsc clean.
+- **Known quirk documented, not fixed (awaiting owner):** the short-message rule matches words inside longer words, so
+  "How do I report someone?" ("on" in "someone") is answered as protection status (`intentRouter.ts resolveAmbiguous`).
+
 ## Investigation rule book written (2026-06)
 - Owner asked for copy-paste rules for Apollo detection, Higgins Triage, TC FlyBy, Magnum DI and Higgins: processes,
   resolution rules, escalation triggers, information requested. Written from the code into

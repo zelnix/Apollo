@@ -31,6 +31,7 @@ import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
+import { SettledReasonLine } from "@/src/components/SettledReasonLine";
 import { assessmentLabel, attentionLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -755,6 +756,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             <Text style={s.confidenceText}>Confidence: {response ? assessmentLabel(response.assessment) : "Unavailable"}</Text>
           </View>
           {outcome ? <OutcomeExplainerLink outcome={response?.outcome} testID="inv-outcome-explainer" /> : null}
+          {response ? <SettledReasonLine reason={caseData?.settledReason} testID="inv-settled-reason" /> : null}
         </View>
       </View>
 

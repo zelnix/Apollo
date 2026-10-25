@@ -52,6 +52,7 @@ NAV = [
     ("Investigations",  "/api/admin/investigations-cost", "&#128200;"),
     ("Triage",          "/api/admin/triage",           "&#9878;"),
     ("Knowledge Base",  "/api/admin/knowledge",        "&#128218;"),
+    ("Rule Book",       "/api/admin/rule-book",        "&#128214;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
@@ -1580,6 +1581,20 @@ def _routing_html(rows: list[dict], avg_cost: float) -> str:
     """
 
 
+def _settled_reason_html(routing: dict | None, *, short: bool = False) -> str:
+    """Why this case was settled where it was: the settling rule from the rule book, linked to it."""
+    from services import rulebook
+    reason = rulebook.settled_reason(routing)
+    if not reason:
+        return '<span style="color:var(--muted);">Not recorded</span>'
+    link = (f'<a href="/api/admin/rule-book#settling-rules" data-testid="settled-rule-{html_mod.escape(reason["ruleId"])}">'
+            f'{html_mod.escape(reason["rule"])}</a>')
+    if short:
+        return link
+    return (f'<span data-testid="settled-reason">{html_mod.escape(reason["sentence"])}</span>'
+            f'<br><span style="font-size:0.82em;color:var(--muted);">Rule {html_mod.escape(reason["ruleId"])} &middot; {link} in the rule book</span>')
+
+
 def _routing_drilldown_html(case: dict | None) -> str:
     routing = (case or {}).get("routing") or {}
     teddy = routing.get("teddy")
@@ -1601,6 +1616,7 @@ def _routing_drilldown_html(case: dict | None) -> str:
         <tbody>
             <tr><td style="color:var(--muted);width:180px;">Answered By</td><td>{_answered_by_badge(routing.get('answeredBy') or '')}</td></tr>
             <tr><td style="color:var(--muted);">Outcome</td><td>{_outcome_badge(routing.get('outcome'))}</td></tr>
+            <tr><td style="color:var(--muted);">Why</td><td>{_settled_reason_html(routing)}</td></tr>
             <tr><td style="color:var(--muted);">Message Type</td><td>{html_mod.escape(teddy.get('messageType') or 'unknown')}</td></tr>
             <tr><td style="color:var(--muted);">Apollo KB Scam Pattern</td><td>{pattern_line}</td></tr>
             <tr><td style="color:var(--muted);">TC FlyBy Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
@@ -1988,6 +2004,7 @@ async def investigations_cost_report(request: Request):
             <td><a href="/api/admin/investigations-cost/{r['case_id']}?period={html_mod.escape(period_param)}">{html_mod.escape(r['desc'])}</a>{resumed_badge}</td>
             <td>{_answered_by_badge(r['answered_by'])}</td>
             <td>{_outcome_badge(r['routing'].get('outcome'))}</td>
+            <td>{_settled_reason_html(r['routing'], short=True)}</td>
             <td>{html_mod.escape(r['gate'])}</td>
             <td>{html_mod.escape(r['initiator'])}</td>
             <td><code style="font-size:0.82em;">{src_display}</code></td>
@@ -2006,10 +2023,10 @@ async def investigations_cost_report(request: Request):
     <div style="overflow-x:auto;">
     <table>
         <thead><tr>
-            <th>Device</th><th>Investigation</th><th>Answered By</th><th>Outcome</th><th>Gate</th><th>Initiated By</th>
+            <th>Device</th><th>Investigation</th><th>Answered By</th><th>Outcome</th><th>Why</th><th>Gate</th><th>Initiated By</th>
             <th>Source</th><th>Env</th><th>Calls</th><th>Total Tokens</th><th>Est. Cost</th>
         </tr></thead>
-        <tbody>{main_tbody or '<tr><td colspan="11" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
+        <tbody>{main_tbody or '<tr><td colspan="12" style="color:var(--muted);">No investigations found for this period and filters</td></tr>'}</tbody>
     </table>
     </div>
     """
@@ -2880,6 +2897,29 @@ async def audit(request: Request):
     <tbody>{rows or '<tr><td colspan="4" style="color:var(--muted);">No audit records</td></tr>'}</tbody></table>
     """
     return _shell("Audit", "/api/admin/audit", body, admin=adm)
+
+
+# ── Rule Book ────────────────────────────────────────────────────────────────
+
+def _rule_book_html() -> str:
+    """The shared rule book (content/rulebook.md), word for word — the same file the app shows in Settings."""
+    from services import rulebook
+    behind = rulebook.changed()
+    banner = (f'<div class="alert alert-warning" data-testid="rule-book-behind">The rule book is behind the code: '
+              f'{", ".join(html_mod.escape(p) for p in behind)} changed since it was last reviewed. Update '
+              f'<code>backend/content/rulebook.md</code>, then run <code>python scripts/rulebook_stamp.py</code>.</div>' if behind else
+              '<div class="alert alert-ok" data-testid="rule-book-in-step">In step with the code: every rule-defining file matches the last review.</div>')
+    body = markdown.markdown(rulebook.read()["markdown"], extensions=["tables", "fenced_code", "toc", "attr_list"])
+    return f'{banner}<article data-testid="rule-book">{body}</article>'
+
+
+@router.get("/admin/rule-book", response_class=HTMLResponse)
+async def rule_book_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    await _audit_log(adm.get("email", ""), "view_rule_book")
+    return _shell("Rule Book", "/api/admin/rule-book", _rule_book_html(), admin=adm)
 
 
 # ── Admin Settings ───────────────────────────────────────────────────────────

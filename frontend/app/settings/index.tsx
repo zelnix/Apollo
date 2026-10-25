@@ -25,6 +25,7 @@ import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { APP_VERSION } from "@/src/config/buildInfo";
 import type { NotificationStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
+import { setShowResultReasons, useShowResultReasons } from "@/src/store/resultReasonsStore";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -66,6 +67,7 @@ export default function SettingsScreen() {
   const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
   const [showRetrofit, setShowRetrofit] = useState(false);
+  const showReasons = useShowResultReasons();
 
   // Each group carries its own colour so the list is scannable at a glance. These are navigational
   // category colours (see theme.ts) — never Apollo's security-state colours.
@@ -188,6 +190,7 @@ export default function SettingsScreen() {
       {/* 5 ── This app on this phone */}
       <Group icon={Smartphone} title="App" tone="app" testID="settings-preferences">
         <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
+        <SwitchRow label="Show why each result was settled" hint="One line naming the rule that settled it" value={showReasons} onValueChange={(value) => void setShowResultReasons(value)} testID="settings-result-reasons-switch" />
         <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
         <NavRow label="Retrofit new enhancements" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
       </Group>
@@ -205,6 +208,7 @@ export default function SettingsScreen() {
         </Pressable>
         {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Many messaging, mail and browser apps offer Share — tap it, then choose Apollo. Not every app does; if yours doesn&apos;t, copy and paste the text or use a screenshot. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
         <NavRow label="About Apollo" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
+        <NavRow label="Rule book" hint="Every rule Apollo, TC FlyBy, Magnum DI and Higgins follow, word for word" onPress={() => router.push("/settings/rule-book")} testID="settings-rule-book" />
       </Group>
 
       {/* 8 ── The documents, last: read occasionally, never urgent */}

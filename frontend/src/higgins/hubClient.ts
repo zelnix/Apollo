@@ -17,6 +17,9 @@ export function deleteHigginsHistory(id: string) { return apiDelete<void>(`/higg
 export function governmentScams(limit = 50) { return apiGet<{ coverage: string; generatedAt: string; feeds: Record<string, GovernmentFeedState>; alerts: GovernmentAlert[]; emerging: GovernmentAlert[]; pendingCount: number; lastAnalysedAt: string | null; lastSourcedAt: string | null; growling: GovernmentAlert | null }>(`/higgins/scams?limit=${limit}`); }
 export function scamDiagnostics() { return apiGet<ScamDiagnostics>("/higgins/scams/diagnostics"); }
 export function feedHealth() { return apiGet<FeedHealthReport>("/feeds/health"); }
+/** Apollo's rule book, word for word (backend/content/rulebook.md), and the date it was last reviewed against the code. */
+export interface RuleBook { markdown: string; reviewedAt: string | null }
+export function ruleBook() { return apiGet<RuleBook>("/rules/book"); }
 export interface ScamDiagnostics { generated_at: string; recency_cutoff_days: number; analysis_version: string; pipeline: { "1_total_feed_items": number; "2_with_analysis": number; "3_without_analysis_pending": number; "4_matching_current_version": number; "5_wrong_version_needs_reanalysis": number; "6_after_filters": { specific_scam_shown: number; emerging_pattern_shown: number; general_education_excluded: number; stale_excluded: number; unknown_tier: number } }; shown_alerts: DiagItem[]; shown_emerging: DiagItem[]; excluded_stale: DiagItem[]; excluded_education: DiagItem[]; feeds: DiagFeed[] }
 export interface DiagItem { title: string; url: string; source_id: string; tier: string; severity: string; region: string; published_at: string | null; reported_date: string | null; effective_date: string | null; age_days: number | null; is_stale: boolean }
 export interface DiagFeed { feed_id: string; source_id: string; content_type: string; status: string; last_success: string | null; last_checked: string | null; error: string | null; items_ingested: number }

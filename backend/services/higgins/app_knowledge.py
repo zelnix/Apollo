@@ -68,6 +68,7 @@ NAV_ROUTES: dict[str, str] = {
     "/settings/personal-data": "My personal data",
     "/settings/email-accounts": "Email accounts",
     "/settings/feed-health": "Feed health",
+    "/settings/rule-book": "Rule book",
     "/privacy-data": "What Apollo stores",
     "/privacy-disclosure": "Privacy statement",
     "/third-party-register": "Third-party services",
@@ -132,6 +133,7 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
         "/family": "Family sharing",
         "/settings/personal-data": "My personal data",
         "/settings/feed-health": "Feed health — sync status of each government feed",
+        "/settings/rule-book": "Rule book — every rule Apollo, TC FlyBy, Magnum DI and Higgins follow, word for word",
         "/privacy-data": "What Apollo stores",
         "/privacy-disclosure": "Privacy statement",
         "/third-party-register": "Third-party services",
@@ -227,9 +229,9 @@ _SETTINGS_DETAIL = """SETTINGS `/(tabs)/settings` — eight groups:
 2. Alerts — notification permission, Notification check, alert preview, quiet hours.
 3. Accounts & family — Email accounts, Family sharing, trusted links.
 4. Your data — Personal data, What Apollo stores, clear Threat history.
-5. App — battery saver, minimise Apollo, retrofit past investigations.
+5. App — battery saver, show why each result was settled (one line naming the settling rule, on by default), minimise Apollo, retrofit past investigations.
 6. Diagnostics — Feed health `/settings/feed-health`: each government feed's last successful sync, records loaded, last error, and a Healthy / Stale (no sync in 24 hours) / Failing badge.
-7. Help & about — Get help, how to share into Apollo, About Apollo.
+7. Help & about — Get help, how to share into Apollo, About Apollo, Rule book `/settings/rule-book` (the full rules, word for word; also linked from How Apollo checks).
 8. Policies — Privacy statement, Third-party services, Compliance matrix."""
 
 
