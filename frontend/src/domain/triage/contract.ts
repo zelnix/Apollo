@@ -1,4 +1,4 @@
-// Apollo Triage — shared investigation contract (mirror of backend services/triage/contract.py).
+// Higgins Triage — shared investigation contract (mirror of backend services/triage/contract.py).
 // Three outcomes only. A Coverage Gap can prevent NO THREAT but can never create POSSIBLE THREAT,
 // and never downgrades threat evidence Apollo actually has. Triage makes ZERO Gemini calls.
 

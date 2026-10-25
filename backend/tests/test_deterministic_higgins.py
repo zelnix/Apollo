@@ -249,6 +249,6 @@ def test_public_health_result_carries_the_provider_status():
 
 
 def test_a_follow_up_credits_whichever_investigator_settled_the_result():
-    assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?", "teddy_kb")["answer"].startswith("What Teddy FlyBy recommends")
+    assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?", "teddy_kb")["answer"].startswith("What TC FlyBy recommends")
     assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?", "magnum_di")["answer"].startswith("What Magnum DI recommends")
     assert presenter.investigation_follow_up(RESPONSE, [], "What should I do?")["answer"].startswith("What Magnum DI recommends"), "older results were Magnum DI's"

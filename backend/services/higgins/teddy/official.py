@@ -1,9 +1,9 @@
-"""Teddy FlyBy stage 1 — direct and authoritative sources.
+"""TC FlyBy stage 1 — direct and authoritative sources.
 
 Every lookup here is a direct check against the source that holds the answer: Apollo's blocklist and
 Google Safe Browsing (cached in reputation_cache), the domain registry's RDAP record, Apollo's register of
 official government and organisation domains, the official scam-advisory feeds Apollo already holds, the
-ABR/ASIC check-digit algorithms, and any specialist results Apollo Triage already gathered for the case.
+ABR/ASIC check-digit algorithms, and any specialist results Higgins Triage already gathered for the case.
 No AI is involved. A lookup that fails is recorded as unavailable — never as safe.
 """
 from __future__ import annotations
@@ -66,7 +66,7 @@ async def advisories(hosts: list[str], sender_domain: str, text: str) -> list[di
         return []
 
 
-# ── Reading what Apollo Triage already gathered for the case ────────────────
+# ── Reading what Higgins Triage already gathered for the case ────────────────
 def pregathered(pe: dict | None) -> dict:
     pe = pe or {}
     return {"safe_browsing": (pe.get("safe_browsing") or {}).get("urls") or {},

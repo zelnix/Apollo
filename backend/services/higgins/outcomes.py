@@ -1,6 +1,6 @@
 """Apollo case outcomes — one outcome system fed by both investigation layers.
 
-Teddy FlyBy and Magnum DI both end a case with one of these. Each outcome fixes the assessment it implies, so
+TC FlyBy and Magnum DI both end a case with one of these. Each outcome fixes the assessment it implies, so
 the two can never disagree. A general question (nothing submitted to check) has no case outcome.
 """
 from __future__ import annotations

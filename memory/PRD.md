@@ -1,5 +1,11 @@
-## Teddy FlyBy stopping rule + one Apollo outcome system (2026-10-24)
-**Owner's rule:** a case is RESOLVED at Teddy FlyBy when further Magnum DI investigation could not change Apollo's finding or
+## Investigation rule book written (2026-06)
+- Owner asked for copy-paste rules for Apollo detection, Higgins Triage, TC FlyBy, Magnum DI and Higgins: processes,
+  resolution rules, escalation triggers, information requested. Written from the code into
+  `memory/APOLLO_INVESTIGATION_RULEBOOK.md` (internal detail) and given in chat. No code changed.
+
+
+## TC FlyBy stopping rule + one Apollo outcome system (2026-10-24)
+**Owner's rule:** a case is RESOLVED at TC FlyBy when further Magnum DI investigation could not change Apollo's finding or
 Higgins' action; "Unable to determine" is a valid resolved outcome; a KB pattern match supports the assessment but is never
 proof about the sender. Owner's answers: impersonation + brand-new domain → Concerning (no Magnum); "Hi Mum" → check Apollo KB
 first, pattern match → Concerning/Likely scam, unclear → Magnum; bare link → stop at Concerning / Unable to determine after all
@@ -25,7 +31,7 @@ Teddy resources; outcome labels in the app result AND the admin portal, fed by b
 - **App**: `outcome` in `src/investigation/types.ts`; `outcomeLabel`/`outcomeTone` in `messageVoice.ts`; outcome badge
   (`inv-outcome`) on the investigation status card. Verified in the preview: "Hi Mum" text → "Likely scam" badge.
 - **Production never loads simulation code**: the indicator reader moved from `preview_analysis.py` to `services/higgins/indicators.py`
-  (Apollo Triage imported the preview module in production).
+  (Higgins Triage imported the preview module in production).
 - Tests: `test_teddy_routing.py` (18), `test_one_gemini_call.py` material updated (its ANZ text is now settled by Teddy),
   stale mock fixed in `test_deterministic_higgins.py`; full backend suite 1048 passed. Frontend messageGuardrails + tsc clean.
   No testing agent (owner's rule). Preview: 0 live Gemini calls since 08:00 UTC today.
@@ -3357,7 +3363,7 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Docs: `/app/docs/APOLLO_PLAY_RESTRICTED_PERMISSIONS_FUTURE_DECLARATIONS.md` (NOT FOR CURRENT PLAY SUBMISSION).
 - Tests: `tests/restrictedPhonePermissions.test.ts` and `tests/screenedCalls.test.ts`; updated `deviceCapabilities.test.ts`. 837/837 frontend tests and tsc pass. Prebuild verified: default build removes both permissions; the approved switch adds only the named one. The Kotlin was not compiled here (no Android SDK) — a native build is required.
 
-## Apollo Triage → Teddy FlyBy → Magnum DI: the 6 routing corrections (2026-10)
+## Higgins Triage → TC FlyBy → Magnum DI: the 6 routing corrections (2026-10)
 - **Triage extracts every input first** (`teddy/__init__.py::_material`): submitted text/links, the text the phone read from a screenshot (`deviceExtractedText`, sent by `investigation/client.ts::investigationImageMeta`, credential-redacted, allow-listed + redacted in `privacy.ts`, stored as a derived text child in `evidence.ingest_file`), and the text layer of documents. Anything not extracted is a recorded gap (`magnum: true` only for images Magnum can read; audio/attachments/omitted pages are uncertainties). An image examined through its extracted text is marked examined.
 - **One deciding test** (`teddy/decide.py::evaluate`): could Magnum DI change Apollo's finding or Higgins' action? Concern outcomes the evidence already supports stand (confirmed → likely scam (full KB pattern) → corroborated impersonation → opening → established signals). Otherwise Magnum gets only these issues: reading (an unextracted image), reasoning (a consequential request through an unverified route), relating (a register name conflict / org name merely mentioned beside another address / pattern vs official links when the request goes elsewhere). No fixed list or input type routes to Magnum; `message_analysis` is `not_needed` unless the test sends it.
 - **Bare links use the same rule**: no link-only special case; a lookalike address (org name inside the host, `official._lookalike`) is a warning sign by itself for any input.
@@ -3368,19 +3374,19 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Tests: `tests/test_teddy_routing.py` (24), full backend suite 1054 passed; tsc clean.
 - Family Change Alerts: dropped at the user's request ("No family alerts") — not to be built or suggested.
 
-## Teddy DI renamed Teddy FlyBy + investigator credited correctly (2026-10)
-- Every display string "Teddy DI" → "Teddy FlyBy" (backend copy, admin portal, tests). Internal codes kept: `teddy_official|teddy_kb|teddy_search`, item ids `teddy-di-checks/brief`. Model label now `teddy-flyby`.
-- Case wire now carries `answeredBy` (`repository.case_view` from `routing.answeredBy`); saved on-device investigations keep it. App credits the right investigator: `investigatorName()` in `messageVoice.ts` (Teddy FlyBy / Magnum DI; older results default Magnum DI). Used in InvestigationView (found / sources / history / follow-up note), follow-ups (`followUp.ts`, backend `presenter.investigation_follow_up(..., answered_by)`), threat-case timeline, patrol evidence header. In-progress spinner says "Apollo is investigating…".
+## Teddy DI renamed TC FlyBy + investigator credited correctly (2026-10)
+- Every display string "Teddy DI" → "TC FlyBy" (backend copy, admin portal, tests). Internal codes kept: `teddy_official|teddy_kb|teddy_search`, item ids `teddy-di-checks/brief`. Model label now `teddy-flyby`.
+- Case wire now carries `answeredBy` (`repository.case_view` from `routing.answeredBy`); saved on-device investigations keep it. App credits the right investigator: `investigatorName()` in `messageVoice.ts` (TC FlyBy / Magnum DI; older results default Magnum DI). Used in InvestigationView (found / sources / history / follow-up note), follow-ups (`followUp.ts`, backend `presenter.investigation_follow_up(..., answered_by)`), threat-case timeline, patrol evidence header. In-progress spinner says "Apollo is investigating…".
 - Egress allow-list now includes `sanitizationDecision`, `redactedRegions`, `sanitizationTransformations`.
 - Rules each layer operates under: `/app/memory/OPERATING_RULES.md`.
-- Wording that predates Teddy FlyBy (not changed, flagged to user): Higgins' Gemini prompt "MAGNUM DI INVESTIGATES AND SEARCHES"; gate triage docstring; check/message screen copy "Magnum DI will investigate it".
+- Wording that predates TC FlyBy (not changed, flagged to user): Higgins' Gemini prompt "MAGNUM DI INVESTIGATES AND SEARCHES"; gate triage docstring; check/message screen copy "Magnum DI will investigate it".
 
 ## Old wording updated + "How Apollo checks" screen (2026-10)
-- Higgins' Gemini prompt (`chat.py _PERMANENT_CORE`, `app_knowledge._ROLES/_FLOWS`), Higgins' on-phone answers (`localResponder.ts`), gate-triage docstrings, presenter, and check-screen copy (check, message, email, account, text-guard, device, call-guard, CheckingModal, gate-details, patrol, ask) now name Teddy FlyBy first and Magnum DI only for deeper investigation. Magnum-only statements (its questions, failures, DI record, resubmit) unchanged.
+- Higgins' Gemini prompt (`chat.py _PERMANENT_CORE`, `app_knowledge._ROLES/_FLOWS`), Higgins' on-phone answers (`localResponder.ts`), gate-triage docstrings, presenter, and check-screen copy (check, message, email, account, text-guard, device, call-guard, CheckingModal, gate-details, patrol, ask) now name TC FlyBy first and Magnum DI only for deeper investigation. Magnum-only statements (its questions, failures, DI record, resubmit) unchanged.
 - New screen `app/how-apollo-checks.tsx` (content `src/domain/howApolloChecks.ts`, test `tests/howApolloChecks.test.ts`): five roles in check order with their rules, five results with their pills, Apollo's promises. Linked from the hamburger menu ("How Apollo checks"), Higgins' destinations (frontend `appMap.ts`, backend `app_knowledge` learning routes), and Higgins' "how Apollo works" / "what is Magnum DI" answers.
 
 ## Investigator badge + "What does this mean?" link (2026-10)
-- Threats list: each finished investigation shows "Settled by Teddy FlyBy" / "Settled by Magnum DI" (`threatCase.settledBy`, PatrolEvent `investigation_answered_by`, copied from the committed result by `investigationPatch`; no badge when not recorded — never guessed).
+- Threats list: each finished investigation shows "Settled by TC FlyBy" / "Settled by Magnum DI" (`threatCase.settledBy`, PatrolEvent `investigation_answered_by`, copied from the committed result by `investigationPatch`; no badge when not recorded — never guessed).
 - "What does this mean?" (`components/OutcomeExplainerLink.tsx`) beside every investigation result: InvestigationView status card (all check screens + Ask) and the threat detail Overview (new outcome pill). Opens `/how-apollo-checks?outcome=<key>`, which scrolls to "What the results mean" and highlights that result.
-- Bug fixed: when Teddy FlyBy settled a case before the app attached (`caseStore.attach` found it already answered), the result was never committed to the device, so the threat stayed "Investigating" and the server copy wasn't purged. Commit handshake is now `commitAnswered()` used by both paths (skips if same revision already stored).
+- Bug fixed: when TC FlyBy settled a case before the app attached (`caseStore.attach` found it already answered), the result was never committed to the device, so the threat stayed "Investigating" and the server copy wasn't purged. Commit handshake is now `commitAnswered()` used by both paths (skips if same revision already stored).
 - Seen, not fixed (pre-existing, flagged to user): one message check creates two Threats entries; dev warning "Encountered two children with the same key" on Threats/threat detail.

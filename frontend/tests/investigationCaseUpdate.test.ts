@@ -115,7 +115,7 @@ test("the case stops saying 'Investigating' once Magnum DI has answered", () => 
 test("a finished case records who settled it, for the Threats list badge — never guessed", () => {
   const teddy = investigationPatch(placeholder, { ...(investigation() as object), answeredBy: "teddy_kb" } as never)!;
   assert.equal(teddy.investigation_answered_by, "teddy_kb");
-  assert.equal(settledBy(teddy), "Teddy FlyBy");
+  assert.equal(settledBy(teddy), "TC FlyBy");
   assert.equal(settledBy(investigationPatch(placeholder, { ...(investigation() as object), answeredBy: "magnum_di" } as never)!), "Magnum DI");
   assert.equal(settledBy(investigationPatch(placeholder, investigation())!), null, "not recorded: no badge");
   assert.equal(settledBy(placeholder), null, "still investigating: no badge");

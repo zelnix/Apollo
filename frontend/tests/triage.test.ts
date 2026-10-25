@@ -1,4 +1,4 @@
-// Apollo Triage — on-device engine acceptance tests. Run: node --test tests/triage.test.ts
+// Higgins Triage — on-device engine acceptance tests. Run: node --test tests/triage.test.ts
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";

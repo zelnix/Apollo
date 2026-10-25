@@ -1,14 +1,14 @@
-"""Teddy FlyBy — Apollo's fast, low-cost fly-by investigation.
+"""TC FlyBy — Apollo's fast, low-cost fly-by investigation.
 
-    Input → Apollo Triage → only the relevant checks → for each check:
+    Input → Higgins Triage → only the relevant checks → for each check:
         1. direct / authoritative source (official.py)
         2. Apollo Knowledge Base — including the established scam patterns (patterns.py)
         3. targeted Google Search — one call, low-cost model (search.py)
     → an Apollo case outcome (outcomes.py) when further investigation couldn't change the finding or what
-      Higgins tells the person, or hand Magnum DI only what Teddy could not settle.
+      Higgins tells the person, or hand Magnum DI only what TC FlyBy could not settle.
 
-Teddy never pays Gemini to confirm what a reliable source has already established, and Magnum DI never
-rediscovers what Teddy found: it receives a short brief of the unresolved issues and the facts that bear on
+TC FlyBy never pays Gemini to confirm what a reliable source has already established, and Magnum DI never
+rediscovers what TC FlyBy found: it receives a short brief of the unresolved issues and the facts that bear on
 them, with Google Search left off unless a specific external fact is still missing.
 
 Evidence integrity: live evidence (facts about this case, each with its source), Apollo knowledge (general
@@ -37,8 +37,8 @@ from services.higgins.teddy.triage import plan as triage_plan
 
 log = logging.getLogger("apollo.teddy")
 
-PREGATHERED_ITEM_ID = "apollo-triage-intelligence"   # what Apollo Triage gathered before the case started
-CHECKS_ITEM_ID = "teddy-di-checks"                   # Teddy's full check record, with provenance
+PREGATHERED_ITEM_ID = "apollo-triage-intelligence"   # what Higgins Triage gathered before the case started
+CHECKS_ITEM_ID = "teddy-di-checks"                   # TC FlyBy's full check record, with provenance
 BRIEF_ITEM_ID = "teddy-di-brief"                     # the slice Magnum DI receives
 _CORPORATE = re.compile(r"\b(pty|ltd|limited|inc|llc|plc|the|group|holdings)\b\.?", re.I)
 _SEARCH_SIGNAL = {"WARNING": "concern", "OFFICIAL": "clear", "FOUND_ELSEWHERE": "anomaly"}
@@ -56,7 +56,7 @@ class TeddyOutcome:
     model: str | None = None
 
 
-# ── Apollo Triage's extraction: every input made investigation-ready ─────────
+# ── Higgins Triage's extraction: every input made investigation-ready ─────────
 def _page_number(row: dict) -> int | None:
     match = re.search(r"\.page(\d+)$", row.get("client_item_id") or "")
     return int(match.group(1)) if match else None
@@ -69,7 +69,7 @@ def _gap(row: dict, item: str, what: str, *, magnum: bool) -> dict:
 
 
 async def _material(owner: str, case: dict, rows: list[dict]) -> tuple[dict[str, str], list[dict], list[dict]]:
-    """Before Teddy FlyBy sees anything: submitted text and links, the text the phone read from screenshots and
+    """Before TC FlyBy sees anything: submitted text and links, the text the phone read from screenshots and
     images, and the text layer of documents — and a record of whatever couldn't be extracted.
     Returns (texts, gaps, rows read)."""
     texts: dict[str, str] = {}
@@ -227,11 +227,11 @@ def _apply(check: Check, answer: dict, plan_: Plan) -> None:
             "basis": lead["basis"], "retrieval": "search_result", "all": sources} if lead else None)
     if status in ("UNANSWERED", "UNSOURCED"):
         check.status = "not_found"
-        check.facts.append(fact(f"Teddy FlyBy's search returned no sourced answer about {check.subject}.", "missing"))
+        check.facts.append(fact(f"TC FlyBy's search returned no sourced answer about {check.subject}.", "missing"))
         return
     if status in search.NOT_FOUND:
         check.status = "not_found"
-        check.facts.append(fact(f"Teddy FlyBy's search found no record for {check.subject}: {answer.get('fact', '')}".strip(), "missing", source=src))
+        check.facts.append(fact(f"TC FlyBy's search found no record for {check.subject}: {answer.get('fact', '')}".strip(), "missing", source=src))
         return
     decisive = (status == "WARNING" and check.kind in ("link", "phone", "email", "company")
                 and any(s.get("authority") == "official" for s in sources) and _names(check, answer.get("fact", "")))
@@ -301,7 +301,7 @@ async def _item(owner: str, case: dict, client_item_id: str, text: str, label: s
 
 
 async def _mark_read(owner: str, case_id: str, read: list[dict], texts: dict[str, str]) -> None:
-    """Teddy read these items in full to triage them, so they are examined."""
+    """TC FlyBy read these items in full to triage them, so they are examined."""
     for row in read:
         coverage = row.get("coverage") or {}
         total = coverage.get("total") or (1 if coverage.get("unit") == "items" else len(texts[row["evidence_id"]]))
@@ -346,7 +346,7 @@ def _summary(plan_: Plan, decision: deciding.Decision | None, issues: list[decid
 
 # ── Entry point ─────────────────────────────────────────────────────────────
 async def investigate(owner: str, case: dict, job: dict, question: str, rows: list[dict], progress) -> TeddyOutcome:
-    """Triage → Teddy FlyBy. Runs once per case: a retry of Magnum DI reuses this record and repeats no lookup."""
+    """Triage → TC FlyBy. Runs once per case: a retry of Magnum DI reuses this record and repeats no lookup."""
     case_id = case["case_id"]
     stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 0, "teddy_ciphertext": 1})
     if stored and stored.get("teddy_ciphertext"):
@@ -367,23 +367,23 @@ async def investigate(owner: str, case: dict, job: dict, question: str, rows: li
 
 async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict], progress) -> dict:
     case_id = case["case_id"]
-    await progress("observe", "Apollo Triage is preparing what was sent and working out what needs checking.")
+    await progress("observe", "Higgins Triage is preparing what was sent and working out what needs checking.")
     texts, gaps, read = await _material(owner, case, rows)
     plan_ = triage_plan(question, list(texts.values()), gaps=gaps)
     combined = "\n".join(texts.values())
 
-    await progress("observe", "Teddy FlyBy is checking official sources first.")
+    await progress("observe", "TC FlyBy is checking official sources first.")
     await official.run(plan_, case.get("triage_provider_evidence"), combined)
     decision, issues = deciding.evaluate(plan_, texts, final=False)
     searched = {"calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False, "model": None, "status": "skipped"}
     if not decision:
-        await progress("observe", "Teddy FlyBy is checking Apollo's knowledge base.")
+        await progress("observe", "TC FlyBy is checking Apollo's knowledge base.")
         await _kb_stage(plan_, combined)
         decision, issues = deciding.evaluate(plan_, texts, final=False)
     if not decision:
         open_checks = [c for c in plan_.checks if c.question and c.status == "open"]
         if open_checks:
-            await progress("research", "Teddy FlyBy is running a few targeted searches.")
+            await progress("research", "TC FlyBy is running a few targeted searches.")
             searched = await search.run(open_checks, correlation_id=f"case-{case_id}", trigger_source=job.get("source"))
             for check in open_checks:
                 if check.id in searched["answers"]:
@@ -397,7 +397,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     checks_id = await _item(owner, case, CHECKS_ITEM_ID, json.dumps({
         "messageType": plan_.message_type, "entities": plan_.entities.wire(), "checks": [c.wire() for c in plan_.checks],
         "pattern": plan_.pattern, "gaps": plan_.gaps, "issues": [i.wire() for i in issues],
-        "search": {k: v for k, v in searched.items() if k != "answers"}}, ensure_ascii=False, default=str), "Teddy FlyBy fly-by checks")
+        "search": {k: v for k, v in searched.items() if k != "answers"}}, ensure_ascii=False, default=str), "TC FlyBy fly-by checks")
     await _mark_read(owner, case_id, read, texts)
 
     response = None
@@ -412,7 +412,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     brief_id = None
     if not decision:
         brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern),
-                               "Teddy FlyBy brief for Magnum DI")
+                               "TC FlyBy brief for Magnum DI")
 
     # Material Teddy read in full, and the images whose content it read through the text extracted from them.
     by_id = {r["evidence_id"]: r for r in rows}
@@ -439,9 +439,9 @@ async def discard_response(owner: str, case: dict) -> None:
     record = repo.dec_json(stored["teddy_ciphertext"])
     checks = [Check.from_wire(c) for c in record["checks"]]
     whole = [{"capability": "reasoning", "evidenceIds": [], "checkId": None,
-              "text": "Teddy FlyBy's own result didn't pass Apollo's validation, so investigate the whole case."}]
+              "text": "TC FlyBy's own result didn't pass Apollo's validation, so investigate the whole case."}]
     brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"))
-    record["items"]["brief"] = await _item(owner, case, BRIEF_ITEM_ID, brief, "Teddy FlyBy brief for Magnum DI")
+    record["items"]["brief"] = await _item(owner, case, BRIEF_ITEM_ID, brief, "TC FlyBy brief for Magnum DI")
     record.update(response=None, decision=None, magnumSearch=True, issues=None)
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {
         "teddy_ciphertext": repo.enc_json(record), "routing.answeredBy": "magnum_di", "routing.teddy.resolved": False,

@@ -53,3 +53,30 @@ async def test_case_without_a_device_record_is_still_filed():
     events = await db.patrol_events.find({"device_id": owner}).to_list(10)
     assert len(events) == 1
     assert events[0]["investigation_case_id"] == case["case_id"]
+
+
+async def test_a_case_answered_before_the_device_record_arrives_is_filed_under_that_record():
+    """TC FlyBy often answers before the device's own patrol record reaches the server. The answer must be
+    filed under the device's event id, so when the device's copy arrives it is the same record — not a twin."""
+    from services.higgins.contracts import HigginsResponse, ProviderResult, TurnCommit
+    owner = f"fastcase-{uuid.uuid4().hex[:8]}"
+    event_id = str(uuid.uuid4())
+    case = await repo.create_case(owner, "text", None, client_submission_id=event_id, initiator="user_check")
+    turn_id = str(uuid.uuid4())
+    job = await repo.create_job(owner, case, turn_id, repo.digest("key"), repo.digest("payload"), "turn", {"message": "q", "turnId": turn_id})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id}})
+    job = await repo.acquire_lease(owner, job["job_id"])
+    case = await repo.cas(owner, case["case_id"], {"active_job_id": job["job_id"]}, {"$set": {"lease_fence": job["fence"]}}, bump=False)
+    response = HigginsResponse(revision=1, overview="This matches a known scam", explanationMarkdown="Explanation", assessment="concern_found",
+                               attention="action_needed", findings=[], uncertainties=[], scope="submitted message", sourceIds=[],
+                               remainingEvidenceIds=[], actions=[], completion="complete")
+    commit = TurnCommit(turnId=turn_id, caseId=case["case_id"], inputRevision=1, committedRevision=1, question="q", response=response,
+                        provider=ProviderResult(model="teddy-flyby", finishReason="STOP", providerComplete=True), committedAt=now_utc())
+    commit_id = await repo.stage_turn(owner, commit, job, repo.utc(case["expires_at"]))
+    assert await repo.accept_turn(owner, case, job, commit, commit_id, "complete", "none", None)
+
+    await project_committed_cases()          # the device's record hasn't arrived yet
+    events = await db.patrol_events.find({"device_id": owner}).to_list(10)
+    assert [e["event_id"] for e in events] == [event_id], "filed under the device's own record id"
+    await db.patrol_events.update_one({"device_id": owner, "event_id": event_id}, {"$set": {"evidence_provenance": "local_device"}})  # the device's copy arrives
+    assert await db.patrol_events.count_documents({"device_id": owner}) == 1

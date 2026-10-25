@@ -98,7 +98,10 @@ async def project_committed_cases(limit: int = 100) -> int:
             existing = await db.patrol_events.find_one(
                 {"device_id": case["owner_id"], "event_id": case["client_submission_id"], "deleted_at": None},
                 {"_id": 0, "event_id": 1})
-        event_id = existing["event_id"] if existing else str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-patrol:{case['owner_id']}:{case['case_id']}"))
+        # Not synced yet (TC FlyBy often answers before the device's copy of its record reaches the server):
+        # file under the device's own event id, so when that copy arrives it is the same record, never a twin.
+        event_id = (existing["event_id"] if existing else case.get("client_submission_id")
+                    or str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-patrol:{case['owner_id']}:{case['case_id']}")))
         category = patrol_category((case.get("gates") or ["text"])[0])
         findings = [redact_investigation_secrets(finding.text)[:400] for finding in response.findings[:6]]
         action = response.actions[0].instruction if response.actions else "Review the investigation details in Patrol."

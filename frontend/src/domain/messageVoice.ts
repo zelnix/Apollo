@@ -159,8 +159,8 @@ export function scrubMessage(text: string | null | undefined): string {
 // --- Investigation status history (History Everywhere) -----------------------------------------------
 /** Who settled an investigation result, by name (the case's `answeredBy`). Results recorded before
  *  routing existed were Magnum DI's. */
-export function investigatorName(answeredBy: string | null | undefined): "Teddy FlyBy" | "Magnum DI" {
-  return (answeredBy ?? "").startsWith("teddy") ? "Teddy FlyBy" : "Magnum DI";
+export function investigatorName(answeredBy: string | null | undefined): "TC FlyBy" | "Magnum DI" {
+  return (answeredBy ?? "").startsWith("teddy") ? "TC FlyBy" : "Magnum DI";
 }
 
 /** Plain-English "what has been done so far", derived from the turns and current phase, credited to whichever

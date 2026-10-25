@@ -38,7 +38,7 @@ export interface DeviceInvestigation {
   patrolEventId: string | null;
   /** ISO timestamp of the local commit */
   committedAt: string;
-  /** Who settled the result: "magnum_di" or a Teddy FlyBy route ("teddy_official", "teddy_kb", "teddy_search"). */
+  /** Who settled the result: "magnum_di" or a TC FlyBy route ("teddy_official", "teddy_kb", "teddy_search"). */
   answeredBy?: string | null;
 }
 

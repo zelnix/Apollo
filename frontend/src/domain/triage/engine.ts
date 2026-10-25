@@ -1,4 +1,4 @@
-// Apollo Triage — on-device deterministic engine. ZERO Gemini calls.
+// Higgins Triage — on-device deterministic engine. ZERO Gemini calls.
 // Mirrors backend services/triage/engine.py: same catalogue, same rule IDs, same record format.
 // Device-sourced evidence (links, messages, calls, apps, files, device, network) is evaluated here,
 // closest to where the evidence actually lives.

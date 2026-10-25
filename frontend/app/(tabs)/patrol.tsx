@@ -23,11 +23,9 @@ import Link2 from "lucide-react-native/icons/link-2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
-import ScanSearch from "lucide-react-native/icons/scan-search";
 import Search from "lucide-react-native/icons/search";
 import Shield from "lucide-react-native/icons/shield";
 import Smartphone from "lucide-react-native/icons/smartphone";
-import Zap from "lucide-react-native/icons/zap";
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -40,13 +38,13 @@ import {
   caseGroupKey,
   categoryLabel,
   formatDateTime,
-  settledBy,
   threatCaseId,
   type ThreatCaseStatus,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import type { PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
+import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { HeaderIconTile } from "@/src/components/HeaderIconTile";
@@ -154,9 +152,6 @@ const useStyles = makeStyles((c) => ({
   cardAction: { flexDirection: "row", alignItems: "center", gap: 4 },
   cardActionText: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
   cardCaseId: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
-  // Who settled the investigation — small, quiet, beneath the words.
-  settled: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: c.goldTint, borderWidth: 0.5, borderColor: c.goldBorder },
-  settledText: { fontFamily: fonts.textSemibold, fontSize: 11, color: c.onSurface },
   // Status pill
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
   statusPillText: { fontFamily: fonts.textSemibold, fontSize: 11 },
@@ -175,7 +170,6 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
   const title = cardTitle(event);
   const subtitle = cardSubtitle(event);
   const statusColor = STATUS_COLORS[status];
-  const settled = settledBy(event);
 
   return (
     <Pressable style={({ pressed }) => [s.card, { opacity: pressed ? 0.85 : 1 }]} onPress={onPress} accessibilityRole="button" testID={`threat-card-${event.event_id}`}>
@@ -196,12 +190,7 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
         <Text style={s.cardTitle} numberOfLines={3}>{title}</Text>
         {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
-      {settled ? (
-        <View style={s.settled} testID={`threat-card-${event.event_id}-settled`} accessibilityLabel={`Settled by ${settled}`}>
-          {settled === "Teddy FlyBy" ? <Zap size={11} color={colors.onSurfaceSecondary} /> : <ScanSearch size={11} color={colors.onSurfaceSecondary} />}
-          <Text style={s.settledText}>Settled by {settled}</Text>
-        </View>
-      ) : null}
+      <SettledByBadge event={event} testID={`threat-card-${event.event_id}-settled`} />
       <View style={s.cardFooter}>
         <Text style={s.cardCaseId}>{threatCaseId(event)}</Text>
         <View style={s.cardAction}>

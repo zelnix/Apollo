@@ -85,7 +85,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     investigation_case_id: event.investigation_case_id ?? inv.caseId,
     // The investigation has answered — the case is no longer "investigating".
     investigation_completed_at: inv.committedAt,
-    // Who settled it (Teddy FlyBy or Magnum DI), when the committed result recorded it — never guessed.
+    // Who settled it (TC FlyBy or Magnum DI), when the committed result recorded it — never guessed.
     investigation_answered_by: inv.answeredBy ?? event.investigation_answered_by ?? null,
   };
 }

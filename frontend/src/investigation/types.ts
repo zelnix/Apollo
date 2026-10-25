@@ -3,7 +3,7 @@ export type Gate = "site" | "link" | "text" | "call" | "network" | "account" | "
 export type CaseStatus = "queued" | "investigating" | "waiting_device" | "waiting_user" | "retry_wait" | "partial" | "complete" | "failed" | "cancelled" | "expired";
 export type CoverageStatus = "not_started" | "partial" | "examined" | "unavailable" | "out_of_scope";
 export type Assessment = "concern_found" | "no_concern_found_within_scope" | "uncertain";
-/** Apollo's case outcome — the same five whichever investigation layer (Teddy FlyBy or Magnum DI) answered. */
+/** Apollo's case outcome — the same five whichever investigation layer (TC FlyBy or Magnum DI) answered. */
 export type Outcome = "no_scam_indicators" | "concerning" | "likely_scam" | "confirmed_threat" | "unable_to_determine";
 export type Attention = "none" | "review" | "action_needed" | "urgent";
 export type Completion = "complete" | "partial" | "waiting_user";

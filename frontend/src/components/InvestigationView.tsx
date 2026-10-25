@@ -700,7 +700,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   // Apollo's case outcome (e.g. "Likely scam"), whichever investigation layer answered.
   const outcome = outcomeLabel(response?.outcome);
   const outcomeKey = outcomeTone(response?.outcome);
-  // Whoever actually settled this result: Teddy FlyBy or Magnum DI.
+  // Whoever actually settled this result: TC FlyBy or Magnum DI.
   const investigator = investigatorName(caseData?.answeredBy);
   const outcomeBg = { resting: colors.restingTint, barking: colors.barkingTint, ears_up: colors.ears_upTint, sniffing: colors.sniffingTint }[outcomeKey];
   const outcomeColor = { resting: colors.restingText, barking: colors.barkingText, ears_up: colors.ears_upText, sniffing: colors.sniffingText }[outcomeKey];

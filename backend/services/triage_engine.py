@@ -1,10 +1,10 @@
-"""Apollo Triage — Tier 1 server-side entry point. ZERO Gemini calls, always.
+"""Higgins Triage — Tier 1 server-side entry point. ZERO Gemini calls, always.
 
 Tier 1 (here): deterministic catalogue rules (services/triage) over normalised
     evidence plus specialist provider results. Outcome is one of
     NO THREAT IDENTIFIED / POSSIBLE THREAT IDENTIFIED / LIMITED-UNABLE TO DETERMINE.
 Tier 2 (the investigation): started by the caller ONLY for POSSIBLE THREAT — one correlated
-    case, investigated by Teddy FlyBy first and by Magnum DI (exactly one Gemini call) only
+    case, investigated by TC FlyBy first and by Magnum DI (exactly one Gemini call) only
     when a deeper look could change the answer.
 
 DESIGN PRINCIPLES:
@@ -49,7 +49,7 @@ class TriageResult:
 
     @property
     def should_escalate(self) -> bool:
-        """Only a deterministic POSSIBLE THREAT may open one investigation case (Teddy FlyBy first, Magnum DI only if needed)."""
+        """Only a deterministic POSSIBLE THREAT may open one investigation case (TC FlyBy first, Magnum DI only if needed)."""
         return self.outcome is Outcome.POSSIBLE_THREAT
 
     @property
@@ -76,10 +76,10 @@ class TriageResult:
         provider findings suitable for injection into an investigation case.
 
         Format: one line per finding, with provider name and query timestamp.
-        Teddy FlyBy and Magnum DI retain the ability to investigate further if evidence is
+        TC FlyBy and Magnum DI retain the ability to investigate further if evidence is
         conflicting, incomplete or stale.
         """
-        lines = ["Pre-gathered specialist intelligence (Apollo Triage):"]
+        lines = ["Pre-gathered specialist intelligence (Higgins Triage):"]
         pe = self.provider_evidence
 
         # RDAP domain info
@@ -138,7 +138,7 @@ def compact_evidence_for_magnum_di(provider_evidence: dict) -> str:
     """Standalone version of TriageResult.compact_evidence_for_magnum_di.
     Produces a compact provenance-attributed summary from a raw provider_evidence dict.
     Used by manual Check pre-gathering where there is no TriageResult."""
-    lines = ["Pre-gathered specialist intelligence (Apollo Triage):"]
+    lines = ["Pre-gathered specialist intelligence (Higgins Triage):"]
     pe = provider_evidence
 
     for domain, info in pe.get("rdap", {}).get("domains", {}).items():
@@ -496,7 +496,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
     """Run all applicable specialist providers and return structured results.
 
     Called ONCE before triage_item. Results are reused across all tiers and
-    forwarded to the investigation (Teddy FlyBy, then Magnum DI if needed) if escalation occurs.
+    forwarded to the investigation (TC FlyBy, then Magnum DI if needed) if escalation occurs.
 
     Each provider entry includes:
       - status: "ok" | "unavailable" | "not_configured" | "not_applicable"

@@ -42,7 +42,7 @@ function finishedWithNewMaterial(response: HigginsResponse, sources: SourceRefer
 
 /** Device-local commit handshake: a finished investigation (not one waiting for the person's answer) is
  *  committed to permanent device storage, then the server is told to purge its copy. Idempotent. Also
- *  runs when the app attaches to a case that was already answered — Teddy FlyBy often settles a case
+ *  runs when the app attaches to a case that was already answered — TC FlyBy often settles a case
  *  before the app starts following it, and without this the result would never reach the device. */
 async function commitAnswered(caseId: string, caseData: InvestigationCase, question: string): Promise<void> {
   if (!caseData.response || caseData.response.question || caseData.status === "failed") return;
@@ -332,7 +332,7 @@ export function useInvestigation(boundOperationId?: string | null) {
       else if (stopped?.status === "failed") update({ phase: "failed", job: stopped, failure: stopped.failure, error: stopped.failure?.message ?? null });
       else {
         update({ phase: caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle" });
-        // Already answered before the app attached (Teddy FlyBy is quick): keep the result on this device too.
+        // Already answered before the app attached (TC FlyBy is quick): keep the result on this device too.
         void commitAnswered(caseId, caseData, "");
       }
       return caseData;

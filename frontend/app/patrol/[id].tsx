@@ -64,6 +64,7 @@ import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefact
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
+import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
@@ -1249,6 +1250,7 @@ export default function ThreatCaseScreen() {
           <Text style={s.sourceTitle} numberOfLines={2}>{title}</Text>
           {subtitle ? <Text style={s.sourceSub} numberOfLines={1}>{subtitle}</Text> : null}
           <Text style={s.sourceTime}>{formatDateTime(event.occurred_at)}</Text>
+          <SettledByBadge event={event} testID="tc-settled" />
         </View>
       </View>
 

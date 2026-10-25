@@ -1,6 +1,6 @@
 """Deterministic Higgins presentation — Higgins may change presentation, never meaning.
 
-Every answer here is assembled from structured fields that Teddy FlyBy, Magnum DI, Patrol, the device or Apollo's
+Every answer here is assembled from structured fields that TC FlyBy, Magnum DI, Patrol, the device or Apollo's
 product knowledge already established, using fixed mappings and templates. No AI is called. When the
 record doesn't hold the answer, Higgins says so instead of inferring one.
 """
@@ -12,7 +12,7 @@ from typing import Any, Optional
 from services.higgins import app_knowledge
 from services.higgins.knowledge import terms
 
-# "{name}" is whichever investigator settled the result: Teddy FlyBy or Magnum DI (see `investigator`).
+# "{name}" is whichever investigator settled the result: TC FlyBy or Magnum DI (see `investigator`).
 ASSESSMENT_TEXT = {
     "concern_found": "{name} found a concern.",
     "no_concern_found_within_scope": "{name} found no concern within what it was able to check.",
@@ -63,7 +63,7 @@ NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of t
 
 def investigator(answered_by: Optional[str]) -> str:
     """Who settled a result, by name. Results recorded before routing existed were Magnum DI's."""
-    return "Teddy FlyBy" if str(answered_by or "").startswith("teddy") else "Magnum DI"
+    return "TC FlyBy" if str(answered_by or "").startswith("teddy") else "Magnum DI"
 
 
 def new_items(question: str) -> list[str]:
@@ -85,7 +85,7 @@ def _join(labels: list[str]) -> str:
 
 
 def is_finished(response: Optional[dict[str, Any]]) -> bool:
-    """An investigation result (Teddy FlyBy's or Magnum DI's) that is complete or partial — not one still waiting for the person's answer."""
+    """An investigation result (TC FlyBy's or Magnum DI's) that is complete or partial — not one still waiting for the person's answer."""
     return bool(response) and response.get("completion") in ("complete", "partial") and not response.get("question")
 
 

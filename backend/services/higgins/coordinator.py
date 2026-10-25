@@ -1,14 +1,14 @@
-"""Investigation coordinator: Apollo Triage → Teddy FlyBy → Magnum DI.
+"""Investigation coordinator: Higgins Triage → TC FlyBy → Magnum DI.
 
-On the first turn of a case, Apollo Triage decides what needs checking and Teddy FlyBy runs those checks the
-cheapest reliable way (official sources → Apollo KB → one targeted, low-cost Google Search call). When Teddy
+On the first turn of a case, Higgins Triage decides what needs checking and TC FlyBy runs those checks the
+cheapest reliable way (official sources → Apollo KB → one targeted, low-cost Google Search call). When TC FlyBy
 reliably settles the case, its result is committed and Magnum DI is not called at all.
 
 Otherwise Magnum DI makes its call with the existing configured model. The request contains exactly three
 things:
   1. the person's question, once;
-  2. the case evidence Magnum DI needs — the submitted material itself plus Teddy FlyBy's brief of what is
-     still unresolved — each item labelled with its id and kind (raw lookups Teddy already settled are not
+  2. the case evidence Magnum DI needs — the submitted material itself plus TC FlyBy's brief of what is
+     still unresolved — each item labelled with its id and kind (raw lookups TC FlyBy already settled are not
      resent);
   3. the required response shape, as Gemini's structured-output schema (`response_schema.py`).
 There is no system prompt. Google Search is attached only when a specific external fact is still missing.
@@ -60,7 +60,7 @@ async def _register_triage_evidence(owner: str, case: dict) -> None:
     await ev.ingest_text(
         owner, case, TRIAGE_EVIDENCE_ITEM_ID, text,
         kind="observation", origin="apollo_inference",
-        label="Apollo triage specialist intelligence",
+        label="Higgins triage specialist intelligence",
         meta={"source": "apollo_triage"},
         coverage=Coverage(status="examined", unit="items", total=1, examined=1),
     )
@@ -122,7 +122,7 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
 
 async def _commit_teddy(owner: str, case: dict, job: dict, payload: dict, fly_by: teddy.TeddyOutcome,
                         capability_ids: set[str]) -> Optional[Outcome]:
-    """Teddy FlyBy settled the case: its result passes the same validation as Magnum DI's, then commits.
+    """TC FlyBy settled the case: its result passes the same validation as Magnum DI's, then commits.
     None when it doesn't validate — Magnum DI then takes the case."""
     rows = await repo.list_evidence(owner, case["case_id"])
     evidence_ids = {row["evidence_id"] for row in rows}
@@ -140,7 +140,7 @@ async def _commit_teddy(owner: str, case: dict, job: dict, payload: dict, fly_by
 
 
 async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
-    """First turn: Apollo Triage → Teddy FlyBy → (only if needed) Magnum DI's one call. Follow-ups: Magnum DI.
+    """First turn: Higgins Triage → TC FlyBy → (only if needed) Magnum DI's one call. Follow-ups: Magnum DI.
 
     Magnum DI flow: claim the call slot → send question and evidence → validate the schema-shaped response
     → commit. No autonomous tool rounds, reassessment cycles or repair loops; a retry is the caller's
@@ -162,13 +162,13 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
 
     # Too much written evidence for one investigation. Apollo sends NOTHING rather than quietly
     # shortening, sampling or dropping any of it, and no evidence is marked as examined — so this is
-    # decided before Teddy FlyBy reads anything.
+    # decided before TC FlyBy reads anything.
     _parts, _marks, evidence_words = await ev.model_parts(owner, case, rows)
     if evidence_words > ev.EVIDENCE_WORD_LIMIT:
         return Outcome("evidence_too_large", evidence_words=evidence_words,
                        errors=[f"written evidence is {evidence_words} words; Apollo's limit for one investigation is {ev.EVIDENCE_WORD_LIMIT}"])
 
-    # ── Step 2: Apollo Triage → Teddy FlyBy (first turn only) ──
+    # ── Step 2: Higgins Triage → TC FlyBy (first turn only) ──
     if first_turn:
         fly_by = await teddy.investigate(owner, case, job, payload["message"], rows, progress)
         if fly_by.resolved:

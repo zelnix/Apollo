@@ -34,9 +34,19 @@ export function mergeLocalAndRemoteEvents(
   const merged: PatrolEvent[] = [];
   const mergedIds = new Set<string>();
   const superseded: string[] = [];
+  // One check, one record. A server twin — filed under its own id for a check this device recorded,
+  // and naming that record as its client_submission_id — is the same check: it is folded into that
+  // record (its investigation link and answer are kept) instead of being shown a second time.
+  const twins = new Map<string, PatrolEvent>();
 
   // 1. Iterate remote events. For each, blend with local or take as-is.
   for (const remote of remoteEvents) {
+    const twinOf = remote.client_submission_id && remote.client_submission_id !== remote.event_id ? remote.client_submission_id : null;
+    if (twinOf && (localById.has(twinOf) || remoteById.has(twinOf))) {
+      twins.set(twinOf, remote);
+      superseded.push(remote.event_id);
+      continue;
+    }
     const local = localById.get(remote.event_id);
     if (local) {
       // Originating device: local content WINS. Absorb only server metadata.
@@ -112,6 +122,15 @@ export function mergeLocalAndRemoteEvents(
   // 2. Add local-only events (not on server yet, or superseded placeholders).
   for (const local of localEvents) {
     if (mergedIds.has(local.event_id)) continue;
+    // A twin of another record this device holds (it names that record as its client_submission_id)
+    // is the same check: fold it in rather than show it again.
+    const localTwinOf = local.client_submission_id && local.client_submission_id !== local.event_id
+      && (localById.has(local.client_submission_id) || remoteById.has(local.client_submission_id)) ? local.client_submission_id : null;
+    if (localTwinOf) {
+      if (!twins.has(localTwinOf)) twins.set(localTwinOf, local);
+      superseded.push(local.event_id);
+      continue;
+    }
     // Drop local placeholder superseded by projected version.
     if (local.client_submission_id && remoteBySubmission.has(local.client_submission_id) && local.event_id !== remoteBySubmission.get(local.client_submission_id)) {
       superseded.push(local.event_id);
@@ -119,6 +138,19 @@ export function mergeLocalAndRemoteEvents(
     }
     merged.push(local);
     mergedIds.add(local.event_id);
+  }
+
+  // 3. Fold each twin into the record it duplicates: keep what only the twin knows.
+  for (const [recordId, twin] of twins) {
+    const i = merged.findIndex((e) => e.event_id === recordId);
+    if (i < 0) continue;
+    const record = merged[i];
+    merged[i] = {
+      ...record,
+      investigation_case_id: record.investigation_case_id ?? twin.investigation_case_id,
+      investigation_completed_at: record.investigation_completed_at ?? twin.investigation_completed_at,
+      patrol_record: record.patrol_record ?? twin.patrol_record,
+    };
   }
 
   // Sort newest first.

@@ -9,15 +9,15 @@
 6. Protection changes report only what changed, never who changed it or why. The "what to do" lines are fixed text.
 7. Production never runs simulation. The preview simulator exists only in preview.
 
-## Apollo Triage (inside a case) — prepares, doesn't investigate
+## Higgins Triage (inside a case) — prepares, doesn't investigate
 1. Runs on its own logic: no network and no AI (`teddy/triage.py`).
-2. Extracts every input before Teddy FlyBy sees it: text, links, the text the phone read from a screenshot, and a document's text layer (`teddy/__init__._material`).
+2. Extracts every input before TC FlyBy sees it: text, links, the text the phone read from a screenshot, and a document's text layer (`teddy/__init__._material`).
 3. Structures what it finds: links, emails, phone numbers, companies and ABNs, brands, payment details, claims, and requests to act.
 4. Records anything it couldn't extract as a gap, and never guesses its content. Images are marked "Magnum DI can read this".
 5. Plans the checks, each with a narrow factual question about one exact value.
 6. A request counts only if it asks the person to send money, codes or details, install something, or give remote access. Negated requests ("we will never ask…") don't count.
 
-## Teddy FlyBy — fast, low-cost investigation
+## TC FlyBy — fast, low-cost investigation
 1. Route, cheapest first: official sources → Apollo KB → one targeted web search. The search is one call to the low-cost model, at most 6 questions. An answer counts only if a page backs it, and answers are cached for 7 days. The search looks facts up; it never judges.
 2. Stopping rule: stop as soon as more investigation couldn't change Apollo's finding or Higgins' action. "Unable to determine" is a valid result.
 3. It stops early only for a confirmed threat. Every other result waits until the planned checks have run.
@@ -39,7 +39,7 @@
 8. Magnum DI's web search is turned on only when a fact may be missing.
 
 ## Magnum DI — deep investigation
-1. Runs only when Teddy FlyBy sends it issues.
+1. Runs only when TC FlyBy sends it issues.
 2. Makes one call to the existing configured Gemini model. There is one retry only if a call fails. No Pro escalation, no tool rounds, no second call to present the answer.
 3. Receives the question once, Teddy's brief ("For Magnum DI to settle — only these"), the evidence each issue needs, and anything Teddy didn't examine. There is no system prompt; the response schema carries the shape and the outcome definitions.
 4. It can't override what's already established, and it isn't called to move a case between concern outcomes.
@@ -59,7 +59,7 @@
    - an existing result, scam alert, Patrol record, phone state or product knowledge is shown as is;
    - the knowledge base is quoted, labelled as general knowledge.
    Only a general scam-safety question that none of these answer reaches Gemini: one call, the question alone, cached.
-3. Follow-ups on a finished investigation are answered from its record. No AI, the case is never reopened, and anything new is named as not covered. The answer credits whoever settled it (Teddy FlyBy or Magnum DI).
+3. Follow-ups on a finished investigation are answered from its record. No AI, the case is never reopened, and anything new is named as not covered. The answer credits whoever settled it (TC FlyBy or Magnum DI).
 4. Strict scope, with a fixed reply for anything off-topic. The phone's live reading is the truth: never contradict it or guess past it, and never invent a concern.
 5. Plain Australian English, no internal codes (`scrubMessage`), 2–4 short paragraphs.
 

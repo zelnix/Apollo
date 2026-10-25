@@ -1,7 +1,7 @@
-"""Apollo Triage — makes every input investigation-ready and identifies what needs checking.
+"""Higgins Triage — makes every input investigation-ready and identifies what needs checking.
 
-    Apollo detects and protects. Apollo Triage extracts, structures and identifies what needs checking.
-    Teddy FlyBy does the fly-by investigation. Magnum DI investigates deeply only when doing so could change
+    Apollo detects and protects. Higgins Triage extracts, structures and identifies what needs checking.
+    TC FlyBy does the fly-by investigation. Magnum DI investigates deeply only when doing so could change
     the finding or action. Higgins explains and guides.
 
 Triage does not investigate and never decides whether something is a scam. From the content of every

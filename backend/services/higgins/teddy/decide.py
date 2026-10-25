@@ -1,11 +1,11 @@
-"""The deciding test — is the case resolved at Teddy FlyBy, or could Magnum DI change the result?
+"""The deciding test — is the case resolved at TC FlyBy, or could Magnum DI change the result?
 
     Could deeper Magnum DI investigation or reasoning change Apollo's finding or Higgins' action?
-        NO  → Teddy FlyBy resolves the case. "Unable to determine" is a valid finished outcome.
+        NO  → TC FlyBy resolves the case. "Unable to determine" is a valid finished outcome.
         YES → only the unresolved element, with the minimum context it needs, goes to Magnum DI.
 
 No input format, case category or uncertainty sends a case to Magnum DI by itself. A screenshot or document
-is investigated through the content Apollo Triage extracted from it, like any text. Magnum DI's additional
+is investigated through the content Higgins Triage extracted from it, like any text. Magnum DI's additional
 capabilities, and the only situations in which they can change the result:
 
     reading   — content Triage couldn't extract (Magnum DI reads images and pages directly), when nothing
@@ -152,7 +152,7 @@ def magnum_issues(plan_: Plan, texts: dict[str, str]) -> list[Issue]:
                   if plan_.pattern and plan_.pattern["stage"] == "partial" else "")
         analysis = next((c.id for c in plan_.checks if c.kind == "message_analysis"), None)
         issues.append(Issue("reasoning", f"Message and deception analysis. The material asks the person to act — {asks} — through a route "
-                                         f"no official source verified, and nothing Teddy FlyBy established settles what to do.{partly}", list(texts), analysis))
+                                         f"no official source verified, and nothing TC FlyBy established settles what to do.{partly}", list(texts), analysis))
     for c in plan_.checks:
         if c.open_issue.startswith("Conflict"):
             issues.append(Issue("relating", c.open_issue, _ids_with(texts, plan_.entities.companies + [c.subject]), c.id))
@@ -184,9 +184,9 @@ def _complete(plan_: Plan) -> bool:
 
 
 def evaluate(plan_: Plan, texts: dict[str, str], *, final: bool) -> tuple[Decision | None, list[Issue]]:
-    """(Teddy FlyBy's decision, []) when the case is resolved; (None, issues) when Magnum DI could change it.
-    Before the last stage only a decisive official result (or an answered general question) stops Teddy FlyBy —
-    every other outcome waits until the checks Apollo Triage planned have run."""
+    """(TC FlyBy's decision, []) when the case is resolved; (None, issues) when Magnum DI could change it.
+    Before the last stage only a decisive official result (or an answered general question) stops TC FlyBy —
+    every other outcome waits until the checks Higgins Triage planned have run."""
     found = provisional(plan_)
     if found and found.outcome == "confirmed_threat":
         return found, []

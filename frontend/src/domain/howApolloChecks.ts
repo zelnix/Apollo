@@ -1,4 +1,4 @@
-// "How Apollo checks" — the rules Apollo, Apollo Triage, Teddy FlyBy, Magnum DI and Higgins operate under,
+// "How Apollo checks" — the rules Apollo, Higgins Triage, TC FlyBy, Magnum DI and Higgins operate under,
 // in plain English for the person using Apollo. Mirrors memory/OPERATING_RULES.md: keep the two in step.
 // Pure: no React, no native imports.
 
@@ -32,7 +32,7 @@ export const CHECK_ROLES: CheckRole[] = [
   },
   {
     id: "triage",
-    name: "Apollo Triage",
+    name: "Higgins Triage",
     job: "Gets everything ready",
     rules: [
       "Reads everything you sent before any investigating starts: the text, the links, the words in a screenshot and the text inside a document.",
@@ -43,7 +43,7 @@ export const CHECK_ROLES: CheckRole[] = [
   },
   {
     id: "teddy",
-    name: "Teddy FlyBy",
+    name: "TC FlyBy",
     job: "Investigates quickly",
     rules: [
       "Checks the cheapest reliable way first: official sources, then Apollo's knowledge base, then one small, targeted web search.",
@@ -51,7 +51,7 @@ export const CHECK_ROLES: CheckRole[] = [
       "Stops as soon as checking further couldn't change the result or what you should do. “Unable to determine” is an honest answer.",
       "A known scam only matches when the whole pattern is there — one word on its own never counts.",
       "A web address that uses a company's name but isn't that company's website is a warning sign.",
-      "When Teddy FlyBy settles a check, Magnum DI isn't called at all.",
+      "When TC FlyBy settles a check, Magnum DI isn't called at all.",
     ],
   },
   {
@@ -59,8 +59,8 @@ export const CHECK_ROLES: CheckRole[] = [
     name: "Magnum DI",
     job: "Investigates deeply, only when needed",
     rules: [
-      "Called only when Teddy FlyBy can't settle something that could change the answer — a picture Apollo couldn't read, a request to send money or details somewhere nobody has verified, or findings that disagree.",
-      "Looks only at what's still open, with Teddy FlyBy's notes — not the whole case again.",
+      "Called only when TC FlyBy can't settle something that could change the answer — a picture Apollo couldn't read, a request to send money or details somewhere nobody has verified, or findings that disagree.",
+      "Looks only at what's still open, with TC FlyBy's notes — not the whole case again.",
       "Makes one AI call (with one retry if that call fails), and searches the web only if a fact is still missing.",
       "Every finding must point to real evidence. If its answer doesn't hold up, Apollo says so rather than making one up.",
       "It's the only part of Apollo that may ask you a question or ask your phone for a fresh reading.",
@@ -91,5 +91,5 @@ export const OUTCOME_GUIDE: { outcome: "no_scam_indicators" | "concerning" | "li
 export const PROMISES: string[] = [
   "Apollo never tells you something is safe — only what its checks found.",
   "Anything Apollo couldn't check is listed, not hidden.",
-  "Every result says who settled it: Teddy FlyBy or Magnum DI.",
+  "Every result says who settled it: TC FlyBy or Magnum DI.",
 ];

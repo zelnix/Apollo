@@ -420,13 +420,13 @@ async def _record_triage_history(owner: str, triage_result, *, category: str, su
 async def background_text_intake(body: BackgroundTextIn, request: Request):
     """One durable intake path shared by the OS worker and foreground drain.
 
-    Now includes Apollo Triage (3-tier screening) before escalating to Magnum DI.
+    Now includes Higgins Triage (3-tier screening) before escalating to Magnum DI.
     User-initiated Check bypasses this — only background-captured messages are triaged.
     """
     if repo.utc(body.expires_at) <= now_utc():
         raise http(410, "evidence_expired", "This captured notification reached its fixed retention deadline.")
 
-    # ── Apollo Triage: screen before creating a full investigation ──
+    # ── Higgins Triage: screen before creating a full investigation ──
     from services.triage_engine import triage_item, _extract_evidence_from_text
 
     owner = owner_of(request)

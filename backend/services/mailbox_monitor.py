@@ -276,7 +276,7 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
                 "Apollo flagged the filename — attachment contents were not inspected."
             )
 
-    # ─── Apollo Triage Engine: run BEFORE case creation ───
+    # ─── Higgins Triage Engine: run BEFORE case creation ───
     # SAFE emails never get a case, never appear in Threats.
     # Only genuinely suspicious items proceed to case creation + Magnum DI.
     from services.triage_engine import triage_item, _extract_evidence_from_email

@@ -156,7 +156,7 @@ def test_patrol_history_records_triage_for_benign():
                   json=_bg_text_body("Mum", "Dinner at 6 tonight"),
                   headers=auth, timeout=20)
     matches = _poll_patrol(auth, did,
-        lambda e: e.get("adapter_label") == "Apollo Triage (deterministic)")
+        lambda e: e.get("adapter_label") == "Higgins Triage (deterministic)")
     assert matches, "no triage patrol event recorded for benign text"
     ev = matches[0]
     rec = ev.get("triage_investigation") or {}
@@ -175,7 +175,7 @@ def test_patrol_history_records_triage_for_scam():
                       headers=auth, timeout=25)
     assert r.status_code == 202
     matches = _poll_patrol(auth, did,
-        lambda e: e.get("adapter_label") == "Apollo Triage (deterministic)"
+        lambda e: e.get("adapter_label") == "Higgins Triage (deterministic)"
         and (e.get("triage_investigation") or {}).get("outcome") == "POSSIBLE_THREAT_IDENTIFIED")
     assert matches, "no POSSIBLE_THREAT triage event recorded"
     rec = matches[0]["triage_investigation"]

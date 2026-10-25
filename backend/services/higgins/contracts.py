@@ -16,7 +16,7 @@ CaseStatus = Literal["queued", "investigating", "waiting_device", "waiting_user"
 Origin = Literal["user_submission", "device_observation", "external_source", "apollo_inference"]
 CoverageStatus = Literal["not_started", "partial", "examined", "unavailable", "out_of_scope"]
 Assessment = Literal["concern_found", "no_concern_found_within_scope", "uncertain"]
-# Apollo's case outcome (services/higgins/outcomes.py), shared by Teddy FlyBy and Magnum DI.
+# Apollo's case outcome (services/higgins/outcomes.py), shared by TC FlyBy and Magnum DI.
 Outcome = Literal["no_scam_indicators", "concerning", "likely_scam", "confirmed_threat", "unable_to_determine"]
 Attention = Literal["none", "review", "action_needed", "urgent"]
 Completion = Literal["complete", "partial", "waiting_user"]
@@ -196,7 +196,7 @@ class InvestigationCase(Wire):
     pending_device_request_ids: list[str] = Field(default_factory=list)
     inventory: Inventory = Field(default_factory=Inventory)
     cleanup_status: Literal["not_due", "pending", "complete", "failed"] = "not_due"
-    # Who settled the latest result: "magnum_di", or Teddy FlyBy by route ("teddy_official", "teddy_kb", "teddy_search").
+    # Who settled the latest result: "magnum_di", or TC FlyBy by route ("teddy_official", "teddy_kb", "teddy_search").
     answered_by: Optional[str] = None
 
 
@@ -370,7 +370,7 @@ class ProviderResult(Wire):
     source_ids: list[str] = Field(default_factory=list)
     # True when the preview simulator answered instead of Gemini — recorded, never hidden.
     simulated: bool = False
-    # Who settled this turn: "magnum_di", or Teddy FlyBy by route ("teddy_official", "teddy_kb", "teddy_search").
+    # Who settled this turn: "magnum_di", or TC FlyBy by route ("teddy_official", "teddy_kb", "teddy_search").
     answered_by: str = "magnum_di"
 
 
@@ -447,7 +447,7 @@ class UploadMetadata(Wire):
     redacted_regions: Optional[int] = None
     sanitization_transformations: list[str] = Field(default_factory=list)
     # The text the phone's on-device text recognition read from the image (credentials already removed there).
-    # Apollo Triage uses it as the image's extracted content; the image itself is stored unchanged.
+    # Higgins Triage uses it as the image's extracted content; the image itself is stored unchanged.
     device_extracted_text: Optional[str] = Field(default=None, max_length=20000)
 
 

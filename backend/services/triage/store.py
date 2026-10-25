@@ -59,7 +59,7 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
                        if investigation.outcome is Outcome.LIMITED
                        else "Apollo is investigating this further."),
         "indicator_host": indicator_host, "indicator_digest": None, "local_indicator": None,
-        "verified_block": False, "adapter_label": "Apollo Triage (deterministic)",
+        "verified_block": False, "adapter_label": "Higgins Triage (deterministic)",
         "occurred_at": investigation.evaluated_at or now_utc(),
         "resolved_at": (investigation.evaluated_at or now_utc()) if investigation.outcome is Outcome.NO_THREAT else None,
         "trust_allowed": False, "claimed_brand": None, "scenario": None, "scent_id": None,

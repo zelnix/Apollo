@@ -24,7 +24,7 @@ async function investigationImageMeta(uri: string, gate?: SanitizationReceipt): 
   if (screening.sensitiveRegions.some((r) => r.sensitiveType === "credential")) {
     throw new Error("This image appears to show a password, PIN or one-time code, so Apollo didn't send it. Crop that part out and add the image again.");
   }
-  // The text the phone read from the image (credentials already removed) goes with it, so Apollo Triage can
+  // The text the phone read from the image (credentials already removed) goes with it, so Higgins Triage can
   // investigate the screenshot's content like any other text before deciding whether deeper analysis is needed.
   const deviceExtractedText = screening.extractedText.trim();
   return deviceExtractedText ? { deviceExtractedText } : {};

@@ -83,7 +83,7 @@ class TestChatPrompt:
     def test_chat_has_role_separation(self):
         from services.higgins.chat import SYSTEM
         assert "APOLLO DETECTS" in SYSTEM
-        assert "TEDDY FLYBY AND MAGNUM DI INVESTIGATE" in SYSTEM
+        assert "TC FLYBY AND MAGNUM DI INVESTIGATE" in SYSTEM
         # Higgins' role line includes COMMUNICATES (may be preceded by other duties)
         assert "COMMUNICATES" in SYSTEM and "HIGGINS" in SYSTEM
 

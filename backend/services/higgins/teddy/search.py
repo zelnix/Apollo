@@ -1,4 +1,4 @@
-"""Teddy FlyBy stage 3 — targeted Google Search.
+"""TC FlyBy stage 3 — targeted Google Search.
 
 Only checks that the direct sources and Apollo's KB could not settle reach this stage. All of them go in ONE
 call to the low-cost Gemini model with Google Search grounding, each as a narrow factual question about an
@@ -30,7 +30,7 @@ NOT_FOUND = {"NO_WARNING_FOUND", "NO_RECORD_FOUND", "NOT_CONFIRMED"}
 QUESTION_LINE = "Q{n} [statuses: {statuses}] [subject: {subject}] {question}"
 
 INSTRUCTION = (
-    "Teddy FlyBy fly-by lookup. Use Google Search to answer each question below with narrow, factual lookups only. "
+    "TC FlyBy fly-by lookup. Use Google Search to answer each question below with narrow, factual lookups only. "
     "Do not judge whether anything is a scam and do not investigate beyond the question.\n"
     "Reply with exactly one line per question, in this form:\n"
     "Q<number> | <STATUS> | <the fact found, quoting exact names, numbers and dates, and naming the publisher>\n"
