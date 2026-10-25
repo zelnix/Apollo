@@ -34,6 +34,18 @@ def test_rss_items_keep_their_summary_and_date():
     assert learning_feeds._xml_items(fbi)[0]["url"] == "https://www.fbi.gov/news/press-releases/f"  # URL only in <guid>
 
 
+def test_a_link_the_feed_wraps_in_page_code_reads_as_the_articles_own_address():
+    # The FTC's feed puts a rendered <a href> in <link>: percent-encoded after the site address, or escaped.
+    article = "https://consumer.ftc.gov/consumer-alerts/2026/09/what-know-ahead-open-enrollment-avoid-health-insurance-scams"
+    encoded = ("https://consumer.ftc.gov/%3Ca%20href%3D%22https%3A//consumer.ftc.gov/consumer-alerts/2026/09/"
+               "what-know-ahead-open-enrollment-avoid-health-insurance-scams%22%20hreflang%3D%22en%22%3Eview%3C/a%3E")
+    escaped = f'&lt;a href="{article}" hreflang="en"&gt;view&lt;/a&gt;'
+    for link in (encoded, escaped):
+        raw = f"<rss><channel><item><title>T</title><link>{link}</link></item></channel></rss>".encode()
+        assert learning_feeds._xml_items(raw)[0]["url"] == article
+    assert learning_feeds._feed_link(" https://www.cyber.gov.au/alert/a ") == "https://www.cyber.gov.au/alert/a"
+
+
 @pytest.mark.anyio
 async def test_every_curated_catalogue_article_passes_the_publication_quality_gate():
     await learning.seed_catalogue_sources_feeds()

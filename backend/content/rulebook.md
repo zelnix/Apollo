@@ -654,6 +654,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - Only specific scam campaigns and emerging patterns. General scam education goes to Learn with Higgins.
 - Only recent reports: an item dated more than 180 days ago is left out. An undated item stays, because its age can't be proven.
 - The most recent first, up to 50.
+- Each alert once: an article its feed lists twice is shown once, and a link a feed wraps in page code is read for the article's real address.
 - **Growling for an alert:** only for a specific scam rated High or Extreme that has reached Australia, or that may reach Australia and was reported within the last 180 days.
 
 ---

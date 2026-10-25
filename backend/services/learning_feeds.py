@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from defusedxml import ElementTree as ET
 
@@ -47,12 +47,27 @@ def _find(node, *paths: str):
     return None
 
 
+_HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.I)
+_WRAPPED_LINK = {"$regex": r"%3Ca%20href|<a\s+href", "$options": "i"}
+
+
+def _feed_link(raw: str) -> str:
+    """The article's address from a feed <link>. The FTC's feed puts a whole rendered link there,
+    `<a href="https://…/article" hreflang="en">view</a>`, escaped or percent-encoded after the site address
+    (https://consumer.ftc.gov/%3Ca%20href%3D%22…). The address is the href inside it; any other link is kept."""
+    text = html.unescape(raw or "").strip()
+    match = _HREF.search(unquote(text))
+    if match:
+        return html.unescape(match.group(1)).strip()
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+
+
 def _xml_items(raw: bytes) -> list[dict]:
     root = ET.fromstring(raw); values = []
     nodes = root.findall(".//item") or root.findall(".//{*}entry")
     for node in nodes[:MAX_ITEMS]:
         link_node = _find(node, "link", "{*}link")
-        link = _text(link_node) or (link_node.attrib.get("href", "") if link_node is not None else "")
+        link = _feed_link("".join(link_node.itertext()) if link_node is not None else "") or (link_node.attrib.get("href", "") if link_node is not None else "")
         guid = _text(_find(node, "guid", "{*}id"))
         link = link or (guid if guid.startswith("https://") else "")  # e.g. FBI: no <link>, the URL is the <guid>
         values.append({"title": _text(_find(node, "title", "{*}title")), "url": link,
@@ -214,6 +229,32 @@ async def purge_listing_page_links() -> dict:
         removed["candidates"] += (await db.learning_candidates.delete_many({"feed_id": feed["feed_id"], "url": pattern})).deleted_count
         removed["feed_items"] += (await db.learning_feed_items.delete_many({"feed_id": feed["feed_id"], "url": pattern})).deleted_count
     return removed
+
+
+async def repair_feed_links() -> dict:
+    """Restore the real address of items saved while the FTC's feed wrapped each link in <a href> (see
+    _feed_link): https://consumer.ftc.gov/%3Ca%20href%3D%22… opens nothing, and two copies of one article shared
+    it, so Scam Alerts listed it twice. The address is fixed wherever it was copied, then one feed item is
+    kept per address (the one already explained, else the most recently seen). Runs at startup so every
+    environment is cleaned the same way."""
+    fixed = {"feed_items": 0, "candidates": 0, "knowledge": 0, "articles": 0, "copies_removed": 0}
+    for collection, key in ((db.learning_feed_items, "feed_items"), (db.learning_candidates, "candidates"), (db.higgins_knowledge, "knowledge")):
+        async for row in collection.find({"url": _WRAPPED_LINK}, {"_id": 1, "url": 1}):
+            await collection.update_one({"_id": row["_id"]}, {"$set": {"url": _feed_link(row["url"])}})
+            fixed[key] += 1
+    async for row in db.learning_articles.find({"citations.url": _WRAPPED_LINK}, {"_id": 1, "citations": 1}):
+        citations = [{**c, "url": _feed_link(c["url"])} if isinstance(c, dict) and isinstance(c.get("url"), str) else c for c in row["citations"]]
+        await db.learning_articles.update_one({"_id": row["_id"]}, {"$set": {"citations": citations}})
+        fixed["articles"] += 1
+    copies = db.learning_feed_items.aggregate([
+        {"$group": {"_id": "$url", "n": {"$sum": 1}, "rows": {"$push": {"id": "$_id", "seen": "$last_checked_at", "explained": {"$ifNull": ["$scam_analysis", False]}}}}},
+        {"$match": {"n": {"$gt": 1}}}])
+    async for group in copies:
+        rank = lambda r: (bool(r["explained"]), r["seen"] or datetime.min)  # noqa: E731
+        keep = max(group["rows"], key=rank)["id"]
+        result = await db.learning_feed_items.delete_many({"_id": {"$in": [r["id"] for r in group["rows"] if r["id"] != keep]}})
+        fixed["copies_removed"] += result.deleted_count
+    return fixed
 
 
 

@@ -79,6 +79,7 @@ async def lifespan(_: FastAPI):
         await learning.seed_catalogue_articles()
         from services import learning_feeds as _feeds
         await _feeds.purge_listing_page_links()
+        await _feeds.repair_feed_links()
     except Exception:  # noqa: BLE001 — seeding must never block startup
         logger.warning("learning catalogue seed failed", exc_info=True)
     try:

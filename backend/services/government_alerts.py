@@ -165,11 +165,15 @@ async def snapshot(limit: int = 50) -> dict:
     # recent reported date is never hidden behind more-recent general-education items; `limit` caps OUTPUT.
     rows = await db.learning_feed_items.find({}, {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0}).sort("published_at", -1).limit(200).to_list(200)
     alerts: list[dict] = []; emerging: list[dict] = []; pending = 0; stale = 0
+    shown_urls: set[str] = set()  # each official address is one alert, even when a feed lists it twice
     for row in rows:
         analysis = row.get("scam_analysis")
         if not analysis or analysis.get("analysisVersion") != scam_analysis.ANALYSIS_VERSION:
             pending += 1  # not yet analysed — never shown as a scam alert until its facts are verified
             continue
+        if row["url"] in shown_urls:
+            continue
+        shown_urls.add(row["url"])
         source = sources.get(row["source_id"], {})
         built = _alert(row, source, analysis, now)
         # Only recent reports belong in the feed: drop specific/emerging items whose stated date is older
