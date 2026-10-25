@@ -37,7 +37,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 - **Cache:** a possible threat is kept 30 days and no threat 7 days. Limited results are never cached.
 - **Biting only for a real block.** The DNS, VPN or packet filter must have actually blocked the connection. The block must be fresh (within 60 seconds), on this device, for this event, and on a real platform (not mock). Calls can never reach Biting. Link, email and text checks go no higher than Barking.
 - **Unknown is not unsafe.** A setting Apollo couldn't read is never counted as a change. "No concern" covers only the checks that completed. Nothing is ever called safe.
-- **Privacy first.** Passwords and codes are removed on the phone, and an image showing one is not sent. Only allow-listed fields leave the device. Secrets are stripped again before every Gemini request.
+- **Privacy first.** Passwords and codes are removed on the phone, and an image showing one is not sent. Only allow-listed fields leave the device. Secrets are stripped again before every Gemini request. The full rules are under Privacy and redaction.
 - **Protection changes** say only what changed, never who changed it or why. The "what to do" lines are fixed text.
 
 **What sends a check onward:** a Possible Threat result. A check the person starts (Check It, or Ask Higgins with something to check) enters the same investigation pipeline.
@@ -324,7 +324,125 @@ It can't override what is already established, and it isn't called to move a cas
 
 ---
 
-## 7. Settling rules: the reason shown on each result {#settling-rules}
+## 7. Privacy and redaction {#privacy}
+
+**The rule:** protect the person, preserve the evidence, share only what is necessary. Secrets are never sent. What shows whether something is a scam (the sender, their number, email address and links, any payment details and the words they used) is kept as evidence.
+
+**Always removed, on the phone (never relaxed)**
+Each of these is replaced with "[credential redacted]" before anything leaves the phone:
+- a password, passcode or PIN given after "is", "was", ":" or "=";
+- one-time, verification, security, sign-in and recovery codes, including "123456 is your verification code" and "code: 1234";
+- any mention of a recovery phrase, seed phrase or mnemonic;
+- bearer tokens, API keys, secret keys, and access and refresh tokens;
+- a username and password written inside a link, and secret values in a link (token, password, secret, key, code or session).
+
+**Removed again, on the server**
+- Everything submitted is checked again for passwords, PINs, codes, usernames and login IDs, bearer tokens and secrets in links, and each one is replaced with "[redacted]".
+- A word that only describes a secret ("password reset", "code required") is left alone.
+
+**Before every Gemini request (one privacy boundary)**
+- Secrets are stripped once more from the whole request, and a field that holds a credential is dropped.
+- A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
+- Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
+- Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, passport and social security numbers.
+- The original evidence is never changed; only the copy being sent is.
+
+**Pictures**
+- The picture's metadata is stripped first. If that fails, the picture is withheld.
+- The phone reads the text in the picture. A password, PIN or code it finds is blacked out on a copy before sending, and the original on the phone is untouched. If it can't be blacked out, the picture isn't sent.
+- If the phone's text reader isn't available, the picture isn't sent. The person can type the text instead.
+- Personal details and sender information in a picture are kept as evidence.
+
+**What may leave the phone**
+- Every request is checked against its own list of allowed fields. Any other field stops the request: "Apollo couldn't safely prepare this request. Retry this step."
+- Never accepted in any request: contacts, messages, SMS, email bodies, page content, the clipboard, location, IMEI, serial number, phone number or advertising ID. A number the person types to check is sent only as the number to check.
+- In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
+- What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
+- **Threats records** synced to the server carry fixed wording ("Details stay on the device"), never the message, screenshot, file or link. Only a domain is kept as an indicator.
+- **Family helpers** see fixed wording ("Security check — review with the protected person"), never the content.
+- **Handing a result to Higgins:** at most 8 findings and 4 actions, each line short. Secrets, the person's own details and IP addresses are removed.
+- **My Personal Data:** the person's own saved details (such as their name, email address or phone number) are replaced with a label, such as "[Email address redacted]", in message and email checks and in what a result hands to Higgins. IP addresses become "[ip address]".
+
+**What the server keeps, and for how long**
+- **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
+- **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content (see Ask Higgins).
+- **Saved AI answers:** kept only when the question holds no secret and no personal detail (see Apollo's knowledge base).
+
+---
+
+## 8. Apollo's knowledge base (KB) {#knowledge-base}
+
+**Job:** sourced general knowledge that Higgins and TC FlyBy can use with no AI. KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
+
+**What is in it**
+| Kind | Where it comes from |
+|---|---|
+| Learn articles | Published Learn with Higgins articles, each linked to its screen |
+| Scam alerts | Official alerts and advisories from the government feeds, in the source's own words |
+| Official guidance | cyber.gov.au guidance shipped with Apollo (CC BY 4.0, attributed) |
+| Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
+| Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
+| Saved AI answers | Gemini's answer to a general question nothing else covered, labelled as Gemini's. Never treated as sourced knowledge |
+
+**Trusted sources.** A page on any other website never becomes Apollo knowledge.
+- **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
+- **Tier 2, established security research (11 websites):** recognised research organisations and security companies.
+- **Tier 3, supporting (5 websites):** credible specialist and consumer sources.
+- A source is reproduced as a Learn article only when its licence allows it. Every other source is quoted briefly, with a link to read the rest.
+
+**How Tavily is used**
+- Only to find and re-read trusted pages for the KB. Never by TC FlyBy or Magnum DI, never in a live investigation, and never to answer a question as it is asked.
+- Tavily is never the source. Its own generated answer is switched off, and every page it returns is checked against the trusted list again.
+- **Once a week:** a run is due when the last successful run is 7 days old and no attempt was made in the last day. Staff can also start one from the admin portal.
+- **Each run** searches 14 guidance topics on every tier (up to 5 results from Tier 1, 4 from Tier 2 and 3 from Tier 3) and 4 scam-alert topics in Tier 1 news. Up to 40 stored pages last checked 7 or more days ago are read again.
+- Afterwards the KB brings in the latest Learn articles, scam alerts, shipped guidance and scam patterns.
+
+**The checks every page must pass**
+- It is on a trusted website, over https.
+- It isn't a document file (PDF, Word, Excel, PowerPoint, zip, audio or video).
+- It isn't a listing, tag, search, category or navigation page, and it has a title.
+- No more than 40% of its words are links.
+- It has at least 120 words of its own content, in English.
+
+Only the page's own headings, paragraphs and bullet points are kept; menus, footers, banners and link lists are dropped. A page that fails is not stored as knowledge, and the reason is kept for 90 days for the admin portal.
+
+**Nothing is invented, and history is kept**
+- Knowledge is the source's own words. A fact the page doesn't state stays missing.
+- **Same page:** if its words are at least 92% the same, it is only marked as checked again. If they changed, it becomes a new version and the old version is kept as Superseded. "Updated" shows for 30 days.
+- **Same words on another page** (at least 85% the same) are recorded as another place it is published, not a new entry.
+- A page Apollo already holds from a government feed, the shipped guidance or a Learn article isn't added again.
+- **Historical, never deleted:** a page that fails to load on 2 re-reads, or a scam alert published more than 2 years ago.
+- When the checks are tightened, a page that no longer passes is removed everywhere: its Learn article is archived and its Scam Alert withdrawn.
+
+**Where a researched page is published**
+- **Scam Alerts:** only a Tier 1 page found as an alert, published within the last 180 days, that Scam Alerts' fixed rules rate as a specific scam or an emerging pattern. It is rated by the same rules as the government feeds.
+- **Learn with Higgins:** only from a source whose licence allows it, with at least 3 sections, practical bullet points and a summary, passing Learn's quality checks. It ends with a "Source and licence" section. An article staff archived is never brought back.
+
+**How the KB is searched (no AI)**
+- The question's content words are used, with common words removed and word endings lightly trimmed.
+- An entry answers only if it holds every content word (for a question of 1 or 2 content words) or at least 75% of them, and its title shares at least one.
+- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
+- Historical entries rank below current ones. At most 2 entries are used for one answer.
+
+**How it is quoted**
+- In the source's own words: the passages that best match the question, in their original order.
+- Each quote names the publisher, its authority, where it applies and when it was published or last checked, with a link to read the original.
+- A historical entry says it may be out of date. Guidance from outside Australia says contacts and reporting steps may differ.
+- Every quote ends with: "This is general knowledge from Apollo's library. It isn't a finding about anything you've asked Apollo to check."
+- A saved AI answer says that Gemini wrote it and that no official source has checked it.
+
+**Saving an AI answer**
+- Gemini's answer to a general question is saved only when the question holds no secret and no personal detail: no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address".
+- A simulated answer from the preview is never saved.
+
+**Where the KB is used**
+- **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
+- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; saved AI answers and historical pages never are.
+- **Preview:** the simulator answers from the KB instead of calling Gemini, and says so.
+
+---
+
+## 9. Settling rules: the reason shown on each result {#settling-rules}
 
 Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
 

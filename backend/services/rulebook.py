@@ -54,6 +54,20 @@ WATCHED = (
     "frontend/src/components/HigginsCheckSheet.tsx",
     "frontend/src/components/HigginsArtifactInput.tsx",
     "frontend/src/investigation/resubmit.ts",
+    # Privacy and redaction: what is removed on the phone and the server, what may leave the phone, what is kept.
+    "backend/core/redaction.py",
+    "backend/services/higgins/llm_boundary.py",
+    "backend/services/higgins/capacity.py",
+    "backend/services/higgins/retention.py",
+    "frontend/src/domain/privacyPolicy.ts",
+    "frontend/src/domain/privacy.ts",
+    "frontend/src/domain/imagePrivacy.ts",
+    "frontend/src/store/personalDataStore.ts",
+    # Apollo's knowledge base: trusted sources, Tavily maintenance, the page checks, search and quoting.
+    "backend/services/apollo_kb.py",
+    "backend/services/kb_sources.py",
+    "backend/services/tavily_client.py",
+    "backend/services/higgins/knowledge.py",
 )
 
 _REVIEWED = re.compile(r"^_Last reviewed against the code: (\d{4}-\d{2}-\d{2})\._$", re.M)

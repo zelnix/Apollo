@@ -9,6 +9,7 @@ import { parseInline, parseRuleBook, plainText, reviewedLabel, type Block } from
 import { detectCheckIntent } from "../src/higgins/checkIntent.ts";
 import { classifyIntent } from "../src/higgins/intentRouter.ts";
 import { QUICK_QUESTIONS } from "../src/higgins/quickQuestions.ts";
+import { enforceEgress, purposeLimitedUrl, redactInvestigationSecrets } from "../src/domain/privacy.ts";
 
 const BOOK = readFileSync(fileURLToPath(new URL("../../backend/content/rulebook.md", import.meta.url)), "utf8");
 const ASK_HIGGINS = BOOK.split("{#ask-higgins}", 2)[1]?.split("\n## ", 1)[0] ?? "";
@@ -45,7 +46,7 @@ test("the real rule book renders as clean text with every section and the settli
     assert.ok(!/\*\*|\{#|^\||^#+\s|`/.test(line), `unrendered markdown in: ${line}`);
   }
   const headings = blocks.filter((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading").map((b) => b.text);
-  for (const part of ["Apollo detection", "Higgins Triage", "TC FlyBy", "Magnum DI", "Higgins (explanation)", "Ask Higgins", "Settling rules"]) {
+  for (const part of ["Apollo detection", "Higgins Triage", "TC FlyBy", "Magnum DI", "Higgins (explanation)", "Ask Higgins", "Privacy and redaction", "knowledge base", "Settling rules"]) {
     assert.ok(headings.some((h) => h.includes(part)), `missing section: ${part}`);
   }
   assert.ok(blocks.some((b) => b.kind === "heading" && b.id === "settling-rules"));
@@ -76,4 +77,21 @@ test("the Ask Higgins rules in the book match what the phone does", () => {
   for (const form of ["Screenshot or photo", "Websites & Links", "Messages & Calls", "Email & Accounts", "Apps & Files", "Device & Internet"]) {
     assert.ok(ASK_HIGGINS.includes(`| ${form} |`), `form: ${form}`);
   }
+});
+
+test("the privacy rules in the book match what the phone removes and refuses", () => {
+  const privacy = BOOK.split("{#privacy}", 2)[1]?.split("\n## ", 1)[0] ?? "";
+  assert.ok(privacy, "the book has a Privacy and redaction section {#privacy}");
+  // Secrets are replaced with the label the book names; scam evidence (the sender's number) is kept.
+  for (const secret of ["my password is hunter22", "123456 is your verification code", "code: 1234", "api_key=abc123secret"]) {
+    const out = redactInvestigationSecrets(secret);
+    assert.ok(out.includes("[credential redacted]"), `not removed: ${secret}`);
+  }
+  assert.ok(privacy.includes('"[credential redacted]"'));
+  assert.ok(redactInvestigationSecrets("Hi Mum, my new number is 0412 345 678").includes("0412 345 678"));
+  // A field outside the allow-list stops the request with the book's message.
+  assert.throws(() => enforceEgress("higgins_chat", { message: "hi", contacts: [] }), (error: Error) => privacy.includes(`"${error.message}"`));
+  // Links keep their path; secret values and the part after "#" go.
+  const link = purposeLimitedUrl("https://user:pw@evil.example/login/page?token=abc&id=7#frag");
+  assert.ok(link.includes("/login/page") && !link.includes("abc") && !link.includes("frag") && !link.includes("pw@"));
 });

@@ -7,8 +7,8 @@ import re
 
 from routers import admin_portal
 from routers.ask import ChatRequest
-from services import rulebook, triage_engine
-from services.higgins import chat, coordinator, evidence, jobs, outcomes, pipeline_submit, presenter
+from services import apollo_kb, kb_sources, rulebook, triage_engine
+from services.higgins import capacity, chat, coordinator, evidence, jobs, knowledge, llm_boundary, outcomes, pipeline_submit, presenter
 from services.higgins import context as chat_memory
 from services.higgins.teddy import official, patterns, search
 from services.higgins.teddy import triage as higgins_triage
@@ -57,6 +57,62 @@ def test_a_typed_message_starts_a_check_only_as_the_book_says():
     assert pipeline_submit.extract_submittable_items("check 1234567") == []          # 7 characters, and under 30 in all
     assert pipeline_submit.extract_submittable_items("check " + "x" * 24)[0]["kind"] == "text"   # exactly 30
     assert pipeline_submit.extract_submittable_items("check " + "x" * 23) == []
+
+
+def _section(anchor: str) -> str:
+    return BOOK.split(f"{{#{anchor}}}", 1)[1].split("\n## ", 1)[0]
+
+
+def test_the_privacy_rules_match_the_code():
+    section = _section("privacy")
+    expected = [
+        f"other values over {llm_boundary._MAX_PARAM_VALUE_LEN} characters are cut",
+        f"any link over {llm_boundary._MAX_URL_LEN} characters is cut",
+        f"expires {capacity.LIFETIME_SECONDS // 60} minutes after it opens",
+        f"the question and answer for {int(chat_memory.CHAT_CONTENT_TTL.total_seconds() // 60)} minutes",
+    ]
+    missing = [phrase for phrase in expected if phrase not in section]
+    assert not missing, f"The privacy rules no longer match the code on: {missing}"
+    # Secrets go, a word that only describes one stays, and scam evidence is kept.
+    from core.redaction import redact_investigation_secrets
+    assert "hunter2" not in redact_investigation_secrets("my password is hunter2") and "[redacted]" in section
+    assert redact_investigation_secrets("click here for a password reset") == "click here for a password reset"
+    assert "0412 345 678" in redact_investigation_secrets("Hi Mum, my new number is 0412 345 678")
+    assert "[personal data withheld]" in section
+    assert llm_boundary.enforce_boundary(llm_boundary.Purpose.ORDINARY_CHAT, {"home_address": "1 Smith St"}).get("home_address") in (None, "[personal data withheld]")
+
+
+def test_the_knowledge_base_rules_match_the_code():
+    section = _section("knowledge-base")
+    tiers = apollo_kb.TIER_RESULTS
+    expected = [
+        f"Tier 1, official authority ({len(kb_sources.domains(kb_sources.TIER_1))} websites)",
+        f"Tier 2, established security research ({len(kb_sources.domains(kb_sources.TIER_2))} websites)",
+        f"Tier 3, supporting ({len(kb_sources.domains(kb_sources.TIER_3))} websites)",
+        f"the last successful run is {apollo_kb.RUN_EVERY.days} days old and no attempt was made in the last {'day' if apollo_kb.RETRY_AFTER.days == 1 else f'{apollo_kb.RETRY_AFTER.days} days'}",
+        f"searches {len(apollo_kb.GUIDANCE_TOPICS)} guidance topics",
+        f"up to {tiers[kb_sources.TIER_1]} results from Tier 1, {tiers[kb_sources.TIER_2]} from Tier 2 and {tiers[kb_sources.TIER_3]} from Tier 3",
+        f"and {len(apollo_kb.ALERT_TOPICS)} scam-alert topics",
+        f"Up to {apollo_kb.MAX_RECHECKS} stored pages last checked {apollo_kb.RECHECK_AFTER.days} or more days ago",
+        f"No more than {round(apollo_kb.MAX_LINK_DENSITY * 100)}% of its words are links",
+        f"at least {apollo_kb.MIN_WORDS} words",
+        f"at least {round(apollo_kb.SAME_PAGE * 100)}% the same, it is only marked as checked again",
+        f"\"Updated\" shows for {apollo_kb.UPDATED_FOR.days} days",
+        f"(at least {round(apollo_kb.NEAR_DUPLICATE * 100)}% the same)",
+        f"fails to load on {apollo_kb.FAILED_CHECKS_BEFORE_HISTORICAL} re-reads",
+        f"published more than {apollo_kb.ALERT_HISTORICAL_AFTER.days // 365} years ago",
+        f"published within the last {apollo_kb.ALERT_MAX_AGE.days} days",
+    ]
+    missing = [phrase for phrase in expected if phrase not in section]
+    assert not missing, f"The knowledge base rules no longer match the code on: {missing}"
+    assert knowledge.GENERAL_KNOWLEDGE_NOTE in section, "the general-knowledge note, word for word"
+    # What a saved AI answer's question may not hold.
+    assert knowledge.storable("How do gift card scams work?")
+    for personal in ("Is https://x.test a scam?", "Email me at a@b.co", "My account 1234567 was charged", "My name is Jo, am I safe?"):
+        assert not knowledge.storable(personal), personal
+    # Only trusted websites, over https.
+    assert kb_sources.source_for("https://www.scamwatch.gov.au/x") and not kb_sources.source_for("http://www.scamwatch.gov.au/x")
+    assert kb_sources.source_for("https://scamwatch.example.com/x") is None
 
 
 def test_every_number_in_the_rule_book_matches_the_code():

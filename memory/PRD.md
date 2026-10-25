@@ -1,3 +1,20 @@
+## Privacy/redaction and knowledge base rules added to the rule book (2026-10-25)
+- `backend/content/rulebook.md`: new **7. Privacy and redaction** `{#privacy}` (always removed on the phone; removed again on
+  the server; the one Gemini boundary: credential fields dropped, personal fields "[personal data withheld]" outside an
+  investigation, tracking links shortened 80/200 chars, research/advisory identifiers labelled; pictures: metadata stripped,
+  credentials blacked out on a copy, withheld if not possible or no text reader; what may leave the phone: per-request
+  allow-lists, never-accepted fields, links keep path, Threats/Family fixed wording, handoff limits, My Personal Data labels;
+  what the server keeps: investigations encrypted, 15-minute working copy, finished record on the phone; chat 5 min).
+  New **8. Apollo's knowledge base (KB)** `{#knowledge-base}` (kinds, trusted tiers 24/11/5 websites, Tavily only for KB
+  upkeep, weekly run, topics/results per tier, re-reads, page checks, versions/duplicates/historical, publishing to Scam
+  Alerts and Learn, deterministic search thresholds, verbatim quoting + general-knowledge note, saving AI answers, where it is
+  used). Settling rules is now **9**. Section 1 "Privacy first" points to section 7.
+- Auto-sync: WATCHED += `core/redaction.py`, `llm_boundary.py`, `capacity.py`, `retention.py`, `privacyPolicy.ts`,
+  `privacy.ts`, `imagePrivacy.ts`, `personalDataStore.ts`, `apollo_kb.py`, `kb_sources.py`, `tavily_client.py`, `knowledge.py`. Re-stamped.
+- Tests: `test_rulebook.py` +2 (privacy numbers + redaction behaviour; KB numbers, tier counts, note, storable, trusted
+  https) → 15 pass; `ruleBook.test.ts` +1 (phone redaction label, evidence kept, egress refusal message, link cleaning) → 6 pass.
+  Frontend 900/900, tsc clean. Not claimed: 24-hour evidence deletion (`EVIDENCE_RETENTION_SECONDS` is defined but not enforced).
+
 ## Ask Higgins rules added to the rule book (2026-10-25)
 - New section **6. Ask Higgins (the chat screen)** `{#ask-higgins}` in `backend/content/rulebook.md` (Settling rules is now 7):
   what's removed/sent before anything leaves the phone (4,000-character limit, state-only reading); where a message goes,
