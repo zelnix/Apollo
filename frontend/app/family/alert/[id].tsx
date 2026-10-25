@@ -17,6 +17,10 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "@/src/components/CloseButton";
+import { threatNotesPath, type ThreatNote } from "@/src/components/FamilyNotes";
+import { formatDateTime } from "@/src/domain/threatCase";
+
+const NOTE_MAX = 140;
 
 export interface SharedAlert {
   event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string;
@@ -34,6 +38,9 @@ const useStyles = makeStyles((c) => ({
   headline: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface, lineHeight: 26 },
   input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barkingText },
+  noteInput: { minHeight: 88, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface, textAlignVertical: "top" },
+  hint: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  sent: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
 }));
 
 export default function FamilyAlert() {
@@ -65,6 +72,15 @@ export default function FamilyAlert() {
   });
 
   const tel = (alert?.phone ?? "").replace(/[^+\d]/g, "");
+  const [own, setOwn] = useState("");
+  const [writing, setWriting] = useState(false);
+  const notesKey = ["threat-notes", id, deviceId];
+  const notes = useQuery({ queryKey: notesKey, enabled: !!deviceId && !!id, queryFn: () => apiGet<ThreatNote[]>(threatNotesPath(id!, deviceId!)) });
+  const sendNote = useMutation({
+    mutationFn: (n: { kind: ThreatNote["kind"]; text?: string }) => apiPost<ThreatNote>(`/family/shared-events/${id}/notes`, "family", { device_id: deviceId, kind: n.kind, text: n.text ?? "" }),
+    onSuccess: () => { setOwn(""); setWriting(false); setErr(null); qc.invalidateQueries({ queryKey: notesKey }); showToast(`Note sent to ${alert?.from_label ?? "them"}.`, "resting"); },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not send the note"),
+  });
   const call = (scheme: "tel" | "sms") => {
     if (!tel) { setEditing(true); return; }
     void Linking.openURL(`${scheme}:${tel}`).catch(() => showToast("This device can't place the call.", "barking"));
@@ -118,6 +134,26 @@ export default function FamilyAlert() {
                 ) : (
                   <Button testID="family-alert-edit-phone" variant="ghost" label={`Change number (${alert.phone})`} onPress={() => setEditing(true)} />
                 )}
+              </Card>
+            </View>
+
+            <View>
+              <SectionTitle>Send {alert.from_label} a quick note</SectionTitle>
+              <Card style={{ gap: spacing.sm }} testID="family-alert-notes">
+                <Button testID="family-alert-note-calling" variant="secondary" label="I'm calling you now" onPress={() => sendNote.mutate({ kind: "calling" })} disabled={sendNote.isPending} />
+                <Button testID="family-alert-note-wait" variant="secondary" label="Don't do anything yet" onPress={() => sendNote.mutate({ kind: "wait" })} disabled={sendNote.isPending} />
+                {writing ? (
+                  <>
+                    <TextInput testID="family-alert-note-input" style={s.noteInput} value={own} onChangeText={setOwn} placeholder="Write a short note" placeholderTextColor={colors.muted} multiline maxLength={NOTE_MAX} autoFocus />
+                    <Text style={s.hint} testID="family-alert-note-hint">{NOTE_MAX - own.length} characters left. Never send codes or passwords in a note.</Text>
+                    <Button testID="family-alert-note-send" label={sendNote.isPending ? "Sending…" : "Send note"} onPress={() => sendNote.mutate({ kind: "custom", text: own })} disabled={sendNote.isPending || !own.trim()} />
+                  </>
+                ) : (
+                  <Button testID="family-alert-note-write" variant="ghost" label="Write your own note" onPress={() => setWriting(true)} />
+                )}
+                {(notes.data ?? []).map((n) => (
+                  <Text key={n.note_id} style={s.sent} testID={`family-alert-note-sent-${n.note_id}`}>You sent: “{n.text}” · {formatDateTime(n.created_at)}</Text>
+                ))}
               </Card>
             </View>
 

@@ -6,7 +6,7 @@ import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApolloLogo } from "@/src/components/ApolloLogo";
+import { BrandBanner } from "@/src/components/BrandBanner";
 import { SetupProgress } from "@/src/components/SetupProgress";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
@@ -17,7 +17,6 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
-  eyebrow: { fontFamily: fonts.display, fontSize: 13, color: c.restingText, letterSpacing: 1.4, textTransform: "uppercase" },
   title: { fontFamily: fonts.displayBold, fontSize: 34, color: c.onSurface, letterSpacing: -0.5, lineHeight: 40 },
   stateRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: spacing.sm },
   stateText: { flex: 1, gap: 2 },
@@ -40,10 +39,7 @@ export default function Onboarding() {
     <View style={s.root} testID="initial-onboarding-root">
       <View style={{ paddingTop: insets.top + spacing.md }}><SetupProgress step={1} /></View>
       <ScrollView contentContainerStyle={[s.content, { paddingTop: spacing.lg, paddingBottom: spacing.xl }]} testID="onboarding-screen">
-        <View style={{ alignItems: "flex-start", gap: spacing.md }}>
-          <ApolloLogo size={112} testID="onboarding-logo" />
-          <Text style={s.eyebrow}>Apollo</Text>
-        </View>
+        <BrandBanner testID="onboarding-banner" />
         <Text style={s.title}>Meet Apollo, your calm protector for the links you tap.</Text>
         <Body>Apollo checks dangerous links, suspicious websites and known online threats. It tells you exactly what it can see, and never pretends to protect what it can&apos;t.</Body>
 

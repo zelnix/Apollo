@@ -86,10 +86,12 @@ module.exports = {
         "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.INTERNET",
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.CAMERA",
       ],
+      // Google Play: never ship what Apollo doesn't use. Expo's template adds "Display over other apps";
+      // Apollo only checks whether OTHER apps hold it, so it is stripped from every build.
+      blockedPermissions: ["android.permission.SYSTEM_ALERT_WINDOW"],
     },
 
     // ── Web ──────────────────────────────────────────────────────────────
@@ -138,7 +140,8 @@ module.exports = {
       "expo-sharing",
       ["expo-camera", { cameraPermission: "Scan QR codes and photograph suspicious items for Apollo to check", microphonePermission: false, recordAudioAndroid: false }],
       ["expo-image-picker", { photosPermission: "Pick images of suspicious content for Apollo to investigate", cameraPermission: "Photograph suspicious items for Apollo to investigate", microphonePermission: false }],
-      ["expo-audio", { microphonePermission: false }],
+      // Alert sounds play only while Apollo is open: no background music-player service (a Play declaration Apollo can't justify).
+      ["expo-audio", { microphonePermission: false, enableBackgroundPlayback: false }],
       ["expo-build-properties", { android: { minSdkVersion: 26 }, ios: { deploymentTarget: "16.4" } }],
       "expo-ocr-kit",
     ],

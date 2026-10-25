@@ -42,7 +42,7 @@
   "backend/services/triage/catalogue.py": "475c43301bab634ed0cc859e90c7c41488e60a3f2945690915b0d1048531c9d4",
   "backend/services/triage/engine.py": "73cbcd20870f3c9565937ca1a10e382797adbe65f3251f452836b19f1bab6864",
   "backend/services/triage_engine.py": "9ecbbb067d4da24d9641c5a7e4adae3f9917dc0dc722eef862928030573c6593",
-  "frontend/app.config.js": "0d39c7d0ffa3ddea745f437426790c845af0b664dda47fb34a971485132d4a95",
+  "frontend/app.config.js": "a0487eff591dafc1dd3a5a5752ce9e4e4453984cb17c21f2d590e8b950fc778a",
   "frontend/app/(tabs)/ask.tsx": "e1dbe7c6833dc11c96320cf244b01eefbc4ec8809e5212c3f730abdc11d9a4fe",
   "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloCallScreeningService.kt": "055046db55cecd9ebcd119ead29f5f79ca17193959b9a2f9b85c13885a4becc8",
   "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSmsListenerService.kt": "6d73fbd2a4502c2a0aaac6c1aabea6391055ee02fec490e64c7d2d920ad1284b",

@@ -270,23 +270,81 @@ async def ack_shared_event(event_id: str, body: AckIn):
     if not se:
         raise HTTPException(status_code=404, detail="Alert not found")
     ts = now_utc()
-    link = await db.family_links.find_one({"guardian_device_id": body.device_id, "deleted_at": None})
     await db.shared_events.update_one({"_id": se["_id"]}, {"$set": {"acknowledged_at": ts, "ack_label": ACK_LABEL[body.reply]}})
     ev = await db.patrol_events.find_one({"event_id": event_id})
-    if ev:
-        guardian_label = (link or {}).get("guardian_label") or "A family member"
+    # A threat the person sent themselves may never have reached the server's event list: the shared copy names them.
+    owner = (ev or {}).get("device_id") or se.get("protected_device_id")
+    if owner:
+        guardian_label = await _label_of(body.device_id, owner)
+        headline = (ev or se)["headline"]
         await db.family_acks.update_one({"event_id": event_id, "guardian_device_id": body.device_id}, {"$set": {
-            "event_id": event_id, "protected_device_id": ev["device_id"], "guardian_device_id": body.device_id,
-            "guardian_label": guardian_label, "ack_label": ACK_LABEL[body.reply], "headline": ev["headline"], "acknowledged_at": ts}}, upsert=True)
+            "event_id": event_id, "protected_device_id": owner, "guardian_device_id": body.device_id,
+            "guardian_label": guardian_label, "ack_label": ACK_LABEL[body.reply], "headline": headline, "acknowledged_at": ts}}, upsert=True)
         try:
             await send_push(
-                recipients=[ev["device_id"]],
-                data={"title": f"{guardian_label} replied: {ACK_LABEL[body.reply]}", "message": ev["headline"], "action_url": "/family", **PUSH_FAMILY},
+                recipients=[owner],
+                data={"title": f"{guardian_label} replied: {ACK_LABEL[body.reply]}", "message": headline, "action_url": "/family", **PUSH_FAMILY},
                 idempotency_key=f"ack-{event_id}-{body.device_id}",
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("ack push failed (non-blocking): %s", type(exc).__name__)
     return {"acknowledged": True, "ack_label": ACK_LABEL[body.reply]}
+
+
+async def _label_of(member_id: str, viewer_id: str) -> str:
+    """How `member_id` appears to `viewer_id` across their family link, in either direction."""
+    ln = await db.family_links.find_one({"protected_device_id": viewer_id, "guardian_device_id": member_id, "deleted_at": None})
+    if ln:
+        return ln.get("guardian_label") or "A family member"
+    ln = await db.family_links.find_one({"protected_device_id": member_id, "guardian_device_id": viewer_id, "deleted_at": None})
+    return (ln or {}).get("owner_name") or "A family member"
+
+
+# Family Reply Notes — on a threat someone shared, their family member sends a quick note straight back to that
+# person's phone. Two calm presets or their own words (short; the composer reminds them never to send codes).
+THREAT_NOTE_TEXT = {"calling": "I'm calling you now.", "wait": "Don't do anything yet. Don't reply, pay or tap anything until we've talked."}
+
+
+class ThreatNoteIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)  # the family member's device
+    kind: Literal["calling", "wait", "custom"]
+    text: str = Field(default="", max_length=140)
+
+
+@router.post("/family/shared-events/{event_id}/notes", status_code=201)
+async def add_threat_note(event_id: str, body: ThreatNoteIn):
+    se = await db.shared_events.find_one({"event_id": event_id, "guardian_device_id": body.device_id})
+    if not se:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    text = " ".join(body.text.split()) if body.kind == "custom" else THREAT_NOTE_TEXT[body.kind]
+    if not text:
+        raise HTTPException(status_code=422, detail="Write a short note first.")
+    if await db.threat_notes.count_documents({"event_id": event_id, "guardian_device_id": body.device_id}) >= 20:
+        raise HTTPException(status_code=429, detail="That's a lot of notes on one alert. A call may help more.")
+    owner = se["protected_device_id"]
+    label = await _label_of(body.device_id, owner)
+    ts = now_utc()
+    note = {"note_id": uuid.uuid4().hex, "event_id": event_id, "protected_device_id": owner, "guardian_device_id": body.device_id,
+            "guardian_label": label, "kind": body.kind, "text": text, "created_at": ts}
+    await db.threat_notes.insert_one(dict(note))
+    # Also the latest answer in the person's "Family responses to your alerts" list.
+    await db.family_acks.update_one({"event_id": event_id, "guardian_device_id": body.device_id}, {"$set": {
+        "event_id": event_id, "protected_device_id": owner, "guardian_device_id": body.device_id, "guardian_label": label,
+        "ack_label": text, "headline": se.get("headline", ""), "acknowledged_at": ts}}, upsert=True)
+    try:
+        await send_push(recipients=[owner],
+                        data={"title": f"{label}: {text}", "message": se.get("headline", ""), "action_url": f"/patrol/{event_id}", **PUSH_FAMILY},
+                        idempotency_key=f"threat-note-{note['note_id']}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("threat note push failed (non-blocking): %s", type(exc).__name__)
+    return note
+
+
+@router.get("/family/shared-events/{event_id}/notes")
+async def list_threat_notes(event_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    """The person sees every family member's notes on their threat; a family member sees only the notes they sent."""
+    docs = await db.threat_notes.find({"event_id": event_id, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]}).sort("created_at", 1).to_list(50)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
 
 
 # ---------------------------------------------------------------------------

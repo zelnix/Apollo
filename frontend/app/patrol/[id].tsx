@@ -67,6 +67,7 @@ import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport } from "@/src/domain/reportSections";
 import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
+import { FamilyNotes } from "@/src/components/FamilyNotes";
 import { SettledByBadge } from "@/src/components/SettledByBadge";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
 import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
@@ -314,6 +315,8 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
           ))}
         </View>
       </Card>
+
+      <FamilyNotes eventId={event.event_id} />
 
       <ShareWithFamily summary={summary} when={formatDateTime(event.occurred_at)} />
 
