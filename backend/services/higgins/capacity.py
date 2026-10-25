@@ -33,7 +33,8 @@ WORK_SECONDS = 300
 CALL_SECONDS = 90
 
 # ── Retention Policy ───────────────────────────────────────────────────
-# Source evidence content (images, files, screenshots): delete within 24 hours of acquisition.
+# Submitted content (pictures, files, text): deleted from the server within 24 hours of its investigation finishing.
+# A check that is still running is never cut off; the clock starts when it finishes.
 EVIDENCE_RETENTION_SECONDS = int(os.getenv("EVIDENCE_RETENTION_SECONDS", str(24 * 3600)))  # 24 hours
 # Device-local investigations: the server does NOT retain completed investigations.
 # The server is a temporary processing workspace only; the device owns the durable record.

@@ -125,8 +125,9 @@ async def _fail(owner: str, case: dict, job: dict, failure: Failure, *, partial:
     await repo.set_job(owner, job["job_id"], job.get("fence"), {
         "$set": {"status": "failed", "failure": failure.wire(), "lease_until": None, "resubmit_at": failure.resubmit_at,
                  "retry_history": [h.wire() if hasattr(h, 'wire') else h for h in failure.retry_history]}})
-    await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
-                   {"$set": {"status": "partial" if partial or case.get("response_ciphertext") else "failed", "active_job_id": None, "active_turn_id": None, "lease_fence": None}}, bump=False)
+    if await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
+                      {"$set": {"status": "partial" if partial or case.get("response_ciphertext") else "failed", "active_job_id": None, "active_turn_id": None, "lease_fence": None}}, bump=False):
+        await repo.start_deletion_clock(owner, case["case_id"])  # a failed check has finished too: its 24 hours start now
     if partial:
         await _emit(owner, case, job, "partial", {"responseRevision": case.get("response_revision"), "reason": failure.wire(), "canContinue": failure.retryable or failure.code != "provider_configuration"})
     await _emit(owner, case, job, "failed", failure.wire())

@@ -186,6 +186,101 @@ class TestCrossOwnerIsolation:
 
 
 
+async def _finished_case_with_content(owner: str, *, active_job_id=None) -> str:
+    """A case whose submitted bytes sit in every collection that holds them."""
+    from core.db import db, now_utc
+    from services.higgins.capacity import TEMPORARY_RETENTION
+    case_id, upload_id = str(uuid.uuid4()), str(uuid.uuid4())
+    now = now_utc()
+    await db.investigation_cases.insert_one({
+        "owner_id": owner, "case_id": case_id, "revision": 1, "epoch": uuid.uuid4().hex, "status": "complete",
+        "active_job_id": active_job_id, "deleted": False, "cleanup_status": "not_due", "retention_class": TEMPORARY_RETENTION,
+        "created_at": now, "updated_at": now, "expires_at": now + timedelta(minutes=10)})
+    await db.investigation_content_chunks.insert_one({"owner_id": owner, "case_id": case_id, "evidence_id": "e1", "chunk_index": 0,
+                                                      "ciphertext": "picture", "expires_at": now + timedelta(minutes=10)})
+    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "expires_at": now + timedelta(minutes=10)})
+    await db.investigation_upload_chunks.insert_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "chunk_index": 0,
+                                                     "ciphertext": "file", "expires_at": now + timedelta(minutes=10)})
+    return case_id
+
+
+class TestDeletionClockStartsWhenTheCheckFinishes:
+    """Submitted pictures and files: gone from the server within 24 hours of the investigation finishing;
+    a check that is still running is never cut off."""
+
+    async def test_finishing_sets_the_24_hour_deadline_on_the_case_and_every_copy(self):
+        from core.db import db, now_utc
+        from services.higgins import repository as repo
+        owner = f"clock-{uuid.uuid4().hex[:8]}"
+        case_id = await _finished_case_with_content(owner)
+        deadline = await repo.start_deletion_clock(owner, case_id)
+        assert abs((deadline - now_utc()).total_seconds() - 24 * 3600) < 5
+        case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id})
+        assert abs((repo.utc(case["content_delete_by"]) - deadline).total_seconds()) < 1
+        for name in repo.CLOCKED:
+            rows = await db[name].find({"owner_id": owner, "case_id": case_id}).to_list(None)
+            assert rows and all(abs((repo.utc(r["delete_by"]) - deadline).total_seconds()) < 1 for r in rows), name
+        await repo.run_cleanup(owner, case_id)
+
+    async def test_a_new_check_stops_the_clock_until_it_finishes(self):
+        from core.db import db
+        from services.higgins import repository as repo
+        owner = f"clock-stop-{uuid.uuid4().hex[:8]}"
+        case_id = await _finished_case_with_content(owner)
+        await repo.start_deletion_clock(owner, case_id)
+        await repo.stop_deletion_clock(owner, case_id)
+        case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id})
+        assert "content_delete_by" not in case
+        for name in repo.CLOCKED:
+            assert await db[name].count_documents({"owner_id": owner, "case_id": case_id, "delete_by": {"$exists": True}}) == 0, name
+        await repo.run_cleanup(owner, case_id)
+
+    async def test_sweep_deletes_everything_once_the_24_hours_are_up(self):
+        from core.db import db, now_utc
+        from services.higgins import repository as repo
+        owner = f"clock-due-{uuid.uuid4().hex[:8]}"
+        case_id = await _finished_case_with_content(owner)
+        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"content_delete_by": now_utc() - timedelta(seconds=1)}})
+        assert await repo.sweep_evidence_content() >= 1
+        case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id})
+        assert case["deleted"] is True and case["cleanup_status"] == "complete"
+        for name in repo.CLOCKED:
+            assert await db[name].count_documents({"owner_id": owner, "case_id": case_id}) == 0, name
+
+    async def test_sweep_never_cuts_off_a_check_that_is_still_running(self):
+        from core.db import db, now_utc
+        from services.higgins import repository as repo
+        owner = f"clock-running-{uuid.uuid4().hex[:8]}"
+        case_id = await _finished_case_with_content(owner, active_job_id="job-still-running")
+        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"content_delete_by": now_utc() - timedelta(seconds=1)}})
+        await repo.sweep_evidence_content()
+        case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id})
+        assert case["deleted"] is False
+        assert await db.investigation_content_chunks.count_documents({"owner_id": owner, "case_id": case_id}) == 1
+        await repo.run_cleanup(owner, case_id)
+
+    async def test_content_past_its_deadline_is_never_served(self):
+        from fastapi import HTTPException
+        from core.db import db, now_utc
+        from services.higgins import repository as repo
+        owner = f"clock-served-{uuid.uuid4().hex[:8]}"
+        case_id = await _finished_case_with_content(owner)
+        await db.investigation_content_chunks.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"delete_by": now_utc() - timedelta(seconds=1)}})
+        with pytest.raises(HTTPException) as gone:
+            await repo.read_bytes(owner, case_id, "e1")
+        assert gone.value.status_code == 410
+        await repo.run_cleanup(owner, case_id)
+
+    async def test_the_database_itself_removes_content_at_its_deadline(self):
+        from core.db import db
+        from services.higgins import repository as repo
+        for name in repo.CLOCKED:
+            index = (await db[name].index_information())[repo.CLOCK_INDEX]
+            assert index["key"] == [("delete_by", 1)] and index["expireAfterSeconds"] == 0, name
+            # No clock that counts from arrival: a running check must never be cut off
+            assert all(definition["key"] != [("stored_at", 1)] for definition in (await db[name].index_information()).values()), name
+
+
 class TestReportRetentionNotice:
     def test_retention_notice_text(self):
         from services.higgins.report_store import build_report

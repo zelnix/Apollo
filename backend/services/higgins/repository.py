@@ -27,6 +27,8 @@ from services.higgins.contracts import (Coverage, EvidenceItem, EvidenceProvenan
 from services.higgins.encryption import decrypt, encrypt
 
 CHUNK_BYTES = 1024 * 1024
+CLOCK_INDEX = "submitted_content_24h_after_finish"
+CLOCKED = ("investigation_content_chunks", "investigation_upload_chunks", "investigation_uploads")  # where submitted bytes live
 CONTENT = ("investigation_evidence", "investigation_content_chunks", "investigation_events", "investigation_turn_commits",
            "investigation_jobs", "investigation_device_requests", "investigation_settings_plans", "investigation_uploads", "investigation_upload_chunks")
 
@@ -95,6 +97,10 @@ async def ensure_indexes() -> None:
     await _ttl(db.investigation_uploads, 0)
     await db.investigation_upload_chunks.create_index([("owner_id", 1), ("upload_id", 1), ("chunk_index", 1)], unique=True)
     await _ttl(db.investigation_upload_chunks, 0)
+    for name in CLOCKED:
+        # MongoDB itself removes submitted content at its `delete_by` moment, even if Apollo's sweep has stopped.
+        # Content of a check still running carries no `delete_by`, so this never touches it.
+        await db[name].create_index("delete_by", expireAfterSeconds=0, name=CLOCK_INDEX)
     try:
         await db.investigation_turn_commits.drop_index("owner_id_1_case_id_1_turn_id_1")
     except OperationFailure:
@@ -541,7 +547,10 @@ async def store_bytes(owner: str, case_id: str, evidence_id: str, data: bytes, e
 
 
 async def read_bytes(owner: str, case_id: str, evidence_id: str) -> bytes:
-    rows = await db.investigation_content_chunks.find({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id, "expires_at": {"$gt": now_utc()}},
+    # Never served once its deletion moment has passed, even in the seconds before the sweep or the database removes it.
+    now = now_utc()
+    rows = await db.investigation_content_chunks.find({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id, "expires_at": {"$gt": now},
+                                                       "$or": [{"delete_by": {"$exists": False}}, {"delete_by": {"$gt": now}}]},
                                                       {"_id": 0}).sort("chunk_index", 1).to_list(None)
     if not rows:
         raise http(410, "evidence_expired", "The temporary content copy is no longer available.", missing=[evidence_id])
@@ -566,12 +575,34 @@ async def purge_evidence_content(owner: str, case_id: str, evidence_id: str) -> 
 # have been removed.  The server keeps temporary working data only while
 # Magnum DI is active; the device confirms local commit and the server purges.
 
+async def start_deletion_clock(owner: str, case_id: str) -> datetime:
+    """The investigation has finished (answered, failed or cancelled): everything submitted for it must be gone from
+    the server within 24 hours of this moment. Each finish restarts the clock from that finish."""
+    deadline = now_utc() + timedelta(seconds=EVIDENCE_RETENTION_SECONDS)
+    await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"content_delete_by": deadline}})
+    for name in CLOCKED:
+        await db[name].update_many({"owner_id": owner, "case_id": case_id}, {"$set": {"delete_by": deadline}})
+    return deadline
+
+
+async def stop_deletion_clock(owner: str, case_id: str) -> None:
+    """A new turn is checking again: nothing submitted is cut off while a check runs; the clock restarts when it finishes."""
+    await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$unset": {"content_delete_by": ""}})
+    for name in CLOCKED:
+        await db[name].update_many({"owner_id": owner, "case_id": case_id}, {"$unset": {"delete_by": ""}})
+
+
 async def sweep_evidence_content() -> int:
-    """Delete evidence content (chunks) that have exceeded the 24h retention period.
-    Preserves evidence metadata rows for the saved report."""
+    """Delete submitted content (pictures, files and text) when its investigation's copy expires, and never later than
+    24 hours after the investigation finished. A check still running is never cut off. Returns the items cleaned."""
     now = now_utc()
     expired_count = 0
-    # Find evidence items whose content has expired but hasn't been cleaned yet
+    # Finished investigations whose 24 hours are up: the whole server copy goes (revoke + cleanup of every content row).
+    async for case in db.investigation_cases.find({"content_delete_by": {"$lte": now}, "active_job_id": None, "deleted": False},
+                                                  {"_id": 0, "owner_id": 1, "case_id": 1}).limit(500):
+        await expire_case(case["owner_id"], case["case_id"])
+        expired_count += 1
+    # Evidence whose content expired with its case and isn't cleaned yet: content goes, the metadata row is kept
     async for row in db.investigation_evidence.find(
         {"expires_at": {"$lte": now}, "availability": {"$nin": ["purged", "content_expired"]}},
         {"_id": 0, "owner_id": 1, "case_id": 1, "evidence_id": 1}
@@ -605,6 +636,7 @@ async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payl
            # Gemini calls this investigation has made (the one call + at most one retry).
            "gemini_calls": 0,
            "source": source}
+    await stop_deletion_clock(owner, case["case_id"])
     await db.investigation_jobs.insert_one(dict(doc))
     return doc
 
@@ -713,6 +745,8 @@ async def accept_turn(owner: str, case: dict, job: dict, commit: TurnCommit, com
                          "$push": {"accepted_commits": {"turn_id": commit.turn_id, "commit_id": commit_id, "job_id": job["job_id"], "revision": commit.committed_revision}}})
     if not updated:  # losing attempt removes only its own unaccepted bundle
         await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case["case_id"], "commit_id": commit_id})
+    elif status in ("complete", "partial"):  # finished (a Magnum question still waits for the person, so it isn't)
+        await start_deletion_clock(owner, case["case_id"])
     return updated
 
 
@@ -768,7 +802,7 @@ async def expire_case(owner: str, case_id: str) -> None:
 
 async def sweep() -> None:
     now = now_utc()
-    # ── Phase 1: Evidence content cleanup (24-hour retention) ──
+    # ── Phase 1: Evidence content cleanup (24 hours after the investigation finished, at the latest) ──
     await sweep_evidence_content()
     # ── Phase 2: Temporary cases (15-minute work window) ──
     async for doc in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "expires_at": {"$lte": now}, "cleanup_status": {"$in": ["not_due"]}}, {"_id": 0, "owner_id": 1, "case_id": 1}):

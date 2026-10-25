@@ -59,6 +59,8 @@ WATCHED = (
     "backend/services/higgins/llm_boundary.py",
     "backend/services/higgins/capacity.py",
     "backend/services/higgins/retention.py",
+    "backend/services/higgins/repository.py",
+    "frontend/src/store/imageEvidence.ts",
     "frontend/src/domain/privacyPolicy.ts",
     "frontend/src/domain/privacy.ts",
     "frontend/src/domain/imagePrivacy.ts",

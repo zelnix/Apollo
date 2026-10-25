@@ -6,6 +6,7 @@ questions or Magnum DI, and KB knowledge always labelled as general knowledge.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -98,9 +99,11 @@ def test_tavily_key_can_be_given_as_the_tavily_address(monkeypatch):
 def test_tavily_is_only_used_by_the_knowledge_base():
     """Never by Magnum DI, live investigations or Higgins answering a question as it is asked."""
     root = Path(__file__).resolve().parents[1]
+    # Code that imports it; the rule book's watch list only names the file's path.
+    imports = re.compile(r"^\s*(?:from\s+[\w.]*tavily_client\s+import|import\s+[\w.]*tavily_client|from\s+[\w.]+\s+import\s+.*\btavily_client\b)", re.M)
     users = sorted(str(p.relative_to(root)) for p in (root / "services").rglob("*.py")
-                   if "tavily_client" in p.read_text() and p.name != "tavily_client.py")
-    users += sorted(str(p.relative_to(root)) for p in (root / "routers").rglob("*.py") if "tavily_client" in p.read_text())
+                   if imports.search(p.read_text()) and p.name != "tavily_client.py")
+    users += sorted(str(p.relative_to(root)) for p in (root / "routers").rglob("*.py") if imports.search(p.read_text()))
     assert users == ["services/apollo_kb.py"]
 
 

@@ -365,6 +365,8 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 
 **What the server keeps, and for how long**
 - **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
+- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if Apollo's own clean-up has stopped, and it is never served after that.
+- **On the phone, the person decides.** The pictures and originals kept on the phone stay until the person removes them or deletes the check they belong to.
 - **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content (see Ask Higgins).
 - **Saved AI answers:** kept only when the question holds no secret and no personal detail (see Apollo's knowledge base).
 

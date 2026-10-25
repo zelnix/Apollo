@@ -69,6 +69,8 @@ def test_the_privacy_rules_match_the_code():
         f"other values over {llm_boundary._MAX_PARAM_VALUE_LEN} characters are cut",
         f"any link over {llm_boundary._MAX_URL_LEN} characters is cut",
         f"expires {capacity.LIFETIME_SECONDS // 60} minutes after it opens",
+        f"deleted from the server within {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours of the investigation finishing",
+        f"The database removes it by itself at {capacity.EVIDENCE_RETENTION_SECONDS // 3600} hours",
         f"the question and answer for {int(chat_memory.CHAT_CONTENT_TTL.total_seconds() // 60)} minutes",
     ]
     missing = [phrase for phrase in expected if phrase not in section]

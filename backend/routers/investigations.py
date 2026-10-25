@@ -1066,6 +1066,7 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
         outcome = "completed" if current_job["status"] in ("complete", "completed") else "failed" if current_job["status"] == "failed" else "superseded"
         return JSONResponse({"status": current_job["status"], "outcome": outcome, "cleanupStatus": "not_required", "cancelled": False,
                              "caseRevision": current_case["revision"], "responseRevision": current_case.get("response_revision")}, status_code=200, headers=NO_STORE)
+    await repo.start_deletion_clock(owner, case_id)  # a cancelled check has finished: its 24 hours start now
     await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, updated["revision"], repo.utc(case["expires_at"]))
     return JSONResponse({"status": "cancelled", "outcome": "cancelled", "cleanupStatus": "complete", "cancelled": True,
                          "caseRevision": updated["revision"], "responseRevision": updated.get("response_revision")}, status_code=202, headers=NO_STORE)
