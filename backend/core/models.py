@@ -13,12 +13,25 @@ ApolloState = Literal["sniffing", "resting", "ears_up", "growling", "barking", "
 EventStatus = Literal["active", "trusted", "blocked", "resolved"]
 
 
+DEVICE_TELEMETRY = {"manufacturer", "model", "os_name", "os_version", "country", "installed_at"}
+
+
 class DeviceRegister(BaseModel):
     platform: str = Field(max_length=16)
     adapter_mode: str = Field(max_length=16)
     app_version: str = Field(default="1.0.0", max_length=16)
     tz_offset_minutes: int = Field(default=0, ge=-840, le=840)  # coarse UTC offset; times the Sunday family check-in
     locale: str = Field(default="en-AU", min_length=2, max_length=35)
+    # What the phone is, for the admin Devices list. Older app versions don't send these.
+    manufacturer: Optional[str] = Field(default=None, max_length=64)
+    model: Optional[str] = Field(default=None, max_length=64)
+    os_name: Optional[str] = Field(default=None, max_length=32)
+    os_version: Optional[str] = Field(default=None, max_length=32)
+    country: Optional[str] = Field(default=None, pattern=r"^[A-Z]{2}$")  # from the phone's region setting
+    installed_at: Optional[datetime] = None
+
+    def telemetry(self) -> dict[str, Any]:
+        return {k: v for k, v in self.model_dump(include=DEVICE_TELEMETRY).items() if v is not None}
 
 
 class Device(BaseDocument):
@@ -28,6 +41,12 @@ class Device(BaseDocument):
     app_version: str
     tz_offset_minutes: int = 0
     locale: str = "en-AU"
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    os_name: Optional[str] = None
+    os_version: Optional[str] = None
+    country: Optional[str] = None
+    installed_at: Optional[datetime] = None
     created_at: datetime
     last_seen_at: datetime
 

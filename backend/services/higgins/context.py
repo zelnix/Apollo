@@ -14,6 +14,7 @@ from pydantic import Field
 
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
+from services import device_stats
 from services.higgins.contracts import Wire
 from services.higgins.encryption import decrypt, encrypt
 
@@ -131,13 +132,15 @@ async def add_chat_exchange(owner: str, conversation_id: str, turn_id: str, ques
     now, expires = now_utc(), now_utc() + CHAT_CONTENT_TTL
     await add_chat_message(owner, conversation_id, turn_id, "user", question, expires)
     await add_chat_message(owner, conversation_id, turn_id, "higgins", answer, expires)
-    await db.higgins_chat_receipts.update_one(
+    receipt = await db.higgins_chat_receipts.update_one(
         {"owner_id": owner, "turn_id": turn_id},
         {"$setOnInsert": {"owner_id": owner, "turn_id": turn_id, "conversation_id": conversation_id,
                           "classification": classification, "context_sources": context_sources,
                           "investigation_available": investigation_available, "created_at": now,
                           "content_expires_at": expires, "expires_at": now + CHAT_RECEIPT_TTL,
                           "retention_class": "ordinary_chat_non_content_receipt"}}, upsert=True)
+    if receipt.upserted_id is not None:  # a new question, not a retry of the same turn
+        await device_stats.bump(owner, "ask_higgins")
     return expires
 
 

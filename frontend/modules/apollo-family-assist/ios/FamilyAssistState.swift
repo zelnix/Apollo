@@ -12,11 +12,14 @@ struct FamilyAssistState: Equatable {
   var lastTransitionAt: String
   var failureCode: String? = nil
   var endReason: String? = nil
+  /// How the picture travels once connected: connecting, direct, relayed or reconnecting (nil when no session).
+  var connectionPath: String? = nil
 
   static let idle = "idle"
   /// States from which a new capture or viewer may take over.
   static let idleStates: Set<String> = [idle, "stopped", "failed"]
   static let terminalStates: Set<String> = ["stopped", "failed"]
+  static let connectionPaths: Set<String> = ["connecting", "direct", "relayed", "reconnecting"]
 
   func owns(_ sessionId: String?, _ generation: String?) -> Bool {
     guard let sessionId, let generation else { return false }
@@ -30,7 +33,7 @@ struct FamilyAssistState: Equatable {
       "sessionId": bridged(sessionId), "generation": bridged(generation), "captureState": captureState,
       "helperConnected": helperConnected, "captureScope": bridged(captureScope), "microphoneEnabled": false,
       "startedAt": bridged(startedAt), "lastTransitionAt": lastTransitionAt, "failureCode": bridged(failureCode),
-      "endReason": bridged(endReason),
+      "endReason": bridged(endReason), "connectionPath": bridged(connectionPath),
     ]
   }
 }
@@ -77,7 +80,18 @@ final class FamilyAssistStateStore {
     next.endReason = reason
     next.helperConnected = ended ? false : (helperConnected ?? now.helperConnected)
     if markStarted { next.startedAt = clock() }
+    if ended { next.connectionPath = nil }
     current = next
+    return true
+  }
+
+  /// Records how the current session's picture travels. Returns false, changing nothing, for another session, an ended
+  /// session, an unknown path or the path it already has, so an event goes to JS only when the path really changed.
+  func setConnectionPath(sessionId: String?, generation: String?, path: String) -> Bool {
+    lock.lock(); defer { lock.unlock() }
+    if !current.owns(sessionId, generation) || FamilyAssistState.terminalStates.contains(current.captureState) { return false }
+    if !FamilyAssistState.connectionPaths.contains(path) || current.connectionPath == path { return false }
+    current.connectionPath = path
     return true
   }
 }
@@ -89,6 +103,14 @@ enum FamilyAssistDates {
   /// options reject fractional seconds, so they are dropped before parsing (sub-second precision is not needed here).
   static func parse(_ value: String) -> Date? {
     ISO8601DateFormatter().date(from: value.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression))
+  }
+}
+
+/// The route of the selected ICE pair: "relayed" when either end is a relay (TURN) candidate, otherwise "direct".
+/// A candidate line names its type after "typ": host, srflx, prflx or relay. (The Broadcast extension keeps its own copy.)
+enum FamilyAssistRoute {
+  static func path(local: String, remote: String) -> String {
+    [local, remote].contains { $0.range(of: #"\btyp relay\b"#, options: .regularExpression) != nil } ? "relayed" : "direct"
   }
 }
 

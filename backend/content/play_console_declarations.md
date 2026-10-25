@@ -33,11 +33,11 @@ happens if Android delays or stops it, and give a video link.
 | `GuardDogVpnService` | `systemExempted` (a VPN configured in Android's VPN settings) | Website protection keeps blocking scam sites while ApolloSG is in the background. If stopped, scam sites aren't blocked until the user reopens ApolloSG. | Turning website protection on in ApolloSG, the VPN key icon, and a blocked site while ApolloSG is in the background. |
 | `FamilyAssistProjectionService` | `mediaProjection` | Family Assist: the person chooses to share their screen with a linked family helper so they can be guided through a suspicious situation. If stopped, the share ends and the helper sees nothing. | The person tapping *Share my screen* in Family Assist, Android's screen-capture consent dialog, and the helper seeing the screen. |
 
-## 3. Notification access: Text Guard
+## 3. Notification access: Text Gate
 
 Notification access isn't a Play declaration form, but Play's User Data policy requires the following:
 
-- **In the app, before Android's settings open:** Text Guard's setup screen (`app/text-guard.tsx`) explains
+- **In the app, before Android's settings open:** Text Gate's setup screen (`app/text-guard.tsx`) explains
   that Apollo reads incoming text *notifications* from the default messaging app to check them for scams,
   that it's optional, and how to turn it off. Keep that screen before the *Turn on notification access* button.
 - **Data safety form:** declare *Messages → Other in-app messages / SMS*: collected, processed for app

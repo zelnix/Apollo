@@ -28,6 +28,7 @@ from typing import Optional
 from google.genai import types
 
 from core.db import db, now_utc
+from services import device_stats
 from services.higgins import evidence as ev
 from services.higgins import explain
 from services.higgins import provider
@@ -131,6 +132,9 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {
             "routing.answeredBy": provider_result.answered_by, "routing.assessment": response.assessment,
             "routing.completion": response.completion, "routing.answeredAt": now_utc()}})
+        counter = device_stats.investigator(provider_result.answered_by)
+        if counter:
+            await device_stats.bump(owner, counter)
     if response.outcome:
         # Apollo's case outcome — the latest one, from whichever layer answered.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"routing.outcome": response.outcome}})

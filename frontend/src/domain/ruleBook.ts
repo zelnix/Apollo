@@ -1,18 +1,18 @@
 // Apollo's rule book (backend/content/rulebook.md) turned into blocks the app can render, word for word.
-// Handles exactly what the book uses: headings (with an optional {#id}), paragraphs, bullet and numbered
+// Handles exactly what the book uses: headings (levels 1–4, with an optional {#id}), paragraphs, bullet and numbered
 // lists (one level of nesting), tables, horizontal rules, **bold**, *italic* / _italic_ and `code`.
 // Pure: no React, no native imports.
 
 export interface Span { text: string; bold?: boolean; italic?: boolean; code?: boolean }
 export interface ListItem { depth: number; marker: string; spans: Span[] }
 export type Block =
-  | { kind: "heading"; level: 1 | 2 | 3; text: string; id: string | null }
+  | { kind: "heading"; level: 1 | 2 | 3 | 4; text: string; id: string | null }
   | { kind: "paragraph"; spans: Span[]; indent: boolean }
   | { kind: "list"; items: ListItem[] }
   | { kind: "table"; headers: string[]; rows: Span[][][] }
   | { kind: "rule" };
 
-const HEADING = /^(#{1,3})\s+(.*?)(?:\s*\{#([\w-]+)\})?\s*$/;
+const HEADING = /^(#{1,4})\s+(.*?)(?:\s*\{#([\w-]+)\})?\s*$/;
 const LIST_ITEM = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
 const INLINE = /\*\*([^*]+?)\*\*|`([^`]+)`|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_/g;
 
@@ -58,7 +58,7 @@ export function parseRuleBook(markdown: string): Block[] {
     const heading = HEADING.exec(line);
     if (heading) {
       flush();
-      blocks.push({ kind: "heading", level: heading[1].length as 1 | 2 | 3, text: heading[2], id: heading[3] ?? null });
+      blocks.push({ kind: "heading", level: heading[1].length as 1 | 2 | 3 | 4, text: heading[2], id: heading[3] ?? null });
       continue;
     }
     if (/^\s*-{3,}\s*$/.test(line)) { flush(); blocks.push({ kind: "rule" }); continue; }
@@ -108,6 +108,8 @@ export function reviewedLabel(isoDate: string | null | undefined): string | null
 }
 
 export interface RuleBookSection { id: string; title: string; blocks: Block[] }
+/** One of the book's parts (Protection Gates, Investigation process…): its own lead text, then its sections. */
+export interface RuleBookGroup { id: string; title: string; blocks: Block[]; sections: RuleBookSection[] }
 
 const ANDROID_LABEL = /\(Android\)\s*$/;
 
@@ -139,20 +141,24 @@ export function forPlatform(blocks: Block[], platform: string): Block[] {
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-/** The book as the app shows it: the intro, then one section per level-2 heading, each opened by a tap.
- *  The "---" lines between sections are dropped, because each section is its own card. */
-export function sectionsOf(blocks: Block[]): { intro: Block[]; sections: RuleBookSection[] } {
+/** The book as the app shows it: the intro, then its parts (level-2 headings), each holding its sections
+ *  (level-3 headings), and each section opened by a tap. The "---" lines between parts are dropped, because each
+ *  section is its own card. */
+export function sectionsOf(blocks: Block[]): { intro: Block[]; groups: RuleBookGroup[] } {
   const intro: Block[] = [];
-  const sections: RuleBookSection[] = [];
+  const groups: RuleBookGroup[] = [];
   for (const block of blocks) {
-    if (block.kind === "heading" && block.level === 2) sections.push({ id: block.id ?? slug(block.text), title: block.text, blocks: [] });
-    else (sections.length ? sections[sections.length - 1].blocks : intro).push(block);
+    const group = groups[groups.length - 1];
+    if (block.kind === "heading" && block.level === 2) groups.push({ id: block.id ?? slug(block.text), title: block.text, blocks: [], sections: [] });
+    else if (block.kind === "heading" && block.level === 3 && group) group.sections.push({ id: block.id ?? slug(block.text), title: block.text, blocks: [] });
+    else if (!group) intro.push(block);
+    else (group.sections.length ? group.sections[group.sections.length - 1].blocks : group.blocks).push(block);
   }
   const trim = (list: Block[]) => {
     while (list.length && list[list.length - 1].kind === "rule") list.pop();
     while (list.length && list[0].kind === "rule") list.shift();
   };
   trim(intro);
-  sections.forEach((section) => trim(section.blocks));
-  return { intro, sections };
+  groups.forEach((group) => { trim(group.blocks); group.sections.forEach((section) => trim(section.blocks)); });
+  return { intro, groups };
 }

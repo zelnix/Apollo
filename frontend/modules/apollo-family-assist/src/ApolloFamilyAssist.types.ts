@@ -1,6 +1,8 @@
 export type CaptureScope = "apollo_app" | "selected_app" | "full_display";
 export type CaptureState = "idle" | "requesting_consent" | "starting" | "active" | "paused" | "stopping" | "stopped" | "failed";
-export type FamilyAssistNativeEvent = "consent_shown" | "consent_denied" | "capture_started" | "capture_paused" | "capture_stopped" | "helper_connected" | "helper_disconnected" | "transport_degraded" | "capture_failed";
+export type FamilyAssistNativeEvent = "consent_shown" | "consent_denied" | "capture_started" | "capture_paused" | "capture_stopped" | "helper_connected" | "helper_disconnected" | "transport_degraded" | "capture_failed" | "connection_changed";
+/** How the picture travels: still connecting, straight between the phones, through the relay, or restoring a dropped link. */
+export type ConnectionPath = "connecting" | "direct" | "relayed" | "reconnecting";
 
 export interface FamilyAssistCapabilities {
   platform: "android" | "ios" | "windows" | "macos";
@@ -19,6 +21,7 @@ export interface FamilyAssistNativeState {
   helperConnected: boolean; captureScope: CaptureScope | null; microphoneEnabled: false;
   startedAt: string | null; lastTransitionAt: string; failureCode: string | null;
   endReason?: string | null;
+  connectionPath?: ConnectionPath | null;
 }
 
 export interface FamilyAssistNativeEventPayload extends FamilyAssistNativeState {

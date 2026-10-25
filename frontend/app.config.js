@@ -78,6 +78,8 @@ module.exports = {
           "NSPrivacyCollectedDataTypeName",
           "NSPrivacyCollectedDataTypeOtherUserContent",
           "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+          // How many times each feature was used (counts only), for the admin Devices list.
+          "NSPrivacyCollectedDataTypeProductInteraction",
         ].map((type) => ({
           NSPrivacyCollectedDataType: type,
           NSPrivacyCollectedDataTypeLinked: true,

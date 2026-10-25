@@ -442,8 +442,8 @@ export default function CheckMessage() {
         {!canPickSms && !isEmail ? (
           <Card testID="message-other-ways" style={{ gap: spacing.sm }}>
             {Platform.OS === "android" ? <>
-              <Body testID="message-other-ways-textguard">Text Guard can check new texts as they arrive, using notification access you turn on in Android&apos;s settings.</Body>
-              <Button testID="message-open-textguard" variant="secondary" label="Set up Text Guard" onPress={() => router.push("/text-guard")} />
+              <Body testID="message-other-ways-textguard">Text Gate can check new texts as they arrive, using notification access you turn on in Android&apos;s settings.</Body>
+              <Button testID="message-open-textguard" variant="secondary" label="Set up Text Gate" onPress={() => router.push("/text-guard")} />
             </> : null}
             <Body testID="message-other-ways-share">You can also copy a message and paste it above, or use a screenshot. If the app the message is in offers Share, you can share it straight to ApolloSG.</Body>
           </Card>

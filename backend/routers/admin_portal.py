@@ -21,7 +21,7 @@ import httpx
 import markdown
 from dotenv import load_dotenv
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from core.db import db, now_utc
 from core import local_time
@@ -58,6 +58,8 @@ NAV = [
     ("Intelligence Reuse", "/api/admin/intel-reuse",   "&#9851;"),
     ("Rule Book",       "/api/admin/rule-book",        "&#128214;"),
     ("Play Store",      "/api/admin/play-console",     "&#9654;"),
+    ("Family Help Test", "/api/admin/family-help-test", "&#128241;"),
+    ("Devices",         "/api/admin/device-list",      "&#128242;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
@@ -71,6 +73,7 @@ REPORTS = {
     "gemini-usage-investigation": ("GEMINI_USAGE_INVESTIGATION.md", "Gemini Usage Investigation — Root Cause Analysis"),
     "gemini-usage-tracking": ("GEMINI_USAGE_TRACKING_REPORT.md", "Gemini Usage Tracking Report"),
     "play-console": ("content/play_console_declarations.md", "Google Play Console declarations"),
+    "family-help-test": ("content/family_help_two_phone_test.md", "Family Help two-phone test"),
 }
 
 
@@ -3090,12 +3093,18 @@ details.rb-section>summary::-webkit-details-marker{display:none;}
 details.rb-section>summary::before{content:"\\25B8";font-size:0.9rem;color:var(--muted);}
 details.rb-section[open]>summary::before{content:"\\25BE";}
 details.rb-section>summary h2{display:inline;margin:0;font-size:1.1rem;}
+details.rb-section>summary h3{display:inline;margin:0;font-size:1.05rem;}
 details.rb-section>.rb-body{padding:0 16px 12px;}
+.rb-body li{margin:4px 0;}
+.rb-body ol,.rb-body ul{padding-left:24px;margin:6px 0 10px;}
+section.rb-group{margin:26px 0 8px;}
+section.rb-group>h2{font-size:1.3rem;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+section.rb-group>.rb-lead{color:var(--muted);margin:6px 0;}
 </style>"""
 
 _RULE_BOOK_SCRIPT = """<script>
 (function(){
-  function openFromHash(){var id=decodeURIComponent(location.hash.slice(1));var el=id&&document.getElementById(id);if(el&&el.tagName==='DETAILS'){el.open=true;el.scrollIntoView();}}
+  function openFromHash(){var id=decodeURIComponent(location.hash.slice(1));var el=id&&document.getElementById(id);if(el){if(el.tagName==='DETAILS'){el.open=true;}el.scrollIntoView();}}
   window.addEventListener('hashchange',openFromHash);openFromHash();
   document.querySelectorAll('[data-rb-all]').forEach(function(b){b.addEventListener('click',function(){var open=b.getAttribute('data-rb-all')==='open';document.querySelectorAll('details.rb-section').forEach(function(d){d.open=open;});});});
 })();
@@ -3104,21 +3113,77 @@ _RULE_BOOK_SCRIPT = """<script>
 _SECTION_HEADING = re.compile(r"^##\s+(.*?)(?:\s*\{#([\w-]+)\})?\s*$")
 
 
+_BOOK_ITEM = re.compile(r"^( *)([-*]|\d+\.)\s+(.*)$")
+
+
+def _blank_lines_for_markdown(text: str) -> str:
+    """The book is written for the app's reader (frontend/src/domain/ruleBook.ts), which starts a list or a table on
+    the line straight after a paragraph and nests items indented 2–3 spaces. Python-Markdown needs a blank line before
+    a list or table and 4 spaces per level; without them every item and table row ran into one paragraph. This adds
+    only blank lines and indentation, so the words stay exactly the same."""
+    out: list[str] = []
+    prev = "blank"
+    for line in text.split("\n"):
+        item = _BOOK_ITEM.match(line)
+        if not line.strip():
+            kind = "blank"
+        elif line.lstrip().startswith("|"):
+            kind = "table"
+        elif re.match(r"^\s*-{3,}\s*$", line):
+            kind = "rule"
+        elif item:
+            kind = "item"
+            line = "    " * min(2, round(len(item.group(1)) / 3)) + f"{item.group(2)} {item.group(3)}"
+        elif prev in ("item", "more") and line.startswith(" "):
+            kind = "more"  # a wrapped continuation of the item above
+        else:
+            kind = "text"
+        if prev != "blank" and kind != "blank" and kind != prev and {prev, kind} != {"item", "more"}:
+            out.append("")
+        out.append(line)
+        prev = kind
+    return "\n".join(out)
+
+
+def _book_md(part: str) -> str:
+    return markdown.markdown(_blank_lines_for_markdown(part), extensions=["tables", "fenced_code", "toc", "attr_list", "sane_lists"])
+
+
+_BOOK_TOOLS = ('<button class="btn btn-sm" type="button" data-rb-all="open" data-testid="rule-book-open-all">Open all</button>'
+               '<button class="btn btn-sm" type="button" data-rb-all="close" data-testid="rule-book-close-all">Close all</button>')
+
+
+def _book_section(anchor: str, title: str, body: str, heading: str) -> str:
+    return (f'<details class="rb-section" id="{html_mod.escape(anchor)}" data-testid="rule-book-section-{html_mod.escape(anchor)}">'
+            f'<summary><{heading}>{html_mod.escape(title)}</{heading}></summary><div class="rb-body">{_book_md(body)}</div></details>')
+
+
 def _rule_book_sections(text: str) -> str:
-    """The intro stays open; every `## ` section becomes its own closed <details>, opened by a tap, by
-    "Open all", or by a link to its id (#settling-rules)."""
-    intro, *sections = text.split("\n## ")
-    md = lambda part: markdown.markdown(part, extensions=["tables", "fenced_code", "toc", "attr_list"])  # noqa: E731
-    out = [md(intro), '<div class="rb-tools"><button class="btn btn-sm" type="button" data-rb-all="open" data-testid="rule-book-open-all">Open all</button>'
-           '<button class="btn btn-sm" type="button" data-rb-all="close" data-testid="rule-book-close-all">Close all</button></div>']
-    for section in sections:
-        heading, _, body = section.partition("\n")
-        match = _SECTION_HEADING.match(f"## {heading}")
-        title, anchor = (match.group(1), match.group(2)) if match else (heading, None)
-        anchor = anchor or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-        body = re.sub(r"\n-{3,}\s*$", "", body.rstrip())
-        out.append(f'<details class="rb-section" id="{html_mod.escape(anchor)}" data-testid="rule-book-section-{html_mod.escape(anchor)}">'
-                   f'<summary><h2>{html_mod.escape(title)}</h2></summary><div class="rb-body">{md(body)}</div></details>')
+    """A guide in closed sections (the Play Console guide, the Family Help two-phone test): the intro stays open;
+    every `## ` section becomes its own closed <details>, opened by a tap, by "Open all", or by a link to its id.
+    Every list item and table row is its own line."""
+    from services.rulebook_export import split_sections
+    intro, sections = split_sections(text)
+    out = [_book_md(intro), f'<div class="rb-tools">{_BOOK_TOOLS}</div>']
+    out += [_book_section(section["id"], section["title"], section["markdown"], "h2") for section in sections]
+    return "".join(out)
+
+
+def _rule_book_groups(text: str) -> str:
+    """The rule book: the intro stays open, each part (Protection Gates, Investigation process…) is a heading, and
+    every section under it (Link Gate, TC FlyBy…) is its own closed <details>, as in the app."""
+    from services.rulebook_export import split_groups
+    intro, groups = split_groups(text)
+    out = [_book_md(intro), f'<div class="rb-tools">{_BOOK_TOOLS}'
+           '<a class="btn btn-sm" href="/api/admin/rule-book/download/pdf" data-testid="rule-book-download-pdf">Download PDF</a>'
+           '<a class="btn btn-sm" href="/api/admin/rule-book/download/json" data-testid="rule-book-download-json">Download JSON</a></div>']
+    for group in groups:
+        gid = html_mod.escape(group["id"])
+        out.append(f'<section class="rb-group" id="{gid}" data-testid="rule-book-group-{gid}"><h2>{html_mod.escape(group["title"])}</h2>')
+        if group["intro"]:
+            out.append(f'<div class="rb-lead">{_book_md(group["intro"])}</div>')
+        out += [_book_section(section["id"], section["title"], section["markdown"], "h3") for section in group["sections"]]
+        out.append("</section>")
     return "".join(out)
 
 
@@ -3131,7 +3196,7 @@ def _rule_book_html() -> str:
               f'{", ".join(html_mod.escape(p) for p in behind)} changed since it was last reviewed. Update '
               f'<code>backend/content/rulebook.md</code>, then run <code>python scripts/rulebook_stamp.py</code>.</div>' if behind else
               '<div class="alert alert-ok" data-testid="rule-book-in-step">In step with the code: every rule-defining file matches the last review.</div>')
-    body = _rule_book_sections(rulebook.read()["markdown"])
+    body = _rule_book_groups(rulebook.read()["markdown"])
     return f'{_RULE_BOOK_STYLE}{banner}<article data-testid="rule-book">{body}</article>{_RULE_BOOK_SCRIPT}'
 
 
@@ -3142,6 +3207,25 @@ async def rule_book_page(request: Request):
         return _login_redirect()
     await _audit_log(adm.get("email", ""), "view_rule_book")
     return _shell("Rule Book", "/api/admin/rule-book", _rule_book_html(), admin=adm)
+
+
+_RULE_BOOK_DOWNLOADS = {"json": "application/json", "pdf": "application/pdf"}
+
+
+@router.get("/admin/rule-book/download/{kind}")
+async def rule_book_download(kind: str, request: Request):
+    """The whole rule book as a file: JSON (every section, word for word) or PDF."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    if kind not in _RULE_BOOK_DOWNLOADS:
+        return JSONResponse({"detail": "Choose json or pdf."}, status_code=404)
+    import asyncio
+    from services import rulebook_export
+    await _audit_log(adm.get("email", ""), f"download_rule_book_{kind}")
+    data = await asyncio.to_thread(rulebook_export.as_pdf if kind == "pdf" else rulebook_export.as_json)
+    return Response(data, media_type=_RULE_BOOK_DOWNLOADS[kind],
+                    headers={"Content-Disposition": f'attachment; filename="{rulebook_export.filename(kind)}"', "Cache-Control": "no-store"})
 
 
 # ── Play Store: the Google Play Console declarations checklist ────────────────
@@ -3161,6 +3245,184 @@ async def play_console_page(request: Request):
             f'data-testid="play-console-pdf">Download PDF</a></div>'
             f'{_RULE_BOOK_STYLE}<article data-testid="play-console-guide">{_rule_book_sections(PLAY_CONSOLE_GUIDE.read_text())}</article>{_RULE_BOOK_SCRIPT}')
     return _shell("Play Store", "/api/admin/play-console", body, admin=adm)
+
+
+# ── Family Help: the two-phone test checklist ─────────────────────────────────
+
+FAMILY_HELP_TEST_GUIDE = REPORT_DIR / "content" / "family_help_two_phone_test.md"
+
+
+def _family_help_ready_html() -> str:
+    """The banner the checklist's first step looks for: is this server set up to run Family Help?"""
+    from services.family_assist.config import load_config
+    config = load_config()
+    if config.available:
+        return ('<div class="alert alert-ok" data-testid="family-help-server-ready"><strong>Server ready</strong> — '
+                'Family Help is switched on and its secure relay is set up on this server.</div>')
+    missing = ([] if config.enabled else ["Family Help is switched off (FAMILY_ASSIST_ENABLED)"]) + \
+              ([] if config.turn_valid else ["the Cloudflare relay keys are missing or invalid"])
+    return (f'<div class="alert alert-critical" data-testid="family-help-server-not-ready"><strong>Server not ready</strong> — '
+            f'{html_mod.escape("; ".join(missing))}. Both phones will show "Not available yet".</div>')
+
+
+def _phone_label(device: Optional[dict]) -> str:
+    if not device:
+        return "—"
+    name = " ".join(p for p in (device.get("manufacturer"), device.get("model")) if p) or (device.get("platform") or "?").title()
+    system = " ".join(p for p in (device.get("os_name"), device.get("os_version")) if p)
+    return html_mod.escape(f"{name} ({system})" if system else name)
+
+
+def _session_length(row: dict) -> str:
+    start, end = row.get("activated_at"), row.get("ended_at")
+    if not start or not end:
+        return "—"
+    seconds = int((end - start).total_seconds())
+    return f"{seconds // 60}m {seconds % 60:02d}s"
+
+
+async def _family_help_sessions_html() -> str:
+    rows = await db.family_assist_sessions.find({}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
+    ids = {r.get(k) for r in rows for k in ("sharer_device_id", "helper_device_id") if r.get(k)}
+    phones = {d["device_id"]: d async for d in db.devices.find({"device_id": {"$in": list(ids)}}, {"_id": 0, "token_hash": 0})}
+    body = "".join(
+        f"<tr><td>{_t(r.get('created_at'), 'short')}</td><td>{_phone_label(phones.get(r.get('sharer_device_id')))}</td>"
+        f"<td>{_phone_label(phones.get(r.get('helper_device_id')))}</td><td>{html_mod.escape(str(r.get('capture_scope') or '—'))}</td>"
+        f"<td>{html_mod.escape(str(r.get('state') or '—'))}</td>"
+        f"<td>{html_mod.escape(' · '.join(str(v) for v in (r.get('end_reason'), r.get('failure_code')) if v) or '—')}</td>"
+        f"<td>{_session_length(r)}</td><td>{'Yes' if r.get('ever_paused') else 'No'}</td></tr>" for r in rows)
+    return (f'<h2 id="recent-sessions">Recent Family Help sessions</h2><table data-testid="family-help-sessions"><thead><tr>'
+            f'<th>Started</th><th>Phone A (sharing)</th><th>Phone B (helping)</th><th>Shared</th><th>State</th><th>How it ended</th>'
+            f'<th>Sharing time</th><th>Paused</th></tr></thead><tbody>'
+            f'{body or "<tr><td colspan=8 style=color:var(--muted);>No Family Help sessions yet.</td></tr>"}</tbody></table>')
+
+
+@router.get("/admin/family-help-test", response_class=HTMLResponse)
+async def family_help_test_page(request: Request):
+    """The two-phone Family Help test, word for word from content/family_help_two_phone_test.md, with tick boxes,
+    whether this server is ready, and the latest sessions (how each one ended)."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    await _audit_log(adm.get("email", ""), "view_family_help_test")
+    guide = FAMILY_HELP_TEST_GUIDE.read_text().replace("- [ ] ", '- <input type="checkbox" class="fh-tick"> ')
+    body = (f'<div class="topbar-row"><span></span><a href="/api/admin/reports/family-help-test/pdf" class="btn btn-sm" '
+            f'data-testid="family-help-test-pdf">Download PDF</a></div>{_family_help_ready_html()}'
+            f'{_RULE_BOOK_STYLE}<article data-testid="family-help-test-guide">{_rule_book_sections(guide)}</article>'
+            f'{await _family_help_sessions_html()}{_RULE_BOOK_SCRIPT}')
+    return _shell("Family Help Test", "/api/admin/family-help-test", body, admin=adm,
+                  extra_css=".fh-tick{margin-right:6px;transform:scale(1.15);vertical-align:middle;}")
+
+
+# ── Devices: every registered phone, what it is, and how much each feature was used ──
+
+_DEVICE_PAGE_SIZE = 50
+_PLATFORMS = ("android", "ios", "web")
+_OS_NAMES = {"android": "Android", "ios": "iOS", "web": "Web"}
+_COUNT_COLUMNS = (("tc_flyby", "TC FlyBy"), ("magnum_di", "Magnum DI"), ("ask_higgins", "Ask Higgins"),
+                  ("device_checks", "Device checks"), ("learn_read", "Learn with Higgins read"), ("scam_alerts_read", "Scam alerts read"))
+
+
+def _device_row(d: dict) -> str:
+    from services import device_stats
+    esc = html_mod.escape
+    n = device_stats.counts(d)
+    installed = _t(d["installed_at"], "short") if d.get("installed_at") else f'{_t(d.get("created_at"), "short")}*'
+    cells = "".join(f"<td class='num'>{n[key]:,}</td>" for key, _ in _COUNT_COLUMNS)
+    return (f"<tr><td><code title='{esc(d['device_id'])}'>{esc(d['device_id'][:8])}</code></td>"
+            f"<td>{esc(d.get('manufacturer') or '—')}</td><td>{esc(d.get('model') or '—')}</td>"
+            f"<td>{esc(d.get('os_name') or _OS_NAMES.get(d.get('platform') or '', d.get('platform') or '—'))}</td>"
+            f"<td>{esc(d.get('os_version') or '—')}</td><td>{esc(d.get('country') or '—')}</td><td>{installed}</td>"
+            f"<td>{esc(d.get('app_version') or '—')}</td>{cells}<td>{_t(d.get('last_seen_at'), 'short')}</td></tr>")
+
+
+async def _last_reset_html(just_reset: bool) -> str:
+    last = await db.admin_audit.find_one({"action": "reset_stats"}, {"_id": 0}, sort=[("timestamp", -1)])
+    if not last:
+        return '<p style="color:var(--muted);">Stats have never been reset.</p>'
+    cls = "alert alert-ok" if just_reset else ""
+    return (f'<div class="{cls}" data-testid="stats-last-reset" style="margin:8px 0;"><strong>Stats last reset</strong> '
+            f'{_t(last.get("timestamp"))} — {html_mod.escape(str(last.get("detail", "")))}</div>')
+
+
+def _reset_form_html() -> str:
+    from services.stats_reset import WHAT_IS_KEPT, WHAT_IS_RESET
+    items = "".join(f"<li>{html_mod.escape(i)}</li>" for i in WHAT_IS_RESET)
+    return f"""<details class="reset-box" data-testid="reset-stats-box"><summary><strong>Reset Stats</strong> — set every count in the
+    admin panel back to zero</summary>
+    <p>This permanently deletes:</p><ul>{items}</ul>
+    <p>It keeps {html_mod.escape(", ".join(WHAT_IS_KEPT))}. It can't be undone.</p>
+    <form method="post" action="/api/admin/reset-stats" onsubmit="return confirm('Permanently delete all usage and cost records and set every count to zero?');">
+      <label>Type <code>RESET</code> to confirm <input name="confirm" required pattern="RESET" autocomplete="off" data-testid="reset-stats-confirm"></label>
+      <button class="btn btn-danger" type="submit" data-testid="reset-stats-button">Reset Stats</button>
+    </form></details>"""
+
+
+@router.get("/admin/device-list", response_class=HTMLResponse)
+async def device_list_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import device_stats
+    platform = request.query_params.get("platform", "")
+    query = {"platform": platform} if platform in _PLATFORMS else {}
+    page = int(request.query_params.get("page", "1")) if request.query_params.get("page", "1").isdigit() else 1
+    page = max(page, 1)
+    total = await db.devices.count_documents(query)
+    pages = max(1, -(-total // _DEVICE_PAGE_SIZE))
+    page = min(page, pages)
+    rows = await db.devices.find(query, {"_id": 0, "token_hash": 0}).sort("last_seen_at", -1) \
+        .skip((page - 1) * _DEVICE_PAGE_SIZE).limit(_DEVICE_PAGE_SIZE).to_list(_DEVICE_PAGE_SIZE)
+    sums = await device_stats.totals()
+    cards = _stat_card(f"{total:,}", "Devices" + (f" ({_OS_NAMES[platform]})" if query else "")) + \
+        "".join(_stat_card(f"{sums[key]:,}", label) for key, label in _COUNT_COLUMNS)
+    filters = " ".join(f'<a class="btn btn-sm{" active" if platform == p else ""}" href="/api/admin/device-list{"?platform=" + p if p else ""}" '
+                       f'data-testid="device-filter-{p or "all"}">{_OS_NAMES.get(p, "All")}</a>' for p in ("", *_PLATFORMS))
+    link = lambda n: f"/api/admin/device-list?{urlencode({**({'platform': platform} if query else {}), 'page': n})}"  # noqa: E731
+    newer = f'<a class="btn btn-sm" href="{link(page - 1)}" data-testid="device-page-newer">&larr; Newer</a>' if page > 1 else ""
+    older = f'<a class="btn btn-sm" href="{link(page + 1)}" data-testid="device-page-older">Older &rarr;</a>' if page < pages else ""
+    pager = f'<div class="pager" data-testid="device-pager">{newer}<span>Page {page:,} of {pages:,}</span>{older}</div>'
+    head = "".join(f"<th>{h}</th>" for h in ("ID", "Manufacturer", "Model", "OS", "OS version", "Country", "Date installed",
+                                              "App version", *(label for _, label in _COUNT_COLUMNS), "Last seen"))
+    body = f"""
+    {await _last_reset_html(request.query_params.get("reset") == "done")}
+    {_reset_form_html()}
+    <h2>Totals</h2><div class="stats-grid" data-testid="device-totals">{cards}</div>
+    <h2>Devices</h2>
+    <div class="topbar-row"><span>{filters}</span>{pager}</div>
+    <div class="table-scroll"><table data-testid="device-table"><thead><tr>{head}</tr></thead>
+    <tbody>{"".join(_device_row(d) for d in rows) or '<tr><td colspan="15" style="color:var(--muted);">No devices.</td></tr>'}</tbody></table></div>
+    <p style="color:var(--muted);font-size:0.82em;">Newest activity first. Make, model, system, country (from the phone's
+    region setting) and install date arrive the next time each phone opens the app; phones on an older version show —.
+    * the phone didn't report its install date, so this is when it first registered with ApolloSG. Learn and scam alert
+    reads count different ones opened.</p>"""
+    css = (".main{max-width:none;min-width:0;} .table-scroll{overflow-x:auto;max-width:100%;}"
+           " .table-scroll table{font-size:0.8em;white-space:nowrap;}"
+           " td.num{text-align:right;} .btn.active{border-color:var(--accent);color:#fff;} .pager{display:flex;gap:12px;align-items:center;}"
+           " .reset-box{background:var(--card);border:1px solid rgba(248,81,73,0.35);border-radius:10px;padding:12px 16px;margin:12px 0;}"
+           " .reset-box summary{cursor:pointer;} .reset-box ul{margin:6px 0 8px 22px;} .reset-box p{margin:8px 0;}"
+           " .reset-box input{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 8px;margin:0 8px;}"
+           " .btn-danger{border-color:var(--red);color:var(--red);} .btn-danger:hover{background:rgba(248,81,73,0.12);color:#fff;}")
+    return _shell("Devices", "/api/admin/device-list", body, admin=adm, extra_css=css)
+
+
+@router.post("/admin/reset-stats")
+async def reset_stats(request: Request):
+    """Permanently deletes the usage and cost records and zeroes every count (services/stats_reset.py)."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from urllib.parse import parse_qs
+    from services.stats_reset import reset_stats as run_reset
+    sent = parse_qs((await request.body()).decode("utf-8", "replace")).get("confirm", [""])[0]
+    if sent.strip() != "RESET":
+        return HTMLResponse("Type RESET to confirm.", status_code=400)
+    done = await run_reset()
+    detail = (f"{done['gemini_usage']:,} AI usage records, {done['triage_results']:,} triage records, "
+              f"{done['trusted_search_usage'] + done['intel_reuse_metrics']:,} search and reuse records and "
+              f"{done['investigation_cases']:,} finished investigations deleted; counts zeroed on {done['device_counts']:,} devices")
+    await _audit_log(adm.get("email", ""), "reset_stats", detail)
+    return RedirectResponse("/api/admin/device-list?reset=done", status_code=303)
 
 
 # ── Admin Settings ───────────────────────────────────────────────────────────

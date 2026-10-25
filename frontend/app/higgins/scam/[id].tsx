@@ -21,6 +21,7 @@ import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/
 import type { GovernmentAlert } from "@/src/higgins/hubClient";
 import { alertIcon, findAlert, RELEVANCE_LABEL, SEVERITY_TONE, severityLabel, shareScamAlert, shareScamAlertWithFamily, toBullets } from "@/src/higgins/scamAlertUi";
 import { useApollo } from "@/src/store/ApolloContext";
+import { reportActivity } from "@/src/telemetry/activity";
 import Users2 from "lucide-react-native/icons/users-round";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -152,7 +153,7 @@ export default function ScamAlertDetailScreen() {
   };
   useEffect(() => {
     if (!id) { setState("missing"); return; }
-    void findAlert(String(id)).then((a) => { setAlert(a); setState(a ? "ready" : "missing"); }).catch(() => setState("missing"));
+    void findAlert(String(id)).then((a) => { setAlert(a); setState(a ? "ready" : "missing"); if (a) reportActivity("scam_alert_read", a.url); }).catch(() => setState("missing"));
   }, [id]);
 
   const header = (

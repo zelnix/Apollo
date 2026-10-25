@@ -1,3 +1,32 @@
+## Admin: Devices list, Reset Stats, Family Help Test page; device telemetry (2026-10-25)
+**Owner's choices:** checklist + connection status first; country from the phone's region setting; Learn/scam reads
+count *different* ones opened; Reset Stats = "everything, delete the old records" = usage and cost data (incl. admin panel).
+- **Family Help Test** (`/api/admin/family-help-test`, nav item): `content/family_help_two_phone_test.md` in closed
+  sections with tick boxes, a "Server ready / Server not ready" banner (from `services/family_assist/config.load_config`:
+  FAMILY_ASSIST_ENABLED + Cloudflare relay keys; preview currently NOT ready — relay keys missing/invalid), and a
+  "Recent Family Help sessions" table (phones' make/model/system, scope, state, end reason, sharing time, paused).
+  PDF at `/api/admin/reports/family-help-test/pdf` (REPORTS entry).
+- **Connection status** (`src/family-help/ConnectionStatus.tsx`) is wired into `app/family/help/active.tsx` and `view.tsx`.
+- **Device telemetry:** `src/telemetry/deviceInfo.ts` (expo-device make/model/os/version, region-setting country
+  `^[A-Z]{2}$` only, `Application.getInstallationTimeAsync` on native) merged into `deviceMeta()` (now async) for
+  `/devices/register` and `/devices/heartbeat`. Backend `DeviceRegister` optional fields + `telemetry()`; heartbeat only
+  sets the ones sent (older apps leave them alone). Egress allow-list `device_register` extended; new `device_activity`.
+- **Usage counts** on `devices.stats` (`services/device_stats.py`): `tc_flyby`/`magnum_di` bumped on an investigation's
+  first answer (`coordinator._commit`, by `answeredBy`), `ask_higgins` on each new chat receipt (`context.add_chat_exchange`),
+  `device_checks` + `learn_read`/`scam_alerts_read` (sets of 16-char sha256 digests) via `POST /api/devices/activity`
+  (`src/telemetry/activity.ts`, called from recheck, first-check, Learn article, scam alert detail).
+- **Devices page** (`/api/admin/device-list`, nav item): totals, filter All/Android/iOS/Web, 50 per page, newest first;
+  columns ID, Manufacturer, Model, OS, OS version, Country, Date installed (* = first registration when not reported),
+  App version, the six counts, Last seen. (`/api/admin/devices` is the older X-Admin-Key JSON API — different route.)
+- **Reset Stats** (on the Devices page, type RESET + confirm → `POST /api/admin/reset-stats`, `services/stats_reset.py`):
+  deletes gemini_usage, triage_results, trusted_search_usage, intel_reuse_metrics, investigation_cases past expires_at;
+  zeroes higgins_knowledge/reusable_intelligence hits; unsets devices.stats. Keeps devices, family links/sessions, saved
+  reports, Higgins history, KB entries, blocklists, admin_audit (the reset is logged there; page shows "Stats last reset").
+- Privacy: privacy policy "About your phone" bullet, privacyInventory detail, iOS privacy manifest + ProductInteraction,
+  rule book (What may leave the phone; Usage counts) — re-stamped.
+- Tests: backend `tests/test_admin_devices.py` (10; the real reset is tested on a throwaway DB), frontend
+  `tests/deviceTelemetry.test.ts` (5); frontend 970/970, tsc clean. Testing agent not run (needs owner's approval).
+
 ## Family Help — step 6 (Android switched on) + step 10 (iPhone/iPad ReplayKit restored) (2026-10-25)
 **Step 6:** `apollo-family-assist` removed from `package.json` `expo.autolinking.android.exclude` (still in the doctor
 `reactNativeDirectoryCheck.exclude`, like apollo-security). Stage-gate test replaced by an activation test.

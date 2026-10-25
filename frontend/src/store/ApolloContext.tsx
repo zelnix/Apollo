@@ -38,6 +38,7 @@ import { canTransition, resolveApolloState, type StateResolution } from "@/src/d
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
 import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
 import { securityAdapter } from "@/src/security/securityAdapter";
+import { deviceInfo } from "@/src/telemetry/deviceInfo";
 import { simulation } from "@/src/simulation";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
@@ -92,12 +93,13 @@ function logNotifDiagnostic(kind: NotifFailKind, error: unknown, context?: strin
   })).catch(() => undefined);
 }
 
-const deviceMeta = () => ({
+const deviceMeta = async () => ({
   platform: Platform.OS,
   adapter_mode: securityAdapter.kind,
   app_version: APP_VERSION,
   tz_offset_minutes: -new Date().getTimezoneOffset(),
   locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
+  ...(await deviceInfo()),
 });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen", notifPrefs: "apollo.notification.prefs" };
@@ -634,12 +636,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             let identity = await getDeviceIdentity();
             const resetWhy = identity ? null : await getIdentityResetReason();
             if (resetWhy) setIdentityReset(resetWhy); // explicit reset state survives reloads — never re-register silently
-            else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
+            else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, await deviceMeta()); } catch { identity = null; } }
             if (identity) {
               setDeviceId(identity.deviceId);
               // Build the request inside the Promise chain too: egress validation is synchronous, so a
               // future client/server contract mismatch must remain contained like an offline heartbeat.
-              void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
+              void deviceMeta().then((meta) => apiPost("/devices/heartbeat", "device_register", meta)).catch(() => undefined);
               // Live Caller ID PIR — silently write the PIR server URL to shared UserDefaults (iOS)
               // so the LiveCallerIDLookup extension knows where to query. Non-blocking, best-effort.
               if (Platform.OS === "ios") {
@@ -674,7 +676,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const setupDoneRef = useRef(false);
   useEffect(() => { setupDoneRef.current = setupDone; }, [setupDone]);
   const reRegisterDevice = useCallback(async () => {
-    const id = await registerDeviceIdentity(API_BASE, deviceMeta());
+    const id = await registerDeviceIdentity(API_BASE, await deviceMeta());
     setDeviceId(id.deviceId); setIdentityReset(null);
     showToast("Registered as a new device. Re-pair with family members to share alerts again.", "neutral");
   }, [showToast]);
@@ -696,7 +698,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (h.reachable === true && wasReachable === false) {
         void qc.invalidateQueries();
         if (setupDoneRef.current && !deviceIdRef.current && !identityResetRef.current) {
-          void registerDeviceIdentity(API_BASE, deviceMeta()).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
+          void deviceMeta().then((meta) => registerDeviceIdentity(API_BASE, meta)).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
         }
       }
       wasReachable = h.reachable;
@@ -805,7 +807,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const completeSetup = useCallback(async () => {
     let identity = await getDeviceIdentity();
-    if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
+    if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, await deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
     if (identity) setDeviceId(identity.deviceId);
 
     // Record the person's intent to run protection. Site Gate's VPN consent (Android) and the other

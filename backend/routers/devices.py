@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core.db import db, now_utc
 from core.models import Device, DeviceRegister
 from core.auth import _issue, _unauthorized
+from services import device_stats
 
 router = APIRouter()
 
@@ -31,8 +32,27 @@ async def register_device(body: DeviceRegister):
 async def device_heartbeat(body: DeviceRegister, request: Request):
     """Authenticated 'still here' — updates platform/app/tz and last_seen for the token's device."""
     me = request.state.device["device_id"]
-    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes, "locale": body.locale}})
+    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes, "locale": body.locale, **body.telemetry()}})
     return {"device_id": me}
+
+
+class DeviceActivity(BaseModel):
+    """A feature used on the phone that the server doesn't otherwise see: a Device Check, or opening a Learn article
+    or a scam alert (`item` is its slug or link; only a digest of it is kept)."""
+    kind: Literal["device_check", "learn_read", "scam_alert_read"]
+    item: Optional[str] = Field(default=None, min_length=1, max_length=2048)
+
+
+@router.post("/devices/activity", status_code=204)
+async def device_activity(body: DeviceActivity, request: Request):
+    me = request.state.device["device_id"]
+    if body.kind == "device_check":
+        await device_stats.bump(me, "device_checks")
+    elif body.item:
+        await device_stats.mark_read(me, body.kind, body.item)
+    else:
+        raise HTTPException(422, "Say which article or alert was opened.")
+    return None
 
 
 @router.get("/devices/me")

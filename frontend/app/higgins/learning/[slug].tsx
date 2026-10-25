@@ -24,6 +24,7 @@ import { AppMenuButton } from "@/src/components/AppMenu";
 import { Body, Button, Card } from "@/src/components/ui";
 import { learningArticle, type LearningArticle, type LearningSection } from "@/src/higgins/hubClient";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { reportActivity } from "@/src/telemetry/activity";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 
@@ -264,7 +265,7 @@ export default function LearningArticleScreen() {
 
   useEffect(() => {
     setError(false);
-    void learningArticle(String(slug)).then(setArticle).catch(() => setError(true));
+    void learningArticle(String(slug)).then((a) => { setArticle(a); if (a) reportActivity("learn_read", String(slug)); }).catch(() => setError(true));
   }, [slug]);
 
   const badge = article ? getTypeBadge(article.contentType) : null;

@@ -64,7 +64,7 @@ export default function RuleBookScreen() {
   // Tried at once; tried again when this device's credential arrives (a moment after a cold start).
   useEffect(() => { void load(); }, [load, deviceId]);
 
-  const { intro, sections } = useMemo(() => sectionsOf(book ? forPlatform(parseRuleBook(book.markdown), Platform.OS) : []), [book]);
+  const { intro, groups } = useMemo(() => sectionsOf(book ? forPlatform(parseRuleBook(book.markdown), Platform.OS) : []), [book]);
   const reviewed = reviewedLabel(book?.reviewedAt);
 
   const goToSection = useCallback(() => {
@@ -90,8 +90,8 @@ export default function RuleBookScreen() {
               {fromPhone && error ? "Showing the copy saved on this phone. ApolloSG couldn't reach its server just now." : reviewed ? `Reviewed against how ApolloSG works on ${reviewed}.` : "ApolloSG's current rule book."}
             </Text>
             <View collapsable={false} onLayout={(e) => { bookY.current = e.nativeEvent.layout.y; goToSection(); }}>
-              <RuleBookSections intro={intro} sections={sections} initiallyOpen={section}
-                onSectionLayout={(id, y) => { if (id === section) { sectionY.current = y; goToSection(); } }} />
+              <RuleBookSections intro={intro} groups={groups} initiallyOpen={section}
+                onInitialSectionY={(y) => { sectionY.current = y; goToSection(); }} />
             </View>
           </>
         ) : loading ? (

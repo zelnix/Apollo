@@ -153,7 +153,7 @@ export default function CheckCall() {
         <Text style={s.subtitle}>Assess a live call — big buttons, short answers, no audio recorded.</Text>
         <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }} testID="call-guard-auto">
           <Text style={s.autoLabel}>Auto-check incoming numbers</Text>
-          <Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+          <Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Gate on — Apollo will check incoming numbers." : "Call Gate off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
         </Card>
         {trustedList.length ? (
           <Card style={{ gap: spacing.sm }} testID="call-trusted-list">

@@ -31,6 +31,8 @@ final class FamilyAssistViewerPeer: NSObject, RTCPeerConnectionDelegate, URLSess
   private var sequence = 0
   private var closed = false
   private var ended = false
+  private var connected = false
+  private var selectedPath: String? // the route WebRTC picked for the picture
 
   init(_ input: FamilyAssistViewerInput, onEnded: @escaping (FamilyAssistViewerPeer, String) -> Void) {
     self.input = input
@@ -115,6 +117,7 @@ final class FamilyAssistViewerPeer: NSObject, RTCPeerConnectionDelegate, URLSess
     let created: RTCPeerConnection? = factory.peerConnection(with: config, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
     guard let created else { return end("transport_failed") }
     peer = created
+    reportPath("connecting")
     scheduleRelayRefresh(relay)
   }
 
@@ -193,6 +196,12 @@ final class FamilyAssistViewerPeer: NSObject, RTCPeerConnectionDelegate, URLSess
     factory = nil
   }
 
+  /// Queue only. Tells JS how the picture travels: connecting, direct, relayed or reconnecting.
+  private func reportPath(_ path: String) {
+    guard !inactive else { return }
+    FamilyAssistRuntime.shared.updatePath(sessionId, generation, path)
+  }
+
   private func updateState(_ captureState: String, _ event: String) {
     guard !inactive else { return }
     FamilyAssistRuntime.shared.update(sessionId, generation, captureState: captureState, event: event)
@@ -207,8 +216,14 @@ final class FamilyAssistViewerPeer: NSObject, RTCPeerConnectionDelegate, URLSess
   func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
     queue.async {
       switch newState {
-      case .connected: self.updateState("active", "capture_started")
-      case .disconnected: self.updateState("starting", "transport_degraded")
+      case .connected:
+        self.connected = true
+        self.updateState("active", "capture_started")
+        if let path = self.selectedPath { self.reportPath(path) }
+      case .disconnected:
+        self.connected = false
+        self.updateState("starting", "transport_degraded")
+        self.reportPath("reconnecting")
       case .failed: self.end("transport_failed")
       default: break
       }
@@ -221,6 +236,15 @@ final class FamilyAssistViewerPeer: NSObject, RTCPeerConnectionDelegate, URLSess
       guard !self.inactive, self.remoteTrack == nil else { return }
       self.remoteTrack = track
       track.add(FamilyAssistRenderer.shared)
+    }
+  }
+
+  func peerConnection(_ peerConnection: RTCPeerConnection, didChangeLocalCandidate local: RTCIceCandidate, remoteCandidate remote: RTCIceCandidate,
+                      lastReceivedMs lastDataReceivedMs: Int32, changeReason reason: String) {
+    let path = FamilyAssistRoute.path(local: local.sdp, remote: remote.sdp)
+    queue.async {
+      self.selectedPath = path
+      if self.connected { self.reportPath(path) }
     }
   }
 

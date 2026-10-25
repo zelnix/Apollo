@@ -14,7 +14,9 @@ import { QUICK_QUESTIONS } from "../src/higgins/quickQuestions.ts";
 import { enforceEgress, purposeLimitedUrl, redactInvestigationSecrets } from "../src/domain/privacy.ts";
 
 const BOOK = readFileSync(fileURLToPath(new URL("../../backend/content/rulebook.md", import.meta.url)), "utf8");
-const ASK_HIGGINS = BOOK.split("{#ask-higgins}", 2)[1]?.split("\n## ", 1)[0] ?? "";
+/** A section's own text: from its {#id} to the next section (###) or part (##). */
+const sectionText = (id: string) => (BOOK.split(`{#${id}}`, 2)[1] ?? "").split(/\n#{2,3} /, 1)[0];
+const ASK_HIGGINS = sectionText("ask-higgins");
 
 function texts(blocks: Block[]): string[] {
   return blocks.flatMap((b) => b.kind === "heading" ? [b.text]
@@ -31,7 +33,7 @@ test("inline emphasis: bold, italics and code become styled spans; snake_case st
 });
 
 test("headings carry their {#id}, tables keep headers and rows, nested lists keep their depth", () => {
-  const blocks = parseRuleBook("# Title\n\n## Rules {#settling-rules}\n\n| A | B |\n|---|---|\n| **x** | y |\n\n1. One\n   - nested\n2. Two\n\n---\n\nText\nwraps.");
+  const blocks = parseRuleBook("# Title\n\n## Rules {#settling-rules}\n\n| A | B |\n|---|---|\n| **x** | y |\n\n1. One\n   - nested\n2. Two\n\n---\n\nText\nwraps.\n\n#### Stage 1");
   assert.deepEqual(blocks[1], { kind: "heading", level: 2, text: "Rules", id: "settling-rules" });
   assert.equal(blocks[2].kind, "table");
   if (blocks[2].kind === "table") { assert.deepEqual(blocks[2].headers, ["A", "B"]); assert.equal(blocks[2].rows.length, 1); assert.equal(blocks[2].rows[0][0][0].bold, true); }
@@ -39,6 +41,7 @@ test("headings carry their {#id}, tables keep headers and rows, nested lists kee
   if (blocks[3].kind === "list") assert.deepEqual(blocks[3].items.map((i) => [i.depth, i.marker]), [[0, "1."], [1, "•"], [0, "2."]]);
   assert.equal(blocks[4].kind, "rule");
   assert.deepEqual(blocks[5], { kind: "paragraph", spans: [{ text: "Text wraps." }], indent: false });
+  assert.deepEqual(blocks[6], { kind: "heading", level: 4, text: "Stage 1", id: null });
 });
 
 test("the real rule book renders as clean text with every section and the settling rules", () => {
@@ -82,7 +85,7 @@ test("the Ask Higgins rules in the book match what the phone does", () => {
 });
 
 test("the privacy rules in the book match what the phone removes and refuses", () => {
-  const privacy = BOOK.split("{#privacy}", 2)[1]?.split("\n## ", 1)[0] ?? "";
+  const privacy = sectionText("privacy");
   assert.ok(privacy, "the book has a Privacy and redaction section {#privacy}");
   // Secrets are replaced with the label the book names; scam evidence (the sender's number) is kept.
   for (const secret of ["my password is hunter22", "123456 is your verification code", "code: 1234", "api_key=abc123secret"]) {
@@ -98,14 +101,19 @@ test("the privacy rules in the book match what the phone removes and refuses", (
   assert.ok(link.includes("/login/page") && !link.includes("abc") && !link.includes("frag") && !link.includes("pw@"));
 });
 
-test("the book opens as closed sections: the intro, then one card per part, each with its own id", () => {
-  const { intro, sections } = sectionsOf(parseRuleBook(BOOK));
+test("the book opens in five parts, each holding closed sections with their own ids, every gate under Protection Gates", () => {
+  const { intro, groups } = sectionsOf(parseRuleBook(BOOK));
   assert.ok(intro.some((b) => b.kind === "heading" && b.level === 1), "the intro keeps the title");
-  assert.ok(!intro.some((b) => b.kind === "heading" && b.level === 2));
-  assert.equal(sections.length, BOOK.split("\n## ").length - 1);
+  assert.ok(!intro.some((b) => b.kind === "heading" && b.level >= 2));
+  assert.deepEqual(groups.map((g) => g.title), ["Protection Gates", "Investigation process", "Privacy and data", "Device protections", "General"]);
+  const sections = groups.flatMap((g) => g.sections);
+  assert.equal(sections.length, BOOK.split("\n### ").length - 1);
   const ids = sections.map((section) => section.id);
   assert.equal(new Set(ids).size, ids.length, "section ids are unique");
-  for (const id of ["your-data", "threats-list", "websites-links", "call-text-guard", "email-accounts", "apps-files", "device-internet", "scam-alerts", "permissions", "settling-rules", "privacy"]) {
+  assert.deepEqual(groups[0].sections.map((s) => s.title), ["How the gates decide (Apollo detection)", "Site Gate", "Link Gate", "Text Gate", "Call Gate",
+    "Email Gate", "Account Gate", "File Gate", "App Gate", "Device Gate", "Internet Gate", "Linked events across gates"]);
+  assert.deepEqual(groups[3].sections.map((s) => s.id), ["threats-list"]);
+  for (const id of ["your-data", "settling-rules", "privacy", "permissions", "scam-alerts", "ask-higgins"]) {
     assert.ok(ids.includes(id), `missing section: ${id}`);
   }
   for (const section of sections) {
@@ -113,9 +121,17 @@ test("the book opens as closed sections: the intro, then one card per part, each
     assert.notEqual(section.blocks[0].kind, "rule");
     assert.notEqual(section.blocks[section.blocks.length - 1].kind, "rule");
   }
+  for (const group of groups) assert.ok(!group.blocks.some((b) => b.kind === "rule"), `stray rule in ${group.title}`);
 });
 
-const sectionText = (id: string) => BOOK.split(`{#${id}}`, 2)[1]?.split("\n## ", 1)[0] ?? "";
+test("each gate lists its rules one per line, code first", () => {
+  const { groups } = sectionsOf(parseRuleBook(BOOK));
+  const link = groups[0].sections.find((s) => s.id === "link-gate")!;
+  const list = link.blocks.find((b) => b.kind === "list" && plainText(b.items[0].spans).startsWith("LINK-01 · "));
+  assert.ok(list && list.kind === "list" && list.items.length === 21);
+  assert.ok(!/(Call|Text|Site|Website) Guard/.test(BOOK), "Gate is the one name");
+});
+
 const read = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), "utf8");
 
 test("the phone's own limits in the book match the phone", () => {
@@ -128,15 +144,15 @@ test("the phone's own limits in the book match the phone", () => {
   const days = Number(/SCREENED_RETENTION_MS = (\d+)L \* 24/.exec(screening)?.[1]);
   const queued = Number(/MAX_PENDING = (\d+)/.exec(screening)?.[1]);
   assert.ok(yourData.includes(`The last ${kept} calls, for up to ${days} days`));
-  assert.ok(sectionText("call-text-guard").includes(`the last ${kept} calls, for up to ${days} days`) && sectionText("call-text-guard").includes(`queued (up to ${queued})`));
+  assert.ok(sectionText("call-gate").includes(`the last ${kept} calls, for up to ${days} days`) && sectionText("call-gate").includes(`queued (up to ${queued})`));
   assert.ok(yourData.includes(`The last ${/HISTORY_CAP = (\d+)/.exec(read("src/store/accountMonitorStore.ts"))?.[1]} scans are kept`));
-  assert.ok(sectionText("apps-files").includes(`Files can be up to ${FILE_SIZE_LIMIT / (1024 * 1024)} MB`));
+  assert.ok(sectionText("file-gate").includes(`Files can be up to ${FILE_SIZE_LIMIT / (1024 * 1024)} MB`));
   const snoozeDays = Number(/GATE_SNOOZE_MS = (\d+) \* 24/.exec(read("src/domain/gatePermissions.ts"))?.[1]);
   assert.ok(sectionText("permissions").includes(`after about ${snoozeDays} days`));
 });
 
 test("the device results and permission wording in the book are the app's own, word for word", () => {
-  const device = sectionText("device-internet");
+  const device = sectionText("device-gate");
   for (const status of Object.values(DEVICE_STATUS)) assert.ok(device.includes(`| ${status.title} | ${status.meaning} |`), status.title);
   const permissions = sectionText("permissions");
   const config = read("app.config.js");

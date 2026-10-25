@@ -52,7 +52,7 @@ export function buildProtectionRows(
   else rows.push({ label: "DNS protection", state: p ? (p.enforcementMethod === "packet_filter" ? "Active" : "Unsupported on this device") : "Status unavailable", detail: p?.enforcementMethod === "packet_filter" ? "Covered within packet filtering." : "DNS-level filtering isn't the enforcement method here." });
 
   // Website protection (Site Guard).
-  if (!p) rows.push({ label: "Website protection", state: "Status unavailable", detail: "Could not read Site Guard state." });
+  if (!p) rows.push({ label: "Website protection", state: "Status unavailable", detail: "Could not read Site Gate state." });
   else if (p.enforcementMethod === "none") rows.push({ label: "Website protection", state: "Unsupported on this device", detail: p.coverage });
   else rows.push({ label: "Website protection", state: p.operational ? "Active" : "Warning", detail: p.coverage });
 

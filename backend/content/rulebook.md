@@ -12,16 +12,22 @@ Apollo detection (the gate) → *only if Possible Threat* → one investigation 
 
 Each check creates exactly one entry in the Threats list. The phone's first detection and the later investigation update the same card.
 
+The book has five parts: **Protection Gates** (each gate with all of its rules), **Investigation process**, **Privacy and data**, **Device protections** and **General**.
+
 ---
 
-## 1. Apollo detection (the gate)
+## Protection Gates {#protection-gates}
+
+Every check starts at a gate. Each gate below lists every one of its rules, word for word from the gate catalogue.
+
+### How the gates decide (Apollo detection) {#gate-decisions}
 
 **Job:** detect and protect. Uses no AI.
 
 **Process**
 1. **First look on the phone.** Fixed rules give the check one of six states: Checking, Patrolling, Sniffing, Growling, Barking or Biting.
 2. **Specialist lookups, gathered once.** These are Google Safe Browsing and Apollo's blocklist, the domain registration record (RDAP), redirect expansion, IPQualityScore (links and phone numbers), direct-download detection, official scam advisories and breach data. TC FlyBy and Magnum DI reuse these results; they never repeat them.
-3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups.
+3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule is listed under its gate below.
 4. **Retries.** A temporary failure gets up to 3 attempts. This covers a provider not answering, a network failure, content that couldn't be opened, or a check error. Permanent limits are never retried.
 
 **Gate outcomes**
@@ -42,9 +48,317 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 **What sends a check onward:** a Possible Threat result. A check the person starts (Check It, or Ask Higgins with something to check) enters the same investigation pipeline.
 
+### Site Gate {#site-gate}
+
+**Job:** stop known dangerous websites before they load.
+
+**Site Gate (Android)**
+- An on-device filter, run through Android's private VPN, blocks known dangerous websites before they load. Browsing is checked on the phone and never sent anywhere.
+- A blocked website reaches Biting only when the filter actually blocked the connection.
+
+**Site Gate (iPhone)**
+- ApolloSG's Safari content blocker blocks verified threat websites once the person turns it on under Settings › Safari › Extensions.
+- It covers websites opened in Safari, and Safari views inside other apps. Not covered: Chrome, Firefox and other browsers, in-app browsers that don't use Safari, and non-browser apps.
+
+The Site Gate has no catalogue rules of its own. It blocks only websites already verified as dangerous; a link the person checks is judged by the Link Gate rules.
+
+### Link Gate {#link-gate}
+
+**Job:** check a link before it is opened.
+
+**How a link is checked**
+- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. A link that redirects more than 5 times is judged as given, and the gap is recorded.
+- The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
+- Every link Apollo checks, in a message, an email or on its own, gets the same check.
+- **QR codes:** the address inside is checked as a link. The QR code itself is never a threat.
+- A link the person checks themselves opens an investigation, which TC FlyBy and Magnum DI pick up as usual.
+- **Trusted links:** trust covers only the exact link the person chose. Removing it ends the trust.
+- **Never a threat on their own:** an http link, a bare IP address, punycode, an unusual port, a risky TLD, a link shortener, a long link, deep subdomains, encoded characters, a newly registered domain, a QR code itself, and data or blob links.
+
+**Link Gate rules (21)**
+- **LINK-01** · Authoritative reputation reports the destination as malicious
+- **LINK-02** · An observed redirect destination is confirmed malicious
+- **LINK-03** · Local URL engine reaches malicious through deception-gated rules
+- **LINK-04** · Known deterministic threat indicator match
+- **LINK-05** · Brand-lookalike domain with credential, login, payment or account interaction
+- **LINK-06** · Credentials embedded in the URL
+- **LINK-07** · Credential lure with an unrelated or deceptive destination
+- **LINK-08** · Displayed link materially differs from the actual destination
+- **LINK-09** · Brand presented in the link or path while the destination is unrelated, with a sensitive action
+- **LINK-10** · Newly registered domain with a credential, payment, security-code or identity form
+- **LINK-11** · Multiple URL-risk indicators reach the suspicious threshold and intelligence cannot resolve them
+- **LINK-12** · Suspicious URL evidence correlates with another suspicious event
+- **QR-01** · QR code contains a URL — the destination is triaged as a link
+- **QR-02** · QR destination with brand or domain deception
+- **QR-03** · QR destination with a credential or payment lure and a suspicious, unrated or newly registered destination
+- **DATA-01** · data: or blob: content collecting credentials in a deceptive brand context
+- **BITM-01** · Sensitive credential interaction with observable real-time relay and an inconsistent destination
+- **BITM-02** · Brand authentication presented through an unauthorised origin with relay or strong deception
+- **BITM-03** · Message, email, QR or call leads to a site presenting another brand's authentication with relay behaviour
+- **BITM-04** · MFA or security-code interaction on an unrelated authentication origin with observable relay evidence
+- **BITM-05** · Destination matches authoritative intelligence for active BitM/AiTM phishing infrastructure
+
+### Text Gate {#text-gate}
+
+**Job:** check messages for scams.
+- **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
+- Store builds of ApolloSG never ask to read text messages or the call log.
+- **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to ApolloSG where the app offers Share.
+- Every message goes through the same checks as a pasted one: the Text Gate rules below, plus the Link Gate check for each link.
+- **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, and a job, investment or romance discussion without scam mechanics.
+
+**Text Gate rules (30)**
+- **MSG-01** · OTP, MFA or security code requested
+- **MSG-02** · Password, PIN or login credential requested
+- **MSG-03** · Banking or card credentials requested
+- **MSG-04** · Transfer to a safe or protected account requested
+- **MSG-05** · Gift-card payment requested
+- **MSG-06** · Remote access or screen sharing requested in a suspicious context
+- **MSG-07** · App or software installation requested in a suspicious context
+- **MSG-08** · Government or authority impersonation with payment, credential, code or threat
+- **MSG-09** · Extortion
+- **MSG-10** · Advance-fee mechanics
+- **MSG-11** · Fake-payment mechanics
+- **MSG-12** · Malicious or deceptive link in the message
+- **MSG-13** · Family or new-number impersonation with a money, credential or code request
+- **MSG-14** · Brand impersonation with a consequential action and inconsistent contact or destination
+- **MSG-15** · Guaranteed-return or investment approach with payment or crypto transfer
+- **MSG-16** · Job offer with advance payment, crypto, gift cards or credential harvesting
+- **MSG-17** · Romance interaction with a suspicious financial request
+- **MSG-18** · Sensitive identity request with impersonation or anomaly
+- **MSG-19** · Platform switching combined with another scam mechanic
+- **MSG-20** · Urgency or threat with a consequential action and a supporting anomaly
+- **MSG-21** · Claimed or uncertain identity with a consequential action and another deterministic anomaly
+- **MSG-22** · Multiple moderate scam indicators form a coherent scam pattern
+- **PAY-01** · Instant-payment request with authority, family or business impersonation
+- **PAY-02** · Instant-payment request with urgency or threat and a sender anomaly
+- **PAY-03** · Unexpected change of payment destination with an immediate-payment request
+- **FWD-01** · Instruction to enter a forwarding service code in a suspicious account or authority context
+- **FWD-02** · Instruction designed to redirect calls, messages or security codes to another number
+- **CB-01** · Claimed charge or account problem with a supplied callback number inconsistent with the claimed organisation
+- **CB-02** · Urgent cancellation, refund or security lure with a suspicious callback number
+- **CB-03** · Callback number reputation is clean but strong impersonation evidence remains
+
+### Call Gate {#call-gate}
+
+**Job:** screen incoming calls from risky numbers.
+
+**Call Gate (Android)**
+- Works only when the person makes ApolloSG the phone's caller ID & spam app. Android then hands ApolloSG each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
+- Apollo never listens to a call and never reads the call log. It sees only the one incoming number.
+- It compares that number with three lists kept on the phone: numbers the person blocked, numbers they allowed, and numbers this phone looked up earlier and found high-risk.
+- An allowed number always rings. For a blocked or high-risk number, ApolloSG asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
+- Every other call rings normally. ApolloSG never delays or silences a call on a guess, and if screening fails the call rings.
+- A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
+- A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
+- **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
+
+**Call Gate (iPhone)**
+- Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
+
+**Never a threat on their own:** an unknown caller, a number that isn't in contacts, and a number's reputation without matching behaviour.
+
+**Call Gate rules (16)**
+- **CALL-01** · OTP or security code requested
+- **CALL-02** · Password or PIN requested
+- **CALL-03** · Banking or card credentials requested
+- **CALL-04** · Safe-account transfer requested
+- **CALL-05** · Gift-card payment requested
+- **CALL-06** · Suspicious cryptocurrency transfer requested
+- **CALL-07** · Remote access or screen sharing requested
+- **CALL-08** · Software or app installation requested
+- **CALL-09** · Call or SMS forwarding instruction
+- **CALL-10** · Government or authority payment threat
+- **CALL-11** · Unsolicited technical support seeking device access
+- **CALL-12** · Suspicious investment solicitation with a consequential financial action
+- **CALL-13** · Claimed authority with a sensitive action and suspicious behaviour
+- **CALL-14** · Unexpected refund or payment manipulation
+- **CALL-15** · Reputation evidence with matching scam behaviour
+- **CALL-16** · Call followed by a remote-access app, permission or device change forms a coherent sequence
+
+### Email Gate {#email-gate}
+
+**Job:** check emails for scams and phishing.
+
+**Gmail**
+- Read-only access only. ApolloSG never sends, deletes, labels or changes anything in the mailbox, and never sees or stores the mailbox password.
+- The person connects through Google's own sign-in, and the sign-in link expires after 10 minutes. More than one account can be connected.
+- The connection, an encrypted token, is kept until the person disconnects. Disconnecting also cancels it with Google.
+- **Monitoring:** every 15 minutes, Apollo reads the next 15 messages of each connected account and gives each one the same checks as a pasted email.
+- Message content is used for that check only and never written to ApolloSG's database. A receipt for each message, with no content, stops it from being checked twice.
+- An attachment is checked by its fingerprint when the file-reputation service is connected; the attachment itself isn't uploaded.
+- **Never a threat on their own:** a calendar invitation, a form-builder domain, valid sender checks (SPF, DKIM and DMARC) from a form provider, and an address appearing in a breach.
+
+**Email Gate rules (19)**
+- **EMAIL-01** · Claimed brand with sender-domain mismatch and a consequential action
+- **EMAIL-02** · Freemail or unrelated domain impersonates a brand with a sensitive request
+- **EMAIL-03** · Account or security alert with an off-domain, lookalike or deceptive link
+- **EMAIL-04** · Credential request
+- **EMAIL-05** · OTP or security-code request
+- **EMAIL-06** · Invoice or payment request with changed bank details
+- **EMAIL-07** · Executive or BEC impersonation with an unusual financial request and sender anomaly
+- **EMAIL-08** · Material From/Reply-To mismatch with a consequential action
+- **EMAIL-09** · An embedded link produces a link-triage Possible Threat
+- **EMAIL-10** · An attachment produces a file-triage Possible Threat
+- **EMAIL-11** · Authentication failure with a consequential request or anomaly
+- **EMAIL-12** · Authenticated legitimate sender with changed payment details, malicious link, unusual credential request or dangerous attachment
+- **EMAIL-13** · Multiple moderate email anomalies form a coherent scam pattern
+- **CAL-01** · External or unverified calendar invitation with a malicious or deceptive link
+- **CAL-02** · Calendar invitation with a suspicious financial or account lure and a callback number
+- **CAL-03** · Calendar invitation with a credential or payment collection destination
+- **FORM-01** · Legitimate form service requesting a password, MFA or security code
+- **FORM-02** · Legitimate form host collecting banking or card credentials in a suspicious originating context
+- **FORM-03** · Legitimate form host collecting sensitive identity with impersonation or account-security lure
+
+### Account Gate {#account-gate}
+
+**Job:** watch the person's email addresses for breaches, and check pasted account alerts.
+
+**Account checks**
+- The email addresses the person watches stay on the phone.
+- Each scan sends an address once to the breach service, Have I Been Pwned when it is connected and XposedOrNot otherwise, and the address isn't stored or logged.
+- ApolloSG never asks for a password. Anything in a pasted account alert that looks like one is removed before it is checked.
+- Links in a pasted account alert are compared with the organisation's official websites.
+- "No breach found" is never called proof that the account is safe.
+
+**Account Gate rules (1)**
+- **BREACH-01** · Confirmed exposed credential evidence alongside current credential-harvesting or takeover activity
+
+### File Gate {#file-gate}
+
+**Job:** check a file before it is opened.
+
+- **Trust the file, not its name.** The phone compares the file's real type with its name, and looks for double extensions, right-to-left name tricks, archives, app packages, profiles, certificates and links inside.
+- Files can be up to 10 MB. The phone reads the start of the file and a text sample; nothing is uploaded for this first look.
+- Links inside a file are checked as links.
+- If the file is sent for an investigation, the server decides its type from its own bytes, not its name, and records any mismatch.
+- ApolloSG only ever cleans up the copy its own picker made. A shared original is never touched.
+- **Never a threat on their own:** encryption or password protection, ordinary file characteristics, and a QR code itself.
+- ApolloSG never calls a file 100% safe, and unknown never means malicious.
+
+**File Gate rules (19)**
+- **FILE-01** · Executable or script disguised as a document or image
+- **FILE-02** · Dangerous double extension
+- **FILE-03** · Right-to-left filename deception
+- **FILE-04** · Unexpected executable or script
+- **FILE-05** · Suspicious APK
+- **FILE-06** · APK impersonates a brand or update
+- **FILE-07** · Unexpected configuration profile
+- **FILE-08** · Unexpected trust certificate
+- **FILE-09** · Macro-enabled document with suspicious provenance
+- **FILE-10** · Embedded malicious or deceptive URL
+- **FILE-11** · Dangerous PDF JavaScript, launch or embedded content
+- **FILE-12** · Dangerous Office macro, external template or embedded object
+- **FILE-13** · Archive contains an executable, script or dangerous nested content
+- **FILE-14** · Archive contains path traversal or deceptive filenames
+- **FILE-15** · Actual type materially contradicts the claimed type
+- **ARCH-01** · Password-protected archive with the password supplied in the originating message and a dangerous payload
+- **ARCH-02** · Password supplied separately but correlated to the same case with a dangerous payload
+- **ARCH-03** · Password-protected archive with a suspicious sender or lure and contents that cannot be inspected
+- **FQR-01** · QR code detected in a file or image — destination is triaged as a link
+
+### App Gate {#app-gate}
+
+**Job:** check what an app can do and where it came from.
+
+- Apollo doesn't judge an app by its name. It looks at what the app is allowed to do, where it came from and what happened around the install.
+- It works from what the person tells ApolloSG plus what the phone's security checks can see, and never pretends to read other apps.
+- Up to 10 web addresses the app uses are checked against the same reputation sources as a link.
+- A remote-access app matters when it follows a suspicious call, message or website.
+- **Never a threat on their own:** an app from an official store, permissions the app is expected to need, and installing a web app.
+
+**App Gate rules (14)**
+- **APP-01** · Remote-access app or activity follows a suspicious call, message or site
+- **APP-02** · Sideload follows a suspicious link or message
+- **APP-03** · Sideloaded app impersonates a known brand
+- **APP-04** · Sideloaded app impersonates update, security or system software
+- **APP-05** · App communicates with a confirmed malicious destination
+- **APP-06** · Unexpected accessibility access with suspicious provenance or Threat Scent
+- **APP-07** · Unexpected device-admin with suspicious provenance or Threat Scent
+- **APP-08** · Unexpected screen sharing with suspicious provenance or Threat Scent
+- **APP-09** · Unexpected install-app capability with suspicious provenance or Threat Scent
+- **APP-10** · Multiple high-impact permissions with suspicious installation provenance
+- **APP-11** · Install, then sensitive permission change, then suspicious network activity forms a coherent sequence
+- **PWA-01** · PWA installation originates from a deceptive or known-malicious site
+- **PWA-02** · Newly registered or unrated PWA origin with brand impersonation and login, payment or account interaction
+- **PWA-03** · PWA installation immediately follows a correlated scam message, email or link
+
+### Device Gate {#device-gate}
+
+**Job:** show what this phone's settings and protections reveal.
+
+**Device check**
+- ApolloSG shows only what this phone and this version of ApolloSG can truly see, plus what the person reports. It is never a full scan. Anything it can't see is shown as not visible, never as safe.
+
+| Result | Meaning |
+|---|---|
+| Protected | No meaningful issues detected within what Apollo can see here. |
+| Review recommended | Some permissions or settings deserve attention. |
+| Action required | A high-risk configuration or app was detected. |
+| Recovery | Risky access was already granted. Follow the steps — ApolloSG stays with you. |
+
+- **Security & Privacy Review:** the same 9 areas on every kind of device. Each setting gets one of: Checked, Review recommended, Action required, Manual review required, Unavailable or Not applicable. The review is never one blanket "Protected".
+- **Protection changes** say only what changed, never who changed it or why. A setting Apollo couldn't read is never counted as a change, and Apollo's own protection VPN is recognised as Apollo's.
+- **Never a threat on their own:** expected management or device administration, expected accessibility access, ApolloSG or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
+
+**Device Gate rules (15)**
+- **DEV-01** · Trusted OS security facility reports malware or a threat
+- **DEV-02** · Remote-access activation correlates with suspicious activity
+- **DEV-03** · Unexpected management or profile change with suspicious activity
+- **DEV-04** · Unexpected trusted certificate with suspicious activity
+- **DEV-05** · New app with unexpected accessibility and relevant Threat Scent
+- **DEV-06** · New app with unexpected device-admin and relevant Threat Scent
+- **DEV-07** · Suspicious VPN installation or change with suspicious app or scam activity
+- **DEV-08** · Multiple device-security changes form a coherent high-risk sequence
+- **DEV-09** · System-integrity indicators with supporting compromise evidence
+- **DNS-01** · DNS, Private DNS or DoH configuration unexpectedly changed with correlated suspicious activity
+- **DNS-02** · DNS server matches authoritative malicious infrastructure
+- **DNS-03** · DNS change with a preceding suspicious app installation or permission event
+- **PUSH-01** · Browser notification from a deceptive origin with a fake security or financial warning and an action lure
+- **PUSH-02** · Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination
+- **PUSH-03** · Web-push notification leads to a malicious or deceptive URL
+
+### Internet Gate {#internet-gate}
+
+**Job:** check the connection the phone is using.
+
+**Check this network**
+- ApolloSG uses only what the phone reports: connection type, Wi-Fi security, a sign-in page (captive portal) and VPN status. The person adds where they are (home, work or school, a public place, or not sure), the network name they expect, and whether they turned the VPN on.
+- Public isn't malicious, open isn't intercepted, and a VPN the person chose is fine.
+- **Never a threat on their own:** public Wi-Fi, open or WEP Wi-Fi, an unknown Wi-Fi network, a lookalike network name, a captive portal, a trusted home or work connection, and a mobile data connection.
+
+**Internet Gate rules (9)**
+- **NET-01** · Confirmed malicious destination observed
+- **NET-02** · Captive-portal destination triggers a link Possible Threat
+- **NET-03** · Unexpected VPN change with suspicious app or device activity
+- **NET-04** · Network behaviour correlates with an existing suspicious incident
+- **NET-05** · App, site or device sequence communicates with malicious infrastructure
+- **TLS-01** · HTTPS certificate validation fails unexpectedly during a sensitive interaction in a suspicious network context
+- **TLS-02** · Unexpected self-signed or untrusted certificate presented for a legitimate sensitive service
+- **TLS-03** · Certificate identity does not match the requested legitimate domain
+- **TLS-04** · Newly introduced trusted root certificate with correlated suspicious network behaviour
+
+### Linked events across gates {#linked-events}
+
+**Job:** connect events from different gates that together form a known scam sequence, such as a suspicious call, then a remote-access app, then a permission change.
+- **Never a threat on its own:** two events happening close together in time.
+
+**Linked-event rules (9)**
+- **CORR-01** · Suspicious call requesting remote access, then remote-access install, then accessibility or screen-sharing permission
+- **CORR-02** · Message, then deceptive link, then APK or PWA installation
+- **CORR-03** · Email, then changed bank details, then instant-payment request
+- **CORR-04** · Email or QR, then deceptive authentication site, then BitM/AiTM indicators
+- **CORR-05** · Callback lure followed by a suspicious call with matching claimed identity
+- **CORR-06** · Suspicious app installation followed by a DNS, VPN or accessibility change
+- **CORR-07** · Website or download, then executable, then malicious destination
+- **CORR-08** · Password-protected archive with the password supplied in the originating message or email
+- **CORR-09** · Scam site, then notification permission, then a later deceptive web-push lure
+
 ---
 
-## 2. Higgins Triage (inside the case)
+## Investigation process {#investigation-process}
+
+### Higgins Triage (inside the case) {#higgins-triage}
 
 **Job:** gets everything ready. It does not investigate and never decides whether something is a scam. It works offline, uses no AI and costs nothing.
 
@@ -92,13 +406,11 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 | Claims, scam alerts | ApolloSG KB only |
 | Message analysis | Planned, but it reaches Magnum DI only if the deciding test says so |
 
----
-
-## 3. TC FlyBy
+### TC FlyBy {#tc-flyby}
 
 **Job:** a fast, low-cost investigation that takes the cheapest reliable route. It runs once per case; a Magnum DI retry reuses its record and repeats no lookups.
 
-### Stage 1: official and direct sources (no AI, 8 s per lookup)
+#### Stage 1: official and direct sources (no AI, 8 s per lookup)
 - **Link**
   - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **settles it as clear**.
   - Redirects somewhere → warning sign. The final destination is checked too.
@@ -118,7 +430,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 **Stops here only for a decisive concern → Confirmed scam or threat.**
 
-### Stage 2: ApolloSG Knowledge Base (no AI)
+#### Stage 2: ApolloSG Knowledge Base (no AI)
 - **Scam patterns.** There are 8 patterns from Scamwatch: family "new number" ("Hi Mum"), organisation phishing, delivery/toll, government threat, unexpected money or prize, job/paid task, investment returns, and remote access/tech support.
   - **Full match:** every defining indicator plus the ask. Organisation phishing also needs an organisation named and a link that isn't its own. Delivery/toll needs a link that isn't official.
   - **Opening:** every indicator but no ask yet. This applies to the family pattern only.
@@ -130,7 +442,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 **Still stops only for a confirmed threat, or an answered general question.**
 
-### Stage 3: one targeted web search
+#### Stage 3: one targeted web search
 - Only open checks with a question get here: at most 6 questions in **one** call to the low-cost model, with Google Search.
 - ApolloSG's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
@@ -146,7 +458,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
   - No match → warning sign.
 - A failed search is recorded as unavailable and passed on.
 
-### The deciding test
+#### The deciding test
 *"Could deeper investigation change Apollo's finding or what Higgins tells the person?"* If not, TC FlyBy settles the case. "Unable to determine" is a valid finished result.
 
 **How the outcome is chosen (first that applies):**
@@ -161,7 +473,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 Concerning, Likely scam and Confirmed lead to the same protective action, so Magnum DI is never called just to move a case between them.
 
-### Triggers for Magnum DI (only when no concern outcome was reached)
+#### Triggers for Magnum DI (only when no concern outcome was reached)
 | Capability | Trigger |
 |---|---|
 | **Reading** | Content Triage couldn't extract but Magnum DI can read: an image with no readable text, a scanned page, or the pictures on a page. |
@@ -183,9 +495,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 
 **Magnum DI's web search is on only when** something is being read for the first time, a lookup failed, or a general question is still open.
 
----
-
-## 4. Magnum DI
+### Magnum DI {#magnum-di}
 
 **Job:** a deep investigation, only when it could change the answer.
 
@@ -227,9 +537,7 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 
 It can't override what is already established, and it isn't called to move a case between concern outcomes.
 
----
-
-## 5. Higgins (explanation)
+### Higgins (explanation) {#higgins-explanation}
 
 **Job:** explains and guides. Higgins never investigates. It may change how a result is presented, never what it means.
 
@@ -252,7 +560,7 @@ It can't override what is already established, and it isn't called to move a cas
 - Answering Magnum DI's pending question continues that investigation; it isn't treated as a follow-up.
 - Plain Australian English, no internal codes, 2–4 short paragraphs.
 
-### Plain English and the Fidelity Check
+#### Plain English and the Fidelity Check
 Every finished TC FlyBy or Magnum DI result is explained in plain English before it is shown. Higgins writes it from the result itself, in Apollo's wording only. No AI is used and it costs nothing. A general question with nothing checked has nothing to explain, so it is shown as answered.
 
 **The evidence lock.** The plain English can't add, drop or change a fact, a link, address, number, date or amount, how sure ApolloSG is, how serious it is, what to do, or who established it. The result itself is never changed: the explanation sits beside it, and where the two could ever differ the result wins.
@@ -286,9 +594,281 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 
 **Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case.
 
+### Settling rules: the reason shown on each result {#settling-rules}
+
+Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
+
+| Rule ID | Rule | Settled by | When it applies |
+|---|---|---|---|
+| FLYBY-THREAT | Confirmed threat | TC FlyBy | A direct safety check, an official scam advisory, or an official source found by the search names this exact link, number, address or company as a scam or threat. |
+| FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in ApolloSG's knowledge base, and nothing contradicts it. |
+| FLYBY-IMPERSONATION | Corroborated impersonation | TC FlyBy | An organisation is named, a link isn't its website, and a separate check on that link backs this up. |
+| FLYBY-OPENING | Known scam opening | TC FlyBy | The message opens like the family "new number" scam but hasn't asked for anything yet. |
+| FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found real warning signs, but not enough to call it a scam. |
+| FLYBY-CLEAR | Nothing found, everything checked | TC FlyBy | Every planned check ran over everything sent and none found a scam indicator. |
+| FLYBY-UNKNOWN | Can't establish more | TC FlyBy | The checks couldn't establish more, and a deeper look couldn't change what to do. |
+| FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by ApolloSG's knowledge base or a sourced search. |
+| MAGNUM-READING | Reading | Magnum DI | Part of what was sent (a picture or scanned page) had to be read directly. |
+| MAGNUM-REASONING | Reasoning | Magnum DI | The material asks for money, details or access through a route no official source verified. |
+| MAGNUM-RELATING | Relating | Magnum DI | TC FlyBy's findings pointed in different directions and needed weighing up. |
+| MAGNUM-QUESTION | Open general question | Magnum DI | Neither the knowledge base nor a targeted search could answer a general question. |
+| MAGNUM-SAFETY-NET | Safety net | Magnum DI | TC FlyBy's own result didn't pass Apollo's checks, so Magnum DI looked at the whole case. |
+
+When Magnum DI was needed for more than one reason, the sentence names them together, for example "Reading and reasoning". Results recorded before these rules existed show no sentence rather than a guessed one.
+
+### Outcomes (one system for TC FlyBy and Magnum DI) {#outcomes}
+
+| Outcome | Meaning |
+|---|---|
+| **Confirmed scam or threat** | An authoritative source names this exact link, number, address or company as a scam or threat. |
+| **Likely scam** | The evidence and an established scam pattern point to a scam, without proof about this particular sender. |
+| **Concerning** | Real warning signs, but not enough to call it a scam. |
+| **Unable to determine** | The available evidence can't establish more. |
+| **No scam indicators found** | The checks performed found nothing. This is **not** proof it's safe, and it is never described as safe. |
+
+Every result shows **"Settled by TC FlyBy"** or **"Settled by Magnum DI"**, in the app and in the admin portal.
+
+### ApolloSG's knowledge base (KB) {#knowledge-base}
+
+**Job:** sourced general knowledge that Higgins and TC FlyBy can use with no AI. KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
+
+**What is in it**
+| Kind | Where it comes from |
+|---|---|
+| Learn articles | Published Learn with Higgins articles, each linked to its screen |
+| Scam alerts | Official alerts and advisories from the government feeds, in the source's own words |
+| Official guidance | cyber.gov.au guidance shipped with ApolloSG (CC BY 4.0, attributed) |
+| Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
+| Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
+
+Saved AI answers are **not** in the KB. They are reusable intelligence (below), labelled as written by AI and never treated as sourced knowledge.
+
+**Trusted sources.** A page on any other website never becomes ApolloSG knowledge.
+- **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
+- **Tier 2, established security research (11 websites):** recognised research organisations and security companies.
+- **Tier 3, supporting (5 websites):** credible specialist and consumer sources.
+- A source is reproduced as a Learn article only when its licence allows it. Every other source is quoted briefly, with a link to read the rest.
+
+**How Tavily is used**
+- Only to find and re-read trusted pages for the KB. Never by TC FlyBy or Magnum DI, never in a live investigation, and never to answer a question as it is asked.
+- Tavily is never the source. Its own generated answer is switched off, and every page it returns is checked against the trusted list again.
+- **Once a week:** a run is due when the last successful run is 7 days old and no attempt was made in the last day. Staff can also start one from the admin portal.
+- **Each run** searches 14 guidance topics on every tier (up to 5 results from Tier 1, 4 from Tier 2 and 3 from Tier 3) and 4 scam-alert topics in Tier 1 news. Up to 40 stored pages last checked 7 or more days ago are read again.
+- Afterwards the KB brings in the latest Learn articles, scam alerts, shipped guidance and scam patterns.
+
+**The checks every page must pass**
+- It is on a trusted website, over https.
+- It isn't a document file (PDF, Word, Excel, PowerPoint, zip, audio or video).
+- It isn't a listing, tag, search, category or navigation page, and it has a title.
+- No more than 40% of its words are links.
+- It has at least 120 words of its own content, in English.
+
+Only the page's own headings, paragraphs and bullet points are kept; menus, footers, banners and link lists are dropped. A page that fails is not stored as knowledge, and the reason is kept for 90 days for the admin portal.
+
+**Nothing is invented, and history is kept**
+- Knowledge is the source's own words. A fact the page doesn't state stays missing.
+- **Same page:** if its words are at least 92% the same, it is only marked as checked again. If they changed, it becomes a new version and the old version is kept as Superseded. "Updated" shows for 30 days.
+- **Same words on another page** (at least 85% the same) are recorded as another place it is published, not a new entry.
+- A page ApolloSG already holds from a government feed, the shipped guidance or a Learn article isn't added again.
+- **Historical, never deleted:** a page that fails to load on 2 re-reads, or a scam alert published more than 2 years ago.
+- When the checks are tightened, a page that no longer passes is removed everywhere: its Learn article is archived and its Scam Alert withdrawn.
+
+**Where a researched page is published**
+- **Scam Alerts:** only a Tier 1 page found as an alert, published within the last 180 days, that Scam Alerts' fixed rules rate as a specific scam or an emerging pattern. It is rated by the same rules as the government feeds.
+- **Learn with Higgins:** only from a source whose licence allows it, with at least 3 sections, practical bullet points and a summary, passing Learn's quality checks. It ends with a "Source and licence" section. An article staff archived is never brought back.
+
+**How the KB is searched (no AI)**
+- The question and each entry are reduced to the same concepts: common words removed, word endings trimmed, and everyday words for the same thing made one (bitcoin and crypto, rang and called, mum and family, itunes and gift card). Words that only frame a question (want, said, real, safe, Australia) don't count.
+- Each concept counts by how rare it is in the KB: "toll" or "anydesk" tells more than "email" or "money".
+- An entry answers only if it holds at least 30% of the question's weight, its title shares a concept with the question, and its score is at least 0.3. The score is 0.4 × the share of the question it holds, plus 0.25 × the share in its title, plus 0.35 × how much of what its title names the question asks about.
+- A match on how something arrived alone (phone, call, text, message, email, online, website, app, money, payment, account, number) doesn't count, unless that is the whole question.
+- Order, strictest first: every current entry ranks above every historical one, then an entry whose title names something ranks above one whose title names nothing in particular ("What is a scam?"), then the score. At most 2 entries are used for one answer.
+- **Measured:** a fixed benchmark of 60 questions and 47 held-out ones checks every change. Before this rule, the right article came back for about 1 in 5 questions. Now it comes back for about 9 in 10 of the benchmark questions and 2 in 3 of the held-out ones, with fewer than 1 in 20 answers pointing to the wrong article.
+
+**How it is quoted**
+- In the source's own words: the passages that best match the question, in their original order.
+- Each quote names the publisher, its authority, where it applies and when it was published or last checked, with a link to read the original.
+- A historical entry says it may be out of date. Guidance from outside Australia says contacts and reporting steps may differ.
+- Every quote ends with: "This is general knowledge from ApolloSG's library. It isn't a finding about anything you've asked Apollo to check."
+
+**Where the KB is used**
+- **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
+- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and saved AI answers never are.
+- **Preview:** the simulator answers from the KB instead of calling the AI tools, and says so.
+
+#### Reusable intelligence (not KB knowledge)
+**Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
+
+**What it holds**
+- The AI tool's answer to a general scam-safety question nothing else answered.
+- TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
+- Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
+- Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
+
+**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated AI answer is never saved.
+
+**How long a result counts as current**
+| Information | Current for |
+|---|---|
+| General question answered by AI | 90 days |
+| TC FlyBy search that found something | 7 days |
+| TC FlyBy search that found nothing | 1 day |
+| Phone reputation (IPQualityScore) | 24 hours |
+| Link reputation (IPQualityScore) | 12 hours |
+| Domain registration (RDAP) | 48 hours |
+
+An expired result never counts as current. It is deleted 90 days after it expires.
+
+**The sufficiency check (no AI), before every paid call**
+- **Known:** the KB answers, or a current result about this exact subject is complete, backed by a source and not contradicted. It is reused and the call isn't made.
+- **Partial:** something relevant, but expired, incomplete, contradicted, or for a check that must be live. The call runs as before and the result is refreshed.
+- **Unknown:** nothing relevant. The call runs as before.
+- The KB is always checked first. The check only saves calls; it never lowers what a check must establish.
+- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
+
+**What the person sees**
+- A reused result says when Apollo last checked it: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again". In Ask Higgins it reads "Saved answer · …"; in a result, it sits under the source.
+- A reused AI answer says that an AI tool wrote it and that no official source has checked it.
+
+**Staff see** the admin portal's Intelligence Reuse page: calls avoided and still needed, results saved, expired results checked again, by call site and by day, what the store holds and how long each kind stays current. Counts only, never content. The same counts go to the server logs.
+
 ---
 
-## 6. Ask Higgins (the chat screen) {#ask-higgins}
+## Privacy and data {#privacy-and-data}
+
+### Privacy and redaction {#privacy}
+
+**The rule:** protect the person, preserve the evidence, share only what is necessary. Secrets are never sent. What shows whether something is a scam (the sender, their number, email address and links, any payment details and the words they used) is kept as evidence.
+
+**Always removed, on the phone (never relaxed)**
+Each of these is replaced with "[credential redacted]" before anything leaves the phone:
+- a password, passcode or PIN given after "is", "was", ":" or "=";
+- one-time, verification, security, sign-in and recovery codes, including "123456 is your verification code" and "code: 1234";
+- any mention of a recovery phrase, seed phrase or mnemonic;
+- bearer tokens, API keys, secret keys, and access and refresh tokens;
+- a username and password written inside a link, and secret values in a link (token, password, secret, key, code or session).
+
+**Removed again, on the server**
+- Everything submitted is checked again for passwords, PINs, codes, usernames and login IDs, bearer tokens and secrets in links, and each one is replaced with "[redacted]".
+- A word that only describes a secret ("password reset", "code required") is left alone.
+
+**Before every AI request (one privacy boundary)**
+- Secrets are stripped once more from the whole request, and a field that holds a credential is dropped.
+- A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
+- Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
+- Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, passport and social security numbers.
+- The original evidence is never changed; only the copy being sent is.
+
+**Pictures**
+- The picture's metadata is stripped first. If that fails, the picture is withheld.
+- The phone reads the text in the picture. A password, PIN or code it finds is blacked out on a copy before sending, and the original on the phone is untouched. If it can't be blacked out, the picture isn't sent.
+- If the phone's text reader isn't available, the picture isn't sent. The person can type the text instead.
+- Personal details and sender information in a picture are kept as evidence.
+
+**What may leave the phone**
+- Every request is checked against its own list of allowed fields. Any other field stops the request: "ApolloSG couldn't safely prepare this request. Retry this step."
+- Never accepted in any request: contacts, messages, SMS, email bodies, page content, the clipboard, location, IMEI, serial number, phone number or advertising ID. A number the person types to check is sent only as the number to check.
+- **What the phone is:** registration, and the check-in each time ApolloSG opens, also carry the phone's make, model, system and version, the country chosen in its region settings (a two-letter code, never location) and the date ApolloSG was installed. Anything the phone can't tell is left out.
+- **Which features were used:** a Device Check, or opening a Learn article or a scam alert, sends only which one it was. The server keeps a count, and for articles and alerts a one-way code of which one, so opening the same one again counts once. Never the title, the text or what was checked.
+- In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
+- What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
+- **Threats records** synced to the server carry fixed wording ("Details stay on the device"), never the message, screenshot, file or link. Only a domain is kept as an indicator.
+- **Family helpers** see fixed wording ("Security check — review with the protected person"), never the content.
+- **Handing a result to Higgins:** at most 8 findings and 4 actions, each line short. Secrets, the person's own details and IP addresses are removed.
+- **My Personal Data:** the person's own saved details (such as their name, email address or phone number) are replaced with a label, such as "[Email address redacted]", in message and email checks and in what a result hands to Higgins. IP addresses become "[ip address]".
+
+**What is kept, and for how long:** see Your data.
+
+### Your data: what is kept and for how long {#your-data}
+
+**The rule:** what the person sends ApolloSG lives on their phone. The server keeps only what a feature needs, only for as long as it needs it, and the person can delete all of it.
+
+**On the phone (the person decides)**
+| What | How long |
+|---|---|
+| Finished results | Until the person deletes the check, or deletes all their data |
+| Pictures, files and originals sent for a check | Never deleted automatically. They stay until the person removes them, deletes the check they belong to, or deletes all their data |
+| Ask Higgins chat | Up to 1 hour, and at most the last 40 messages |
+| Calls Apollo screened (Android) | The last 50 calls, for up to 30 days |
+| Email addresses watched for breaches | Until the person removes them. The last 12 scans are kept |
+| Settings and preferences | Until the person deletes all their data or uninstalls ApolloSG |
+
+**On ApolloSG's server**
+- **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
+- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if ApolloSG's own clean-up has stopped, and it is never served after that.
+- **The note on each result.** Every saved result says when its pictures and files were removed from ApolloSG's server, or the latest time they will leave it. Results saved before this note existed say only that they have left, once 24 hours have passed.
+- **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content for 30 days (see Ask Higgins).
+- **What Higgins remembers between chats:** a recent result for 7 days, protection status for 1 hour, a preference for 90 days, a goal for 30 days and a permission for 1 day. At most 25 of each kind and 100 in all.
+- **Threats records:** fixed wording and a domain only (see Privacy and redaction). Kept until the person clears the Threats history, which hides them, or deletes all their data, which deletes them.
+- **Remembered gate results:** a possible threat for 30 days and no threat for 7 days, kept against a fingerprint (a one-way code) of what was checked.
+- **TC FlyBy's search answers:** 7 days for something found and 1 day for nothing found, filed under what was looked up (a one-way code for a phone number or email address). They are shared, never tied to the person who asked, and deleted 90 days after they expire (see Reusable intelligence).
+- **Trusted links:** until the person removes the link.
+- **Gmail:** an encrypted sign-in token, until the person disconnects. Message content is never stored (see Email Gate).
+- **Family links:** until the person unpairs. A Family Help session is deleted 30 days after it starts.
+- **The phone's anonymous sign-in:** valid for 365 days.
+- **Diagnostics:** device registration, protection-health checks and alert-delivery records, with no personal content. Kept until the person deletes all their data, unless they expire sooner.
+- **Usage counts:** with the device record, how many times this phone used TC FlyBy, Magnum DI, Ask Higgins and Device Check, and how many different Learn articles and scam alerts it opened. Kept until the person deletes all their data, or ApolloSG's admin resets the counts (Reset Stats also deletes the AI usage and cost records and finished investigation records).
+- **Saved AI answers:** kept only when the question holds no secret and no personal detail. Current for 90 days, then deleted 90 days after that (see Reusable intelligence).
+
+**Deleting everything**
+- **Settings → What ApolloSG stores → Delete My ApolloSG Data** first wipes everything ApolloSG keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so ApolloSG starts again as a new anonymous device.
+- The same screen counts what the server holds in each group before anything is deleted.
+
+### Phone permissions {#permissions}
+
+**The rule:** ApolloSG asks only when the person chooses something that needs the permission, and says why first. If the person says no, ApolloSG asks once more at most, when the phone allows it, and after that offers Open Settings. Saying no only switches off that one feature.
+
+| Permission | What it's for | When ApolloSG asks |
+|---|---|---|
+| Notifications | Receive important threat and family alerts | During setup, or with Allow security alerts in Settings |
+| Camera | Scan QR codes and photograph suspicious items for checking | When the person scans a code or takes a photo |
+| Photos | Choose screenshots of suspicious messages to check for scams | When the person chooses a picture or a screenshot |
+| Site Gate (Android) | Run Apollo's on-device VPN filter | When the person turns on website protection |
+| Notification access (Android) | Text Gate reads new text-message notifications | When the person turns on message screening |
+| Caller ID & spam app (Android) | Call Gate screens incoming calls | When the person turns on call screening |
+| Gmail read-only (an account, not a phone permission) | Check a connected mailbox | When the person connects Gmail |
+
+- **Never asked for:** the microphone and location. Store builds never ask to read text messages or the call log.
+- Where a phone hides Wi-Fi details without location permission, ApolloSG shows them as unknown rather than asking.
+- A reminder to set up a protection the person skipped comes back after about 3 days, only while it is still off.
+
+---
+
+## Device protections {#device-protections}
+
+### Threats list {#threats-list}
+
+**Job:** one record for each check, showing what Apollo found and what to do next.
+
+**One record, never twins**
+- Each check creates exactly one entry. The phone's first detection and the later investigation update the same card.
+- Records that name the same investigation are one case. Repeat checks of the same subject show as one case with the latest result, and every check stays in its history.
+- Two records are the same finding only when they share an investigation, an explicit link between them, or the same verified indicator. A brand, website or scenario in common never merges two findings.
+- The same issue with the same details again within 24 hours is recorded as a repeat, not a new finding.
+
+**What each status means**
+| Status | When |
+|---|---|
+| Investigating | Only while an investigation is actually running |
+| Blocked | Only when real block evidence confirms it |
+| Needs you | Apollo is Barking or Biting |
+| Keeping watch | Apollo is Growling, or something is worth a closer look |
+| Handled | The person resolved it |
+| No threat | It was resolved with nothing found |
+
+**Rules**
+- **Biting only for a real block** (see How the gates decide). The server rejects any Biting claim without the block evidence, and an edit can never turn a record into Biting.
+- A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
+- Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
+- **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content, unless the person sends them a summary (below).
+- **Send to family** (on every threat): one tap sends linked family in ApolloSG a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. ApolloSG sends no email for this. Family can answer with a quick note ("I'm calling you now", "Don't do anything yet" or their own words, up to 140 characters); it shows on that threat on the person's phone and in Family responses.
+- **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
+
+---
+
+## General {#general}
+
+### Ask Higgins (the chat screen) {#ask-higgins}
 
 **Job:** the one place to talk to Higgins. A question gets an answer. Something to check goes into the same investigation pipeline as every other check. Ask Higgins never decides whether something is a scam.
 
@@ -357,357 +937,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 - A general-knowledge answer comes back unreadable: Higgins says so, and nothing is made up in its place.
 - **A stopped investigation** (both Magnum DI calls failed): once it can be resubmitted, one quiet note shows above the conversation. The note goes when the case is resubmitted, answered, removed, dismissed or past its expiry. There is no pop-up anywhere else.
 
----
-
-## 7. Privacy and redaction {#privacy}
-
-**The rule:** protect the person, preserve the evidence, share only what is necessary. Secrets are never sent. What shows whether something is a scam (the sender, their number, email address and links, any payment details and the words they used) is kept as evidence.
-
-**Always removed, on the phone (never relaxed)**
-Each of these is replaced with "[credential redacted]" before anything leaves the phone:
-- a password, passcode or PIN given after "is", "was", ":" or "=";
-- one-time, verification, security, sign-in and recovery codes, including "123456 is your verification code" and "code: 1234";
-- any mention of a recovery phrase, seed phrase or mnemonic;
-- bearer tokens, API keys, secret keys, and access and refresh tokens;
-- a username and password written inside a link, and secret values in a link (token, password, secret, key, code or session).
-
-**Removed again, on the server**
-- Everything submitted is checked again for passwords, PINs, codes, usernames and login IDs, bearer tokens and secrets in links, and each one is replaced with "[redacted]".
-- A word that only describes a secret ("password reset", "code required") is left alone.
-
-**Before every AI request (one privacy boundary)**
-- Secrets are stripped once more from the whole request, and a field that holds a credential is dropped.
-- A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
-- Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
-- Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, passport and social security numbers.
-- The original evidence is never changed; only the copy being sent is.
-
-**Pictures**
-- The picture's metadata is stripped first. If that fails, the picture is withheld.
-- The phone reads the text in the picture. A password, PIN or code it finds is blacked out on a copy before sending, and the original on the phone is untouched. If it can't be blacked out, the picture isn't sent.
-- If the phone's text reader isn't available, the picture isn't sent. The person can type the text instead.
-- Personal details and sender information in a picture are kept as evidence.
-
-**What may leave the phone**
-- Every request is checked against its own list of allowed fields. Any other field stops the request: "ApolloSG couldn't safely prepare this request. Retry this step."
-- Never accepted in any request: contacts, messages, SMS, email bodies, page content, the clipboard, location, IMEI, serial number, phone number or advertising ID. A number the person types to check is sent only as the number to check.
-- In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
-- What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
-- **Threats records** synced to the server carry fixed wording ("Details stay on the device"), never the message, screenshot, file or link. Only a domain is kept as an indicator.
-- **Family helpers** see fixed wording ("Security check — review with the protected person"), never the content.
-- **Handing a result to Higgins:** at most 8 findings and 4 actions, each line short. Secrets, the person's own details and IP addresses are removed.
-- **My Personal Data:** the person's own saved details (such as their name, email address or phone number) are replaced with a label, such as "[Email address redacted]", in message and email checks and in what a result hands to Higgins. IP addresses become "[ip address]".
-
-**What is kept, and for how long:** see Your data.
-
----
-
-## 8. ApolloSG's knowledge base (KB) {#knowledge-base}
-
-**Job:** sourced general knowledge that Higgins and TC FlyBy can use with no AI. KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
-
-**What is in it**
-| Kind | Where it comes from |
-|---|---|
-| Learn articles | Published Learn with Higgins articles, each linked to its screen |
-| Scam alerts | Official alerts and advisories from the government feeds, in the source's own words |
-| Official guidance | cyber.gov.au guidance shipped with ApolloSG (CC BY 4.0, attributed) |
-| Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
-| Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
-
-Saved AI answers are **not** in the KB. They are reusable intelligence (below), labelled as written by AI and never treated as sourced knowledge.
-
-**Trusted sources.** A page on any other website never becomes ApolloSG knowledge.
-- **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
-- **Tier 2, established security research (11 websites):** recognised research organisations and security companies.
-- **Tier 3, supporting (5 websites):** credible specialist and consumer sources.
-- A source is reproduced as a Learn article only when its licence allows it. Every other source is quoted briefly, with a link to read the rest.
-
-**How Tavily is used**
-- Only to find and re-read trusted pages for the KB. Never by TC FlyBy or Magnum DI, never in a live investigation, and never to answer a question as it is asked.
-- Tavily is never the source. Its own generated answer is switched off, and every page it returns is checked against the trusted list again.
-- **Once a week:** a run is due when the last successful run is 7 days old and no attempt was made in the last day. Staff can also start one from the admin portal.
-- **Each run** searches 14 guidance topics on every tier (up to 5 results from Tier 1, 4 from Tier 2 and 3 from Tier 3) and 4 scam-alert topics in Tier 1 news. Up to 40 stored pages last checked 7 or more days ago are read again.
-- Afterwards the KB brings in the latest Learn articles, scam alerts, shipped guidance and scam patterns.
-
-**The checks every page must pass**
-- It is on a trusted website, over https.
-- It isn't a document file (PDF, Word, Excel, PowerPoint, zip, audio or video).
-- It isn't a listing, tag, search, category or navigation page, and it has a title.
-- No more than 40% of its words are links.
-- It has at least 120 words of its own content, in English.
-
-Only the page's own headings, paragraphs and bullet points are kept; menus, footers, banners and link lists are dropped. A page that fails is not stored as knowledge, and the reason is kept for 90 days for the admin portal.
-
-**Nothing is invented, and history is kept**
-- Knowledge is the source's own words. A fact the page doesn't state stays missing.
-- **Same page:** if its words are at least 92% the same, it is only marked as checked again. If they changed, it becomes a new version and the old version is kept as Superseded. "Updated" shows for 30 days.
-- **Same words on another page** (at least 85% the same) are recorded as another place it is published, not a new entry.
-- A page ApolloSG already holds from a government feed, the shipped guidance or a Learn article isn't added again.
-- **Historical, never deleted:** a page that fails to load on 2 re-reads, or a scam alert published more than 2 years ago.
-- When the checks are tightened, a page that no longer passes is removed everywhere: its Learn article is archived and its Scam Alert withdrawn.
-
-**Where a researched page is published**
-- **Scam Alerts:** only a Tier 1 page found as an alert, published within the last 180 days, that Scam Alerts' fixed rules rate as a specific scam or an emerging pattern. It is rated by the same rules as the government feeds.
-- **Learn with Higgins:** only from a source whose licence allows it, with at least 3 sections, practical bullet points and a summary, passing Learn's quality checks. It ends with a "Source and licence" section. An article staff archived is never brought back.
-
-**How the KB is searched (no AI)**
-- The question and each entry are reduced to the same concepts: common words removed, word endings trimmed, and everyday words for the same thing made one (bitcoin and crypto, rang and called, mum and family, itunes and gift card). Words that only frame a question (want, said, real, safe, Australia) don't count.
-- Each concept counts by how rare it is in the KB: "toll" or "anydesk" tells more than "email" or "money".
-- An entry answers only if it holds at least 30% of the question's weight, its title shares a concept with the question, and its score is at least 0.3. The score is 0.4 × the share of the question it holds, plus 0.25 × the share in its title, plus 0.35 × how much of what its title names the question asks about.
-- A match on how something arrived alone (phone, call, text, message, email, online, website, app, money, payment, account, number) doesn't count, unless that is the whole question.
-- Order, strictest first: every current entry ranks above every historical one, then an entry whose title names something ranks above one whose title names nothing in particular ("What is a scam?"), then the score. At most 2 entries are used for one answer.
-- **Measured:** a fixed benchmark of 60 questions and 47 held-out ones checks every change. Before this rule, the right article came back for about 1 in 5 questions. Now it comes back for about 9 in 10 of the benchmark questions and 2 in 3 of the held-out ones, with fewer than 1 in 20 answers pointing to the wrong article.
-
-**How it is quoted**
-- In the source's own words: the passages that best match the question, in their original order.
-- Each quote names the publisher, its authority, where it applies and when it was published or last checked, with a link to read the original.
-- A historical entry says it may be out of date. Guidance from outside Australia says contacts and reporting steps may differ.
-- Every quote ends with: "This is general knowledge from ApolloSG's library. It isn't a finding about anything you've asked Apollo to check."
-
-**Where the KB is used**
-- **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
-- **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and saved AI answers never are.
-- **Preview:** the simulator answers from the KB instead of calling the AI tools, and says so.
-
-### Reusable intelligence (not KB knowledge)
-**Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
-
-**What it holds**
-- The AI tool's answer to a general scam-safety question nothing else answered.
-- TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
-- Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
-- Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
-
-**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated AI answer is never saved.
-
-**How long a result counts as current**
-| Information | Current for |
-|---|---|
-| General question answered by AI | 90 days |
-| TC FlyBy search that found something | 7 days |
-| TC FlyBy search that found nothing | 1 day |
-| Phone reputation (IPQualityScore) | 24 hours |
-| Link reputation (IPQualityScore) | 12 hours |
-| Domain registration (RDAP) | 48 hours |
-
-An expired result never counts as current. It is deleted 90 days after it expires.
-
-**The sufficiency check (no AI), before every paid call**
-- **Known:** the KB answers, or a current result about this exact subject is complete, backed by a source and not contradicted. It is reused and the call isn't made.
-- **Partial:** something relevant, but expired, incomplete, contradicted, or for a check that must be live. The call runs as before and the result is refreshed.
-- **Unknown:** nothing relevant. The call runs as before.
-- The KB is always checked first. The check only saves calls; it never lowers what a check must establish.
-- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
-
-**What the person sees**
-- A reused result says when Apollo last checked it: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again". In Ask Higgins it reads "Saved answer · …"; in a result, it sits under the source.
-- A reused AI answer says that an AI tool wrote it and that no official source has checked it.
-
-**Staff see** the admin portal's Intelligence Reuse page: calls avoided and still needed, results saved, expired results checked again, by call site and by day, what the store holds and how long each kind stays current. Counts only, never content. The same counts go to the server logs.
-
----
-
-## 9. Settling rules: the reason shown on each result {#settling-rules}
-
-Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
-
-| Rule ID | Rule | Settled by | When it applies |
-|---|---|---|---|
-| FLYBY-THREAT | Confirmed threat | TC FlyBy | A direct safety check, an official scam advisory, or an official source found by the search names this exact link, number, address or company as a scam or threat. |
-| FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in ApolloSG's knowledge base, and nothing contradicts it. |
-| FLYBY-IMPERSONATION | Corroborated impersonation | TC FlyBy | An organisation is named, a link isn't its website, and a separate check on that link backs this up. |
-| FLYBY-OPENING | Known scam opening | TC FlyBy | The message opens like the family "new number" scam but hasn't asked for anything yet. |
-| FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found real warning signs, but not enough to call it a scam. |
-| FLYBY-CLEAR | Nothing found, everything checked | TC FlyBy | Every planned check ran over everything sent and none found a scam indicator. |
-| FLYBY-UNKNOWN | Can't establish more | TC FlyBy | The checks couldn't establish more, and a deeper look couldn't change what to do. |
-| FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by ApolloSG's knowledge base or a sourced search. |
-| MAGNUM-READING | Reading | Magnum DI | Part of what was sent (a picture or scanned page) had to be read directly. |
-| MAGNUM-REASONING | Reasoning | Magnum DI | The material asks for money, details or access through a route no official source verified. |
-| MAGNUM-RELATING | Relating | Magnum DI | TC FlyBy's findings pointed in different directions and needed weighing up. |
-| MAGNUM-QUESTION | Open general question | Magnum DI | Neither the knowledge base nor a targeted search could answer a general question. |
-| MAGNUM-SAFETY-NET | Safety net | Magnum DI | TC FlyBy's own result didn't pass Apollo's checks, so Magnum DI looked at the whole case. |
-
-When Magnum DI was needed for more than one reason, the sentence names them together, for example "Reading and reasoning". Results recorded before these rules existed show no sentence rather than a guessed one.
-
----
-
-## 10. Your data: what is kept and for how long {#your-data}
-
-**The rule:** what the person sends ApolloSG lives on their phone. The server keeps only what a feature needs, only for as long as it needs it, and the person can delete all of it.
-
-**On the phone (the person decides)**
-| What | How long |
-|---|---|
-| Finished results | Until the person deletes the check, or deletes all their data |
-| Pictures, files and originals sent for a check | Never deleted automatically. They stay until the person removes them, deletes the check they belong to, or deletes all their data |
-| Ask Higgins chat | Up to 1 hour, and at most the last 40 messages |
-| Calls Apollo screened (Android) | The last 50 calls, for up to 30 days |
-| Email addresses watched for breaches | Until the person removes them. The last 12 scans are kept |
-| Settings and preferences | Until the person deletes all their data or uninstalls ApolloSG |
-
-**On ApolloSG's server**
-- **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
-- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if ApolloSG's own clean-up has stopped, and it is never served after that.
-- **The note on each result.** Every saved result says when its pictures and files were removed from ApolloSG's server, or the latest time they will leave it. Results saved before this note existed say only that they have left, once 24 hours have passed.
-- **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content for 30 days (see Ask Higgins).
-- **What Higgins remembers between chats:** a recent result for 7 days, protection status for 1 hour, a preference for 90 days, a goal for 30 days and a permission for 1 day. At most 25 of each kind and 100 in all.
-- **Threats records:** fixed wording and a domain only (see Privacy and redaction). Kept until the person clears the Threats history, which hides them, or deletes all their data, which deletes them.
-- **Remembered gate results:** a possible threat for 30 days and no threat for 7 days, kept against a fingerprint (a one-way code) of what was checked.
-- **TC FlyBy's search answers:** 7 days for something found and 1 day for nothing found, filed under what was looked up (a one-way code for a phone number or email address). They are shared, never tied to the person who asked, and deleted 90 days after they expire (see Reusable intelligence).
-- **Trusted links:** until the person removes the link.
-- **Gmail:** an encrypted sign-in token, until the person disconnects. Message content is never stored (see Email and accounts).
-- **Family links:** until the person unpairs. A Family Help session is deleted 30 days after it starts.
-- **The phone's anonymous sign-in:** valid for 365 days.
-- **Diagnostics:** device registration, protection-health checks and alert-delivery records, with no personal content. Kept until the person deletes all their data, unless they expire sooner.
-- **Saved AI answers:** kept only when the question holds no secret and no personal detail. Current for 90 days, then deleted 90 days after that (see Reusable intelligence).
-
-**Deleting everything**
-- **Settings → What ApolloSG stores → Delete My ApolloSG Data** first wipes everything ApolloSG keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so ApolloSG starts again as a new anonymous device.
-- The same screen counts what the server holds in each group before anything is deleted.
-
----
-
-## 11. Threats list {#threats-list}
-
-**Job:** one record for each check, showing what Apollo found and what to do next.
-
-**One record, never twins**
-- Each check creates exactly one entry. The phone's first detection and the later investigation update the same card.
-- Records that name the same investigation are one case. Repeat checks of the same subject show as one case with the latest result, and every check stays in its history.
-- Two records are the same finding only when they share an investigation, an explicit link between them, or the same verified indicator. A brand, website or scenario in common never merges two findings.
-- The same issue with the same details again within 24 hours is recorded as a repeat, not a new finding.
-
-**What each status means**
-| Status | When |
-|---|---|
-| Investigating | Only while an investigation is actually running |
-| Blocked | Only when real block evidence confirms it |
-| Needs you | Apollo is Barking or Biting |
-| Keeping watch | Apollo is Growling, or something is worth a closer look |
-| Handled | The person resolved it |
-| No threat | It was resolved with nothing found |
-
-**Rules**
-- **Biting only for a real block** (see Apollo detection). The server rejects any Biting claim without the block evidence, and an edit can never turn a record into Biting.
-- A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
-- Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
-- **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content, unless the person sends them a summary (below).
-- **Send to family** (on every threat): one tap sends linked family in ApolloSG a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. ApolloSG sends no email for this. Family can answer with a quick note ("I'm calling you now", "Don't do anything yet" or their own words, up to 140 characters); it shows on that threat on the person's phone and in Family responses.
-- **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
-
----
-
-## 12. Websites and links {#websites-links}
-
-**Job:** check a link before it is opened.
-
-**How a link is checked**
-- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. A link that redirects more than 5 times is judged as given, and the gap is recorded.
-- The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
-- Every link Apollo checks, in a message, an email or on its own, gets the same check.
-- There are 21 link rules, covering links, QR codes, data links and real-time phishing relays.
-- **Never a threat on their own:** an http link, a bare IP address, punycode, an unusual port, a risky TLD, a link shortener, a long link, deep subdomains, encoded characters, a newly registered domain, a QR code itself, and data or blob links.
-- **QR codes:** the address inside is checked as a link. The QR code itself is never a threat.
-- A link the person checks themselves opens an investigation, which TC FlyBy and Magnum DI pick up as usual.
-
-**Website protection (Android)**
-- An on-device filter, run through Android's private VPN, blocks known dangerous websites before they load. Browsing is checked on the phone and never sent anywhere.
-- A blocked website reaches Biting only when the filter actually blocked the connection.
-
-**Trusted links**
-- Trust covers only the exact link the person chose. Removing it ends the trust.
-
----
-
-## 13. Messages and calls: Call Guard and Text Guard {#call-text-guard}
-
-**Call Guard (Android)**
-- Works only when the person makes ApolloSG the phone's caller ID & spam app. Android then hands ApolloSG each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
-- Apollo never listens to a call and never reads the call log. It sees only the one incoming number.
-- It compares that number with three lists kept on the phone: numbers the person blocked, numbers they allowed, and numbers this phone looked up earlier and found high-risk.
-- An allowed number always rings. For a blocked or high-risk number, ApolloSG asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
-- Every other call rings normally. ApolloSG never delays or silences a call on a guess, and if screening fails the call rings.
-- A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
-- A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
-- **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
-
-**Call Guard (iPhone)**
-- Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
-
-**Text Guard**
-- **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
-- Store builds of ApolloSG never ask to read text messages or the call log.
-- **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to ApolloSG where the app offers Share.
-- Every message goes through the same checks as a pasted one: 30 message rules, plus the link check for each link. Calls have 16 rules of their own.
-- **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, a job, investment or romance discussion without scam mechanics, an unknown caller, a number that isn't in contacts, and a number's reputation without matching behaviour.
-
----
-
-## 14. Email and accounts {#email-accounts}
-
-**Gmail**
-- Read-only access only. ApolloSG never sends, deletes, labels or changes anything in the mailbox, and never sees or stores the mailbox password.
-- The person connects through Google's own sign-in, and the sign-in link expires after 10 minutes. More than one account can be connected.
-- The connection, an encrypted token, is kept until the person disconnects. Disconnecting also cancels it with Google.
-- **Monitoring:** every 15 minutes, Apollo reads the next 15 messages of each connected account and gives each one the same checks as a pasted email.
-- Message content is used for that check only and never written to ApolloSG's database. A receipt for each message, with no content, stops it from being checked twice.
-- An attachment is checked by its fingerprint when the file-reputation service is connected; the attachment itself isn't uploaded.
-- There are 19 email rules. **Never a threat on their own:** a calendar invitation, a form-builder domain, valid sender checks (SPF, DKIM and DMARC) from a form provider, and an address appearing in a breach.
-
-**Account checks**
-- The email addresses the person watches stay on the phone.
-- Each scan sends an address once to the breach service, Have I Been Pwned when it is connected and XposedOrNot otherwise, and the address isn't stored or logged.
-- ApolloSG never asks for a password. Anything in a pasted account alert that looks like one is removed before it is checked.
-- Links in a pasted account alert are compared with the organisation's official websites.
-- "No breach found" is never called proof that the account is safe.
-
----
-
-## 15. Apps and files {#apps-files}
-
-**Files**
-- **Trust the file, not its name.** The phone compares the file's real type with its name, and looks for double extensions, right-to-left name tricks, archives, app packages, profiles, certificates and links inside.
-- Files can be up to 10 MB. The phone reads the start of the file and a text sample; nothing is uploaded for this first look.
-- Links inside a file are checked as links.
-- If the file is sent for an investigation, the server decides its type from its own bytes, not its name, and records any mismatch.
-- ApolloSG only ever cleans up the copy its own picker made. A shared original is never touched.
-- There are 19 file rules. **Never a threat on their own:** encryption or password protection, ordinary file characteristics, and a QR code itself.
-- ApolloSG never calls a file 100% safe, and unknown never means malicious.
-
-**Apps**
-- Apollo doesn't judge an app by its name. It looks at what the app is allowed to do, where it came from and what happened around the install.
-- It works from what the person tells ApolloSG plus what the phone's security checks can see, and never pretends to read other apps.
-- Up to 10 web addresses the app uses are checked against the same reputation sources as a link.
-- A remote-access app matters when it follows a suspicious call, message or website.
-- There are 14 app rules. **Never a threat on their own:** an app from an official store, permissions the app is expected to need, and installing a web app.
-
----
-
-## 16. Device and internet {#device-internet}
-
-**Device check**
-- ApolloSG shows only what this phone and this version of ApolloSG can truly see, plus what the person reports. It is never a full scan. Anything it can't see is shown as not visible, never as safe.
-
-| Result | Meaning |
-|---|---|
-| Protected | No meaningful issues detected within what Apollo can see here. |
-| Review recommended | Some permissions or settings deserve attention. |
-| Action required | A high-risk configuration or app was detected. |
-| Recovery | Risky access was already granted. Follow the steps — ApolloSG stays with you. |
-
-- **Security & Privacy Review:** the same 9 areas on every kind of device. Each setting gets one of: Checked, Review recommended, Action required, Manual review required, Unavailable or Not applicable. The review is never one blanket "Protected".
-- **Protection changes** say only what changed, never who changed it or why. A setting Apollo couldn't read is never counted as a change, and Apollo's own protection VPN is recognised as Apollo's.
-- There are 15 device rules. **Never a threat on their own:** expected management or device administration, expected accessibility access, ApolloSG or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
-
-**Internet (Check this network)**
-- ApolloSG uses only what the phone reports: connection type, Wi-Fi security, a sign-in page (captive portal) and VPN status. The person adds where they are (home, work or school, a public place, or not sure), the network name they expect, and whether they turned the VPN on.
-- Public isn't malicious, open isn't intercepted, and a VPN the person chose is fine.
-- There are 9 network rules. **Never a threat on their own:** public Wi-Fi, open or WEP Wi-Fi, an unknown Wi-Fi network, a lookalike network name, a captive portal, a trusted home or work connection, and a mobile data connection.
-
----
-
-## 17. Scam Alerts and government feeds {#scam-alerts}
+### Scam Alerts and government feeds {#scam-alerts}
 
 **Job:** show the specific scams that official sources are reporting, each explained from the source itself.
 
@@ -732,41 +962,10 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - An alert local to a country other than Australia is labelled Overseas only and never growls.
 - **Growling for an alert:** only for a specific scam rated High or Extreme that has reached Australia, or that may reach Australia and was reported within the last 180 days.
 
----
+### Cost guardrails at a glance {#cost-guardrails}
 
-## 18. Phone permissions {#permissions}
-
-**The rule:** ApolloSG asks only when the person chooses something that needs the permission, and says why first. If the person says no, ApolloSG asks once more at most, when the phone allows it, and after that offers Open Settings. Saying no only switches off that one feature.
-
-| Permission | What it's for | When ApolloSG asks |
-|---|---|---|
-| Notifications | Receive important threat and family alerts | During setup, or with Allow security alerts in Settings |
-| Camera | Scan QR codes and photograph suspicious items for checking | When the person scans a code or takes a photo |
-| Photos | Choose screenshots of suspicious messages to check for scams | When the person chooses a picture or a screenshot |
-| Website protection (Android) | Run Apollo's on-device VPN filter | When the person turns on website protection |
-| Notification access (Android) | Text Guard reads new text-message notifications | When the person turns on message screening |
-| Caller ID & spam app (Android) | Call Guard screens incoming calls | When the person turns on call screening |
-| Gmail read-only (an account, not a phone permission) | Check a connected mailbox | When the person connects Gmail |
-
-- **Never asked for:** the microphone and location. Store builds never ask to read text messages or the call log.
-- Where a phone hides Wi-Fi details without location permission, ApolloSG shows them as unknown rather than asking.
-- A reminder to set up a protection the person skipped comes back after about 3 days, only while it is still off.
-
----
-
-## Outcomes (one system for TC FlyBy and Magnum DI)
-| Outcome | Meaning |
-|---|---|
-| **Confirmed scam or threat** | An authoritative source names this exact link, number, address or company as a scam or threat. |
-| **Likely scam** | The evidence and an established scam pattern point to a scam, without proof about this particular sender. |
-| **Concerning** | Real warning signs, but not enough to call it a scam. |
-| **Unable to determine** | The available evidence can't establish more. |
-| **No scam indicators found** | The checks performed found nothing. This is **not** proof it's safe, and it is never described as safe. |
-
-Every result shows **"Settled by TC FlyBy"** or **"Settled by Magnum DI"**, in the app and in the admin portal.
-
-## Cost guardrails at a glance
 - Gate and Higgins Triage: 0 AI calls.
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
 - Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
 - Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.
+

@@ -16,6 +16,7 @@ import { Button } from "@/src/components/ui";
 import type { FirstCheckReport } from "@/src/domain/firstCheck";
 import { collectFirstCheck } from "@/src/security/firstCheckSignals";
 import { saveFirstCheck } from "@/src/store/firstCheckStore";
+import { reportActivity } from "@/src/telemetry/activity";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -41,6 +42,7 @@ export default function FirstCheckOnboarding() {
     setRunning(true);
     const result = await collectFirstCheck();
     await saveFirstCheck(result, "first_check");
+    reportActivity("device_check");
     setReport(result);
     setRunning(false);
   }, []);

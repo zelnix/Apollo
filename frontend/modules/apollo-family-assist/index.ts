@@ -19,7 +19,7 @@ interface NativeModule {
 const unavailable = async () => { throw new Error("Family Help requires an installed Apollo mobile build."); };
 const fallback: NativeModule = {
   getCapabilities: async () => ({ platform: "android", screenShare: "unavailable", supportedScopes: [], helperViewing: "unavailable", liveMicrophone: "unavailable", systemAudio: "not_supported", remoteControl: "not_supported", unavailableReason: "not_implemented", observedAt: new Date().toISOString() }),
-  getState: async () => ({ sessionId: null, generation: null, captureState: "idle", helperConnected: false, captureScope: null, microphoneEnabled: false, startedAt: null, lastTransitionAt: new Date().toISOString(), failureCode: null }),
+  getState: async () => ({ sessionId: null, generation: null, captureState: "idle", helperConnected: false, captureScope: null, microphoneEnabled: false, startedAt: null, lastTransitionAt: new Date().toISOString(), failureCode: null, connectionPath: null }),
   startCapture: unavailable, pauseCapture: unavailable, resumeCapture: unavailable, stopCapture: unavailable,
   startViewer: unavailable, stopViewer: unavailable,
   addListener: () => ({ remove() {} }),

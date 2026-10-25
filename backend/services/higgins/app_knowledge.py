@@ -220,7 +220,7 @@ _PRIVACY = """APOLLO'S PRIVACY RULES (state accurately):
 _CALL_SCREENING = """CALL SCREENING:
 - Android: ApolloSG can become default call screener via Settings > Default apps > Caller ID & spam blocking. Offered during setup and on Check a number `/call-guard`.
 - Android: "Calls Apollo screened" on `/call-guard` lists the incoming numbers Android passed to Apollo's call screening (usually numbers not in contacts), kept on the phone for up to 30 days; tap one to check it. Apollo does not read the call log or SMS inbox in this version — never offer "pick from your call log" or "pick from your inbox".
-- Text Guard (Android) checks new texts through opt-in notification access. Otherwise: paste the text, use a screenshot, or Share → ApolloSG where the source app offers Share.
+- Text Gate (Android) checks new texts through opt-in notification access. Otherwise: paste the text, use a screenshot, or Share → ApolloSG where the source app offers Share.
 - iOS: Apple provides no equivalent. No app can be the call screener. ApolloSG works from numbers the person checks and a blocked-number list. Say this plainly; never imply parity."""
 
 # CONDITIONAL: settings structure

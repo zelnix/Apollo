@@ -21,6 +21,7 @@ import { collectFirstCheck, type FirstCheckProgress } from "@/src/security/first
 import { getBaseline, saveFirstCheck } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { reportActivity } from "@/src/telemetry/activity";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
@@ -60,6 +61,7 @@ export default function Recheck() {
       const fresh = await collectFirstCheck(setProgress);
       const diff = diffFirstCheck(prior, fresh);
       await saveFirstCheck(fresh, "re_check");
+      reportActivity("device_check");
       setPrevious(prior);
       setChanges(diff);
       setReport(fresh);

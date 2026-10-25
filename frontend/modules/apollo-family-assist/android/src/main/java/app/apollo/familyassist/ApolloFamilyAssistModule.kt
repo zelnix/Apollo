@@ -29,6 +29,11 @@ internal object FamilyAssistRuntime {
     if (store.transition(sessionId, generation, captureState, failure, reason, helperConnected, markStarted)) emit(eventName, store.snapshot())
   }
 
+  /** The selected route changed (direct, relayed) or the link dropped (reconnecting). Only the current session counts. */
+  fun updatePath(sessionId: String, generation: String, path: String) {
+    if (store.setConnectionPath(sessionId, generation, path)) emit("connection_changed", store.snapshot())
+  }
+
   /** The viewer peer ended by itself (helper stopped, signaling or transport failed). Only the current viewer counts. */
   fun viewerEnded(peer: FamilyAssistRtcPeer, sessionId: String, generation: String, reason: String) {
     synchronized(this) {

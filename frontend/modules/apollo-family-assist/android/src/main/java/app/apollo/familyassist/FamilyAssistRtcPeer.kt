@@ -66,6 +66,9 @@ class FamilyAssistRtcPeer(
   private var source: VideoSource? = null
   private var localTrack: VideoTrack? = null
   private var refreshFuture: ScheduledFuture<*>? = null
+  // The route WebRTC picked for the picture, and whether the connection is up; both written on the WebRTC thread.
+  @Volatile private var selectedPath: String? = null
+  @Volatile private var connected = false
 
   /** Sharer only, once, before [connect]: the source the screen capturer feeds, from this session's factory. */
   fun createScreenSource(): VideoSource {
@@ -117,6 +120,7 @@ class FamilyAssistRtcPeer(
   private fun createPeer(relay: JSONObject) {
     val created = factory.createPeerConnection(configuration(relay), this) ?: return end("transport_failed")
     peer = created
+    reportPath("connecting")
     scheduleRelayRefresh(relay)
     val track = localTrack
     if (sharer && track != null) {
@@ -243,6 +247,12 @@ class FamilyAssistRtcPeer(
     onEnded(reason)
   }
 
+  /** Tells JS how the picture travels: connecting, direct, relayed or reconnecting. */
+  private fun reportPath(path: String) {
+    if (closing.get() || closed.get()) return
+    FamilyAssistRuntime.updatePath(sessionId, generation, path)
+  }
+
   private fun update(captureState: String, eventName: String, helperConnected: Boolean? = null) {
     if (closing.get() || closed.get()) return
     FamilyAssistRuntime.update(sessionId, generation, captureState, eventName, helperConnected = helperConnected)
@@ -252,9 +262,16 @@ class FamilyAssistRtcPeer(
   override fun onIceCandidate(candidate: IceCandidate) { send(envelope("ice_candidate").put("candidate", candidate.sdp)) }
   override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
     when (state) {
-      PeerConnection.PeerConnectionState.CONNECTED ->
+      PeerConnection.PeerConnectionState.CONNECTED -> {
+        connected = true
         if (sharer) update("active", "helper_connected", helperConnected = true) else update("active", "capture_started")
-      PeerConnection.PeerConnectionState.DISCONNECTED -> update("starting", "transport_degraded")
+        selectedPath?.let(::reportPath)
+      }
+      PeerConnection.PeerConnectionState.DISCONNECTED -> {
+        connected = false
+        update("starting", "transport_degraded")
+        reportPath("reconnecting")
+      }
       PeerConnection.PeerConnectionState.FAILED -> end("transport_failed")
       else -> Unit
     }
@@ -274,7 +291,11 @@ class FamilyAssistRtcPeer(
   override fun onDataChannel(v: DataChannel) { v.close() }
   override fun onRenegotiationNeeded() {}
   override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
-  override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent) {}
+  override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent) {
+    val path = pathOf(event.local, event.remote)
+    selectedPath = path
+    if (connected) reportPath(path)
+  }
   override fun onRemoveTrack(receiver: RtpReceiver) {}
 
   private class SdpCallback(private val success: (SessionDescription) -> Unit, private val fail: (String) -> Unit) : SdpObserver {
@@ -300,3 +321,10 @@ class FamilyAssistRtcPeer(
 }
 
 private fun JSONArray.strings() = (0 until length()).map { getString(it) }
+
+/** "relayed" when either end of the selected pair is a relay (TURN) candidate, otherwise "direct". */
+internal fun pathOf(local: IceCandidate?, remote: IceCandidate?): String =
+  if (listOf(local, remote).any { it?.sdp?.let(::isRelayCandidate) == true }) "relayed" else "direct"
+
+/** An ICE candidate line names its type after "typ": host, srflx, prflx or relay. */
+internal fun isRelayCandidate(sdp: String): Boolean = Regex("""\btyp relay\b""").containsMatchIn(sdp)

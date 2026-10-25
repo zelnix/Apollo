@@ -248,7 +248,7 @@ const CATALOGUE: CapabilityDef[] = [
     area: "calls_messages",
     what: "Permission for Apollo to see the notifications your messaging apps post — the banner text, not your message history.",
     benefit: "It lets Apollo check a scam text the moment it arrives, without ever opening your messages.",
-    purpose: "Let Text Guard check scam texts from your messaging app’s notifications — without ever reading your SMS database.",
+    purpose: "Let Text Gate check scam texts from your messaging app’s notifications — without ever reading your SMS database.",
     platforms: ["android"],
     capKey: "notificationAccess",
     action: { target: "notification_access", path: "Settings → Apps → Special access → Notification access", label: "Open notification access" },
@@ -475,7 +475,7 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
     return { ...base, klass: "unavailable", detail: "This version of ApolloSG doesn’t read your call log. Calls Apollo screened lists the incoming numbers Android passes to Apollo’s call screening — tap one to check it, or type the number." };
   }
   if (platform === "android" && def.id === "message_inbox" && input.restrictedPickers?.sms !== true) {
-    return { ...base, klass: "unavailable", detail: "This version of ApolloSG doesn’t read your text messages. Text Guard checks new texts through notification access; you can also paste a message, use a screenshot, or share it to ApolloSG where the app offers Share." };
+    return { ...base, klass: "unavailable", detail: "This version of ApolloSG doesn’t read your text messages. Text Gate checks new texts through notification access; you can also paste a message, use a screenshot, or share it to ApolloSG where the app offers Share." };
   }
   // Declared picker-backed reads are permission-gated and asked for in the moment.
   if (platform === "android" && (def.id === "call_history" || def.id === "message_inbox")) {

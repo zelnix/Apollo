@@ -69,9 +69,17 @@ final class FamilyAssistRuntime {
     if fresh { lastExtensionRevision = revision }
     lock.unlock()
     guard fresh else { return }
-    update(body["sessionId"] as? String, body["generation"] as? String, captureState: captureState, event: name,
+    let sessionId = body["sessionId"] as? String, generation = body["generation"] as? String
+    update(sessionId, generation, captureState: captureState, event: name,
            failure: body["failureCode"] as? String, reason: body["endReason"] as? String,
            helperConnected: body["helperConnected"] as? Bool, markStarted: body["markStarted"] as? Bool ?? false)
+    // Every publication carries the extension's current route, so a missed notification never loses it.
+    if let path = body["connectionPath"] as? String { updatePath(sessionId, generation, path) }
+  }
+
+  /// The selected route changed (direct, relayed) or the link dropped (reconnecting). Only the current session counts.
+  func updatePath(_ sessionId: String?, _ generation: String?, _ path: String) {
+    if store.setConnectionPath(sessionId: sessionId, generation: generation, path: path) { emit("connection_changed", store.snapshot()) }
   }
 
   // MARK: Viewer (the helper watching on this iPhone or iPad)

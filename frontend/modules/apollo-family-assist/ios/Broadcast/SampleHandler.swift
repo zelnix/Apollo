@@ -43,6 +43,12 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
   private var revision: Double = 0
   private var paused = false
   private var finished = false
+  // What the last publication said, so a route change can be published with the current capture state.
+  private var captureState = "starting"
+  private var helperConnected = false
+  private var connected = false
+  private var selectedPath: String? // the route WebRTC picked for the picture
+  private var connectionPath = "connecting"
 
   // MARK: ReplayKit
 
@@ -160,6 +166,7 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
     track.isEnabled = !paused
     _ = created.add(track, streamIds: ["apollo-family-assist"])
     peer = created
+    setPath("connecting")
     self.source = source
     self.track = track
     frames.setPaused(paused)
@@ -275,15 +282,24 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
 
   // MARK: State for the app
 
+  /// Queue only. A new route (connecting, direct, relayed or reconnecting) is published with the current capture state.
+  private func setPath(_ path: String) {
+    guard !finished, path != connectionPath else { return }
+    connectionPath = path
+    publish(captureState, event: "connection_changed")
+  }
+
   /// Writes this session's state for the app (plist values only, no nulls) and tells it to read it.
   private func publish(_ captureState: String, event: String, failure: String? = nil, reason: String? = nil, helperConnected: Bool? = nil, markStarted: Bool = false) {
     guard let handoff else { return }
+    self.captureState = captureState
+    if let helperConnected { self.helperConnected = helperConnected }
     revision = max(Date().timeIntervalSince1970, revision + 0.001)
     var body: [String: Any] = ["sessionId": handoff.sessionId, "generation": handoff.generation, "captureState": captureState,
-                               "type": event, "revision": revision, "markStarted": markStarted]
+                               "type": event, "revision": revision, "markStarted": markStarted,
+                               "helperConnected": self.helperConnected, "connectionPath": connectionPath]
     if let failure { body["failureCode"] = failure }
     if let reason { body["endReason"] = reason }
-    if let helperConnected { body["helperConnected"] = helperConnected }
     defaults?.set(body, forKey: extensionStateKey)
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(stateNotification as CFString), nil, nil, true)
   }
@@ -347,11 +363,27 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
     queue.async {
       guard !self.finished else { return }
       switch newState {
-      case .connected: self.publish(self.paused ? "paused" : "active", event: "helper_connected", helperConnected: true)
-      case .disconnected: self.publish("starting", event: "transport_degraded")
+      case .connected:
+        self.connected = true
+        self.publish(self.paused ? "paused" : "active", event: "helper_connected", helperConnected: true)
+        if let path = self.selectedPath { self.setPath(path) }
+      case .disconnected:
+        self.connected = false
+        self.publish("starting", event: "transport_degraded")
+        self.setPath("reconnecting")
       case .failed: self.failTransport("The private screen connection failed.")
       default: break
       }
+    }
+  }
+
+  func peerConnection(_ peerConnection: RTCPeerConnection, didChangeLocalCandidate local: RTCIceCandidate, remoteCandidate remote: RTCIceCandidate,
+                      lastReceivedMs lastDataReceivedMs: Int32, changeReason reason: String) {
+    let path = routePath(local: local.sdp, remote: remote.sdp)
+    queue.async {
+      guard !self.finished else { return }
+      self.selectedPath = path
+      if self.connected { self.setPath(path) }
     }
   }
 
@@ -439,6 +471,12 @@ private final class FrameGate {
 /// reject fractional seconds, so they are dropped first (same as the app's FamilyAssistDates.parse).
 private func parseDate(_ value: String) -> Date? {
   ISO8601DateFormatter().date(from: value.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression))
+}
+
+/// "relayed" when either end of the selected ICE pair is a relay (TURN) candidate, otherwise "direct" (same rule as the
+/// app's FamilyAssistRoute; the extension is a separate target, so it keeps its own copy).
+private func routePath(local: String, remote: String) -> String {
+  [local, remote].contains { $0.range(of: #"\btyp relay\b"#, options: .regularExpression) != nil } ? "relayed" : "direct"
 }
 
 /// Written once by the app (ApolloFamilyAssistModule's FamilyAssistHandoff, same fields).

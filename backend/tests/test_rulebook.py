@@ -30,8 +30,13 @@ def test_every_watched_file_exists():
     assert not missing, f"Watched by the rule book but not found: {missing}. Update WATCHED in services/rulebook.py and re-stamp."
 
 
+def _section(anchor: str) -> str:
+    """A section's own text: from its {#id} to the next section or part."""
+    return re.split(r"\n#{2,3} ", BOOK.split(f"{{#{anchor}}}", 1)[1], maxsplit=1)[0]
+
+
 def _ask_higgins_section() -> str:
-    return BOOK.split("{#ask-higgins}", 1)[1].split("\n## ", 1)[0]
+    return _section("ask-higgins")
 
 
 def test_the_ask_higgins_rules_match_the_server():
@@ -58,10 +63,6 @@ def test_a_typed_message_starts_a_check_only_as_the_book_says():
     assert pipeline_submit.extract_submittable_items("check 1234567") == []          # 7 characters, and under 30 in all
     assert pipeline_submit.extract_submittable_items("check " + "x" * 24)[0]["kind"] == "text"   # exactly 30
     assert pipeline_submit.extract_submittable_items("check " + "x" * 23) == []
-
-
-def _section(anchor: str) -> str:
-    return BOOK.split(f"{{#{anchor}}}", 1)[1].split("\n## ", 1)[0]
 
 
 def test_the_privacy_rules_match_the_code():
@@ -147,7 +148,7 @@ def test_all_five_outcomes_are_in_the_rule_book():
 
 
 def test_every_settling_rule_is_listed_in_the_rule_book_word_for_word():
-    section = BOOK.split("{#settling-rules}", 1)[1].split("\n## ", 1)[0]
+    section = _section("settling-rules")
     for rule_id, (who, name) in rulebook.SETTLING_RULES.items():
         assert re.search(rf"^\| {re.escape(rule_id)} \| {re.escape(name)} \| {re.escape(who)} \|", section, re.M), rule_id
 
@@ -257,16 +258,12 @@ def test_the_check_area_rules_match_the_code():
     from services import feed_health, gmail, government_alerts, intel, mailbox_monitor
     count = lambda category: sum(1 for rule in RULES.values() if rule["category"] == category)  # noqa: E731
     expected = {
-        "websites-links": [f"up to {inspect.signature(intel.expand_redirects_detailed).parameters['max_hops'].default} redirects",
-                           f"There are {count('link')} link rules"],
-        "call-text-guard": [f"{count('message')} message rules", f"Calls have {count('call')} rules"],
-        "email-accounts": [f"the sign-in link expires after {int(gmail.OAUTH_STATE_TTL.total_seconds() // 60)} minutes",
-                           f"every {mailbox_monitor.SCAN_SECONDS // 60} minutes, Apollo reads the next "
-                           f"{inspect.signature(gmail.scan_inbox_page).parameters['limit'].default} messages",
-                           f"There are {count('email')} email rules"],
-        "apps-files": [f"There are {count('file')} file rules", f"There are {count('app')} app rules",
-                       f"Up to {AppAnalyseIn.model_json_schema()['properties']['hosts']['maxItems']} web addresses"],
-        "device-internet": [f"There are {count('device')} device rules", f"There are {count('network')} network rules"],
+        "link-gate": [f"up to {inspect.signature(intel.expand_redirects_detailed).parameters['max_hops'].default} redirects"],
+        "call-gate": [f"Call Gate rules ({count('call')})"],
+        "email-gate": [f"the sign-in link expires after {int(gmail.OAUTH_STATE_TTL.total_seconds() // 60)} minutes",
+                       f"every {mailbox_monitor.SCAN_SECONDS // 60} minutes, Apollo reads the next "
+                       f"{inspect.signature(gmail.scan_inbox_page).parameters['limit'].default} messages"],
+        "app-gate": [f"Up to {AppAnalyseIn.model_json_schema()['properties']['hosts']['maxItems']} web addresses"],
         "scam-alerts": [f"dated more than {government_alerts.RECENCY_CUTOFF.days} days ago",
                         f"more than {int(government_alerts.STALE_AFTER.total_seconds() // 3600)} hours old",
                         f"no successful read in {int(feed_health.STALE_AFTER.total_seconds() // 3600)} hours",
@@ -274,24 +271,79 @@ def test_the_check_area_rules_match_the_code():
     }
     missing = [f"{anchor}: {phrase}" for anchor, phrases in expected.items() for phrase in phrases if phrase not in _section(anchor)]
     assert not missing, f"The check-area rules no longer match the code on: {missing}"
-    assert gmail.SCOPE.endswith("/gmail.readonly") and "Read-only access only" in _section("email-accounts")
+    assert gmail.SCOPE.endswith("/gmail.readonly") and "Read-only access only" in _section("email-gate")
+
+
+# ── Protection Gates: one section per gate, with every one of its rules ─────
+GATE_SECTIONS = {  # catalogue category → (section id, the label over its list of rules)
+    "link": ("link-gate", "Link Gate rules"), "message": ("text-gate", "Text Gate rules"), "call": ("call-gate", "Call Gate rules"),
+    "email": ("email-gate", "Email Gate rules"), "account": ("account-gate", "Account Gate rules"), "file": ("file-gate", "File Gate rules"),
+    "app": ("app-gate", "App Gate rules"), "device": ("device-gate", "Device Gate rules"), "network": ("internet-gate", "Internet Gate rules"),
+    "correlation": ("linked-events", "Linked-event rules"),
+}
+PARTS = ["protection-gates", "investigation-process", "privacy-and-data", "device-protections", "general"]
+
+
+def test_every_gate_rule_is_listed_under_its_gate_word_for_word():
+    assert {rule["category"] for rule in RULES.values()} == set(GATE_SECTIONS), "a new rule category needs its own gate section"
+    listed = re.findall(r"^- \*\*([A-Z]+-\d+)\*\* · ", BOOK, re.M)
+    assert sorted(listed) == sorted(RULES), "every catalogue rule is listed exactly once, and nothing else is listed as one"
+    for category, (anchor, label) in GATE_SECTIONS.items():
+        section = _section(anchor)
+        rows = [rule for rule in CATALOGUE["rules"] if rule["category"] == category]
+        assert f"**{label} ({len(rows)})**" in section, f"{anchor}: the count over its rules"
+        for rule in rows:
+            assert f"\n- **{rule['id']}** · {rule['title']}\n" in section + "\n", f"{anchor}: {rule['id']} word for word"
+
+
+def test_the_book_is_in_five_parts_with_every_gate_under_protection_gates():
+    from services.rulebook_export import split_groups
+    _, groups = split_groups(BOOK)
+    assert [group["id"] for group in groups] == PARTS
+    gates = [section["id"] for section in groups[0]["sections"]]
+    assert gates == ["gate-decisions", "site-gate", "link-gate", "text-gate", "call-gate", "email-gate", "account-gate",
+                     "file-gate", "app-gate", "device-gate", "internet-gate", "linked-events"]
+    placed = {group["id"]: [section["id"] for section in group["sections"]] for group in groups}
+    assert placed["investigation-process"] == ["higgins-triage", "tc-flyby", "magnum-di", "higgins-explanation", "settling-rules", "outcomes", "knowledge-base"]
+    assert placed["privacy-and-data"] == ["privacy", "your-data", "permissions"]
+    assert placed["device-protections"] == ["threats-list"]
+    assert placed["general"] == ["ask-higgins", "scam-alerts", "cost-guardrails"]
+
+
+def test_gate_is_the_one_name_for_every_gate():
+    assert not re.search(r"\b(Call|Text|Site|Link|Email|Account|File|App|Device|Network|Internet|Website) Guard\b", BOOK)
+
+
+def test_the_rule_book_downloads_keep_the_parts_and_every_section():
+    import json
+    from services import rulebook_export
+    payload = json.loads(rulebook_export.as_json())
+    assert [group["id"] for group in payload["groups"]] == PARTS
+    assert sum(len(group["sections"]) for group in payload["groups"]) == BOOK.count("\n### ")
+    link_gate = next(s for s in payload["groups"][0]["sections"] if s["id"] == "link-gate")
+    assert "- **LINK-01** · " in link_gate["markdown"] and payload["markdown"] == BOOK
+    pdf = rulebook_export.as_pdf()
+    assert pdf.startswith(b"%PDF")
 
 
 def test_every_rule_book_section_opens_on_its_own_in_the_admin_portal(monkeypatch):
     monkeypatch.setattr(rulebook, "changed", lambda: [])
     page = admin_portal._rule_book_html()
-    sections = BOOK.count("\n## ")
-    assert page.count('<details class="rb-section"') == sections
+    assert page.count('<details class="rb-section"') == BOOK.count("\n### ")
+    assert page.count('<section class="rb-group"') == BOOK.count("\n## ") == len(PARTS)
     assert "<details class=\"rb-section\" open" not in page, "every section starts closed"
-    for anchor in ("your-data", "threats-list", "websites-links", "call-text-guard", "email-accounts", "apps-files",
-                   "device-internet", "scam-alerts", "permissions", "settling-rules", "privacy"):
+    for anchor in ("your-data", "threats-list", "site-gate", "link-gate", "call-gate", "email-gate", "file-gate",
+                   "device-gate", "linked-events", "scam-alerts", "permissions", "settling-rules", "privacy"):
         assert f'<details class="rb-section" id="{anchor}"' in page, anchor
+    for part in PARTS:
+        assert f'<section class="rb-group" id="{part}"' in page, part
     assert 'data-rb-all="open"' in page and 'data-rb-all="close"' in page and "openFromHash" in page
+    assert 'data-testid="rule-book-download-pdf"' in page and 'data-testid="rule-book-download-json"' in page
 
 
 def test_the_plain_english_rules_match_the_code():
     from services.higgins.explain import words
-    section = BOOK.split("### Plain English and the Fidelity Check", 1)[1].split("\n## ", 1)[0]
+    section = re.split(r"\n#{2,3} ", BOOK.split("#### Plain English and the Fidelity Check", 1)[1], maxsplit=1)[0]
     labels = {"none": "None", "review": "Review", "action_needed": "Action needed", "urgent": "Urgent"}
     missing = [level for level, line in words.SEVERITY.items() if f"| {labels[level]} | {line} |" not in section]
     assert not missing, f"The severity lines no longer match the code for: {missing}"

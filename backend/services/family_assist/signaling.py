@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections import defaultdict
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from pymongo import ReturnDocument
 
 from core.db import db, now_utc
@@ -17,6 +17,12 @@ MAX_MESSAGE = 65_536
 MAX_CANDIDATE = 4_096
 MAX_PENDING = 32
 MAX_ICE = 128
+# How long the server waits for a message before it checks the session is still live. A quiet socket is normal: once
+# the phones connect the picture goes phone to phone, and neither sends signaling until its relay refresh (about 55
+# minutes in). WebSocket pings, which both phones send every 20 seconds, keep the socket open through proxies and let
+# the server notice a phone that has gone.
+QUIET_CHECK_SECONDS = 30
+TERMINAL = {"ended", "expired", "revoked", "failed"}
 ALLOWED = {"offer", "answer", "ice_candidate", "ice_complete", "pause_state", "terminate", "relay_refresh"}
 FIELDS = {"type", "sequence", "generation", "sdp", "candidate", "paused", "reason"}
 
@@ -86,6 +92,18 @@ def validate_message(raw: str, role: str, generation: str, last_sequence: int, i
     return message, ice_count
 
 
+async def still_live(session_id: str, generation: str) -> bool:
+    """The session is this generation, not ended, and its family relationship has not changed."""
+    current = await db.family_assist_sessions.find_one({"session_id": session_id}, {"_id": 0, "state": 1, "generation": 1, "relationship_id": 1, "relationship_generation": 1, "sharer_owner_id": 1, "helper_owner_id": 1, "sharer_device_id": 1, "helper_device_id": 1})
+    if not current or current["generation"] != generation or current["state"] in TERMINAL:
+        return False
+    try:
+        await require_current_relationship(current)
+    except HTTPException:
+        return False
+    return True
+
+
 async def serve(websocket: WebSocket, session_id: str, ticket_value: str) -> None:
     consumed = await consume_ticket(ticket_value, session_id)
     if not consumed: await websocket.close(code=4401, reason="invalid_ticket"); return
@@ -98,11 +116,14 @@ async def serve(websocket: WebSocket, session_id: str, ticket_value: str) -> Non
         await hub.flush(session_id, role, websocket)
         sequence = -1; ice_count = 0; last_relay_refresh: float | None = None
         while True:
-            raw = await asyncio.wait_for(websocket.receive_text(), timeout=120)
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=QUIET_CHECK_SECONDS)
+            except asyncio.TimeoutError:
+                # Quiet, not gone: keep the socket for as long as the session is live (it used to close after 120 s).
+                if not await still_live(session_id, session["generation"]): break
+                continue
             message, ice_count = validate_message(raw, role, session["generation"], sequence, ice_count); sequence = message["sequence"]
-            current = await db.family_assist_sessions.find_one({"session_id": session_id}, {"_id": 0, "state": 1, "generation": 1, "relationship_id": 1, "relationship_generation": 1, "sharer_owner_id": 1, "helper_owner_id": 1, "sharer_device_id": 1, "helper_device_id": 1})
-            if not current or current["generation"] != session["generation"] or current["state"] in {"ended", "expired", "revoked", "failed"}: break
-            await require_current_relationship(current)
+            if not await still_live(session_id, session["generation"]): break
             if message["type"] == "relay_refresh":
                 now_mono = asyncio.get_running_loop().time()
                 if last_relay_refresh is not None and now_mono - last_relay_refresh < 300:

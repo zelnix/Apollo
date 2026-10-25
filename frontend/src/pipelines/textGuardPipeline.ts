@@ -62,7 +62,7 @@ export function useTextGuardLocalFindings(deps: TextGuardLocalFindingsDeps) {
             event_id: eventId, device_id: deviceId ?? "local", category: "message" as const,
             status: "active" as const, state: (finding.state as PatrolEvent["state"]) ?? "ears_up",
             indicator_host: null, indicator_digest: null, local_indicator: null,
-            verified_block: false, adapter_label: "Text Guard local detection",
+            verified_block: false, adapter_label: "Text Gate local detection",
             occurred_at: finding.detectedAt ?? new Date().toISOString(), resolved_at: null,
             trust_allowed: false, client_submission_id: finding.submissionId,
             why: ruleReasons.length ? ruleReasons : ["Local analysis detected suspicious patterns."],

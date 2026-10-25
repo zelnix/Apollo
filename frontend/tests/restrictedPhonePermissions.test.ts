@@ -103,7 +103,7 @@ test("Device Capabilities says Apollo doesn't read the call log / inbox when und
   const v = buildDeviceCapabilities({ platform: "android", caps: {} as never, native: null });
   const rows = [...v.apolloCanUse, ...v.needsPermission, ...v.notAccessible, ...v.unavailable, ...v.unknown];
   assert.match(rows.find((r) => r.id === "call_history")!.detail, /doesn’t read your call log.*Calls Apollo screened/);
-  assert.match(rows.find((r) => r.id === "message_inbox")!.detail, /doesn’t read your text messages.*Text Guard/);
+  assert.match(rows.find((r) => r.id === "message_inbox")!.detail, /doesn’t read your text messages.*Text Gate/);
   const declared = buildDeviceCapabilities({ platform: "android", caps: {} as never, native: null, restrictedPickers: { callLog: true, sms: true } });
   assert.equal(declared.needsPermission.some((r) => r.id === "call_history"), true);
 });

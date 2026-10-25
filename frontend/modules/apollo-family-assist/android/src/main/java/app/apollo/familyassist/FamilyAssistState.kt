@@ -22,6 +22,8 @@ data class FamilyAssistState(
   val lastTransitionAt: String,
   val failureCode: String? = null,
   val endReason: String? = null,
+  /** How the picture travels once connected: connecting, direct, relayed or reconnecting (null when no session). */
+  val connectionPath: String? = null,
 ) {
   fun owns(sessionId: String?, generation: String?): Boolean =
     sessionId != null && generation != null && this.sessionId == sessionId && this.generation == generation
@@ -30,12 +32,14 @@ data class FamilyAssistState(
     "sessionId" to sessionId, "generation" to generation, "captureState" to captureState,
     "helperConnected" to helperConnected, "captureScope" to captureScope, "microphoneEnabled" to microphoneEnabled,
     "startedAt" to startedAt, "lastTransitionAt" to lastTransitionAt, "failureCode" to failureCode, "endReason" to endReason,
+    "connectionPath" to connectionPath,
   )
 
   companion object {
     const val IDLE = "idle"
     /** States from which a new capture or viewer may take over. */
     val IDLE_STATES = setOf(IDLE, "stopped", "failed")
+    val CONNECTION_PATHS = setOf("connecting", "direct", "relayed", "reconnecting")
     val TERMINAL_STATES = setOf("stopped", "failed")
   }
 }
@@ -78,7 +82,20 @@ class FamilyAssistStateStore(private val clock: () -> String = { Instant.now().t
       captureState = captureState, lastTransitionAt = clock(), failureCode = failure, endReason = reason,
       helperConnected = if (ended) false else helperConnected ?: now.helperConnected,
       startedAt = if (markStarted) clock() else now.startedAt,
+      connectionPath = if (ended) null else now.connectionPath,
     )
+    true
+  }
+
+  /**
+   * Records how the current session's picture travels. Returns false, changing nothing, for another session, an ended
+   * session, an unknown path or the path it already has, so an event goes to JS only when the path really changed.
+   */
+  fun setConnectionPath(sessionId: String?, generation: String?, path: String): Boolean = synchronized(lock) {
+    val now = current
+    if (!now.owns(sessionId, generation) || now.captureState in FamilyAssistState.TERMINAL_STATES) return false
+    if (path !in FamilyAssistState.CONNECTION_PATHS || now.connectionPath == path) return false
+    current = now.copy(connectionPath = path)
     true
   }
 }

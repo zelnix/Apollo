@@ -102,9 +102,9 @@ public class ApolloSecurityModule: Module {
           ? (running ? "active" : "inactive", running ? "Safari blocks verified threat domains via ApolloSG's content blocker." : "Turn protection on to activate the Safari content blocker.")
           : ("permission_required", "Enable ApolloSG in Settings › Safari › Extensions to block threat sites in Safari.")
         promise.resolve(self.json([
-          ["id": "link_guard", "title": "Link Guard", "status": running ? "active" : "available", "detail": "Checks links you paste or share into ApolloSG."],
+          ["id": "link_guard", "title": "Link Gate", "status": running ? "active" : "available", "detail": "Checks links you paste or share into ApolloSG."],
           ["id": "known_threats", "title": "Known Threat Lookup", "status": running ? "active" : "available", "detail": "Privacy-preserving reputation checks using the link only."],
-          ["id": "site_guard", "title": "Site Guard", "status": site.0, "detail": site.1],
+          ["id": "site_guard", "title": "Site Gate", "status": site.0, "detail": site.1],
           ["id": "connection_guard", "title": "Connection Guard", "status": running ? "active" : "available", "detail": "Limited on iOS: Apple only reveals whether the current Wi‑Fi is open or secured."],
           ["id": "share_intake", "title": "Share to ApolloSG", "status": "active", "detail": "Share a link from any app to check it."],
         ]))

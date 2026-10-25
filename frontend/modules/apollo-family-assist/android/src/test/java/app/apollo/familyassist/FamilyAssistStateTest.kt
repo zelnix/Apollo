@@ -26,7 +26,8 @@ class FamilyAssistStateTest {
 
   @Test fun `the empty state crosses the bridge with its nulls intact`() {
     val map = store().snapshot().toMap()
-    assertEquals(10, map.size)
+    assertEquals(11, map.size)
+    assertTrue(map.containsKey("connectionPath")); assertNull(map["connectionPath"])
     assertTrue(map.containsKey("sessionId")); assertNull(map["sessionId"])
     assertTrue(map.containsKey("failureCode")); assertNull(map["failureCode"])
     assertEquals("idle", map["captureState"])
@@ -77,6 +78,27 @@ class FamilyAssistStateTest {
     assertFalse(s.canTakeOver())
     s.transition("s1", "g1", "stopped", reason = "consent_denied")
     assertTrue(s.canTakeOver())
+  }
+
+  @Test fun `the connection path changes only for the current, live session and is cleared when it ends`() {
+    val s = store()
+    s.begin("s1", "g1", "starting")
+    assertTrue(s.setConnectionPath("s1", "g1", "connecting"))
+    assertFalse(s.setConnectionPath("s1", "g1", "connecting"))  // unchanged: no event
+    assertTrue(s.setConnectionPath("s1", "g1", "relayed"))
+    assertFalse(s.setConnectionPath("s1", "g1", "sideways"))   // not a path
+    assertFalse(s.setConnectionPath("old", "g0", "direct"))    // another session
+    assertTrue(s.transition("s1", "g1", "active"))
+    assertEquals("relayed", s.snapshot().connectionPath)         // kept through a capture change
+    assertTrue(s.transition("s1", "g1", "stopped", reason = "owner_stopped"))
+    assertNull(s.snapshot().connectionPath)
+    assertFalse(s.setConnectionPath("s1", "g1", "direct"))
+  }
+
+  @Test fun `a relay candidate on either end makes the route relayed`() {
+    assertTrue(isRelayCandidate("candidate:1 1 udp 41885439 203.0.113.9 3478 typ relay raddr 0.0.0.0 rport 0"))
+    assertFalse(isRelayCandidate("candidate:2 1 udp 2122260223 192.168.1.4 51000 typ host generation 0"))
+    assertFalse(isRelayCandidate("candidate:3 1 udp 1686052607 198.51.100.7 51000 typ srflx raddr 192.168.1.4 rport 51000"))
   }
 
   @Test fun `markStarted stamps the start time once`() {
