@@ -102,9 +102,20 @@ test("JVM regression checks cover construction, empty state, stop/failure and st
   }
 });
 
-test("stage gate: Family Help stays excluded from Android autolinking until activation", () => {
-  // Remove this test in the activation commit (step 6), together with the package.json exclusion.
+test("activation (step 6): Family Help is linked into Android builds again, and still into iOS builds", () => {
   const pkg = JSON.parse(read("package.json"));
-  assert.ok(pkg.expo.autolinking.android.exclude.includes("apollo-family-assist"));
-  assert.ok(!(pkg.expo.autolinking.ios?.exclude ?? []).includes("apollo-family-assist"), "iOS linking is unchanged");
+  assert.ok(!(pkg.expo.autolinking.android?.exclude ?? []).includes("apollo-family-assist"), "Android links the module");
+  assert.ok(!(pkg.expo.autolinking.ios?.exclude ?? []).includes("apollo-family-assist"), "iOS links the module");
+  // The generated-project check now expects exactly one Android link and the projection service in the merged manifest.
+  assert.match(read("scripts/verify-generated-projects.mjs"), /familyAssistLinks !== \(familyAssistExcluded \? 0 : 1\)/);
+  assert.match(read("modules/apollo-family-assist/android/src/main/AndroidManifest.xml"), /FamilyAssistProjectionService/);
+});
+
+test("signaling messages leave in sequence order and relay expiry times parse on every Android version", () => {
+  const peer = code(kotlin["FamilyAssistRtcPeer.kt"]);
+  assert.doesNotMatch(peer, /fun envelope[^\n]*sequence/, "numbering happens at send time, not when the message is built");
+  assert.match(peer, /private fun send\(body: JSONObject\) \{\s*synchronized\(sendLock\) \{[\s\S]*?body\.put\("sequence", sequence\.getAndIncrement\(\)\)/);
+  // Instant.parse rejects the server's "+00:00" offset before Android 14.
+  assert.doesNotMatch(peer, /Instant\.parse\(/);
+  assert.match(peer, /OffsetDateTime\.parse\(relay\.getString\("expiresAt"\)\)/);
 });

@@ -1,3 +1,79 @@
+## Family Help — step 6 (Android switched on) + step 10 (iPhone/iPad ReplayKit restored) (2026-10-25)
+**Step 6:** `apollo-family-assist` removed from `package.json` `expo.autolinking.android.exclude` (still in the doctor
+`reactNativeDirectoryCheck.exclude`, like apollo-security). Stage-gate test replaced by an activation test.
+`expo-modules-autolinking resolve --platform android` lists the module; temp-copy `expo prebuild --clean` passes and
+`scripts/verify-generated-projects.mjs` passes when run with two unrelated, older mismatches patched (it expects
+`versionCode 2` but app.config sets none → 1; it expects `ios/Apollo.xcodeproj`, which the rename made `ApolloSG.xcodeproj`).
+Two Android session defects fixed before activation (`FamilyAssistRtcPeer.kt`): relay `expiresAt` now parsed with
+`OffsetDateTime.parse` (the server sends Python isoformat "+00:00"; `Instant.parse` rejects that before Android 14, so
+every session would have ended at "ready"); `sequence` is now assigned inside `send` under `sendLock` (sends from the
+WebRTC thread and the executor could go out of order, and the server drops the socket on any out-of-order sequence).
+**Step 10 (iOS, `modules/apollo-family-assist/ios/`):** the earlier Swift could not compile (`extension AnyObject`/`.also`,
+optional passed to `command(for:)`, `await` in sync Expo closures) and would have failed at runtime (ISO8601DateFormatter
+rejected the server's fractional seconds, so `startCapture` always threw `invalid_input`; NSNull written to UserDefaults
+crashes the extension; stop/pause only noticed on the next frame; no stale-session fencing; races on sequence/peer state).
+Rewritten to mirror the Android repairs:
+- `FamilyAssistState.swift`: `FamilyAssistState` + `FamilyAssistStateStore` (session/generation fenced, terminal states
+  only give way to `begin`), `FamilyAssistDates.parse` (drops fractional seconds), `FamilyAssistWire.failureReasons`.
+- `FamilyAssistWebRtc.swift`: the one set-up path (RTCInitializeSSL once, RTCAudioSession manual + disabled, factory),
+  relay configuration and signaling URL.
+- `FamilyAssistViewerPeer.swift`: one serial queue (URLSession delegate queue runs on it), owns factory/peer/socket,
+  generation check, chained `add(_:completionHandler:)`, pings every 20s, `onEnded` once, `invalidateAndCancel` on close.
+- `FamilyAssistViewerView.swift`: `FamilyAssistRenderer` (RTCVideoRenderer proxy; attach/detach in `didMoveToWindow`;
+  pause hides the view on main).
+- `ApolloFamilyAssistModule.swift`: `FamilyAssistRuntime` (store + viewer + Darwin observer
+  `app.apollo.familyassist.state` → takes in extension state once per revision → events to JS); `startCapture` on main,
+  clears old state/command, iOS may replace a session still in `requesting_consent` (picker cancel is never reported);
+  `stopCapture` removes the handoff; error codes match Android.
+- `Broadcast/SampleHandler.swift`: serial queue; `FrameGate` (lock; closed before teardown; one capturer; 15 fps; keeps
+  screen aspect, long side ≤1280; rotation from `RPVideoSampleOrientationKey`; invalid timestamps skipped); commands via
+  Darwin notification `app.apollo.familyassist.command` + 1s check, each `issuedAt` applied once; state published without
+  nulls + Darwin notification; `finish` order gate → publish → terminate (sharer reasons only) → teardown → end broadcast;
+  `broadcastFinished` waits ≤1.5s for the helper message.
+- Plugin: Broadcast target now gets MARKETING_VERSION/CURRENT_PROJECT_VERSION (app's), PRODUCT_BUNDLE_IDENTIFIER,
+  GENERATE_INFOPLIST_FILE NO, Frameworks phase. Picker name "ApolloSG Family Help". Podspec `swift_version 5.9`.
+- Tests: `tests/familyHelpIosRepair.test.ts` (11 source checks); frontend 964/964, tsc clean, security preflight PASS.
+  No Apple/Android toolchain here: first Swift/Kotlin compile happens in the next EAS builds (step 7 APK proof).
+- **Found, not fixed (step 9 territory, owner did not pick it this round):** `backend/services/family_assist/signaling.py`
+  `serve()` waits at most 120s for a data message (`asyncio.wait_for(websocket.receive_text(), timeout=120)`). WebSocket
+  pings don't count, and after connecting neither phone sends data until the relay refresh (~55 min), so the server
+  closes the signaling socket ~2 min into every session and the sharer ends it as a failure.
+
+## Family Help Android repairs — stage 1 (steps 1–5 of owner's 10-step plan) (2026-10-25)
+Owner's rule: "Code can enter main immediately. Family Help becomes active in the Android build only after its native
+startup defects have been corrected." Repairs committed on their own (git commit after f53eaf7, message starts
+"Family Help Android repairs (stage 1 of 10)"); `apollo-family-assist` STILL in `expo.autolinking.android.exclude`.
+- Crash cause: `FamilyAssistRuntime.state` was `ConcurrentHashMap` seeded with `null` → NPE at object init, triggered
+  by module `OnCreate` at app start. Now `FamilyAssistState` (data class) + `FamilyAssistStateStore` (synchronized,
+  session/generation-fenced, terminal states only give way to `begin`). Files in
+  `modules/apollo-family-assist/android/src/main/java/app/apollo/familyassist/`: `FamilyAssistState.kt`,
+  `FamilyAssistWebRtc.kt` (only initialize/createPeerConnectionFactory), `FamilyAssistRtcPeer.kt` (owns factory/pc/
+  track/source; `createScreenSource()`; `onEnded` → owner tears down; executor-guarded; WIRE_REASONS = backend
+  signaling.py accepted set), `FamilyAssistProjectionService.kt` (main-thread teardown: capturer → texture helper →
+  peer.terminate), `FamilyAssistViewerView.kt` (`FamilyAssistRenderer` VideoSink proxy; init on attach, release on
+  detach), `ApolloFamilyAssistModule.kt` (runtime object + module).
+- Dependency: `implementation 'org.jitsi:webrtc:124.0.0'` in the module's build.gradle (iOS podspec JitsiWebRTC ~> 124.0.0).
+- Checks: JVM `android/src/test/.../FamilyAssistStateTest.kt` (run `./gradlew :apollo-family-assist:testDebugUnitTest`
+  once linked); node `tests/familyHelpAndroidRepair.test.ts` (9 source guards + stage gate — REMOVE the stage-gate
+  test together with the exclusion in the activation commit). `scripts/verify-generated-projects.mjs` expects 0
+  links while excluded, 1 after.
+- No Kotlin/Android toolchain in this workspace: the Kotlin was not compiled here. First compile happens in step 7.
+- NEXT (only on owner's go): step 6 activation commit (remove exclusion + stage-gate test) → step 7 APK cold-start/
+  reopen/background proof → 8 enable Family Help capability + two-device test → 9 TURN/relay + FF10 physical tests →
+  10 iOS/iPadOS from ReplayKit. No redesign, no new Gate, no remote control, FF10 security model unchanged.
+
+## Tab badges + splash until ready (2026-10-25)
+- `src/domain/tabBadges.ts` (pure, tested in `tests/tabBadges.test.ts`): `countNeedingYou(events)` = cases whose
+  latest event is status "attention" ("Needs you"); `countNewSevereAlerts` = HIGH/EXTREME alerts applying here
+  (everywhere or home region) not yet seen; `badgeText` (none at 0, "9+" cap).
+- `src/higgins/scamAlertBadge.ts`: seen list `apollo.scamAlerts.seen.v1` (500 URLs); first run seeds it with all
+  current alerts (no backlog count); refresh on app open/foreground ≤ every 10 min once `deviceId` exists (the API
+  needs the device credential); `markScamAlertsSeen` from `app/higgins/scams.tsx` on load, plus reload on focus when
+  the count > 0. Owner's choices: Threats = "threats that still need you"; Alerts = "only new High and Extreme".
+- `app/(tabs)/_layout.tsx`: `tabBarBadge` (barking red, white text) + accessibility labels; iOS 26 NativeTabs Badge.
+- `LaunchSplash`: stays until `useApollo().ready`, min 1s, max 8s, +300ms settle, 0.4s fade.
+- `tests/iosSourceReadiness.test.ts` tab-parity test updated for the tablet title variables (was failing since that change).
+
 ## Tablet launch artwork (2026-10-25)
 - Owner's landscape artwork saved as `assets/images/splash-full-tablet.webp` (1672×941). `LaunchSplash` now runs on
   every device: tablets (shortest side ≥ 600) show the landscape artwork, phones the portrait one

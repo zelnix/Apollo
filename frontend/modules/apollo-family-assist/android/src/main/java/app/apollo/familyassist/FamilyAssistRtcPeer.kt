@@ -60,6 +60,7 @@ class FamilyAssistRtcPeer(
   private val closing = AtomicBoolean(false)
   private val ended = AtomicBoolean(false)
   private val sequence = AtomicInteger(0)
+  private val sendLock = Any()
   private var socket: WebSocket? = null
   private var peer: PeerConnection? = null
   private var source: VideoSource? = null
@@ -151,7 +152,9 @@ class FamilyAssistRtcPeer(
 
   private fun scheduleRelayRefresh(relay: JSONObject) {
     refreshFuture?.cancel(false)
-    val expiry = java.time.Instant.parse(relay.getString("expiresAt")).toEpochMilli()
+    // The server sends Python isoformat ("…T10:00:00.123456+00:00"). Instant.parse rejects "+00:00" before Android 14
+    // (older java.time), which ended every session at "ready"; OffsetDateTime.parse reads both "+00:00" and "Z".
+    val expiry = java.time.OffsetDateTime.parse(relay.getString("expiresAt")).toInstant().toEpochMilli()
     val lead = if (sharer) 300_000L else 360_000L
     val delay = maxOf(30_000L, expiry - System.currentTimeMillis() - lead)
     refreshFuture = try {
@@ -176,8 +179,18 @@ class FamilyAssistRtcPeer(
     peer?.setRemoteDescription(VoidSdpCallback({ if (answer) post { createAnswer() } }, ::end), SessionDescription(type, sdp))
   }
 
-  private fun envelope(type: String) = JSONObject().put("type", type).put("sequence", sequence.getAndIncrement()).put("generation", generation)
-  private fun send(body: JSONObject) { if (!closed.get()) socket?.send(body.toString()) }
+  private fun envelope(type: String) = JSONObject().put("type", type).put("generation", generation)
+
+  /**
+   * Numbers and sends under one lock, so messages leave in sequence order. Sends come from the WebRTC signaling
+   * thread and from this peer's executor; the server drops the connection on any out-of-order sequence.
+   */
+  private fun send(body: JSONObject) {
+    synchronized(sendLock) {
+      if (closed.get()) return
+      socket?.send(body.put("sequence", sequence.getAndIncrement()).toString())
+    }
+  }
 
   // ── Owner commands ──
   /** Sharer: pause or resume the outgoing picture and tell the helper. */

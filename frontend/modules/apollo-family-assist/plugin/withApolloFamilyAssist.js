@@ -31,7 +31,7 @@ function ensureHostWiring(project, targetUuid) {
   buildFiles[`${uuid}_comment`] = comment; phase.files.push({ value: uuid, comment });
 }
 
-function ensureTarget(project, root) {
+function ensureTarget(project, root, config) {
   writeTargetFiles(root);
   let targetUuid = project.findTargetKey(TARGET);
   if (!targetUuid) {
@@ -39,6 +39,7 @@ function ensureTarget(project, root) {
     const group = project.addPbxGroup(["SampleHandler.swift", "Info.plist", `${TARGET}.entitlements`], TARGET, TARGET);
     project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
     project.addBuildPhase(["SampleHandler.swift"], "PBXSourcesBuildPhase", "Sources", targetUuid);
+    project.addBuildPhase([], "PBXFrameworksBuildPhase", "Frameworks", targetUuid);
   }
   const section = project.pbxXCBuildConfigurationSection();
   for (const key in section) {
@@ -46,6 +47,11 @@ function ensureTarget(project, root) {
     if (!settings || settings.PRODUCT_NAME !== `"${TARGET}"`) continue;
     settings.INFOPLIST_FILE = `"${TARGET}/Info.plist"`;
     settings.CODE_SIGN_ENTITLEMENTS = `"${TARGET}/${TARGET}.entitlements"`;
+    settings.PRODUCT_BUNDLE_IDENTIFIER = `"${BUNDLE}"`;
+    // An app extension's version must match the app's, or App Store Connect rejects the upload.
+    settings.MARKETING_VERSION = config.version || "1.0.0";
+    settings.CURRENT_PROJECT_VERSION = (config.ios && config.ios.buildNumber) || "1";
+    settings.GENERATE_INFOPLIST_FILE = "NO";
     settings.IPHONEOS_DEPLOYMENT_TARGET = "16.4";
     settings.APPLICATION_EXTENSION_API_ONLY = "YES";
     settings.SKIP_INSTALL = "YES";
@@ -68,5 +74,5 @@ module.exports = function withApolloFamilyAssist(config) {
     }
     return value;
   });
-  return withXcodeProject(config, (value) => { ensureTarget(value.modResults, value.modRequest.platformProjectRoot); return value; });
+  return withXcodeProject(config, (value) => { ensureTarget(value.modResults, value.modRequest.platformProjectRoot, value); return value; });
 };
