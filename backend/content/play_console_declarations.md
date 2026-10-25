@@ -8,7 +8,7 @@ Each item names the feature, why Apollo needs it, and what the demo video must s
 
 | Permission | Status |
 | --- | --- |
-| Read texts (`READ_SMS`) and call history (`READ_CALL_LOG`) | Stripped from every build (`plugins/withRestrictedPhonePermissions.js`). Do **not** fill in the SMS and Call Log declaration. See `APOLLO_PLAY_RESTRICTED_PERMISSIONS_FUTURE_DECLARATIONS.md`. |
+| Read texts (`READ_SMS`) and call history (`READ_CALL_LOG`) | Stripped from every build (`plugins/withRestrictedPhonePermissions.js`). Do **not** fill in the SMS and Call Log declaration. See `docs/APOLLO_PLAY_RESTRICTED_PERMISSIONS_FUTURE_DECLARATIONS.md`. |
 | Microphone (`RECORD_AUDIO`) | Stripped (`expo-camera` / `expo-audio` set to no microphone). |
 | Precise location (`ACCESS_FINE_LOCATION`) | Removed 2026-10. Apollo never asked for it. Without it, Android hides the Wi-Fi network name, and Apollo already handles that. |
 | Display over other apps (`SYSTEM_ALERT_WINDOW`) | Stripped (`android.blockedPermissions`). Apollo only *checks* whether other apps hold it. |
@@ -16,7 +16,7 @@ Each item names the feature, why Apollo needs it, and what the demo video must s
 | All installed apps (`QUERY_ALL_PACKAGES`) | Not used. Apollo lists only launchable apps through a narrow `<queries>` block. |
 | Accessibility service, install other apps | Not used. |
 
-## 1. VPN service (`VpnService`): website protection
+## 1. VPN service: website protection
 
 - **Where:** App content → *VPN service* (also mention it in the store description).
 - **Category to pick:** *Device security*.

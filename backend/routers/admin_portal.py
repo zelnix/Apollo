@@ -56,6 +56,7 @@ NAV = [
     ("Triage",          "/api/admin/triage",           "&#9878;"),
     ("Knowledge Base",  "/api/admin/knowledge",        "&#128218;"),
     ("Rule Book",       "/api/admin/rule-book",        "&#128214;"),
+    ("Play Store",      "/api/admin/play-console",     "&#9654;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
@@ -68,6 +69,7 @@ NAV = [
 REPORTS = {
     "gemini-usage-investigation": ("GEMINI_USAGE_INVESTIGATION.md", "Gemini Usage Investigation — Root Cause Analysis"),
     "gemini-usage-tracking": ("GEMINI_USAGE_TRACKING_REPORT.md", "Gemini Usage Tracking Report"),
+    "play-console": ("content/play_console_declarations.md", "Google Play Console declarations"),
 }
 
 
@@ -2942,6 +2944,25 @@ async def rule_book_page(request: Request):
         return _login_redirect()
     await _audit_log(adm.get("email", ""), "view_rule_book")
     return _shell("Rule Book", "/api/admin/rule-book", _rule_book_html(), admin=adm)
+
+
+# ── Play Store: the Google Play Console declarations checklist ────────────────
+
+PLAY_CONSOLE_GUIDE = REPORT_DIR / "content" / "play_console_declarations.md"
+
+
+@router.get("/admin/play-console", response_class=HTMLResponse)
+async def play_console_page(request: Request):
+    """The owner's step-by-step guide to the Play Console forms, word for word from content/play_console_declarations.md.
+    Each section starts closed, like the Rule Book."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    await _audit_log(adm.get("email", ""), "view_play_console_guide")
+    body = (f'<div class="topbar-row"><span></span><a href="/api/admin/reports/play-console/pdf" class="btn btn-sm" '
+            f'data-testid="play-console-pdf">Download PDF</a></div>'
+            f'{_RULE_BOOK_STYLE}<article data-testid="play-console-guide">{_rule_book_sections(PLAY_CONSOLE_GUIDE.read_text())}</article>{_RULE_BOOK_SCRIPT}')
+    return _shell("Play Store", "/api/admin/play-console", body, admin=adm)
 
 
 # ── Admin Settings ───────────────────────────────────────────────────────────

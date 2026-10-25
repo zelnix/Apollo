@@ -1,4 +1,5 @@
-// Google Play: the build never declares what Apollo doesn't use. See docs/APOLLO_PLAY_CONSOLE_DECLARATIONS.md.
+// Google Play: the build never declares what Apollo doesn't use. See backend/content/play_console_declarations.md
+// (shown in the admin portal under Play Store).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
