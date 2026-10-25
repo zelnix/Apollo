@@ -3560,3 +3560,4 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Removed the old `apollo-scam-guard-logo.png` and `splash-image.png`.
 - Setup welcome (onboarding) and About now show the new logo through `BrandBanner` (white rounded panel, padding md). Old `apollo_sg_banner.jpg` removed.
 - App icon change was tried and then reverted at the user's request. `icon.png`, `adaptive-icon.png` and `favicon.png` are back to the originals.
+- App display name changed to "ApolloSG" (app.config.js name). Slug, bundle IDs and scheme unchanged.
