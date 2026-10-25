@@ -49,12 +49,12 @@ function capabilityTone(klass: CapabilityClass, c: ThemeColors): Tone {
 
 /** What each status means. No status implies anything beyond what the read actually said. */
 const LEGEND: Record<CapabilityClass, string> = {
-  apollo_can_use: "Apollo has this and uses it when it checks something for you.",
-  permission_required: "Apollo can use it once you allow it, and asks at the moment it is needed.",
+  apollo_can_use: "ApolloSG has this and uses it when it checks something for you.",
+  permission_required: "ApolloSG can use it once you allow it, and asks at the moment it is needed.",
   not_exposed: "Your device handles this itself and keeps it private. Apollo will not guess at it.",
-  unavailable: "This phone has nothing Apollo can use for it.",
-  unknown: "Apollo asked and the read failed. Unknown — not an all-clear.",
-  not_readable_here: "Apollo is not running on your phone here, so it could not read this.",
+  unavailable: "This phone has nothing ApolloSG can use for it.",
+  unknown: "ApolloSG asked and the read failed. Unknown — not an all-clear.",
+  not_readable_here: "ApolloSG is not running on your phone here, so it could not read this.",
 };
 
 const CLASS_ORDER: CapabilityClass[] = ["apollo_can_use", "permission_required", "not_exposed", "unknown", "not_readable_here", "unavailable"];

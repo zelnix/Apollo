@@ -44,7 +44,7 @@ async def _save_now(feed_url: str) -> str | None:
     """Ask the Archive to capture the feed now (takes ~25 s). Returns the capture URL it redirects to."""
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=False, trust_env=False,
-                                     headers={"User-Agent": "Apollo official-feed reader"}) as http:
+                                     headers={"User-Agent": "ApolloSG official-feed reader"}) as http:
             response = await http.get(f"{_ARCHIVE}/save/{feed_url}")
     except httpx.HTTPError:
         return None

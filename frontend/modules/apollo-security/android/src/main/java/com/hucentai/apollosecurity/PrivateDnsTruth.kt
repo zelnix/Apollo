@@ -42,7 +42,7 @@ internal object PrivateDnsTruth {
   fun explanation(mode: String, server: String?): String = when (mode) {
     HOSTNAME -> "Private DNS is set to ${server ?: "a provider hostname"}, so Android sends website lookups straight to that provider and Apollo's website checks can't see them."
     OFF -> "Private DNS is Off. While Apollo's website protection runs, Apollo checks every website lookup."
-    AUTOMATIC -> "Private DNS is set to Automatic. While Apollo's website protection runs, website lookups go through Apollo's checks first."
+    AUTOMATIC -> "Private DNS is set to Automatic. While Apollo's website protection runs, website lookups go through ApolloSG's checks first."
     NOT_IN_USE -> "Android reports Private DNS isn't encrypting lookups on this network. It is either Off, or Automatic on a network that doesn't support it."
     else -> "Apollo couldn't read the Private DNS setting because this phone has no network connection right now."
   }

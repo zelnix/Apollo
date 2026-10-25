@@ -76,7 +76,7 @@ test("security patch age is a fact, and a stale patch is named as out of date", 
   const current = securityProtectionRows("android", read({ securityPatch: "2026-05-01" }), NOW).find((r) => r.id === "os_updates")!;
   assert.equal(current.state, "active");
   assert.match(current.detail, /2026-05-01/);
-  assert.match(current.detail, /Apollo cannot tell whether a newer one is waiting/);
+  assert.match(current.detail, /ApolloSG cannot tell whether a newer one is waiting/);
 
   const stale = securityProtectionRows("android", read({ securityPatch: "2025-06-01" }), NOW).find((r) => r.id === "os_updates")!;
   assert.equal(stale.state, "out_of_date");
@@ -89,7 +89,7 @@ test("security patch age is a fact, and a stale patch is named as out of date", 
   assert.equal(behind.stateLabel, "Review recommended");
 });
 
-test("the app scanner is attributed to whoever answered, not to Apollo", () => {
+test("the app scanner is attributed to whoever answered, not to ApolloSG", () => {
   const on = securityProtectionRows("android", read({ osThreatReport: { source: "Google Play Protect", status: "none_reported", protectionOff: false } }), NOW).find((r) => r.id === "app_scanner")!;
   assert.equal(on.state, "active");
   assert.equal(on.attributedTo, "Google Play Protect");

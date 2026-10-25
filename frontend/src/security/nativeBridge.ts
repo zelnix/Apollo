@@ -138,7 +138,7 @@ export function getNativeModule(): ApolloSecurityNativeModule | null {
 export class NativeModuleUnavailable extends Error {
   code = "SC_NATIVE_MODULE_UNAVAILABLE";
   constructor(platform: string) {
-    super(`Apollo ${platform} security module is required but unavailable. Build with EAS (development build); Expo Go cannot load it.`);
+    super(`ApolloSG ${platform} security module is required but unavailable. Build with EAS (development build); Expo Go cannot load it.`);
     this.name = "NativeModuleUnavailable";
   }
 }

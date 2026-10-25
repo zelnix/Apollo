@@ -37,13 +37,13 @@ export function isExecutable(action: ActionProposal): boolean {
 
 async function openDescriptor(d: SettingsDescriptor): Promise<string | null> {
   if (Platform.OS === "android" && d.androidIntent) { await Linking.sendIntent(d.androidIntent); return null; }
-  if (Platform.OS === "ios") { await Linking.openSettings(); return d.iosPath ?? "Apollo"; }
+  if (Platform.OS === "ios") { await Linking.openSettings(); return d.iosPath ?? "ApolloSG"; }
   if (Platform.OS === "android") { await Linking.openSettings(); return null; }
   if (d.desktopTarget && (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
     const { openDesktopSettings } = await import("@/src/security/DesktopSecurityAdapter");
     await openDesktopSettings(d.desktopTarget); return null;
   }
-  throw new Error("This platform has no Settings destination Apollo can open.");
+  throw new Error("This platform has no Settings destination ApolloSG can open.");
 }
 
 /** Creates and binds the settings plan for a descriptor BEFORE the destination opens, so the return recheck can compare against it.
@@ -79,7 +79,7 @@ export async function runAction(action: ActionProposal, caseData: InvestigationC
   try {
     if (action.kind === "open_settings") {
       const descriptor = boundDescriptor(action);
-      if (!descriptor) return { kind: "unsupported", reason: "Apollo cannot open that Settings destination on this device; follow the written steps instead." };
+      if (!descriptor) return { kind: "unsupported", reason: "ApolloSG cannot open that Settings destination on this device; follow the written steps instead." };
       const boundPlanId = planId ?? await bindPlan(action, caseData, descriptor);
       const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, kind: "settings_recheck", caseId: caseData.id, planId: boundPlanId, descriptorId: descriptor.id, startedAt: new Date().toISOString(), expiresAt: caseData.expiresAt, returnedAt: null, status: "requested" };
       await recordAttempt(attempt); // recorded before the launch: a crash or kill while in Settings still leaves a resumable attempt
@@ -111,7 +111,7 @@ export async function runAction(action: ActionProposal, caseData: InvestigationC
       const { evidence } = await api.addObservationEvidence(fresh.case.revision, caseData.id, result);
       return { kind: "observed", result, evidenceId: evidence.id };
     }
-    return { kind: "unsupported", reason: `Apollo cannot perform '${action.kind}' on this device.` };
+    return { kind: "unsupported", reason: `ApolloSG cannot perform '${action.kind}' on this device.` };
   } catch (e: unknown) {
     return { kind: "failed", reason: e instanceof Error ? e.message : "The action could not be completed." };
   }

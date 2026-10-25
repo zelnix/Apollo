@@ -56,7 +56,7 @@ const RECOMMENDED: Record<string, string> = {
   sensitive_permissions: "Should be: Reviewed \u2014 revoke access apps don\u2019t need",
   notification_access: "Should be: Only apps you trust",
   sharing_services: "Should be: Off unless needed",
-  vpn: "Should be: Only Apollo\u2019s VPN active",
+  vpn: "Should be: Only ApolloSG\u2019s VPN active",
   firewall: "Should be: On",
   management_profile: "Should be: None unless from your employer",
   certificates: "Should be: No user-installed certificates",
@@ -97,7 +97,7 @@ const FIX_GUIDE: Record<string, { android: string[]; ios: string[]; fallback: st
     fallback: ["Review app permissions for camera, microphone and location", "Revoke access from apps that don\u2019t need it"],
   },
   notification_access: {
-    android: ["Open Settings \u2192 Apps \u2192 Special app access", "Tap \u2018Notification access\u2019", "Turn OFF any app you don\u2019t trust", "Keep Apollo ON if you use text auto-scanning"],
+    android: ["Open Settings \u2192 Apps \u2192 Special app access", "Tap \u2018Notification access\u2019", "Turn OFF any app you don\u2019t trust", "Keep ApolloSG ON if you use text auto-scanning"],
     ios: ["Open Settings \u2192 Notifications", "Review each app\u2019s notification permission", "Disable notifications for apps you don\u2019t trust"],
     fallback: ["Review which apps have notification access and disable untrusted ones"],
   },
@@ -107,9 +107,9 @@ const FIX_GUIDE: Record<string, { android: string[]; ios: string[]; fallback: st
     fallback: ["Check for and remove remote-access apps you didn\u2019t install"],
   },
   apollo_protection: {
-    android: ["Return to Apollo\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Grant VPN permission when prompted"],
-    ios: ["Return to Apollo\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Approve the VPN profile when prompted"],
-    fallback: ["Open Apollo and start protection from the home screen"],
+    android: ["Return to ApolloSG\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Grant VPN permission when prompted"],
+    ios: ["Return to ApolloSG\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Approve the VPN profile when prompted"],
+    fallback: ["Open ApolloSG and start protection from the home screen"],
   },
   encryption: {
     android: ["Open Settings \u2192 Security \u2192 Encryption & credentials", "Check that \u2018Encrypt phone\u2019 shows \u2018Encrypted\u2019", "If not, tap it and follow the prompts (this may take a while)"],
@@ -208,10 +208,10 @@ export default function CheckDevice() {
       // A failed read is reported as a failed read. Apollo does not grade the device from signals it
       // never managed to collect, and it names what went wrong.
       const detail = error instanceof NativeCallFailed
-        ? "Apollo asked this device for its security signals and the read failed, so this check did not run."
+        ? "ApolloSG asked this device for its security signals and the read failed, so this check did not run."
         : error instanceof Error && error.message
-          ? `Apollo couldn't complete the device check (${error.message}).`
-          : "Apollo couldn't complete the device check and the reason could not be determined.";
+          ? `ApolloSG couldn't complete the device check (${error.message}).`
+          : "ApolloSG couldn't complete the device check and the reason could not be determined.";
       if (notify) {
         setBriefing({ headline: "Device check didn't run", findings: [detail, "Nothing here says the device is clear — the check was not completed."], action: null, overall: "error" });
         setBriefingRun(notifyRun.current);
@@ -380,9 +380,9 @@ export default function CheckDevice() {
   const save = async () => {
     setSaving(true);
     try {
-      const ev = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "device", state: result.state, status: "active", headline: `Device: ${meta.title}`, what_happened: result.summary, why: result.findings.map((f) => `${f.title}: ${f.plain}`), what_to_do: result.recoverySteps[0] ?? result.findings[0]?.action ?? "Review the items Apollo listed.", indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: result.findings[0]?.id ?? "D00" }, { kind: "device", data: { platform, signals, selfReport: self } });
+      const ev = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "device", state: result.state, status: "active", headline: `Device: ${meta.title}`, what_happened: result.summary, why: result.findings.map((f) => `${f.title}: ${f.plain}`), what_to_do: result.recoverySteps[0] ?? result.findings[0]?.action ?? "Review the items ApolloSG listed.", indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: result.findings[0]?.id ?? "D00" }, { kind: "device", data: { platform, signals, selfReport: self } });
       setEvent(ev);
-      showToast("Saved to Patrol. Apollo will stay with you.", "neutral");
+      showToast("Saved to Patrol. ApolloSG will stay with you.", "neutral");
     } finally { setSaving(false); }
   };
   const open = (f: DeviceFinding) => {
@@ -453,7 +453,7 @@ export default function CheckDevice() {
         {changeLog.length ? (
           <Card testID="device-change-log" style={{ gap: spacing.sm }}>
             <SectionTitle>Recent security setting changes</SectionTitle>
-            <Body>Changes Apollo has observed to security, privacy or protection settings. Changes Apollo made for its own protection are tagged “Apollo”. Tap any entry to open the matching settings screen.</Body>
+            <Body>Changes Apollo has observed to security, privacy or protection settings. Changes ApolloSG made for its own protection are tagged “ApolloSG”. Tap any entry to open the matching settings screen.</Body>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Button testID="device-log-filter-all" variant={logReviewOnly ? "ghost" : "secondary"} label="All" onPress={() => setLogReviewOnly(false)} />
               <Button testID="device-log-filter-review" variant={logReviewOnly ? "secondary" : "ghost"} label="Review only" onPress={() => setLogReviewOnly(true)} />
@@ -464,7 +464,7 @@ export default function CheckDevice() {
                   <Text style={[s.why, { fontFamily: fonts.textSemibold }]}>{DEVICE_CHANGE_LABEL[change.eventType]}{change.appName ? `: ${change.appName}` : ""}</Text>
                   <Text style={s.mono}>{new Date(change.occurredAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Text>
                 </View>
-                <Pill tone={change.attributedTo === "apollo" ? "resting" : "growling"} label={change.attributedTo === "apollo" ? "Apollo" : "Review"} testID={`device-change-${i}-tag`} />
+                <Pill tone={change.attributedTo === "apollo" ? "resting" : "growling"} label={change.attributedTo === "apollo" ? "ApolloSG" : "Review"} testID={`device-change-${i}-tag`} />
               </Pressable>
             )) : <Body testID="device-log-empty">No changes need review.</Body>; })()}
           </Card>
@@ -480,7 +480,7 @@ export default function CheckDevice() {
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="device-recovery">
             <SectionTitle>Stay with me — do these in order</SectionTitle>
             {result.recoverySteps.map((st, i) => <View key={i} style={s.step}><Text style={s.num}>{i + 1}</Text><Text style={[s.why, { flex: 1 }]} testID={`device-recovery-step-${i}`}>{st}</Text></View>)}
-            <Body>Apollo can&apos;t tell whether anything was taken — only that the access was risky. Don&apos;t assume the worst, but do the steps.</Body>
+            <Body>ApolloSG can&apos;t tell whether anything was taken — only that the access was risky. Don&apos;t assume the worst, but do the steps.</Body>
           </Card>
         ) : null}
 
@@ -574,7 +574,7 @@ export default function CheckDevice() {
             {(FIX_GUIDE[fixingCheck.id]?.[platform === "android" ? "android" : platform === "ios" ? "ios" : "fallback"] ?? FIX_GUIDE[fixingCheck.id]?.fallback ?? []).map((step, i) => (
               <Text key={i} style={s.fixStep}>{i + 1}. {step}</Text>
             ))}
-            <Body>When you return, Apollo will re-check this setting automatically.</Body>
+            <Body>When you return, ApolloSG will re-check this setting automatically.</Body>
             <Button testID="device-fix-open-settings" variant="primary" label="Open Settings now" onPress={confirmAndOpenSettings} />
             <Button testID="device-fix-cancel" variant="ghost" label="Cancel" onPress={() => setFixingCheck(null)} />
           </>

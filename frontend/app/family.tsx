@@ -62,7 +62,7 @@ export default function Family() {
   const weeklyPref = useQuery({ queryKey: ["family-weekly-pref", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ enabled: boolean; last_sent_at: string | null; window: string }>(`/family/weekly/notify?device_id=${deviceId}`) });
   const setWeeklyPref = useMutation({
     mutationFn: (enabled: boolean) => apiPut<{ enabled: boolean }>("/family/weekly/notify", "family", { device_id: deviceId, enabled }),
-    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["family-weekly-pref", deviceId] }); showToast(r.enabled ? "Sunday check-in on. Apollo will nudge you Sunday evening." : "Sunday check-in off. The Family screen still shows the week.", "neutral"); },
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["family-weekly-pref", deviceId] }); showToast(r.enabled ? "Sunday check-in on. ApolloSG will nudge you Sunday evening." : "Sunday check-in off. The Family screen still shows the week.", "neutral"); },
   });
   const [weeklyPreview, setWeeklyPreview] = useState<string | null>(null);
   const checkins = useQuery({ queryKey: ["family-checkins", deviceId], enabled: !!deviceId, refetchInterval: 30000, queryFn: () => apiGet<Checkin[]>(`/family/weekly/checkins?device_id=${deviceId}`) });
@@ -78,7 +78,7 @@ export default function Family() {
   const previewWeekly = useMutation({
     mutationFn: (p: { send: boolean; kind: "summary" | "nudge" }) => apiPost<{ sent: boolean; title?: string; message?: string; reason?: string }>("/family/weekly/send-now", "family", { device_id: deviceId, preview_only: !p.send, kind: p.kind }),
     onSuccess: (r, { send }) => { if (r.message) setWeeklyPreview(`${r.title} — ${r.message}`); if (send) showToast(r.sent ? "Sent. Check your notifications." : "Nothing to send yet — pair with someone first.", r.sent ? "resting" : "neutral"); },
-    onError: (e) => showToast(e instanceof Error ? e.message : "Couldn't reach Apollo's relay.", "barking"),
+    onError: (e) => showToast(e instanceof Error ? e.message : "Couldn't reach ApolloSG's relay.", "barking"),
   });
   const ack = useMutation({
     mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
@@ -162,9 +162,9 @@ export default function Family() {
         </View>
 
         <View>
-          <SectionTitle>Pair another Apollo device</SectionTitle>
+          <SectionTitle>Pair another ApolloSG device</SectionTitle>
           <Card style={{ gap: spacing.md }} testID="family-pair-card">
-            <Body>Give this code to a family member who also uses Apollo. Your Barking/Biting alerts will appear in their app, and they get a calm weekly check-in — how many things Apollo checked and how many alerts — never what you checked.</Body>
+            <Body>Give this code to a family member who also uses ApolloSG. Your Barking/Biting alerts will appear in their app, and they get a calm weekly check-in — how many things Apollo checked and how many alerts — never what you checked.</Body>
             <TextInput testID="family-owner-phone" style={s.input} value={phone} onChangeText={setPhone} placeholder="Your phone number (optional) — so they can call you in one tap" placeholderTextColor={colors.muted} keyboardType="phone-pad" autoCorrect={false} />
             {pairCode ? <Text style={s.code} selectable testID="family-pair-code">{pairCode}</Text> : null}
             <Button testID="family-make-code" variant="secondary" label={pairCode ? "New code" : "Create pairing code"} onPress={() => makeCode.mutate()} disabled={makeCode.isPending} />
@@ -201,9 +201,9 @@ export default function Family() {
                       </View>
                     ); })()}
                   </View>); })}
-                <Body>Counts only — Apollo never shares what they checked, their messages or their links.</Body>
+                <Body>Counts only — ApolloSG never shares what they checked, their messages or their links.</Body>
                 <View style={[s.row, { borderBottomWidth: 0 }]} testID="family-weekly-notify-row">
-                  <View style={{ flex: 1 }}><Text style={s.name}>Sunday check-in notification</Text><Body>{weeklyPref.data?.window ?? "Sunday 5–9 pm, your local time"}{weeklyPref.data?.last_sent_at ? ` · last sent ${new Date(weeklyPref.data.last_sent_at).toLocaleDateString()}` : ""}. Same calm summary, so you don&apos;t have to open the app. If you haven&apos;t said hello by Tuesday evening, Apollo sends one gentle reminder.</Body></View>
+                  <View style={{ flex: 1 }}><Text style={s.name}>Sunday check-in notification</Text><Body>{weeklyPref.data?.window ?? "Sunday 5–9 pm, your local time"}{weeklyPref.data?.last_sent_at ? ` · last sent ${new Date(weeklyPref.data.last_sent_at).toLocaleDateString()}` : ""}. Same calm summary, so you don&apos;t have to open the app. If you haven&apos;t said hello by Tuesday evening, ApolloSG sends one gentle reminder.</Body></View>
                   <Switch testID="family-weekly-notify-switch" value={weeklyPref.data?.enabled ?? true} onValueChange={(v) => setWeeklyPref.mutate(v)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
                 </View>
                 <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>

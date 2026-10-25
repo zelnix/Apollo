@@ -182,11 +182,11 @@ async def message_analyse(body: MessageAnalyseIn, request: Request):
 
     initial_findings = []
     if body.signals:
-        initial_findings.append(f"Apollo local analysis signals: {', '.join(body.signals[:20])}")
+        initial_findings.append(f"ApolloSG local analysis signals: {', '.join(body.signals[:20])}")
     if body.scenario:
-        initial_findings.append(f"Apollo scenario classification: {body.scenario}")
+        initial_findings.append(f"ApolloSG scenario classification: {body.scenario}")
     if body.local_state != "resting":
-        initial_findings.append(f"Apollo local state: {body.local_state}")
+        initial_findings.append(f"ApolloSG local state: {body.local_state}")
 
     case_id, job, investigation_error = await _launch_investigation(
         owner, body.gate, question, submissions,
@@ -229,7 +229,7 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
     }]
     initial_findings = []
     if body.local_state != "resting":
-        initial_findings.append(f"Apollo local state: {body.local_state}")
+        initial_findings.append(f"ApolloSG local state: {body.local_state}")
     if body.local_findings:
         initial_findings.extend(body.local_findings[:12])
 
@@ -313,7 +313,7 @@ async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_h
             "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
             "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400),
             "processing": {"raw_retained_by_apollo": False, **provider_metadata,
-                           "provider_note": "Apollo does not persist the screenshot. Provider-side retention follows the configured API policy."}}
+                           "provider_note": "ApolloSG does not persist the screenshot. Provider-side retention follows the configured API policy."}}
 
 
 # --------------------------------------------------------------------------- Gate 3 Phase C: "Let Apollo read the page"
@@ -330,18 +330,18 @@ class PageCrawlIn(BaseModel):
 
 CRAWL_ERROR_DETAIL = {
     "invalid_url": "Only http and https links can be read.",
-    "private_target": "That address points at a private or internal network — Apollo won't fetch it.",
+    "private_target": "That address points at a private or internal network — ApolloSG won't fetch it.",
     "dns_failed": "Apollo couldn't find that address.",
     "redirect_no_location": "That page redirected without saying where to.",
     "too_many_redirects": "That page redirected too many times.",
     "not_html": "That link isn't a web page Apollo can read (not HTML).",
-    "fetch_failed": "Apollo couldn't reach that page.",
+    "fetch_failed": "ApolloSG couldn't reach that page.",
     "timeout": "That page took too long to answer.",
     "not_configured": "Reading pages isn't configured on this build.",
     "extract_failed": "Apollo read the page but couldn't make sense of it.",
 }
 
-PAGE_CRAWL_EXTRACT_PROMPT = """You analyse TEXT Apollo fetched directly from a web page (not a screenshot, not vision) for a consumer
+PAGE_CRAWL_EXTRACT_PROMPT = """You analyse TEXT ApolloSG fetched directly from a web page (not a screenshot, not vision) for a consumer
 security app. You are given: the page title, a truncated excerpt of its visible text, the types of input fields found on the page
 (password/email/tel — never their values), button/submit labels, and a sample of outbound link hostnames. Report ONLY what is present
 in what you were given. Return ONLY JSON:

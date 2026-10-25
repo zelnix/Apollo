@@ -27,12 +27,12 @@ export function whenLabel(iso: string): string {
 /** One sentence, or null when the record doesn't say (never guessed). A result saved before the note existed
  *  only says they have left, once the 24 hours since it finished have passed. */
 export function serverCopyNote(copy: ServerCopy | null | undefined, finishedAt: string | null | undefined, now: number = Date.now()): string | null {
-  if (valid(copy?.removedAt)) return `${WHAT} were removed from Apollo's server on ${whenLabel(copy.removedAt)}.`;
+  if (valid(copy?.removedAt)) return `${WHAT} were removed from ApolloSG's server on ${whenLabel(copy.removedAt)}.`;
   if (valid(copy?.leavesBy)) {
     return Date.parse(copy.leavesBy) > now
-      ? `${WHAT} leave Apollo's server by ${whenLabel(copy.leavesBy)}.`
-      : `${WHAT} were removed from Apollo's server by ${whenLabel(copy.leavesBy)}.`;
+      ? `${WHAT} leave ApolloSG's server by ${whenLabel(copy.leavesBy)}.`
+      : `${WHAT} were removed from ApolloSG's server by ${whenLabel(copy.leavesBy)}.`;
   }
-  if (valid(finishedAt) && now - Date.parse(finishedAt) >= SERVER_COPY_HOURS * 3600_000) return `${WHAT} have left Apollo's server.`;
+  if (valid(finishedAt) && now - Date.parse(finishedAt) >= SERVER_COPY_HOURS * 3600_000) return `${WHAT} have left ApolloSG's server.`;
   return null;
 }

@@ -65,17 +65,17 @@ export default function CheckMyAccounts() {
     setEmails(await addMonitoredEmail(value));
   };
   const remove = async (email: string) => { setEmails(await removeMonitoredEmail(email)); await reload(); };
-  const handle = async (email: string, names: string[]) => { setHandled(await markHandled(email, names)); await reload(); showToast("Marked as handled. Apollo won't re-alert unless a new breach appears for this address.", "neutral"); };
+  const handle = async (email: string, names: string[]) => { setHandled(await markHandled(email, names)); await reload(); showToast("Marked as handled. ApolloSG won't re-alert unless a new breach appears for this address.", "neutral"); };
   const unhandle = async (email: string) => { setHandled(await unmarkHandled(email)); await reload(); };
 
   const check = async () => {
-    if (!deviceId) { setError("Apollo is still preparing this device."); return; }
+    if (!deviceId) { setError("ApolloSG is still preparing this device."); return; }
     setBusy(true); setError(null);
     try {
       const outcome = await runScan(deviceId);
       await reload();
       showToast(outcome.diff.newExposures.length ? "Check complete — new exposure found. See the report below." : "Check complete. See the report below.", outcome.diff.newExposures.length ? "growling" : "neutral");
-    } catch (e) { setError(e instanceof Error ? e.message : "Apollo couldn't complete the check. Try again in a moment."); }
+    } catch (e) { setError(e instanceof Error ? e.message : "ApolloSG couldn't complete the check. Try again in a moment."); }
     finally { setBusy(false); }
   };
 
@@ -90,7 +90,7 @@ export default function CheckMyAccounts() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check My Accounts"
-          info={{ title: "About Account Monitoring", body: ["Apollo watches your email addresses for appearances in known data breaches. Checks run weekly when you open the app.", "Apollo never asks for or stores a password. Breach data comes from trusted public disclosure sources."] }}
+          info={{ title: "About Account Monitoring", body: ["Apollo watches your email addresses for appearances in known data breaches. Checks run weekly when you open the app.", "ApolloSG never asks for or stores a password. Breach data comes from trusted public disclosure sources."] }}
           testID="monitor"
         />
       </View>
@@ -115,7 +115,7 @@ export default function CheckMyAccounts() {
             <TextInput testID="monitor-input" style={s.input} value={input} onChangeText={(v) => { setInput(v); setError(null); }} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" onSubmitEditing={() => void add()} returnKeyType="done" />
             <Button testID="monitor-add" variant="secondary" label="Add" onPress={() => void add()} disabled={!input.trim()} />
           </View>
-          <Body testID="monitor-privacy">You're confirming these are your addresses. Removing one deletes its stored findings from this device. Addresses are sent only during a check and are never stored on Apollo's server.</Body>
+          <Body testID="monitor-privacy">You're confirming these are your addresses. Removing one deletes its stored findings from this device. Addresses are sent only during a check and are never stored on ApolloSG's server.</Body>
         </Card>
 
         {error ? <Card testID="monitor-error"><Body>{error}</Body></Card> : null}
@@ -139,7 +139,7 @@ export default function CheckMyAccounts() {
                 </View>
               );
             })}
-            <Body testID="monitor-exposures-note">Marking an exposure as handled removes it from your outstanding list. Apollo will still tell you if a brand-new breach appears for that address.</Body>
+            <Body testID="monitor-exposures-note">Marking an exposure as handled removes it from your outstanding list. ApolloSG will still tell you if a brand-new breach appears for that address.</Body>
           </Card>
         ) : null}
 

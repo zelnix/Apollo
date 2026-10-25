@@ -63,7 +63,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 const SETUP_FAILURE_MESSAGE =
-  "Apollo couldn\u2019t finish setting up protection. Nothing has been activated yet. Please try again shortly.";
+  "ApolloSG couldn\u2019t finish setting up protection. Nothing has been activated yet. Please try again shortly.";
 
 const LOCATION_ICONS = { device: Smartphone, server: Server, external: Globe } as const;
 
@@ -84,7 +84,7 @@ function CapabilityRow({ item, index }: { item: typeof CAPABILITY_DATA_USE[numbe
         <View style={s.capDetail}>
           <Text style={s.capLabel}>On your device</Text>
           <Text style={s.capText}>{item.local}</Text>
-          <Text style={s.capLabel}>Apollo&apos;s services</Text>
+          <Text style={s.capLabel}>ApolloSG&apos;s services</Text>
           <Text style={s.capText}>{item.backend}</Text>
           <Text style={s.capLabel}>Third-party services</Text>
           <Text style={s.capText}>{item.thirdParty}</Text>
@@ -204,7 +204,7 @@ export default function PrivacyDisclosure() {
 
         {/* ── What never leaves ── */}
         <View>
-          <SectionTitle>What Apollo does not retain from assessments</SectionTitle>
+          <SectionTitle>What ApolloSG does not retain from assessments</SectionTitle>
           <Card testID="disclosure-never" style={{ gap: spacing.sm }}>
             {LOCAL_ONLY_CONTENT.map((line) => <Body key={line}>{'\u2022'} {line}</Body>)}
             <Pill tone="resting" label="Enforced in code: an allow-list blocks anything else" />
@@ -291,7 +291,7 @@ export default function PrivacyDisclosure() {
               ) : null}
             </View>
           ) : null}
-          <Button testID="disclosure-accept-button" label={busy ? "Setting up\u2026" : "I understand \u2014 set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
+          <Button testID="disclosure-accept-button" label={busy ? "Setting up\u2026" : "I understand \u2014 set up ApolloSG"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
           <Text style={s.legal}>Next: turning on the protections this phone allows.</Text>
         </View>
       ) : null}

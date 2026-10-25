@@ -225,7 +225,7 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
                 <View style={[s.unavailable, { backgroundColor: colors.surfaceTertiary }]}>
                   <Text style={[s.unavailableText, { fontFamily: fonts.textMedium }]}>Server copy deleted</Text>
                   <Text style={[s.unavailableText, { marginTop: spacing.xs }]}>
-                    Apollo&apos;s server copy of this evidence was deleted after 24 hours to protect your privacy.
+                    ApolloSG&apos;s server copy of this evidence was deleted after 24 hours to protect your privacy.
                     Your copy on this phone is kept until you delete it, and the investigation findings remain in your saved report.
                   </Text>
                   {selected.collectedAt ? (
@@ -237,7 +237,7 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
               ) : selected.availability !== "available" ? (
                 <View style={s.unavailable}>
                   <Text style={s.unavailableText}>
-                    {selected.availability === "purged" ? "Apollo's server copy was deleted after its retention period. Your copy on this phone is kept until you delete it."
+                    {selected.availability === "purged" ? "ApolloSG's server copy was deleted after its retention period. Your copy on this phone is kept until you delete it."
                       : selected.availability === "permission_required" ? "Access to this evidence requires additional permissions."
                       : "Evidence content is not currently available."}
                   </Text>

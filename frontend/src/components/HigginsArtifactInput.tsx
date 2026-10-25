@@ -210,11 +210,11 @@ const SOURCE_TITLE: Record<SourceKey, string> = {
 };
 
 const SOURCE_NOTE: Record<SourceKey, string> = {
-  email: "Pick an email and Apollo fills the box below with it. Nothing is sent until you submit.",
-  messages: "Pick a message and Apollo fills the box below with it. Nothing is sent until you submit.",
-  calls: "Pick a number and Apollo fills the box below with it. Nothing is sent until you submit.",
-  apps: "Pick an app and Apollo fills the box below with its name. Nothing is sent until you submit.",
-  files: "Pick a file and Apollo fills the box below with its name and type. Nothing is sent until you submit.",
+  email: "Pick an email and ApolloSG fills the box below with it. Nothing is sent until you submit.",
+  messages: "Pick a message and ApolloSG fills the box below with it. Nothing is sent until you submit.",
+  calls: "Pick a number and ApolloSG fills the box below with it. Nothing is sent until you submit.",
+  apps: "Pick an app and ApolloSG fills the box below with its name. Nothing is sent until you submit.",
+  files: "Pick a file and ApolloSG fills the box below with its name and type. Nothing is sent until you submit.",
   screenshots: SAMPLE_NOTE,
   links: SAMPLE_NOTE,
   concerns: SAMPLE_NOTE,
@@ -229,7 +229,7 @@ const HERO_CAPTION: Record<HigginsCheckCategory, string> = {
   messages_calls: "Only the one message or number you choose — never your inbox or call history.",
   email_accounts: "Only the one email you choose: its sender, its links and what it asks for.",
   apps_files: "The app's source and permissions, or the file's signature and contents.",
-  device_internet: "Apollo starts from what you have noticed on this device.",
+  device_internet: "ApolloSG starts from what you have noticed on this device.",
 };
 
 interface InboxItem { id: string; account?: string; from: string; subject: string; snippet: string; attachment_count?: number; attachment_names?: string[] }
@@ -341,7 +341,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       }
     } catch (err) {
       console.warn("[HigginsArtifactInput] Camera error:", err);
-      setPrepError("Apollo couldn't open the camera. You can select an image instead.");
+      setPrepError("ApolloSG couldn't open the camera. You can select an image instead.");
     } finally {
       setPicking(false);
     }
@@ -383,7 +383,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
   // A failed read is reported as a failed read. It is never shown as "nothing found", and the typed
   // field always stays available so a person is never dead-ended.
   const loadInbox = useCallback(async (accountEmail?: string | null, append?: boolean) => {
-    if (!deviceId) { setSourceError("Apollo hasn't finished starting up. Try again in a moment."); return; }
+    if (!deviceId) { setSourceError("ApolloSG hasn't finished starting up. Try again in a moment."); return; }
     if (append) setLoadingMore(true); else setSourceLoading(true);
     setSourceError(null);
     try {
@@ -393,7 +393,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
         if (!status.connected) {
           setInbox([]);
           setEmailAccounts([]);
-          setSourceError("No email account is connected yet. Connect one in Apollo's email check, or paste the email into the box instead.");
+          setSourceError("No email account is connected yet. Connect one in ApolloSG's email check, or paste the email into the box instead.");
           return;
         }
         setEmailAccounts(status.accounts ?? []);
@@ -412,7 +412,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setInboxPageToken(data.next_page_token ?? null);
     } catch {
       if (!append) setInbox([]);
-      setSourceError("Apollo couldn't read your inbox just now. You can paste the email into the box instead.");
+      setSourceError("ApolloSG couldn't read your inbox just now. You can paste the email into the box instead.");
     } finally {
       setSourceLoading(false);
       setLoadingMore(false);
@@ -440,7 +440,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       setApps(await AppDeviceSdk.listInstalledApps());
     } catch {
       setApps([]);
-      setSourceError("Apollo couldn't read the list of installed apps from this device. Type the app name into the box instead.");
+      setSourceError("ApolloSG couldn't read the list of installed apps from this device. Type the app name into the box instead.");
     } finally {
       setSourceLoading(false);
     }
@@ -455,13 +455,13 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       const file = !res.canceled ? res.assets?.[0] : null;
       if (file) {
         if (file.size != null && file.size > FILE_SIZE_LIMIT) {
-          setPrepError(`That file is ${Math.round(file.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
+          setPrepError(`That file is ${Math.round(file.size / (1024 * 1024))} MB — ApolloSG's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
           return;
         }
         fillSample(file.uri, `${file.name}${file.mimeType ? ` (${file.mimeType})` : ""}`, "Is this file safe to open?");
       }
     } catch {
-      setPrepError("Apollo couldn't open the file picker. You can type the file name and type instead.");
+      setPrepError("ApolloSG couldn't open the file picker. You can type the file name and type instead.");
     } finally {
       setPicking(false);
     }
@@ -476,14 +476,14 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
       const file = !res.canceled ? res.assets?.[0] : null;
       if (file) {
         if (file.size != null && file.size > FILE_SIZE_LIMIT) {
-          setPrepError(`That image is ${Math.round(file.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller image.`);
+          setPrepError(`That image is ${Math.round(file.size / (1024 * 1024))} MB — ApolloSG's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller image.`);
           return;
         }
         setImageUri(file.uri);
         setSelectedSample(null);
       }
     } catch {
-      setPrepError("Apollo couldn't open the file browser. You can select an image from your photos instead.");
+      setPrepError("ApolloSG couldn't open the file browser. You can select an image from your photos instead.");
     } finally {
       setPicking(false);
     }
@@ -571,7 +571,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
 
         if (totalBytes > FILE_SIZE_LIMIT) {
           // Exceeds the 10 MB combined limit — include metadata for Gemini but flag the overage
-          attachmentNote = `\n\nAttachments (${detail.attachments.length}, total ${totalMB.toFixed(1)} MB — exceeds ${limitMB} MB limit, not downloaded):\n${lines.join("\n")}\n\n⚠ These attachments exceed Apollo's ${limitMB} MB combined limit and were not downloaded for deep inspection. Recommend the person download each attachment individually and check them one at a time using Apollo's file check.`;
+          attachmentNote = `\n\nAttachments (${detail.attachments.length}, total ${totalMB.toFixed(1)} MB — exceeds ${limitMB} MB limit, not downloaded):\n${lines.join("\n")}\n\n⚠ These attachments exceed ApolloSG's ${limitMB} MB combined limit and were not downloaded for deep inspection. Recommend the person download each attachment individually and check them one at a time using Apollo's file check.`;
         } else {
           attachmentNote = `\n\nAttachments (${detail.attachments.length}, total ${totalMB.toFixed(1)} MB):\n${lines.join("\n")}`;
         }
@@ -617,7 +617,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
     if (!imageUri) { submit(null); return; }
     setPrepError(null);
     try { setScreening(await screenImage(imageUri, "investigation_evidence")); }
-    catch { setPrepError("Apollo couldn't prepare this image. Nothing was sent."); }
+    catch { setPrepError("ApolloSG couldn't prepare this image. Nothing was sent."); }
   };
 
   const canSubmit = category === "screenshot"
@@ -720,7 +720,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
           {cameraBlocked ? (
             <>
               <Text style={s.helper} testID="higgins-artifact-camera-blocked">
-                Camera access is turned off for Apollo, so photos cannot be taken. You can still select
+                Camera access is turned off for ApolloSG, so photos cannot be taken. You can still select
                 an image from your photos.
               </Text>
               <Button
@@ -821,7 +821,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
           emptyText={picker === "email"
             ? "There is nothing in the last 30 days of the connected inbox."
             : picker === "apps"
-              ? "This device reported no installed apps Apollo can list."
+              ? "This device reported no installed apps ApolloSG can list."
               : "Nothing to choose from here."}
           selectedId={selectedSample}
           onSelect={(id) => pickFromSource(picker, id)}

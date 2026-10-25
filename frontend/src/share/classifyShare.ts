@@ -25,7 +25,7 @@ export function classifyShare(p: SharedPayload): ShareRoute {
   if (file) {
     const mime = (file.mimeType ?? "").toLowerCase();
     const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
-    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "Looks like an image. If it's a screenshot of a message, Apollo can read the text and check it — or you can check it as a file instead. Apollo doesn't know what's in it until it looks." };
+    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "Looks like an image. If it's a screenshot of a message, Apollo can read the text and check it — or you can check it as a file instead. ApolloSG doesn't know what's in it until it looks." };
     return { kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
   }
   const raw = (p.text ?? "").trim();

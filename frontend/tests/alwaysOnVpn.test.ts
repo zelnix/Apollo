@@ -54,7 +54,7 @@ test("the app manifest replaces the certified VPN service with the identical dec
   assert.equal(app.manifest.application[0].service.length, 2, "other services are left alone");
 });
 
-test("Apollo's starter is the one component answering Android's VpnService request", () => {
+test("ApolloSG's starter is the one component answering Android's VpnService request", () => {
   const xml = read(APOLLO_MANIFEST);
   const starter = serviceBlock(xml, "com.hucentai.apollosecurity.ApolloAlwaysOnVpnStarter");
   assert.match(starter, /<action android:name="android\.net\.VpnService"/);
@@ -80,7 +80,7 @@ test("the starter rebuilds protection from saved rules, idempotently, and record
   assert.match(body, /check\(ruleBundleCurrent\(\)\)/, "never starts without current, validated rules");
   assert.match(body, /recordSystemStart\("failed"/);
   // The failure is reported, never hidden, and Always-on/lockdown are read only while the tunnel is up.
-  assert.match(runtime, /Android asked Apollo to reconnect its protection \(Always-on VPN\) and it couldn't/);
+  assert.match(runtime, /Android asked ApolloSG to reconnect its protection \(Always-on VPN\) and it couldn't/);
   assert.match(runtime, /\.put\("alwaysOn", alwaysOn\)\.put\("lockdown", lockdown\)\.put\("systemStart", systemStartJson\(\)\)/);
   assert.match(runtime, /if \(operational\) ApolloVpnSystemState\.lockdown\(\)/);
 });
@@ -91,11 +91,11 @@ test("a network change only stops a tunnel that exists", () => {
   assert.match(body, /if \(state\.current\(\)\.state in setOf\(ProtectionState\.STARTING, ProtectionState\.ACTIVE\)\) stopLocked\(clearIntent = false\)/);
 });
 
-test("Private DNS is read from the physical network, never Apollo's own tunnel", () => {
+test("Private DNS is read from the physical network, never ApolloSG's own tunnel", () => {
   const runtime = read(`${KOTLIN}/ApolloGuardDogProductionRuntime.kt`);
   const body = runtime.slice(runtime.indexOf("fun privateDnsStatus"), runtime.indexOf("// ── Urgent rule refresh"));
   assert.match(body, /NET_CAPABILITY_NOT_VPN/);
-  assert.doesNotMatch(body, /\.activeNetwork\b/, "must not read the default (possibly Apollo's own VPN) network");
+  assert.doesNotMatch(body, /\.activeNetwork\b/, "must not read the default (possibly ApolloSG's own VPN) network");
   assert.match(body, /PrivateDnsTruth\.mode\(/);
   assert.match(body, /Build\.VERSION_CODES\.P/, "LinkProperties' Private DNS reads need Android 9");
   const truth = read(`${KOTLIN}/PrivateDnsTruth.kt`);

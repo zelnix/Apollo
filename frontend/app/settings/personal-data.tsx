@@ -377,7 +377,7 @@ export default function PersonalDataScreen() {
         <Card testID="personal-data-notice">
           <Text style={s.notice}>
             <Text style={s.noticeStrong}>This data never leaves your device. </Text>
-            Apollo uses it only to recognise your own personal information when
+            ApolloSG uses it only to recognise your own personal information when
             screening artifacts before analysis. Only information that matches
             your profile is redacted — third-party details are preserved as
             evidence.

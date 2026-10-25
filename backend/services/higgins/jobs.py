@@ -63,7 +63,7 @@ def evidence_too_large_message(words: int) -> str:
     No evidence was sent, shortened or left out quietly — nothing was investigated."""
     return (
         f"There is too much written material in this case for Apollo's standard investigation — about {words:,} words, "
-        f"and Apollo's limit is {EVIDENCE_WORD_LIMIT:,} words for one investigation. "
+        f"and ApolloSG's limit is {EVIDENCE_WORD_LIMIT:,} words for one investigation. "
         "I haven't sent any of it to be investigated, and nothing has been shortened or left out behind your back. "
         "For documents this long, open them in your own AI assistant — such as Gemini, Claude or Copilot on your "
         "device — where you can work through the whole document yourself. "
@@ -101,8 +101,8 @@ async def _push_background_completion(owner: str, case: dict) -> None:
     await send_push(
         recipients=[owner],
         data={
-            "title": "Apollo: message assessed",
-            "message": "Apollo completed a background assessment of a captured message. Open Apollo to review.",
+            "title": "ApolloSG: message assessed",
+            "message": "ApolloSG completed a background assessment of a captured message. Open ApolloSG to review.",
             "action_url": f"/patrol/{case_id}?focus=alert" if case_id else "/patrol",
             **PUSH_GROWL,
         },
@@ -265,7 +265,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             break
         if outcome.kind == "call_limit_reached":
             # Both Gemini attempts were already used (e.g. a recovered job): nothing more is sent.
-            diag = DiagnosticDetail(component="magnum_di", service="Apollo", operation="gemini_call_limit",
+            diag = DiagnosticDetail(component="magnum_di", service="ApolloSG", operation="gemini_call_limit",
                 original_error_code="call_limit_reached", original_message="; ".join(outcome.errors)[:400],
                 timestamp=now_utc().isoformat())
             await _fail_resubmit(owner, case, job, "provider_unavailable", diag, retry_history, reason="call_limit")
@@ -296,7 +296,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
         if outcome.kind == "evidence_too_large":
             # Deliberate stop before any Gemini call: the evidence exceeds Apollo's word limit.
             words = outcome.evidence_words or 0
-            diag = DiagnosticDetail(component="magnum_di", service="Apollo", operation="evidence_size_check",
+            diag = DiagnosticDetail(component="magnum_di", service="ApolloSG", operation="evidence_size_check",
                 original_error_code="evidence_too_large",
                 original_message="; ".join(outcome.errors)[:400],
                 timestamp=now_utc().isoformat(), final_status="failed")

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-UNAVAILABLE_COPY = "Family Help is not available yet. Your other Apollo features still work."
+UNAVAILABLE_COPY = "Family Help is not available yet. Your other ApolloSG features still work."
 PROTOCOL_VERSION = 1
 CLOUDFLARE_PROVIDER = "cloudflare"
 CLOUDFLARE_KEY_RE = re.compile(r"^[0-9a-f]{32}$")

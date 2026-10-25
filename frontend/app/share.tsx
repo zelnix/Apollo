@@ -46,7 +46,7 @@ export default function ShareLanding() {
   useEffect(() => {
     if (!params.nativeHandoffId) return;
     let active = true;
-    void loadNativeShareHandoff(params.nativeHandoffId).then((value) => { if (active) setPayload(value); }).catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "Apollo could not open the shared items."); });
+    void loadNativeShareHandoff(params.nativeHandoffId).then((value) => { if (active) setPayload(value); }).catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "ApolloSG could not open the shared items."); });
     return () => { active = false; };
   }, [params.nativeHandoffId]);
   const intakeId = useMemo(() => payload ? (params.intakeId ?? putShareIntake(payload)) : null, [params.intakeId, payload]);
@@ -75,14 +75,14 @@ export default function ShareLanding() {
   const preview = payload?.files?.[0] ? `${payload.files.length} attachment${payload.files.length === 1 ? "" : "s"}: ${payload.files[0].fileName ?? payload.files[0].path.split("/").pop()}${payload.files[0].mimeType ? ` · ${payload.files[0].mimeType}` : ""}` : (payload?.webUrl || payload?.text || "").slice(0, 400);
 
   if (ready && !setupDone) return <Redirect href="/" />;
-  if (loadError) return <View style={s.root} testID="share-load-error"><View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title}>Shared with Apollo</Text><CloseButton testID="share-error-close" label="Close shared items" onPress={close} /></View><View style={s.content}><Card style={{ gap: spacing.md }}><Body testID="share-load-error-message">{loadError}</Body></Card></View></View>;
+  if (loadError) return <View style={s.root} testID="share-load-error"><View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title}>Shared with ApolloSG</Text><CloseButton testID="share-error-close" label="Close shared items" onPress={close} /></View><View style={s.content}><Card style={{ gap: spacing.md }}><Body testID="share-load-error-message">{loadError}</Body></Card></View></View>;
   if (!payload) return <View style={[s.root, { alignItems: "center", justifyContent: "center", gap: spacing.md }]} testID="share-loading"><ActivityIndicator color={colors.brandPrimary} /><Body testID="share-loading-message">Opening the protected shared items…</Body></View>;
   if (!preview || !route) return <Redirect href="/(tabs)/home" />;
 
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Shared with Apollo</Text>
+        <Text style={s.title}>Shared with ApolloSG</Text>
         <CloseButton testID="share-close" label="Close shared items" onPress={close} />
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="share-scroll">
@@ -104,7 +104,7 @@ export default function ShareLanding() {
         ) : null}
         </>
         )}
-        <Body>In apps that offer Share, tap Share → Apollo. Not every app offers it — you can always copy and paste the text or use a screenshot instead. Apollo keeps native handoffs protected for no more than 24 hours.</Body>
+        <Body>In apps that offer Share, tap Share → ApolloSG. Not every app offers it — you can always copy and paste the text or use a screenshot instead. ApolloSG keeps native handoffs protected for no more than 24 hours.</Body>
       </ScrollView>
       {/* Asked as a popup, and only for a share from another app. */}
       <Sheet visible={!!appAsk} onClose={() => setAppAsk(null)} title="Which app did this arrive in?" testID="share-app-sheet">

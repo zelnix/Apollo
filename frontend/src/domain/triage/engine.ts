@@ -462,7 +462,7 @@ const FILE: Record<string, (ev: TriageEvidence) => Verdict> = {
 
 const platformSignal = (key: string, label: string, gapCode: string, decide: (ev: TriageEvidence) => Verdict) =>
   (ev: TriageEvidence): Verdict => {
-    if (ev.visibility && ev.visibility[key] === false) return gap(gapCode, `${label} is not available to Apollo on this device`);
+    if (ev.visibility && ev.visibility[key] === false) return gap(gapCode, `${label} is not available to ApolloSG on this device`);
     return decide(ev);
   };
 
@@ -616,7 +616,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     reason = metRules[0].title + (metRules.length > 1 ? ` (+${metRules.length - 1} more deterministic rule(s) met)` : "");
   } else if (gaps.size) {
     outcome = "LIMITED_UNABLE_TO_DETERMINE";
-    reason = `Apollo couldn't obtain enough evidence to decide: ${[...gaps.keys()].sort().join(", ")}`;
+    reason = `ApolloSG couldn't obtain enough evidence to decide: ${[...gaps.keys()].sort().join(", ")}`;
   } else if (evidence.unresolved_concern) {
     outcome = "LIMITED_UNABLE_TO_DETERMINE";
     gaps.set("INSUFFICIENT_EVIDENCE", {

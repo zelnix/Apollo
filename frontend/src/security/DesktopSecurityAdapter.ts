@@ -49,7 +49,7 @@ interface HostSecurityAudit {
 class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   // Explicit host identity: Higgins receives platform "windows"/"macos" with native-origin facts, not a browser profile.
   readonly kind: "windows" | "macos" = desktopHostKind() ?? "windows";
-  readonly label = `Apollo desktop host (${desktopHostKind() === "macos" ? "macOS" : "Windows"})`;
+  readonly label = `ApolloSG desktop host (${desktopHostKind() === "macos" ? "macOS" : "Windows"})`;
   private info: HostInfo | null = null;
 
   private async host(): Promise<HostInfo> { return this.info ?? (this.info = await invoke<HostInfo>("host_info")); }
@@ -57,12 +57,12 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   async getCapabilities(): Promise<Capability[]> {
     const native = await invoke<HostNativeFilterStatus>("native_filter_status");
     return [
-      { id: "link_guard", title: "Link checking", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
+      { id: "link_guard", title: "Link checking", status: "available", detail: "Checks links you paste into ApolloSG; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: "available", detail: "Privacy-preserving reputation checks using the link only." },
       { id: "site_guard", title: "Website protection", status: native.active ? "active" : native.installed ? "permission_required" : "available", detail: native.active ? native.detail : `${native.detail} Exact-domain hosts filtering remains available as a narrower fallback and is labelled separately.` },
       { id: "connection_guard", title: "Internet monitoring", status: "available", detail: "Reads the active network interface and VPN state from the OS." },
-      { id: "share_intake", title: "Open with Apollo", status: "available", detail: "Open or drop files into Apollo for file checking." },
-      { id: "message_guard", title: "Message screening", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo." },
+      { id: "share_intake", title: "Open with ApolloSG", status: "available", detail: "Open or drop files into ApolloSG for file checking." },
+      { id: "message_guard", title: "Message screening", status: "available", detail: "Checks texts and chats you paste or screenshot into ApolloSG." },
       { id: "app_guard", title: "App checking", status: "available", detail: "Checks an app or device concern from the details you provide; installed-app inventory is not yet implemented." },
     ];
   }

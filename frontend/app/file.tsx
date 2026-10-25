@@ -109,7 +109,7 @@ export default function CheckFile() {
       await FS.writeAsStringAsync(targetUri, sim.content, { encoding: FS.EncodingType.UTF8 });
       await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true);
     } catch (error) {
-      setPickerError(error instanceof Error ? error.message : "Apollo could not prepare the simulated file.");
+      setPickerError(error instanceof Error ? error.message : "ApolloSG could not prepare the simulated file.");
     }
   };
 
@@ -122,7 +122,7 @@ export default function CheckFile() {
       // check — an "Ask Higgins" upload for THIS same submission may still need it. It is disposed by the reset/
       // unmount/expiry handlers above, or by the 15-minute crash-recovery sweep, never eagerly right here.
       await analyseAsset(res.assets[0], "unknown", true);
-    } catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo could not open the file picker. Try again."); }
+    } catch (error) { setPickerError(error instanceof Error ? error.message : "ApolloSG could not open the file picker. Try again."); }
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
   useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -131,7 +131,7 @@ export default function CheckFile() {
     try {
       // ── Hard size gate: reject oversized files BEFORE inspection ──
       if (asset.size != null && asset.size > FILE_SIZE_LIMIT) {
-        throw new Error(`This file is ${Math.round(asset.size / (1024 * 1024))} MB — Apollo's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
+        throw new Error(`This file is ${Math.round(asset.size / (1024 * 1024))} MB — ApolloSG's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
       }
       let inspected: Inspection = { headBytes: null, textSample: null };
       try {
@@ -168,13 +168,13 @@ export default function CheckFile() {
       const needsSource = (preliminary.state === "barking" || ["F01", "F03", "F04", "F13"].includes(preliminary.scenario)) && assetSource === "unknown";
       if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown", owned });
       else await finish(preliminary);
-    } catch (e) { setPickerError(e instanceof Error ? e.message : "Apollo couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
+    } catch (e) { setPickerError(e instanceof Error ? e.message : "ApolloSG couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
   };
   const completePending = async () => {
     if (!pending || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)) return;
     setBusy(true);
     try { await finish(analyseFile({ name: pending.asset.name, size: pending.asset.size, mime: pending.asset.mimeType ?? null, ...pending.inspected, source, passwordInMessage: pw === true })); setPending(null); }
-    catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo couldn't finish this file check. Retry."); }
+    catch (error) { setPickerError(error instanceof Error ? error.message : "ApolloSG couldn't finish this file check. Retry."); }
     finally { setBusy(false); }
   };
   const checkAnother = () => { disposeSelection(selected?.asset.uri ?? null, selected?.owned ?? false); setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); };
@@ -228,7 +228,7 @@ export default function CheckFile() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check a file"
-          info={{ title: "About file checking", body: ["Upload or describe a file and Apollo will check it for known threats, suspicious patterns and malware indicators.", "Apollo uses hash-based reputation checks and content analysis. Files are not stored after the assessment is complete."] }}
+          info={{ title: "About file checking", body: ["Upload or describe a file and Apollo will check it for known threats, suspicious patterns and malware indicators.", "ApolloSG uses hash-based reputation checks and content analysis. Files are not stored after the assessment is complete."] }}
           testID="file"
         />
       </View>

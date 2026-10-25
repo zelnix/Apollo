@@ -56,7 +56,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 const THREATS_INFO: ScreenInfo = { title: "About Threats", body: [
   "Threats lists everything Apollo has detected or investigated for you: blocked links, suspicious messages, calls and investigation cases.",
   "Use the filter to see threats by status, and tap any threat to see its overview, the original evidence and its history.",
-  "The line under the title shows when Apollo last ran a check or discovered a threat.",
+  "The line under the title shows when ApolloSG last ran a check or discovered a threat.",
 ] };
 
 // ── Source icon mapping ──────────────────────────────────────────────────────
@@ -289,7 +289,7 @@ export default function ThreatsScreen() {
       <Pressable
         testID="threats-history-link"
         accessibilityRole="button"
-        accessibilityLabel="Open patrol history — everything Apollo has filed, newest first"
+        accessibilityLabel="Open patrol history — everything ApolloSG has filed, newest first"
         onPress={() => router.push("/patrol/history")}
         style={({ pressed }) => [s.historyLink, { opacity: pressed ? 0.7 : 1 }]}
       >

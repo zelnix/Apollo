@@ -108,7 +108,7 @@ export default function HigginsHistoryScreen() {
         ListHeaderComponent={
           <View style={{ gap: spacing.md }}>
             <Card testID="higgins-history-storage-notice">
-              <Body>{"Completed investigations are stored on this device only. Apollo\u2019s server does not retain them."}</Body>
+              <Body>{"Completed investigations are stored on this device only. ApolloSG\u2019s server does not retain them."}</Body>
             </Card>
             <View style={s.search}>
               <Search size={20} color={colors.muted} />

@@ -137,7 +137,7 @@ export async function detectNativeProtection(): Promise<NativeProtectionCapabili
           isDefaultHandler: true,
           feature: "Silence Unknown Callers & carrier-level STIR/SHAKEN",
           classificationAccessible: false,
-          note: "Apple does not share its scam-call classification with any app, so Apollo cannot use it as evidence.",
+          note: "Apple does not share its scam-call classification with any app, so ApolloSG cannot use it as evidence.",
         },
       ],
       messageProtection: [
@@ -148,7 +148,7 @@ export async function detectNativeProtection(): Promise<NativeProtectionCapabili
           isDefaultHandler: true,
           feature: "Junk message filtering",
           classificationAccessible: false,
-          note: "Apple does not share its junk-message classification with any app, so Apollo cannot use it as evidence.",
+          note: "Apple does not share its junk-message classification with any app, so ApolloSG cannot use it as evidence.",
         },
       ],
       defaultDialerPackage: "com.apple.mobilephone",
@@ -217,7 +217,7 @@ export function buildNativeClassificationEvidence(classification: NativeClassifi
   const { provider, classification: label, communicationType, subject, classifiedAt } = classification;
   return {
     headline: `${provider} identified a ${label} ${communicationType}`,
-    what_happened: `${provider}'s native protection classified this ${communicationType} as "${label}" at ${new Date(classifiedAt).toLocaleString()}. This is ${provider}'s finding — Apollo is presenting it, not making the claim.`,
+    what_happened: `${provider}'s native protection classified this ${communicationType} as "${label}" at ${new Date(classifiedAt).toLocaleString()}. This is ${provider}'s finding — ApolloSG is presenting it, not making the claim.`,
     source_metadata: {
       type: communicationType,
       subject,
@@ -245,7 +245,7 @@ export function summariseCallProtection(caps: NativeProtectionCapabilities): {
     return {
       hasNativeProtection: true,
       activeProviders: active.map((p) => p.provider),
-      detail: `Native call protection active: ${active.map((p) => p.provider).join(", ")}. ${active.every((p) => !p.classificationAccessible) ? "Classification is not accessible to Apollo through a supported API." : ""}`.trim(),
+      detail: `Native call protection active: ${active.map((p) => p.provider).join(", ")}. ${active.every((p) => !p.classificationAccessible) ? "Classification is not accessible to ApolloSG through a supported API." : ""}`.trim(),
     };
   }
   if (installed.length > 0) {
@@ -270,7 +270,7 @@ export function summariseMessageProtection(caps: NativeProtectionCapabilities): 
     return {
       hasNativeProtection: true,
       activeProviders: active.map((p) => p.provider),
-      detail: `Native message protection active: ${active.map((p) => p.provider).join(", ")}. ${active.every((p) => !p.classificationAccessible) ? "Classification is not accessible to Apollo through a supported API." : ""}`.trim(),
+      detail: `Native message protection active: ${active.map((p) => p.provider).join(", ")}. ${active.every((p) => !p.classificationAccessible) ? "Classification is not accessible to ApolloSG through a supported API." : ""}`.trim(),
     };
   }
   if (installed.length > 0) {

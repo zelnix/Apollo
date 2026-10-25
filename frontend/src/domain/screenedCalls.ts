@@ -12,8 +12,8 @@ const OUTCOMES: ReadonlySet<string> = new Set(["rang", "allowed_by_you", "reject
 export const SCREENED_OUTCOME_LABEL: Record<ScreenedOutcome, string> = {
   rang: "Rang through — no warning on this phone",
   allowed_by_you: "On your allow list — rang through",
-  rejection_requested_block: "On your block list — Apollo asked Android to reject it",
-  rejection_requested_risky: "Found high-risk earlier — Apollo asked Android to reject it",
+  rejection_requested_block: "On your block list — ApolloSG asked Android to reject it",
+  rejection_requested_risky: "Found high-risk earlier — ApolloSG asked Android to reject it",
 };
 
 export function isRejectionRequest(outcome: ScreenedOutcome): boolean {

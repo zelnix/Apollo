@@ -14,9 +14,9 @@ public enum SiteGuardTruth {
     let operational = requested && blockerEnabled == true && rulesWritten
     var degraded: String? = nil
     if requested && !operational {
-      if blockerEnabled == nil { degraded = "Safari hasn't reported whether Apollo's extension is enabled yet. Pull to refresh in a moment." }
-      else if blockerEnabled == false { degraded = "Apollo's Safari extension is not enabled. Turn it on under Settings › Safari › Extensions." }
-      else { degraded = "Apollo could not write its Safari rule list (App Group unavailable in this build)." }
+      if blockerEnabled == nil { degraded = "Safari hasn't reported whether ApolloSG's extension is enabled yet. Pull to refresh in a moment." }
+      else if blockerEnabled == false { degraded = "ApolloSG's Safari extension is not enabled. Turn it on under Settings › Safari › Extensions." }
+      else { degraded = "ApolloSG could not write its Safari rule list (App Group unavailable in this build)." }
     }
     return Derived(operational: operational, enforcementMethod: operational ? "content_blocker" : "none", degradedReason: degraded)
   }

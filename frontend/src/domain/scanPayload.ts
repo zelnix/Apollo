@@ -70,7 +70,7 @@ export function assessScan(p: ScanPayload, context: ScanContext): ScanAssessment
     if (strictCtx && !known) {
       const what = { parking: "the parking service on the sign", parcel: "a delivery company", government: "a government service" }[context];
       const payish = p.type === "payment" || /pay|fee|card|checkout|verify|login/i.test(p.url ?? "");
-      why.push(`The sign says it's for ${what}, but the code leads to ${reg}, which isn't a destination Apollo knows for that service.${payish ? " It also asks for a payment or details." : ""}`);
+      why.push(`The sign says it's for ${what}, but the code leads to ${reg}, which isn't a destination ApolloSG knows for that service.${payish ? " It also asks for a payment or details." : ""}`);
       if (state === "resting") state = payish ? "growling" : "ears_up";
     }
     if (known && state === "resting") { why.push(`${reg} is a known destination for this kind of code.`); return { state, title: "Looks okay so far", why, recommendation: "Apollo checks the destination before you open it.", claimedBrand: brand.claimed?.name ?? null, handoff: "web" }; }
@@ -79,7 +79,7 @@ export function assessScan(p: ScanPayload, context: ScanContext): ScanAssessment
     return { state, title: state === "resting" ? "Looks okay so far" : state === "barking" ? `Possible fake ${brand.claimed?.name ?? "site"}` : "Suspicious destination", why: why.length ? why : ["No brand or context mismatch.", "Apollo will check the destination's reputation before you open it."],
       recommendation: state === "barking" ? "Don't open it or enter any details. Use the organisation's official app instead." : state === "growling" ? "Don't open it. Use the official app or website for the service on the sign." : "Apollo checks the destination before you open it.", claimedBrand: brand.claimed?.name ?? null, handoff: "web" };
   }
-  if (p.type === "tel") return { state: "ears_up", title: "Phone call request", why: ["A code that dials a number can lead to premium or scam lines.", "Apollo does not call automatically — you decide."], recommendation: "Check the number first. Only call if you know who it is.", claimedBrand: null, handoff: "call" };
+  if (p.type === "tel") return { state: "ears_up", title: "Phone call request", why: ["A code that dials a number can lead to premium or scam lines.", "ApolloSG does not call automatically — you decide."], recommendation: "Check the number first. Only call if you know who it is.", claimedBrand: null, handoff: "call" };
   if (p.type === "sms") return { state: "ears_up", title: "Pre-filled text message", why: [`It would text ${p.phone}${p.smsBody ? ` with: “${p.smsBody.slice(0, 80)}”` : ""}.`, "Pre-filled texts can sign you up to paid services."], recommendation: "Don't send it unless you know the recipient.", claimedBrand: null, handoff: "none" };
   if (p.type === "wifi") return p.wifiSecurity === "open" ? { state: "ears_up", title: "Open Wi‑Fi network", why: [`Network “${p.ssid}” has no password.`, "Open networks can be watched or impersonated."], recommendation: "Avoid banking on this network. Use mobile data for anything sensitive.", claimedBrand: null, handoff: "network" }
     : { state: "resting", title: "Wi‑Fi network details", why: [`Network “${p.ssid}” uses ${p.wifiSecurity} security.`, "No known risk in the code itself."], recommendation: "Connect through your phone's normal Wi‑Fi settings if you trust the venue.", claimedBrand: null, handoff: "network" };

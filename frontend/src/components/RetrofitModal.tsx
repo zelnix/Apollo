@@ -224,7 +224,7 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
                 <Text style={s.reportTitle}>Retrofit new enhancements</Text>
               </View>
               <Text style={s.loadingDesc}>
-                Apollo has new enhancements ready to apply to your investigation history. Here's what will be updated:
+                ApolloSG has new enhancements ready to apply to your investigation history. Here's what will be updated:
               </Text>
               <View style={s.enhancementList}>
                 <View style={s.enhancementItem}>

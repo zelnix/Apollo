@@ -55,7 +55,7 @@ export async function apolloProtectionExplanation(gateId: string): Promise<Expla
 const PENDING_MESSAGE = {
   generating: "Higgins is still writing this explanation. Try again in a moment.",
   limited: "Higgins has written enough new explanations for this device today. Try again tomorrow.",
-  device_only: "Open Apollo on your device to see Higgins' explanation of this protection.",
+  device_only: "Open ApolloSG on your device to see Higgins' explanation of this protection.",
 } as const;
 
 /** No explanation yet — said plainly, never filled in with made-up text. */

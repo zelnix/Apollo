@@ -79,7 +79,7 @@ export const platformName = (p: DevicePlatform) => (p === "ios" ? "iPhone or iPa
 type Row = FirstCheckCapabilityResult;
 const notAvailable = (base: Pick<Row, "id" | "category" | "title">, explanation: string, platformLimitation: string): Row =>
   ({ ...base, supported: false, executed: false, result: "NOT_AVAILABLE", confidence: "low", severity: "none", evidenceRef: null, evidence: null, explanation, platformLimitation, action: null });
-const PREVIEW_LIMIT = "This preview (Expo Go or web) can't reach the device's security system. Install the Apollo app on the device for this check.";
+const PREVIEW_LIMIT = "This preview (Expo Go or web) can't reach the device's security system. Install the ApolloSG app on the device for this check.";
 
 /** Platform default when the adapter has no trusted OS threat report to offer — explicit, never null. */
 export function osThreatNotAvailable(platform: DevicePlatform, nativeHost: boolean): OsThreatReportSignal {
@@ -152,7 +152,7 @@ function applicationRiskCheck(i: FirstCheckInputs): Row {
   const base = { id: "application_risk", category: "application_risk" as const, title: "Installed apps and powerful access" };
   if (i.platform !== "android" || !i.nativeHost) {
     return notAvailable(base, "Higgins checked the security information this device lets apps inspect. Looking through other installed apps isn't possible here.",
-      !i.nativeHost ? PREVIEW_LIMIT : i.platform === "ios" ? "Apple prevents any app from listing or scanning other apps." : i.platform === "macos" ? "macOS doesn't let Apollo list other apps' permissions." : "Installed-app inspection isn't available on Windows yet.");
+      !i.nativeHost ? PREVIEW_LIMIT : i.platform === "ios" ? "Apple prevents any app from listing or scanning other apps." : i.platform === "macos" ? "macOS doesn't let ApolloSG list other apps' permissions." : "Installed-app inspection isn't available on Windows yet.");
   }
   const s = i.signals;
   const remote = s.remoteAccessApps ?? [];
@@ -201,7 +201,7 @@ function networkConfigCheck(i: FirstCheckInputs): Row {
   let result: FirstCheckResultState = "PASS";
   let severity: FirstCheckSeverity = "none";
   if (s.vpnActive !== null) seen.push(s.vpnActive ? "VPN on" : "no VPN");
-  if (s.vpnActive === true && s.vpnProviderKnown === false) { result = "SUSPICIOUS"; severity = "medium"; found.push("a VPN Apollo didn't set up is active"); }
+  if (s.vpnActive === true && s.vpnProviderKnown === false) { result = "SUSPICIOUS"; severity = "medium"; found.push("a VPN ApolloSG didn't set up is active"); }
   else if (s.vpnActive === true && s.vpnProviderKnown === null) { result = "INFORMATION"; severity = "info"; found.push("a VPN is on — Apollo can see it but not who runs it"); }
   if (s.userTrustedCertificates !== null) seen.push(`${s.userTrustedCertificates} user-installed certificate${s.userTrustedCertificates === 1 ? "" : "s"}`);
   if ((s.userTrustedCertificates ?? 0) > 0) { if (result === "PASS" || result === "INFORMATION") { result = "CAUTION"; severity = "low"; } found.push("an extra user-trusted certificate is installed"); }
@@ -245,7 +245,7 @@ function osSecurityCheck(i: FirstCheckInputs): Row {
 
 function apolloIntegrityCheck(i: FirstCheckInputs): Row {
   const base = { id: "apollo_integrity", category: "apollo_integrity" as const, title: "Apollo's own protection" };
-  if (!i.nativeHost) return notAvailable(base, "This preview can't verify Apollo's protection component. On a real device Higgins confirms Apollo is present and responding.", PREVIEW_LIMIT);
+  if (!i.nativeHost) return notAvailable(base, "This preview can't verify Apollo's protection component. On a real device Higgins confirms ApolloSG is present and responding.", PREVIEW_LIMIT);
   if (i.protection) {
     return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: `adapter:${i.protection.adapterLabel}`,
       evidence: `${i.protection.adapterLabel} responded${i.protection.operational ? " and protection is running" : ""}.`, explanation: "Apollo's protection component is present and responding on this device.", platformLimitation: null, action: null };
@@ -269,7 +269,7 @@ function securityRulesCheck(i: FirstCheckInputs): Row {
     return { ...base, supported: true, executed: true, result: "CAUTION", confidence: "high", severity: "medium", evidenceRef: "rules:expiry",
       evidence: rules.detail,
       explanation: "Apollo's security rules are out of date, so the newest known dangerous websites may not be blocked yet.",
-      platformLimitation: null, action: "Open Apollo's protection and run the check again so it can fetch fresh rules." };
+      platformLimitation: null, action: "Open ApolloSG's protection and run the check again so it can fetch fresh rules." };
   }
   return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: "rules:expiry",
     evidence: rules.detail, explanation: "Apollo's security rules are up to date.", platformLimitation: null, action: null };
@@ -310,8 +310,8 @@ const PLATFORM_NOTE: Record<DevicePlatform, string> = {
   android: "Android lets Apollo read the most: Google Play Protect's malware report, root signs, apps with powerful access, VPN, certificates and device management.",
   windows: "On Windows, Apollo reads Microsoft Defender's own malware report, its tamper protection, SmartScreen, firewall, updates and antivirus state. It doesn't scan files itself.",
   macos: "On a Mac, Apollo reads System Integrity Protection, Gatekeeper, device-management enrolment, firewall and update state. macOS doesn't share XProtect malware detections with apps.",
-  ios: "Apple keeps iPhone and iPad apps sealed off from each other, so no app — including Apollo — can scan for malware or list other apps. Apollo checks for jailbreak signs, VPN, management and screen lock, and tells you what Apple keeps hidden.",
-  web: "This is a preview, so Apollo can't reach the device's security system. Install Apollo on the device for a real check.",
+  ios: "Apple keeps iPhone and iPad apps sealed off from each other, so no app — including ApolloSG — can scan for malware or list other apps. Apollo checks for jailbreak signs, VPN, management and screen lock, and tells you what Apple keeps hidden.",
+  web: "This is a preview, so ApolloSG can't reach the device's security system. Install ApolloSG on the device for a real check.",
 };
 
 // --- Overall derivation ------------------------------------------------------------------------------
@@ -368,7 +368,7 @@ export const FIRST_CHECK_COPY: Record<FirstCheckOverall, { title: string; headli
   LIMITED_CHECK: { title: "Checked everything this device allows", dogState: "ears_up",
     headline: "Higgins ran every check this device allows and found nothing wrong. Some areas can't be inspected on this platform — that's a limitation, not an all-clear." },
   ERROR: { title: "Couldn't finish the check", dogState: "ears_up",
-    headline: "Higgins couldn't complete the security check. Apollo can still start available protection, but I can't yet confirm the device's security condition." },
+    headline: "Higgins couldn't complete the security check. ApolloSG can still start available protection, but I can't yet confirm the device's security condition." },
 };
 
 export function reCheckHeadline(overall: FirstCheckOverall, changeCount: number): string {

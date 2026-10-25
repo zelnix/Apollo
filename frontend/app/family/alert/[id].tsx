@@ -95,7 +95,7 @@ export default function FamilyAlert() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-alert-scroll">
         {shared.isLoading ? <Body>Loading…</Body> : shared.isError && !shared.data ? (
-          <Card><Body testID="family-alert-unavailable">Apollo can&apos;t reach the security service right now, so this alert can&apos;t be loaded. It hasn&apos;t gone anywhere — try again shortly.</Body></Card>
+          <Card><Body testID="family-alert-unavailable">ApolloSG can&apos;t reach the security service right now, so this alert can&apos;t be loaded. It hasn&apos;t gone anywhere — try again shortly.</Body></Card>
         ) : !alert ? (
           <Card><Body testID="family-alert-missing">This alert isn&apos;t available on this device. It may have been cleared, or the pairing was removed.</Body></Card>
         ) : (

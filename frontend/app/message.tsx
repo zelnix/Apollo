@@ -225,7 +225,7 @@ export default function CheckMessage() {
       const uri = asset.localUri ?? asset.uri;
       simulation.registerImage(uri, sample.id);
       await readScreenshot(uri);
-    } catch { setScreenshotError("Apollo couldn’t open that sample screenshot. Try another one."); }
+    } catch { setScreenshotError("ApolloSG couldn’t open that sample screenshot. Try another one."); }
   };
   useEffect(() => {
     if (params.openScreenshot !== "1" || !ready || !setupDone || autoPicker.current) return;
@@ -445,7 +445,7 @@ export default function CheckMessage() {
               <Body testID="message-other-ways-textguard">Text Guard can check new texts as they arrive, using notification access you turn on in Android&apos;s settings.</Body>
               <Button testID="message-open-textguard" variant="secondary" label="Set up Text Guard" onPress={() => router.push("/text-guard")} />
             </> : null}
-            <Body testID="message-other-ways-share">You can also copy a message and paste it above, or use a screenshot. If the app the message is in offers Share, you can share it straight to Apollo.</Body>
+            <Body testID="message-other-ways-share">You can also copy a message and paste it above, or use a screenshot. If the app the message is in offers Share, you can share it straight to ApolloSG.</Body>
           </Card>
         ) : null}
 
@@ -468,7 +468,7 @@ export default function CheckMessage() {
                 </Pressable>
               ) : null}
             </View>
-            <Text style={s.recentSub}>Tap a message to check it with Apollo.</Text>
+            <Text style={s.recentSub}>Tap a message to check it with ApolloSG.</Text>
           </View>
 
           {/* Message rows */}

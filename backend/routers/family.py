@@ -61,7 +61,7 @@ async def add_guardian(body: GuardianIn):
                  + (f'<p><a href="{link}">Yes, send me these alerts</a></p>' if link else "<p>Ask them to confirm this in the app.</p>")
                  + "<p>If you did not expect this, simply ignore this email.</p>")
     try:
-        await send_email(to=g.email, subject=f"{who} wants to share Apollo safety alerts with you", html=html, event_id=f"invite:{g.confirm_token}")
+        await send_email(to=g.email, subject=f"{who} wants to share ApolloSG safety alerts with you", html=html, event_id=f"invite:{g.confirm_token}")
     except HTTPException as exc:
         await db.guardians.update_one({"guardian_id": g.guardian_id}, {"$set": {"deleted_at": now_utc()}})
         raise exc
@@ -73,8 +73,8 @@ async def confirm_guardian(token: str):
     from fastapi.responses import HTMLResponse
     result = await db.guardians.update_one({"confirm_token": token, "deleted_at": None, "$or": [{"confirm_expires_at": {"$gt": now_utc()}}, {"confirm_expires_at": None}]},
                                            {"$set": {"confirmed": True, "confirm_token": None, "confirmed_at": now_utc()}})  # single-use: token cleared
-    msg = "You're now receiving Apollo safety alerts. You can stop any time by asking the person who added you." if result.matched_count else "This link is no longer valid."
-    return HTMLResponse(f"<html><body style='font-family:Arial;padding:32px;background:#0B1220;color:#F4F7FA'><h2>Apollo</h2><p>{msg}</p></body></html>")
+    msg = "You're now receiving ApolloSG safety alerts. You can stop any time by asking the person who added you." if result.matched_count else "This link is no longer valid."
+    return HTMLResponse(f"<html><body style='font-family:Arial;padding:32px;background:#0B1220;color:#F4F7FA'><h2>ApolloSG</h2><p>{msg}</p></body></html>")
 
 
 @router.get("/family/guardians")
@@ -106,7 +106,7 @@ async def notify_guardians(event: PatrolEvent) -> None:
             try:
                 await send_push(
                     recipients=[ln["guardian_device_id"] for ln in links][:100],
-                    data={"title": f"Apollo: {who} {verb}", "message": event.headline, "subtext": "Tap to see the alert and call them.", "action_url": f"/family/alert/{event.event_id}", **PUSH_THREAT},
+                    data={"title": f"ApolloSG: {who} {verb}", "message": event.headline, "subtext": "Tap to see the alert and call them.", "action_url": f"/family/alert/{event.event_id}", **PUSH_THREAT},
                     idempotency_key=f"guardian-{event.event_id}",
                 )
             except Exception as exc:  # noqa: BLE001
@@ -510,7 +510,7 @@ async def share_scam_alert(body: ShareScamAlertIn):
     snap = await government_alerts.snapshot(100)
     alert = next((a for a in [*(snap.get("alerts") or []), *(snap.get("emerging") or [])] if a.get("url") == body.url), None)
     if not alert:
-        raise HTTPException(status_code=404, detail="This alert is no longer listed by Apollo's official sources.")
+        raise HTTPException(status_code=404, detail="This alert is no longer listed by ApolloSG's official sources.")
     recipients = await _family_recipients(body.device_id)
     ts = now_utc()
     for rid, label in recipients:

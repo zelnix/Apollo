@@ -56,7 +56,7 @@ export default function RuleBookScreen() {
       setBook(latest); setFromPhone(false); setError(null);
       void storage.setItem(CACHE_KEY, JSON.stringify(latest));
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : "Apollo couldn't load the rule book.");
+      setError(e instanceof Error && e.message ? e.message : "ApolloSG couldn't load the rule book.");
     } finally {
       setLoading(false); setRefreshing(false);
     }
@@ -87,7 +87,7 @@ export default function RuleBookScreen() {
         {book ? (
           <>
             <Text style={s.meta} testID="rule-book-meta">
-              {fromPhone && error ? "Showing the copy saved on this phone. Apollo couldn't reach its server just now." : reviewed ? `Reviewed against how Apollo works on ${reviewed}.` : "Apollo's current rule book."}
+              {fromPhone && error ? "Showing the copy saved on this phone. ApolloSG couldn't reach its server just now." : reviewed ? `Reviewed against how ApolloSG works on ${reviewed}.` : "ApolloSG's current rule book."}
             </Text>
             <View collapsable={false} onLayout={(e) => { bookY.current = e.nativeEvent.layout.y; goToSection(); }}>
               <RuleBookSections intro={intro} sections={sections} initiallyOpen={section}
@@ -98,7 +98,7 @@ export default function RuleBookScreen() {
           <View style={s.center} testID="rule-book-loading"><ActivityIndicator color={colors.gold} /><Body>Loading the rule book…</Body></View>
         ) : (
           <Card testID="rule-book-error" style={{ gap: spacing.md }}>
-            <Body>{error ?? "Apollo couldn't load the rule book."}</Body>
+            <Body>{error ?? "ApolloSG couldn't load the rule book."}</Body>
             <Button testID="rule-book-retry" variant="secondary" label="Try again" onPress={() => { setLoading(true); void load(); }} />
           </Card>
         )}

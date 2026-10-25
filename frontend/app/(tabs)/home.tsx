@@ -346,7 +346,7 @@ export default function Home() {
           <Image
             source={require("@/assets/images/apollo-sg-logo.png")}
             style={{ width: Math.min(screenW * 0.58, 280), aspectRatio: 1200 / 392 }}
-            accessibilityLabel="Apollo SG Scam Guard"
+            accessibilityLabel="ApolloSG Scam Guard"
             contentFit="contain"
             testID="home-brand-title"
           />
@@ -603,7 +603,7 @@ export default function Home() {
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm, marginTop: spacing.md }}>
           {identityReset ? (
             <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
-              <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>Apollo needs to re-register this phone</Text>
+              <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>ApolloSG needs to re-register this phone</Text>
               <Body testID="identity-reset-why">{identityReset}</Body>
               <Button testID="identity-reset-register" label="Register this phone again" onPress={() => void reRegisterDevice().catch((e: Error) => showToast(e.message, "barking"))} />
             </Card>

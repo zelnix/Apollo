@@ -59,7 +59,7 @@ export function sourceLabel(source: string): string {
     case "background": return "Checked automatically in the background";
     case "higgins": return "From a Higgins investigation";
     case "family": return "From a family alert";
-    default: return "Apollo";
+    default: return "ApolloSG";
   }
 }
 
@@ -102,12 +102,12 @@ export function projectedEventVoice(category: EventCategory | string, state: Apo
     whatToDo: "No action needed — the block is confirmed. Open it on that phone to see the full record.",
   };
   const area = areaLabel(category);
-  const headline = `Apollo ran ${area}`;
+  const headline = `ApolloSG ran ${area}`;
   if (state === "barking") return {
     headline,
     whatHappened: `Apollo checked ${area} and found something that needs your attention. The full assessment is available on the device where it happened.`,
     why: "Apollo's on-device check identified a concern. For your privacy, the detailed findings stay on this device.",
-    whatToDo: "Open this on the device where it happened and follow Apollo's recommended action.",
+    whatToDo: "Open this on the device where it happened and follow ApolloSG's recommended action.",
   };
   if (state === "growling" || state === "ears_up") return {
     headline,
@@ -169,7 +169,7 @@ export function investigationHistory(args: {
   turns: { question: string; overview: string }[]; phase: string; completion?: string | null; answeredBy?: string | null;
 }): HistoryEntry[] {
   const name = investigatorName(args.answeredBy);
-  const entries: { text: string }[] = [{ text: "Apollo opened this investigation." }];
+  const entries: { text: string }[] = [{ text: "ApolloSG opened this investigation." }];
   args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — ${name} answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
   const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Apollo is still investigating."
     : args.phase === "waiting_user" ? "Magnum DI is waiting on your answer to continue."
@@ -229,7 +229,7 @@ export function eventHistory(
   revisions: { occurredAt: string; effectiveState: PatrolDisplayState | string; summary: string; revision: number }[] = [],
 ): HistoryEntry[] {
   const area = areaLabel(e.category);
-  const entries: HistoryEntry[] = [{ at: e.occurred_at, text: `Apollo ran ${area} and ${e.verified_block ? "blocked a connection it had flagged" : apolloStatusLabel(e.state, {}).toLowerCase()}.` }];
+  const entries: HistoryEntry[] = [{ at: e.occurred_at, text: `ApolloSG ran ${area} and ${e.verified_block ? "blocked a connection it had flagged" : apolloStatusLabel(e.state, {}).toLowerCase()}.` }];
   for (const r of revisions) {
     const summary = r.summary && !looksLikeInternalCode(r.summary) ? r.summary : `now ${displayStateLabel(r.effectiveState)}`;
     entries.push({ at: r.occurredAt, text: `Update: ${summary}.` });

@@ -157,7 +157,7 @@ async def call_investigate(body: PhoneInvestigateRequest, request: Request):
         # The reputation observation stands on its own; the failed escalation is stated, not hidden.
         return PhoneInvestigateResponse(
             reputation=observation,
-            investigation_error=f"Apollo couldn't start the Magnum DI investigation for this number ({type(exc).__name__}).",
+            investigation_error=f"ApolloSG couldn't start the Magnum DI investigation for this number ({type(exc).__name__}).",
         )
 
 

@@ -27,4 +27,4 @@ def gap_recoverable(code: str) -> bool:
 
 
 def gap_plain(code: str) -> str:
-    return GAP_CODES.get(code, {}).get("plain", "Apollo couldn't complete part of this check.")
+    return GAP_CODES.get(code, {}).get("plain", "ApolloSG couldn't complete part of this check.")

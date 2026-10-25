@@ -91,7 +91,7 @@ export function ShareFileBatch({ files }: { files: SharedFile[] }) {
             </>
           ) : r.status === "failed" ? (
             <>
-              <Text style={s.verdict} testID={`share-file-${i}-failed`}>Apollo couldn&apos;t open this file to check it. It may have expired or be inaccessible — share it again.</Text>
+              <Text style={s.verdict} testID={`share-file-${i}-failed`}>ApolloSG couldn&apos;t open this file to check it. It may have expired or be inaccessible — share it again.</Text>
               <Button testID={`share-file-${i}-open`} variant="secondary" label="Try this file on its own" onPress={() => openOne(r.file)} />
             </>
           ) : null}

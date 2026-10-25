@@ -36,7 +36,7 @@ export function SafeStartScreen({ error }: { error: SecurityConfigurationError }
           </Pressable>
           {Platform.OS === "android" ? (
             <Pressable onPress={close} accessibilityRole="button" testID="safe-start-close" style={({ pressed }) => [s.secondary, pressed && s.pressed]}>
-              <Text style={s.secondaryText}>Close Apollo</Text>
+              <Text style={s.secondaryText}>Close ApolloSG</Text>
             </Pressable>
           ) : null}
         </ScrollView>

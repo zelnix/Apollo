@@ -80,7 +80,7 @@ export function useTextGuardLocalFindings(deps: TextGuardLocalFindingsDeps) {
       } catch (error) {
         // A failed read of the local findings queue is not "no findings" — say so instead of going quiet.
         if (error instanceof NativeCallFailed) {
-          onReadFailure?.("Apollo couldn't read its on-device message findings, so recent texts may not have been assessed. Open Support before relying on automatic text checks.");
+          onReadFailure?.("ApolloSG couldn't read its on-device message findings, so recent texts may not have been assessed. Open Support before relying on automatic text checks.");
         }
       }
     };

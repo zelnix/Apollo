@@ -434,23 +434,23 @@ function RecheckCase({ event }: { event: PatrolEvent }) {
     try {
       if (plan.kind === "link") {
         const outcome = await checkLink(plan.url, event.scent_id ?? undefined);
-        openResult(outcome.event, "Apollo re-checked the website and found nothing to flag this time.");
+        openResult(outcome.event, "ApolloSG re-checked the website and found nothing to flag this time.");
       } else if (plan.kind === "message") {
         const original = await getOriginalSource(event.event_id).catch(() => null);
         const text = (original?.text ?? "").trim();
         if (!text) {
-          showToast("Apollo can't re-check this one here — the original message isn't stored with this case. Open the Text or Email check and submit it again.", "growling");
+          showToast("ApolloSG can't re-check this one here — the original message isn't stored with this case. Open the Text or Email check and submit it again.", "growling");
           return;
         }
         const from = original?.fields?.find((f) => /from|sender/i.test(f.label))?.value ?? event.source_metadata?.sender ?? "";
         const outcome = await checkMessage(from, text);
-        openResult(outcome.event, "Apollo re-checked the message and found nothing to flag this time.");
+        openResult(outcome.event, "ApolloSG re-checked the message and found nothing to flag this time.");
       } else if (plan.kind === "number") {
         const risk = await checkNumberRisk(plan.number, undefined, { deliberate: true });
         showToast(`Re-check complete: ${risk.higgins.headline}`, "neutral");
       }
     } catch (error) {
-      showToast(`Apollo couldn't finish the re-check (${error instanceof Error ? error.message : "reason not recorded"}).`, "growling");
+      showToast(`ApolloSG couldn't finish the re-check (${error instanceof Error ? error.message : "reason not recorded"}).`, "growling");
     } finally {
       setBusy(false);
     }
@@ -523,7 +523,7 @@ function ScentSection({ event }: { event: PatrolEvent }) {
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
         <View style={s.factIcon}><Link2 size={14} color="#6B7280" /></View>
         <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.onSurface }}>
-          Apollo connected {related.length} related {related.length === 1 ? "event" : "events"} to this threat.
+          ApolloSG connected {related.length} related {related.length === 1 ? "event" : "events"} to this threat.
         </Text>
       </View>
       {related.slice(0, 3).map((r) => (
@@ -563,14 +563,14 @@ function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; fac
       setCopied(true);
       showToast("Facts and sources copied. Paste them into an email, message or report.", "neutral");
     } catch {
-      showToast("Apollo couldn't copy to the clipboard on this device.", "growling");
+      showToast("ApolloSG couldn't copy to the clipboard on this device.", "growling");
     }
   };
   const share = async () => {
     try {
       await Share.share({ message: pack(), title: `Apollo Threat Case ${threatCaseId(event)}` });
     } catch {
-      showToast("Apollo couldn't open the share sheet on this device.", "growling");
+      showToast("ApolloSG couldn't open the share sheet on this device.", "growling");
     }
   };
   return (
@@ -606,7 +606,7 @@ function SourcesSection({ sources }: { sources: CaseSource[] }) {
           <Globe size={18} color="#065F46" />
         </View>
         <View style={s.evidenceHeaderText}>
-          <Text style={s.evidenceHeaderTitle}>Sources Apollo used</Text>
+          <Text style={s.evidenceHeaderTitle}>Sources ApolloSG used</Text>
           <Text style={s.evidenceHeaderSub}>What each source returned</Text>
         </View>
       </View>
@@ -727,7 +727,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
               </Text>
             ) : (
               <Text style={s.provenanceNote}>
-                This evidence was submitted for investigation after Apollo&apos;s privacy protection step.
+                This evidence was submitted for investigation after ApolloSG&apos;s privacy protection step.
               </Text>
             )}
           </View>

@@ -65,7 +65,7 @@ function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; hi
     {highlighted ? <Pill tone="ears_up" label="Opened from your alert" testID={`gate-health-${record.id}-focused`} /> : null}
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>
     <View><Text style={s.question}>What this protects</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
-    <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
+    <View><Text style={s.question}>What ApolloSG is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
     {notWatching && record.capability.automatic?.limitation ? <View style={[s.attention, needsUser ? null : { backgroundColor: colors.navyTint }]} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>{explainHeading}</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
     {notWatching && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={needsUser ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
     <View testID={`gate-health-${record.id}-log`}><Text style={s.question}>Protection history</Text>{log && log.length ? <>

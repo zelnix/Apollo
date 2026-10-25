@@ -197,7 +197,7 @@ export default function CheckNumber() {
       uncertainty: result.decision === "allow"
         ? ["No strong risk signal does not confirm the caller is safe. Reputation data is supporting evidence only."]
         : result.decision === "unknown"
-          ? ["Apollo could not obtain reputation information for this number. This does not mean the number is safe or dangerous."]
+          ? ["ApolloSG could not obtain reputation information for this number. This does not mean the number is safe or dangerous."]
           : [],
       confirmed_protective_actions: [],
       user_reported_actions: [],

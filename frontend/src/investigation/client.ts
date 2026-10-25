@@ -22,7 +22,7 @@ async function investigationImageMeta(uri: string, gate?: SanitizationReceipt): 
     throw new Error("Apollo could not screen this image for credentials (text recognition unavailable). The image was not sent.");
   }
   if (screening.sensitiveRegions.some((r) => r.sensitiveType === "credential")) {
-    throw new Error("This image appears to show a password, PIN or one-time code, so Apollo didn't send it. Crop that part out and add the image again.");
+    throw new Error("This image appears to show a password, PIN or one-time code, so ApolloSG didn't send it. Crop that part out and add the image again.");
   }
   // The text the phone read from the image (credentials already removed) goes with it, so Higgins Triage can
   // investigate the screenshot's content like any other text before deciding whether deeper analysis is needed.
@@ -47,7 +47,7 @@ export function safeUUID(): string {
 
 async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string, signal?: AbortSignal): Promise<T> {
   const token = await getDeviceToken();
-  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  if (!token) throw new ApiError(401, "ApolloSG hasn't registered this device yet.");
   // Ensure key is always a valid string
   const safeKey = key && typeof key === "string" && key.length >= 8 ? key : safeUUID();
   const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": safeKey }, body: JSON.stringify(enforceEgress("investigation", body)), signal });
@@ -110,7 +110,7 @@ export function addSubmissionEvidence(caseId: string, expectedRevision: number, 
 export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment", sanitization?: SanitizationReceipt) {
   const sanitizationMeta = kind === "image" ? await investigationImageMeta(file.uri, sanitization) : {};
   const token = await getDeviceToken();
-  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  if (!token) throw new ApiError(401, "ApolloSG hasn't registered this device yet.");
   const form = new FormData();
   form.append("metadata", JSON.stringify({ expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType, ...sanitizationMeta }));
   if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
@@ -145,7 +145,7 @@ export function createUpload(caseId: string, body: { expectedRevision: number; c
 
 async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array, signal?: AbortSignal): Promise<void> {
   const token = await getDeviceToken();
-  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  if (!token) throw new ApiError(401, "ApolloSG hasn't registered this device yet.");
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= 1; attempt++) {
     try {
@@ -175,7 +175,7 @@ export async function uploadFileEvidenceResumable(
   onHandle(handle);
   if (!handle.bytes) {
     const response = await fetch(file.uri, { signal });
-    if (!response.ok) throw new Error("Apollo could not read the selected file copy.");
+    if (!response.ok) throw new Error("ApolloSG could not read the selected file copy.");
     const bytes = new Uint8Array(await response.arrayBuffer());
     handle = { ...handle, declaredBytes: bytes.length, bytes };
     onHandle(handle);

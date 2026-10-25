@@ -57,8 +57,8 @@ test("the capability classes are exactly the declared states, in plain English",
     "apollo_can_use", "permission_required", "not_exposed", "unavailable", "unknown", "not_readable_here",
   ]);
   assert.deepEqual(Object.values(CAPABILITY_CLASS_LABEL), [
-    "Available to Apollo", "Permission needed", "Managed by your device",
-    "Not available to Apollo", "Apollo couldn’t check", "Can’t be read in this preview",
+    "Available to ApolloSG", "Permission needed", "Managed by your device",
+    "Not available to ApolloSG", "Apollo couldn’t check", "Can’t be read in this preview",
   ]);
   // "Not on this device" must never be shown as a capability status — it was read as nonsense.
   assert.ok(!Object.values(CAPABILITY_CLASS_LABEL).includes("Not on this device"));
@@ -76,7 +76,7 @@ test("a browser preview reports every capability as unreadable, never as absent"
   assert.equal(v.unavailable.length, 0);
   assert.equal(v.apolloCanUse.length, 0);
   assert.match(v.summary, /not running on your phone here/);
-  for (const row of v.notReadableHere) assert.match(row.detail, /Open Apollo on your phone/);
+  for (const row of v.notReadableHere) assert.match(row.detail, /Open ApolloSG on your phone/);
 });
 
 test("every capability sits in one of the declared categories, with the device's own protections", () => {
@@ -104,7 +104,7 @@ test("every capability can answer the three questions the details screen asks", 
   }
 });
 
-test("advice is state-driven: nothing to do when Apollo already has it, a check when the device owns it", () => {  const v = buildDeviceCapabilities(input());
+test("advice is state-driven: nothing to do when ApolloSG already has it, a check when the device owns it", () => {  const v = buildDeviceCapabilities(input());
   const usable = v.apolloCanUse.find((r) => r.id === "app_permissions")!;
   assert.equal(capabilityAdvice(usable), null);
   const perm = v.needsPermission.find((r) => r.id === "notification_access")!;
@@ -130,7 +130,7 @@ test("an unsupported read on Android is reported as not exposed, never as unavai
   const overlay = v.notAccessible.find((r) => r.id === "overlay_apps");
   assert.ok(overlay, "overlay_apps must be reported as not exposed");
   assert.equal(overlay!.attributedTo, "Android");
-  assert.match(overlay!.detail, /does not let Apollo list/i);
+  assert.match(overlay!.detail, /does not let ApolloSG list/i);
 });
 
 // ── A failed read is never an all-clear ────────────────────────────
@@ -261,13 +261,13 @@ const fact: NativeClassificationFact = {
   communicationType: "call", subject: "+447700900123", classifiedAt: "2026-06-01T10:00:00.000Z",
 };
 
-test("a native classification is recorded as the provider's finding, never as Apollo's", () => {
+test("a native classification is recorded as the provider's finding, never as ApolloSG's", () => {
   const line = nativeClassificationWhyLine(fact);
   assert.match(line, /^Samsung Smart Call classified this call/);
   assert.match(line, /not an Apollo detection/);
 });
 
-test("Higgins names the device as the first source and Apollo as the investigator", () => {
+test("Higgins names the device as the first source and ApolloSG as the investigator", () => {
   const line = nativeClassificationHigginsLine(fact);
   assert.match(line, /Samsung Smart Call called it/);
   assert.match(line, /Apollo’s own investigation, not theirs/);
@@ -291,14 +291,14 @@ test("a permitted native classification always triggers Apollo's existing invest
 test("Higgins receives every capability with its exact state", () => {
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
   assert.equal(lines.capabilities.length, 13, "Higgins must see all 13 capabilities, not a subset");
-  assert.ok(lines.capabilities.includes("App permissions: Available to Apollo"));
+  assert.ok(lines.capabilities.includes("App permissions: Available to ApolloSG"));
   assert.ok(lines.capabilities.includes("Notification access: Permission needed"));
   assert.ok(lines.capabilities.some((l) => l === "Your phone’s own scam-call warning: Managed by your device (per Samsung Smart Call)"));
 });
 
 test("Higgins is told who owns each protection on the device", () => {
   const lines = capabilitySnapshotLines({ view: buildDeviceCapabilities(input()), hasNativeHost: true, capsReadFailed: false, nativeReadFailed: false });
-  assert.ok(lines.protections.includes("Samsung Smart Call — Caller ID & spam filtering — Protected (per Samsung Smart Call) — does not share its classification with Apollo"));
+  assert.ok(lines.protections.includes("Samsung Smart Call — Caller ID & spam filtering — Protected (per Samsung Smart Call) — does not share its classification with ApolloSG"));
   // Every OS/OEM protection reaches Higgins too, each with its owner and its exact state.
   assert.ok(lines.protections.length >= 13);
   assert.ok(lines.protections.some((l) => l.startsWith("Screen lock —") && l.includes("(per your device)")));
@@ -314,7 +314,7 @@ test("Higgins is told which settings Apollo cannot read, with the recommended co
   assert.match(scanner!, /Higgins recommends leaving app scanning switched on/);
 });
 
-test("Higgins is told plainly when a read failed, and when Apollo is not on the device", () => {
+test("Higgins is told plainly when a read failed, and when ApolloSG is not on the device", () => {
   const failed = capabilitySnapshotLines({ view: buildDeviceCapabilities(input({ caps: null })), hasNativeHost: true, capsReadFailed: true, nativeReadFailed: false });
   assert.match(failed.summary, /Some reads failed, so those are unknown rather than clear/);
   const offDevice = capabilitySnapshotLines({ view: buildDeviceCapabilities({ platform: "web", caps: null, native: null }), hasNativeHost: false, capsReadFailed: false, nativeReadFailed: false });

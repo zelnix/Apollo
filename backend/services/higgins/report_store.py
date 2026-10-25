@@ -75,7 +75,7 @@ def build_report(response: dict, *, case_id: str, gates: list[str], revision: in
         "retentionNotice": ("Synthetic system check; the server deletes its temporary report immediately."
                             if health_check else
                             "This investigation is stored on your device only. "
-                            "Apollo's server does not retain completed investigations."),
+                            "ApolloSG's server does not retain completed investigations."),
     }
     return SavedReport.model_validate(record).model_dump(mode="json")
 

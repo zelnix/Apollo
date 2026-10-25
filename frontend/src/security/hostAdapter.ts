@@ -24,5 +24,5 @@ export function chooseHostAdapter(): SecurityPlatformAdapter {
     if (SECURITY_CONFIG.androidEnforcementEngine === "guarddog_production") return new GuardDogProductionSecurityAdapter();
     throw new Error(`Android enforcement engine "${SECURITY_CONFIG.androidEnforcementEngine}" is not available.`);
   }
-  throw new SecurityConfigurationError(`Apollo has no native security host for platform "${Platform.OS}" in this build.`);
+  throw new SecurityConfigurationError(`ApolloSG has no native security host for platform "${Platform.OS}" in this build.`);
 }

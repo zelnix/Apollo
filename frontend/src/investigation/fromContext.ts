@@ -7,7 +7,7 @@ import type { CreateCase, Gate } from "./types";
 /** Handoff findings become Magnum DI's initial (revisable) observations in the shared case. */
 export function initialFindings(context: HigginsIssueContext): string[] {
   return [
-    `Apollo ${context.gate} check summary: ${context.issue_summary} (Apollo state: ${context.assessment_state})`,
+    `ApolloSG ${context.gate} check summary: ${context.issue_summary} (Apollo state: ${context.assessment_state})`,
     ...context.findings.map((f) => `${f.provenance === "observed" ? "Observed" : f.provenance === "user_reported" ? "User reported" : "Apollo inferred"} (${f.status}): ${f.summary}`),
     ...context.uncertainty.map((u) => `Uncertain: ${u}`),
     ...context.confirmed_protective_actions.map((a) => `Confirmed protective action: ${a}`),

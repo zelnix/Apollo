@@ -55,13 +55,13 @@ export const APOLLO_DESTINATIONS: Record<string, string> = {
   "/settings/email-accounts": "Email accounts",
   "/settings/feed-health": "Feed health",
   "/settings/rule-book": "Rule book",
-  "/privacy-data": "What Apollo stores",
+  "/privacy-data": "What ApolloSG stores",
   "/privacy-disclosure": "Privacy statement",
   "/third-party-register": "Third-party services",
   "/compliance-matrix": "Compliance matrix",
   "/notification-check": "Notification check",
   "/family": "Family sharing",
-  "/support": "Get help with Apollo",
+  "/support": "Get help with ApolloSG",
 };
 
 /** Keep only destinations that genuinely exist, de-duplicated, at most two. */

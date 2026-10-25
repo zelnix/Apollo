@@ -66,7 +66,7 @@ def push_configured() -> bool:
 
 
 def push_setup_detail() -> str:
-    return ("Alerts that arrive while Apollo is closed are switched on when the app is published and built — the managed "
+    return ("Alerts that arrive while ApolloSG is closed are switched on when the app is published and built — the managed "
             "alert key is filled in by the build pipeline (EMERGENT_PUSH_KEY). Until then no notification is sent.")
 
 
@@ -99,13 +99,13 @@ async def register_push(body: RegisterPushBody, request: Request):
     try:
         resp = await _client.post("/api/v1/push/users/register", json={"user_id": owner, "platform": body.platform, "device_token": body.device_token})
     except httpx.HTTPError:
-        raise HTTPException(502, "Apollo's alert service could not be reached, so this device is not registered for alerts yet.")
+        raise HTTPException(502, "ApolloSG's alert service could not be reached, so this device is not registered for alerts yet.")
     if resp.status_code == 401:
-        raise HTTPException(503, "Apollo's managed alert key is missing or invalid, so this device cannot be registered for alerts.")
+        raise HTTPException(503, "ApolloSG's managed alert key is missing or invalid, so this device cannot be registered for alerts.")
     if resp.status_code >= 500:
-        raise HTTPException(502, "Apollo's alert service is unavailable, so this device is not registered for alerts yet.")
+        raise HTTPException(502, "ApolloSG's alert service is unavailable, so this device is not registered for alerts yet.")
     if resp.status_code >= 400:
-        raise HTTPException(422, "Apollo's alert service rejected this device token.")
+        raise HTTPException(422, "ApolloSG's alert service rejected this device token.")
     existing = await db.push_registrations.find_one({"device_id": owner}, {"_id": 0, "registration_id": 1})
     registration_id = existing["registration_id"] if existing else str(uuid.uuid4())
     registered_at = now_utc()
@@ -278,8 +278,8 @@ async def push_test(request: Request, body: Optional[PushTestIn] = None):
     if not push_configured():
         raise HTTPException(503, push_setup_detail())
     if not await db.push_registrations.find_one({"device_id": owner}, {"_id": 1}):
-        return JSONResponse({"detail": "This installation has no push registration yet. Allow notifications and let Apollo register, then try again.",
-                             "error": {"code": "recipient_unregistered", "message": "This installation has no push registration yet. Allow notifications and let Apollo register, then try again."}}, status_code=409)
+        return JSONResponse({"detail": "This installation has no push registration yet. Allow notifications and let ApolloSG register, then try again.",
+                             "error": {"code": "recipient_unregistered", "message": "This installation has no push registration yet. Allow notifications and let ApolloSG register, then try again."}}, status_code=409)
     statuses = await send_push(recipients=[owner], owner_id=owner,
                                data={"title": "Apollo is barking (test)", "message": "Higgins: This is what a threat alert looks like. A real alert names the concern and the evidence.",
                                      "subtext": "Higgins: No action needed — this is a test.", "action_url": "/settings", **PUSH_THREAT},

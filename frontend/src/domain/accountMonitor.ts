@@ -76,7 +76,7 @@ export function deriveGateState(args: { monitoredCount: number; lastScan: Accoun
   const pwOutstanding = outstanding.some((r) => r.passwordExposed);
   if (pwOutstanding) return { state: "action_needed", tone: "growling", title: "Action needed", detail: "A monitored address appears in a breach that exposed passwords. Change that password and turn on two-factor authentication." };
   if (outstanding.length > 0) return { state: "exposure_found", tone: "ears_up", title: `${outstanding.length} address${outstanding.length > 1 ? "es appear" : " appears"} in a breach`, detail: "Review the exposures and secure those accounts through the official app or website." };
-  if (sum.unavailable > 0) return { state: "unavailable", tone: "neutral", title: "Some checks couldn't complete", detail: "Apollo couldn't reach the breach service for every address. It will try again on the next check." };
+  if (sum.unavailable > 0) return { state: "unavailable", tone: "neutral", title: "Some checks couldn't complete", detail: "ApolloSG couldn't reach the breach service for every address. It will try again on the next check." };
   return { state: "no_exposure", tone: "resting", title: "No known exposure", detail: `Your monitored address${monitoredCount > 1 ? "es don't" : " doesn't"} appear in known breach data${sum.exposed > 0 ? " that still needs action" : ""}. That's good — not a guarantee.` };
 }
 
@@ -126,7 +126,7 @@ export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | nul
 
   if (outstanding.length) sections.push({ title: "Exposures found", lines: outstanding.map((r) => `${maskEmail(r.email)} — ${r.breaches.map((b) => b.name + (b.date ? ` (${b.date})` : "")).join(", ")}${r.passwordExposed ? " · passwords exposed" : ""}`) });
 
-  if (handledFound.length) sections.push({ title: "Marked as handled", lines: handledFound.map((r) => `${maskEmail(r.email)} — you marked this as handled. Apollo won't re-alert unless a new breach appears.`) });
+  if (handledFound.length) sections.push({ title: "Marked as handled", lines: handledFound.map((r) => `${maskEmail(r.email)} — you marked this as handled. ApolloSG won't re-alert unless a new breach appears.`) });
 
   if (diff.resolved.length) sections.push({ title: "No longer showing", lines: diff.resolved.map((e) => `${maskEmail(e.email)} — ${e.breaches.join(", ")}`) });
 
@@ -138,7 +138,7 @@ export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | nul
   if (outstanding.length > 0) actions.push("Expect more targeted phishing. Turn on two-factor authentication and never reuse a password.");
   if (outstanding.length > 0) actions.push("Open each affected service yourself — never through a link in a breach email.");
   if (outstanding.length === 0 && unavailable.length === 0) actions.push("Nothing to do right now. Keep two-factor authentication on and keep using unique passwords.");
-  if (unavailable.length) actions.push("Apollo will re-check the addresses it couldn't reach on the next check.");
+  if (unavailable.length) actions.push("ApolloSG will re-check the addresses it couldn't reach on the next check.");
   sections.push({ title: "What to do", lines: actions });
 
   sections.push({ title: "Coverage", lines: [`${sum.monitored} address${sum.monitored > 1 ? "es" : ""} checked against known breach data.`, `Breach data provided by ${scan.sourceLabel}.`, `"Not found" means not in this source — not proof the account has never been exposed.`] });

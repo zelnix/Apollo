@@ -116,7 +116,7 @@ async def _material(owner: str, case: dict, rows: list[dict]) -> tuple[dict[str,
             gaps += [_gap(row, f"part of {label}", reason, magnum=False) for reason in sorted(reasons)
                      if reason and not reason.startswith("rendered page withheld")]
         elif kind in ("audio", "attachment"):
-            gaps.append(_gap(row, label, "Apollo can't extract content from this kind of file", magnum=False))
+            gaps.append(_gap(row, label, "ApolloSG can't extract content from this kind of file", magnum=False))
     return texts, gaps, read
 
 
@@ -130,7 +130,7 @@ def _kb_fact(entry: dict, text: str) -> dict:
     level = "official" if entry.get("authority_tier") == kb_sources.TIER_1 else "independent"
     return fact(text, "context", kind="apollo_knowledge", source={
         "publisher": entry.get("publisher"), "url": entry.get("url"), "title": entry.get("title"), "authority": level,
-        "basis": "Apollo Knowledge Base — general knowledge, not evidence about this case", "retrieval": "fetched", "kbId": entry.get("kb_id")})
+        "basis": "ApolloSG Knowledge Base — general knowledge, not evidence about this case", "retrieval": "fetched", "kbId": entry.get("kb_id")})
 
 
 def _offsite(plan_: Plan) -> bool | None:
@@ -186,7 +186,7 @@ async def _kb_stage(plan_: Plan, text: str) -> None:
             elif check.kind == "company":
                 for entry in _current(await knowledge.related(check.subject)):
                     if entry.get("kind") == "scam_alert" and check.subject.lower() in f"{entry.get('title', '')} {entry.get('body', '')}".lower():
-                        check.facts.append(_kb_fact(entry, f"Apollo's library holds an official alert that mentions “{check.subject}” (“{entry.get('title')}”). "
+                        check.facts.append(_kb_fact(entry, f"ApolloSG's library holds an official alert that mentions “{check.subject}” (“{entry.get('title')}”). "
                                                            "That is context, not proof about this case."))
         except Exception:  # noqa: BLE001 — the KB can never break an investigation
             log.warning("teddy_kb_stage_failed kind=%s", check.kind, exc_info=True)
@@ -391,7 +391,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     decision, issues = deciding.evaluate(plan_, texts, final=False)
     searched = {"calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False, "model": None, "status": "skipped"}
     if not decision:
-        await progress("observe", "TC FlyBy is checking Apollo's knowledge base.")
+        await progress("observe", "TC FlyBy is checking ApolloSG's knowledge base.")
         await _kb_stage(plan_, combined)
         decision, issues = deciding.evaluate(plan_, texts, final=False)
     if not decision:

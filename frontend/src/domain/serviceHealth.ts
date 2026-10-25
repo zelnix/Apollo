@@ -35,7 +35,7 @@ export function classifyHttpFailure(status: number): HttpFailureClass {
 }
 
 export const FAILURE_MESSAGE: Record<FailureKind, string> = {
-  offline: "Apollo can't reach the security service.",
+  offline: "ApolloSG can't reach the security service.",
   timeout: "The security service took too long to answer.",
   server_error: "The security service is having trouble right now.",
   malformed: "The security service sent an answer Apollo couldn't read.",
@@ -46,13 +46,13 @@ export interface ServiceBannerCopy { title: string; line: string; lastSeen: stri
 /** Banner shown while degraded. Describes exactly what failed — never a generic "Unprotected". */
 export function serviceBannerCopy(h: ServiceHealth): ServiceBannerCopy | null {
   if (h.reachable !== false) return null;
-  const title = h.failure === "server_error" ? "Apollo's security service is having trouble" : h.failure === "timeout" ? "Apollo's security service is slow to answer" : "Apollo can't reach the security service";
+  const title = h.failure === "server_error" ? "ApolloSG's security service is having trouble" : h.failure === "timeout" ? "ApolloSG's security service is slow to answer" : "ApolloSG can't reach the security service";
   return { title, line: "Local protection continues where available. New online checks may be unavailable.", lastSeen: h.lastOkAt };
 }
 
 /** Wording for data that was fetched earlier and could not be refreshed. */
 export function staleNote(updatedAt: number | null, at = new Date()): string {
-  if (!updatedAt) return "Apollo couldn't reach the security service, so there is nothing to show yet.";
+  if (!updatedAt) return "ApolloSG couldn't reach the security service, so there is nothing to show yet.";
   const when = new Date(updatedAt);
   const sameDay = when.toDateString() === at.toDateString();
   const stamp = sameDay ? when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : when.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });

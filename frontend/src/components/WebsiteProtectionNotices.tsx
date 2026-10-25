@@ -18,7 +18,7 @@ import type { ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { openDeviceSettings, openPrivateDnsSettings } from "@/src/utils/deviceSettings";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const VPN_SETTINGS_PATH = "Settings → Network & internet → VPN → Apollo ⚙ → Block connections without VPN";
+const VPN_SETTINGS_PATH = "Settings → Network & internet → VPN → ApolloSG ⚙ → Block connections without VPN";
 
 const useStyles = makeStyles((c) => ({
   wrap: { gap: spacing.md },
@@ -57,7 +57,7 @@ export function WebsiteProtectionNotices({ protection, testID = "site-notices" }
             <TriangleAlert size={18} color={colors.barkingText} />
             <Text style={s.title}>Android may be blocking your internet</Text>
           </View>
-          <Text style={s.body}>“Block connections without VPN” is on for Apollo. Apollo’s protection only checks website lookups — it doesn’t carry the rest of your internet traffic — so with this switch on, Android can stop apps from connecting. Turn it off and keep Always-on VPN on.</Text>
+          <Text style={s.body}>“Block connections without VPN” is on for ApolloSG. Apollo’s protection only checks website lookups — it doesn’t carry the rest of your internet traffic — so with this switch on, Android can stop apps from connecting. Turn it off and keep Always-on VPN on.</Text>
           {vpnPath ? <Text style={s.path} testID={`${testID}-lockdown-path`}>{VPN_SETTINGS_PATH}</Text> : null}
           <Button testID={`${testID}-lockdown-open`} variant="secondary" label="Open VPN settings"
             onPress={() => void openDeviceSettings("vpn", VPN_SETTINGS_PATH, () => setVpnPath(true)).then(() => setVpnPath(true))} />

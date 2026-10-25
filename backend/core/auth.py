@@ -55,13 +55,13 @@ def _unauthorized(detail: str) -> HTTPException:
 async def authed_device(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict[str, Any]:
     """Resolve the bearer token to a device document. Fails closed with 401 on anything unexpected."""
     if credentials is None or credentials.scheme.lower() != "bearer":
-        raise _unauthorized("This request needs Apollo's device credential.")
+        raise _unauthorized("This request needs ApolloSG's device credential.")
     raw = credentials.credentials
     if not (40 <= len(raw) <= 128):
         raise _unauthorized("Invalid device credential.")
     dev = await db.devices.find_one({"token_hash": hash_token(raw), "revoked_at": None, "token_expires_at": {"$gt": now_utc()}})
     if not dev:
-        raise _unauthorized("Device credential is invalid, expired or revoked. Apollo will re-register this device.")
+        raise _unauthorized("Device credential is invalid, expired or revoked. ApolloSG will re-register this device.")
     return dev
 
 

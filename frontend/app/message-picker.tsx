@@ -83,13 +83,13 @@ export default function MessagePicker() {
     </View>
 
     {phase === "unsupported" ? (
-      <View style={s.center}><Body testID="message-picker-unsupported">This version of Apollo doesn&apos;t open your inbox. Copy the message and paste it into Check a message, or use a screenshot. If the app the message is in offers Share, you can share it to Apollo.</Body><Button testID="message-picker-unsupported-back" variant="secondary" label="Go back" onPress={() => goBackOrHome(router)} /></View>
+      <View style={s.center}><Body testID="message-picker-unsupported">This version of ApolloSG doesn&apos;t open your inbox. Copy the message and paste it into Check a message, or use a screenshot. If the app the message is in offers Share, you can share it to ApolloSG.</Body><Button testID="message-picker-unsupported-back" variant="secondary" label="Go back" onPress={() => goBackOrHome(router)} /></View>
     ) : phase === "need_permission" ? (
-      <View style={s.center}><Body testID="message-picker-explain">Apollo can list your recent messages so you can pick one to check. It reads them only while this screen is open — never in the background — and nothing is saved.</Body><Button testID="message-picker-allow" label="Allow messages" onPress={() => void allow()} /><Button testID="message-picker-share-fallback" variant="ghost" label="Paste or screenshot the message instead" onPress={() => goBackOrHome(router)} /></View>
+      <View style={s.center}><Body testID="message-picker-explain">ApolloSG can list your recent messages so you can pick one to check. It reads them only while this screen is open — never in the background — and nothing is saved.</Body><Button testID="message-picker-allow" label="Allow messages" onPress={() => void allow()} /><Button testID="message-picker-share-fallback" variant="ghost" label="Paste or screenshot the message instead" onPress={() => goBackOrHome(router)} /></View>
     ) : phase === "requesting" || phase === "checking" ? (
       <View style={s.center}><ActivityIndicator color={colors.gold} /><Body>{phase === "requesting" ? "Waiting for your permission…" : "Opening your messages…"}</Body></View>
     ) : phase === "denied" ? (
-      <View style={s.center}><Body testID="message-picker-denied">Permission isn&apos;t granted, so Apollo can&apos;t list your messages. Enable it in Settings, or paste or screenshot the message instead.</Body><Button testID="message-picker-settings" variant="secondary" label="Open Settings" onPress={() => void Linking.openSettings()} /><Button testID="message-picker-retry" variant="ghost" label="Try again" onPress={() => void evaluate()} /></View>
+      <View style={s.center}><Body testID="message-picker-denied">Permission isn&apos;t granted, so ApolloSG can&apos;t list your messages. Enable it in Settings, or paste or screenshot the message instead.</Body><Button testID="message-picker-settings" variant="secondary" label="Open Settings" onPress={() => void Linking.openSettings()} /><Button testID="message-picker-retry" variant="ghost" label="Try again" onPress={() => void evaluate()} /></View>
     ) : open ? (
       // Conversation view — chat bubbles, each incoming message selectable.
       <FlatList
@@ -101,10 +101,10 @@ export default function MessagePicker() {
           <View style={s.bubbleIn} testID={`message-picker-msg-${index}`}>
             <Text style={s.bubbleText}>{item.body || "(no text)"}</Text>
             <Text style={s.bubbleTime}>{timeLabel(item.date)}</Text>
-            <Pressable testID={`message-picker-check-${index}`} accessibilityRole="button" accessibilityLabel="Check this message with Apollo" onPress={() => check(item)} style={s.checkBtn}><Text style={s.checkBtnText}>Check with Apollo</Text></Pressable>
+            <Pressable testID={`message-picker-check-${index}`} accessibilityRole="button" accessibilityLabel="Check this message with ApolloSG" onPress={() => check(item)} style={s.checkBtn}><Text style={s.checkBtnText}>Check with ApolloSG</Text></Pressable>
           </View>
         )}
-        ListHeaderComponent={<Text style={s.chatHeaderName} testID="message-picker-thread-header">Tap “Check with Apollo” on the message you want checked.</Text>}
+        ListHeaderComponent={<Text style={s.chatHeaderName} testID="message-picker-thread-header">Tap “Check with ApolloSG” on the message you want checked.</Text>}
       />
     ) : (
       <>

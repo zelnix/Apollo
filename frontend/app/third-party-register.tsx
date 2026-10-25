@@ -94,7 +94,7 @@ export default function ThirdPartyRegisterScreen() {
           <Card testID="register-requirements" style={{ gap: spacing.sm }}>
             {THIRD_PARTY_SERVICES_DISCLOSURE.services.length > 0 && (
               <>
-                <Body>Apollo applies its purpose-based privacy controls to information sent to external services.</Body>
+                <Body>ApolloSG applies its purpose-based privacy controls to information sent to external services.</Body>
                 <Body>Authentication secrets must not be sent to Gemini. Personal information unrelated to the investigation is minimised or withheld. Material security evidence is preserved where necessary.</Body>
               </>
             )}
@@ -108,7 +108,7 @@ export default function ThirdPartyRegisterScreen() {
           </Card>
         </View>
 
-        <Text style={s.footer}>HWG retains responsibility and accountability for the selection, oversight and management of Apollo&apos;s third-party services and integrations.</Text>
+        <Text style={s.footer}>HWG retains responsibility and accountability for the selection, oversight and management of ApolloSG&apos;s third-party services and integrations.</Text>
       </ScrollView>
     </View>
   );

@@ -73,7 +73,7 @@ export function higginsPermissionNote(capabilities: Capability[]): string | null
   const gaps = capabilities.filter((c) => c.status === "permission_required");
   if (!gaps.length) return null;
   const first = gaps[0].title.replace(/ Guard$/i, "");
-  return `Apollo needs your permission for ${first}. Open it and choose the setup action. Apollo will check the result when you return.${gaps.length > 1 ? " Other items are available in Protection." : ""}`;
+  return `ApolloSG needs your permission for ${first}. Open it and choose the setup action. Apollo will check the result when you return.${gaps.length > 1 ? " Other items are available in Protection." : ""}`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

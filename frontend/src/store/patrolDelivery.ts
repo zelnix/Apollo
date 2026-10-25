@@ -9,7 +9,7 @@ export const onDeliveryStatus = (fn: (s: DeliveryStatus) => void) => { listeners
 export function deliveryFailure() {
   status = { ...status, error: status.overflow
     ? 'Delivery queue capacity was reached. Pending evidence was retained; local events will retry when space is available.'
-    : 'Patrol could not save its delivery queue. Retry before closing Apollo.' };
+    : 'Patrol could not save its delivery queue. Retry before closing ApolloSG.' };
   listeners.forEach(fn => fn(status));
 }
 export const patrolDelivery = new DeliveryQueue({

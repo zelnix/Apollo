@@ -36,7 +36,7 @@ export function clearNativeFailures(): void {
 export class NativeCallFailed extends Error {
   code = "SC_NATIVE_CALL_FAILED";
   constructor(readonly operation: string, readonly detail: string) {
-    super(`Apollo couldn't complete the native operation "${operation}": ${detail}`);
+    super(`ApolloSG couldn't complete the native operation "${operation}": ${detail}`);
     this.name = "NativeCallFailed";
   }
 }
@@ -61,7 +61,7 @@ export async function nativeJson<T>(operation: string, fn: (() => Promise<string
   try {
     return JSON.parse(raw) as T;
   } catch {
-    const detail = "the native module returned a response Apollo couldn't read";
+    const detail = "the native module returned a response ApolloSG couldn't read";
     recordNativeFailure(operation, detail);
     throw new NativeCallFailed(operation, detail);
   }

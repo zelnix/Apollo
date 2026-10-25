@@ -14,12 +14,12 @@ const CATALOGUE = {
     {
       "code": "PLATFORM_CAPABILITY_UNAVAILABLE",
       "recoverable": false,
-      "plain": "This device doesn't make that information available to Apollo."
+      "plain": "This device doesn't make that information available to ApolloSG."
     },
     {
       "code": "PERMISSION_UNAVAILABLE",
       "recoverable": true,
-      "plain": "Apollo needs a permission before it can complete this check."
+      "plain": "ApolloSG needs a permission before it can complete this check."
     },
     {
       "code": "INTELLIGENCE_PROVIDER_UNAVAILABLE",
@@ -29,7 +29,7 @@ const CATALOGUE = {
     {
       "code": "NETWORK_CHECK_FAILED",
       "recoverable": true,
-      "plain": "Apollo couldn't reach the network to complete this check."
+      "plain": "ApolloSG couldn't reach the network to complete this check."
     },
     {
       "code": "CONTENT_NOT_ACCESSIBLE",
@@ -1290,7 +1290,7 @@ const CATALOGUE = {
     {
       "id": "PUSH-02",
       "category": "device",
-      "title": "Notification impersonates Apollo, the OS, a bank or a known service with an inconsistent destination",
+      "title": "Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination",
       "evidence": [
         "push_origin",
         "brand_mismatch"
@@ -1523,7 +1523,7 @@ const CATALOGUE = {
     "device": [
       "expected management or device administration",
       "expected accessibility",
-      "Apollo or trusted VPN",
+      "ApolloSG or trusted VPN",
       "developer options",
       "custom DNS or DoH provider",
       "notification permission",

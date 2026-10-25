@@ -97,8 +97,8 @@ const KIND_ICON: Record<string, React.ComponentType<{ size: number; color: strin
 const SOURCE_INFO = {
   title: "Original Source",
   body: [
-    "This is the material Apollo investigated, exactly as it was captured — not a summary and not anything Apollo wrote.",
-    "It is kept on this phone only. It is never uploaded for storage, and it is deleted when you delete this case or wipe Apollo's data.",
+    "This is the material Apollo investigated, exactly as it was captured — not a summary and not anything ApolloSG wrote.",
+    "It is kept on this phone only. It is never uploaded for storage, and it is deleted when you delete this case or wipe ApolloSG's data.",
   ],
 };
 
@@ -204,14 +204,14 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
 
   const copyText = useCallback(() => {
     const parts = [shown?.subject, shown?.body, mode === "redacted" && source?.url ? purposeLimitedUrl(source.url) : source?.url].filter(Boolean);
-    void Clipboard.setStringAsync(parts.join("\n\n")).then(() => setNote("Copied what is shown above.")).catch(() => setNote("Apollo couldn't copy that."));
+    void Clipboard.setStringAsync(parts.join("\n\n")).then(() => setNote("Copied what is shown above.")).catch(() => setNote("ApolloSG couldn't copy that."));
   }, [shown, source, mode]);
 
   const share = useCallback(async () => {
     setBusy(true); setNote(null);
     try {
       await shareEvidencePack(records[0] ?? null, { title: packTitle, date: packDate, notes: records[0] ? imageNotes(records[0]) : [], summary: packSummary, originalSource: source });
-    } catch { setNote("Apollo couldn't create the evidence pack. Try again."); }
+    } catch { setNote("ApolloSG couldn't create the evidence pack. Try again."); }
     finally { setBusy(false); }
   }, [records, packTitle, packDate, packSummary, source]);
 
@@ -265,7 +265,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
       {mode !== "original" ? (
         <View style={s.modeNotice} testID={`${testID}-redaction-notice`}>
           <Text style={s.modeNoticeTitle}>
-            {sentCopyIdentical ? "Nothing needed hiding" : "What Apollo hid before sending"}
+            {sentCopyIdentical ? "Nothing needed hiding" : "What ApolloSG hid before sending"}
           </Text>
           <Text style={s.modeNoticeBody}>
             {sentCopyIdentical
@@ -328,7 +328,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
             <View style={s.phones} testID={`${testID}-phones`}>
               <Text style={s.phonesTitle}>Phone numbers in this material</Text>
               {phones.map((p) => <Text key={p.number} style={s.note} testID={`${testID}-phone-${p.number}`}>{phoneFindingLine(p)}</Text>)}
-              <Text style={s.note}>Checked with Apollo&apos;s caller-reputation service. A number&apos;s reputation is one signal — it is never the verdict on its own.</Text>
+              <Text style={s.note}>Checked with ApolloSG&apos;s caller-reputation service. A number&apos;s reputation is one signal — it is never the verdict on its own.</Text>
             </View>
           ) : null}
           {records.flatMap(imageNotes).map((n) => <Text key={n} style={s.note}>{n}</Text>)}
@@ -337,7 +337,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
               <Text style={s.confirmText}>Remove the original from this phone? The sent copy and the case notes stay. This can&apos;t be undone.</Text>
               <View style={s.actions}>
                 <View style={s.action}><Button testID={`${testID}-remove-keep`} variant="secondary" label="Keep" onPress={() => setConfirmId(null)} /></View>
-                <View style={s.action}><Button testID={`${testID}-remove-yes`} variant="danger" label="Remove" onPress={() => { const id = confirmId; setConfirmId(null); void removeOriginal(id).catch(() => setNote("Apollo couldn't remove the original.")); }} /></View>
+                <View style={s.action}><Button testID={`${testID}-remove-yes`} variant="danger" label="Remove" onPress={() => { const id = confirmId; setConfirmId(null); void removeOriginal(id).catch(() => setNote("ApolloSG couldn't remove the original.")); }} /></View>
               </View>
             </View>
           ) : (
@@ -355,7 +355,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
       <View style={s.banner} testID={`${testID}-banner`}>
         <Info size={16} color={colors.onSurfaceSecondary} />
         <View style={s.bannerInfo}>
-          <Text style={s.bannerTitle}>{mode === "original" ? view.bannerTitle : mode === "side" ? "Original and sent copy, side by side" : "This is the copy Apollo sent"}</Text>
+          <Text style={s.bannerTitle}>{mode === "original" ? view.bannerTitle : mode === "side" ? "Original and sent copy, side by side" : "This is the copy ApolloSG sent"}</Text>
           <Text style={s.bannerBody}>
             {mode === "original" ? view.bannerBody
               : mode === "side" ? "On the left is the picture kept on this phone. On the right is the copy that was sent, with any password, PIN or code blacked out. Tap either to see it full screen."

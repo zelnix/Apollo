@@ -3,10 +3,10 @@
   "updated": "2026-06",
   "outcomes": ["NO_THREAT_IDENTIFIED", "POSSIBLE_THREAT_IDENTIFIED", "LIMITED_UNABLE_TO_DETERMINE"],
   "coverageGapCodes": [
-    {"code": "PLATFORM_CAPABILITY_UNAVAILABLE", "recoverable": false, "plain": "This device doesn't make that information available to Apollo."},
-    {"code": "PERMISSION_UNAVAILABLE", "recoverable": true, "plain": "Apollo needs a permission before it can complete this check."},
+    {"code": "PLATFORM_CAPABILITY_UNAVAILABLE", "recoverable": false, "plain": "This device doesn't make that information available to ApolloSG."},
+    {"code": "PERMISSION_UNAVAILABLE", "recoverable": true, "plain": "ApolloSG needs a permission before it can complete this check."},
     {"code": "INTELLIGENCE_PROVIDER_UNAVAILABLE", "recoverable": true, "plain": "A reputation service didn't answer in time."},
-    {"code": "NETWORK_CHECK_FAILED", "recoverable": true, "plain": "Apollo couldn't reach the network to complete this check."},
+    {"code": "NETWORK_CHECK_FAILED", "recoverable": true, "plain": "ApolloSG couldn't reach the network to complete this check."},
     {"code": "CONTENT_NOT_ACCESSIBLE", "recoverable": true, "plain": "The content couldn't be opened for inspection."},
     {"code": "UNSUPPORTED_FILE_TYPE", "recoverable": false, "plain": "Apollo can't inspect this kind of file."},
     {"code": "ENCRYPTED_CONTENT", "recoverable": false, "plain": "The contents are encrypted, so Apollo couldn't inspect them."},
@@ -156,7 +156,7 @@
     {"id": "DNS-02", "category": "device", "title": "DNS server matches authoritative malicious infrastructure", "evidence": ["dns_server", "reputation"], "platformDependent": true, "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"},
     {"id": "DNS-03", "category": "device", "title": "DNS change with a preceding suspicious app installation or permission event", "evidence": ["dns_change", "correlation"], "platformDependent": true, "gapCode": "PLATFORM_CAPABILITY_UNAVAILABLE"},
     {"id": "PUSH-01", "category": "device", "title": "Browser notification from a deceptive origin with a fake security or financial warning and an action lure", "evidence": ["push_origin", "credential_interaction"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
-    {"id": "PUSH-02", "category": "device", "title": "Notification impersonates Apollo, the OS, a bank or a known service with an inconsistent destination", "evidence": ["push_origin", "brand_mismatch"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
+    {"id": "PUSH-02", "category": "device", "title": "Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination", "evidence": ["push_origin", "brand_mismatch"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
     {"id": "PUSH-03", "category": "device", "title": "Web-push notification leads to a malicious or deceptive URL", "evidence": ["push_origin", "link_outcome"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
 
     {"id": "NET-01", "category": "network", "title": "Confirmed malicious destination observed", "evidence": ["destinations", "reputation"], "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"},
@@ -186,7 +186,7 @@
     "email": ["calendar invitation", "form-builder domain", "valid SPF/DKIM/DMARC from a form provider", "breach appearance alone"],
     "app": ["official-store provenance", "expected permissions", "PWA installation alone"],
     "file": ["encryption or password protection alone", "ordinary file characteristics", "QR code itself"],
-    "device": ["expected management or device administration", "expected accessibility", "Apollo or trusted VPN", "developer options", "custom DNS or DoH provider", "notification permission", "platform-unavailable signals"],
+    "device": ["expected management or device administration", "expected accessibility", "ApolloSG or trusted VPN", "developer options", "custom DNS or DoH provider", "notification permission", "platform-unavailable signals"],
     "network": ["public Wi-Fi", "open or WEP Wi-Fi", "unknown Wi-Fi", "lookalike SSID", "captive portal", "trusted home or work connection", "cellular connection"],
     "correlation": ["time proximity"]
   }

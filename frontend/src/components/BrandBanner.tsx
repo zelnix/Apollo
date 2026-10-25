@@ -15,7 +15,7 @@ export function BrandBanner({ testID }: { testID?: string }) {
         source={LOGO}
         style={{ width: "100%", aspectRatio: 1200 / 392 }}
         contentFit="contain"
-        accessibilityLabel="Apollo SG Scam Guard"
+        accessibilityLabel="ApolloSG Scam Guard"
       />
     </View>
   );

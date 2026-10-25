@@ -239,7 +239,7 @@ export default function CheckAccount() {
 
         <Card style={{ gap: spacing.sm }} testID="account-breach">
           <SectionTitle>Has this email appeared in a breach?</SectionTitle>
-          <Body testID="account-breach-policy">Submitting an email address authorises one breach lookup. Apollo does not keep the identifier; the breach provider&apos;s configured retention policy still applies.</Body>
+          <Body testID="account-breach-policy">Submitting an email address authorises one breach lookup. ApolloSG does not keep the identifier; the breach provider&apos;s configured retention policy still applies.</Body>
           <TextInput testID="account-breach-id" style={s.input} value={identifier} onChangeText={setIdentifier} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
           <Button testID="account-breach-run" variant="secondary" label="Check breach exposure" onPress={() => void checkBreach()} disabled={!identifier.trim()} />
           {breach ? (
@@ -258,8 +258,8 @@ export default function CheckAccount() {
           ) : null}
         </Card>
         <Card style={{ gap: spacing.xs }} testID="account-cannot-see">
-          <SectionTitle>What Apollo can and can&apos;t see</SectionTitle>
-          <Body>Apollo assesses what you submit. Ongoing notification or mailbox access stays off until you explicitly enable it. Apollo never asks for or stores your password.</Body>
+          <SectionTitle>What ApolloSG can and can&apos;t see</SectionTitle>
+          <Body>Apollo assesses what you submit. Ongoing notification or mailbox access stays off until you explicitly enable it. ApolloSG never asks for or stores your password.</Body>
         </Card>
       </KeyboardAwareScrollView>
       

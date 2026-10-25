@@ -439,7 +439,7 @@ def excerpt(body: str, query_terms: list[str], max_chars: int = 900) -> str:
     return "\n\n".join(paragraphs[i] for i in sorted(chosen))[: max_chars + 200]
 
 
-SAVED_ANSWER_NOTE = ("(Apollo saved this answer earlier. Gemini, Google's AI, wrote it because Apollo's library didn't cover this "
+SAVED_ANSWER_NOTE = ("(ApolloSG saved this answer earlier. Gemini, Google's AI, wrote it because ApolloSG's library didn't cover this "
                      "question. No official source has checked it.)")
 
 
@@ -448,7 +448,7 @@ def present_saved_answer(record: dict) -> str:
     return f"{(record.get('payload') or {}).get('answer', '')}\n\n{SAVED_ANSWER_NOTE}"
 
 
-GENERAL_KNOWLEDGE_NOTE = "This is general knowledge from Apollo's library. It isn't a finding about anything you've asked Apollo to check."
+GENERAL_KNOWLEDGE_NOTE = "This is general knowledge from ApolloSG's library. It isn't a finding about anything you've asked Apollo to check."
 
 
 def _day(value) -> str:

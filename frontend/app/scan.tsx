@@ -56,7 +56,7 @@ export default function Scan() {
     if (perm?.granted) { setCamOn(true); return; }
     if (perm && !perm.canAskAgain) { showToast("Camera access is off. Allow it in Settings to scan codes.", "growling"); void Linking.openSettings(); return; }
     const r = await requestPerm();
-    if (r.granted) setCamOn(true); else showToast("Apollo only uses the camera while you scan — nothing is recorded.", "neutral");
+    if (r.granted) setCamOn(true); else showToast("ApolloSG only uses the camera while you scan — nothing is recorded.", "neutral");
   };
 
   const handle = async (raw: string, ctx = context) => {

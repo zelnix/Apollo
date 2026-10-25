@@ -26,7 +26,7 @@ test("a refusal carries its real reason in plain words", () => {
   assert.equal(serverAlertStatus(server({ state: "failed", failureCode: "insufficient_credits" })),
     "Not delivered — the app owner's alert credit ran out");
   assert.equal(serverAlertStatus(server({ state: "failed", failureCode: "push_key_invalid" })),
-    "Not delivered — Apollo's alert key was rejected");
+    "Not delivered — ApolloSG's alert key was rejected");
   // An unmapped code is still shown rather than hidden behind a generic phrase.
   assert.equal(serverAlertStatus(server({ state: "failed", failureCode: "provider_http_418" })),
     "Not delivered — provider http 418");

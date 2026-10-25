@@ -161,7 +161,7 @@ export default function DeviceProtectionsScreen() {
         ) : !onDevice ? (
           <ProtectionGroup
             title="What Apollo checks on a device"
-            intro="Apollo is open in a browser preview, so it can’t read this device’s settings. Each protection below still shows what it is and how to check it."
+            intro="ApolloSG is open in a browser preview, so it can’t read this device’s settings. Each protection below still shows what it is and how to check it."
             count={assessment.reading.view.deviceProtects.length}
             collapsible
             testID="device-prot-catalogue"
@@ -225,7 +225,7 @@ export default function DeviceProtectionsScreen() {
         )}
 
         {capabilities.length ? (
-          <ProtectionGroup title="What Apollo can use here" intro="Apollo’s own access on this device, as a real read reported it." count={capabilities.length} collapsible bare testID="device-prot-capabilities">
+          <ProtectionGroup title="What ApolloSG can use here" intro="ApolloSG’s own access on this device, as a real read reported it." count={capabilities.length} collapsible bare testID="device-prot-capabilities">
             <CapabilityTables capabilities={capabilities} testID="device-prot-table" />
           </ProtectionGroup>
         ) : null}

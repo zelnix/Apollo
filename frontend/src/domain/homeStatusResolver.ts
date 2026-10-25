@@ -116,7 +116,7 @@ const CAPABILITY_LABEL: Record<string, string> = {
   site_guard: "Website protection",
   connection_guard: "Internet monitoring",
   known_threats: "Known Threat Lookup",
-  share_intake: "Share to Apollo",
+  share_intake: "Share to ApolloSG",
   message_guard: "Message screening",
   app_guard: "App checking",
 };
@@ -328,7 +328,7 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
   // Full coverage, no issues — all automatic protections verified.
   if (coverage.overall === "full" && actions.level === "none") {
     return {
-      explanation: `${base} Your available protections are running and Apollo will let you know if anything needs attention.`,
+      explanation: `${base} Your available protections are running and ApolloSG will let you know if anything needs attention.`,
     };
   }
 
@@ -425,7 +425,7 @@ function deriveProtectionPresentation(
   if (resolution.recovering) {
     return {
       protectionStatus: "reduced",
-      protectionGuidance: "Apollo resolved a recent alert and is waiting for a fresh check to confirm things are clear.",
+      protectionGuidance: "ApolloSG resolved a recent alert and is waiting for a fresh check to confirm things are clear.",
     };
   }
 

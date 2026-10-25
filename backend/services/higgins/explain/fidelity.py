@@ -32,7 +32,7 @@ CODES = {
     "FINDING_ADDED": "The plain English lists a finding Apollo didn't record.",
     "FINDING_ORDER": "The findings are in a different order from Apollo's.",
     "FINDING_ALTERED": "A finding's meaning changed in the plain English.",
-    "CONFIDENCE_CHANGED": "How sure Apollo is about a finding changed.",
+    "CONFIDENCE_CHANGED": "How sure ApolloSG is about a finding changed.",
     "BASIS_CHANGED": "Who established a finding, or how, changed.",
     "EXPLANATION_NOT_APOLLO": "An explanation isn't one of Apollo's fixed explanations.",
     "STATEMENT_DROPPED": "Something Apollo's result says is missing from the plain English.",

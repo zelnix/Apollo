@@ -307,14 +307,14 @@ async def _launch_investigation(
                            message=question),
                 idem_key)
             if not job:
-                return case_id, None, "Apollo opened the investigation but Magnum DI did not start a turn on it."
+                return case_id, None, "ApolloSG opened the investigation but Magnum DI did not start a turn on it."
             return case_id, repo.job_view(job).wire(), None
         return case_id, None, None
     except Exception as exc:
         __import__("logging").getLogger("apollo.investigations").warning(
             "_launch_investigation failed (gate=%s): %s", gate, type(exc).__name__)
         stage = "while preparing the evidence" if case_id else "while opening the case"
-        return case_id, None, f"Apollo couldn't start the Magnum DI investigation {stage} ({type(exc).__name__})."
+        return case_id, None, f"ApolloSG couldn't start the Magnum DI investigation {stage} ({type(exc).__name__})."
 
 
 
@@ -467,7 +467,7 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
     # Pre-gathered specialist intelligence is delivered to Magnum DI as structured
     # Apollo observations via the case's triage_provider_evidence field — not injected
     # into the person's question.
-    limitation = "" if body.content_complete else f"\n\nCapture limitation: Android exposed {body.original_characters} characters; Apollo retained the first {len(body.text)} under its admission policy."
+    limitation = "" if body.content_complete else f"\n\nCapture limitation: Android exposed {body.original_characters} characters; ApolloSG retained the first {len(body.text)} under its admission policy."
     submission = Submission(client_item_id=f"sms-{body.submission_id[:70]}", kind="text",
                             value=f"From: {body.sender}\n{body.text}{limitation}", label="opt-in text notification")
     investigation_question = (

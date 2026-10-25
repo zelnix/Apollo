@@ -129,7 +129,7 @@ export function redactUserSecrets(value: string): string {
 export class EgressViolation extends Error {
   readonly code = "EGRESS_SCHEMA_REJECTED";
   constructor(endpoint: EgressEndpoint, key: string) {
-    super("Apollo couldn't safely prepare this request. Retry this step.");
+    super("ApolloSG couldn't safely prepare this request. Retry this step.");
     this.name = "EgressViolation";
     Object.defineProperties(this, { endpoint: { value: endpoint, enumerable: false }, field: { value: key, enumerable: false } });
   }
@@ -211,7 +211,7 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     out.what_to_do = voice.whatToDo;
     out.claimed_brand = null;
     out.scenario = typeof out.scenario === 'string' && /^[A-Z]{1,3}\d{1,3}[a-z]?$/.test(out.scenario) ? out.scenario : null;
-    out.adapter_label = 'Apollo on-device assessment';
+    out.adapter_label = 'ApolloSG on-device assessment';
     // Validate the PROJECTED output — these are now controlled string literals.
     for (const key of ['headline', 'what_happened', 'what_to_do', 'adapter_label']) {
       if (typeof out[key] !== 'string' || /https?:\/\/|[+@]|\b\d[\d ()-]{6,}\d/.test(out[key] as string)) throw new EgressViolation(endpoint, key);
@@ -220,7 +220,7 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     }
   }
   if (endpoint === 'family' && Array.isArray(out.events)) {
-    out.headline = 'Shared Apollo security incident';
+    out.headline = 'Shared ApolloSG security incident';
     out.events = out.events.map((v: Record<string, unknown>) => ({ event_id: v.event_id, category: v.category,
       state: v.state, headline: 'Security check — review with the protected person', occurred_at: v.occurred_at, status: v.status }));
     if (Array.isArray(out.steps)) out.steps = out.steps.map((v: Record<string, unknown>) => ({ id: v.id, text: 'Review this recovery step on the protected phone together.' }));
@@ -320,11 +320,11 @@ export function purposeLimitedUrl(normalizedUrl: string): string {
 export const PRIVACY_POLICY_SUMMARY = [
   "Links you check are analysed on your device first.",
   "When you tap Check, the submitted text, sender and links are processed for that assessment. Credentials, fragments and secret query values are removed before sending.",
-  "Submitted screenshots are processed only for the requested assessment and Apollo closes request-scoped upload copies after success or failure.",
+  "Submitted screenshots are processed only for the requested assessment and ApolloSG closes request-scoped upload copies after success or failure.",
   "Background notification access, mailbox connections and ongoing monitoring require separate opt-in. Automatic notification checks remain local unless you enable a supported connection.",
   "Patrol keeps the assessment summary and safe supporting references, not full messages, screenshots, files or sensitive tokens.",
   "Ask Higgins conversation content and generated speech are encrypted temporarily, for no more than 15 minutes. Clear temporary history invalidates them; provider-side retention follows your Higgins account policy.",
-  "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
+  "ApolloSG uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",
   "Hear Higgins reads the displayed explanation in temporary protected audio sections. It uses the owner's Higgins account, not a different AI provider.",
 ];

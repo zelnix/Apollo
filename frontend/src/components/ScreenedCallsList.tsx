@@ -60,7 +60,7 @@ export function ScreenedCallsList({ onSelect, actionLabel = "Check", disabled = 
       </View>
       {calls && calls.length === 0 ? (
         <View style={s.empty}>
-          <Body testID={`${testID}-empty`}>No screened calls yet. While Apollo is your caller ID &amp; spam app, incoming calls Android passes to it appear here — usually from numbers that aren&apos;t in your contacts.</Body>
+          <Body testID={`${testID}-empty`}>No screened calls yet. While ApolloSG is your caller ID &amp; spam app, incoming calls Android passes to it appear here — usually from numbers that aren&apos;t in your contacts.</Body>
         </View>
       ) : null}
       {shown.map((call, i) => {
@@ -71,7 +71,7 @@ export function ScreenedCallsList({ onSelect, actionLabel = "Check", disabled = 
             key={`${call.number}-${call.at}`}
             testID={`${testID}-row-${i}`}
             accessibilityRole="button"
-            accessibilityLabel={`${actionLabel} ${call.number} with Apollo`}
+            accessibilityLabel={`${actionLabel} ${call.number} with ApolloSG`}
             disabled={disabled}
             onPress={() => onSelect(call.number)}
             style={({ pressed }) => [s.row, { opacity: disabled ? 0.5 : pressed ? 0.7 : 1 }]}

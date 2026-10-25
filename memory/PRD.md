@@ -1,3 +1,22 @@
+## App name vs the dog: "ApolloSG" where it means the app (2026-10-25)
+**Owner's rule:** ApolloSG = the app/product; Apollo = the guard-dog detector/protector (detects, blocks, checks, patrols,
+barks…, its findings and protections); Higgins explains. **Owner's choice for unclear lines: ApolloSG.**
+- Applied by a context classifier (`/tmp/naming/apply2.py`, not shipped) over user-facing strings only (TS/TSX strings + JSX
+  text, Python string literals, rulebook.md, play_console_declarations.md, triage_catalogue.json, native Kotlin/Swift strings);
+  comments, docstrings, identifiers, routes, storage keys, test IDs untouched. ~1,030 renamed, ~1,070 kept as Apollo.
+- Kept Apollo: dog states and actions ("Apollo is Patrolling", "Apollo blocked…", "What Apollo found", "Ask Apollo to
+  investigate", "Calls Apollo screened", "Meet Apollo", "Show Apollo"), "Apollo's protection/checks/findings/wording",
+  "Apollo Protections", "Apollo alerts" notification channel, persona lists (Apollo, Higgins, TC FlyBy, Magnum DI),
+  How Apollo checks role name "Apollo", `attributedTo: "Apollo"` data values, console tags.
+- Renamed: app name/screens/settings/support/privacy/server/data/permissions/install/share-to, KB ("ApolloSG's knowledge
+  base", "ApolloSG KB"), cost/admin labels, notification fallbacks, iOS Settings path (`iosPath: "ApolloSG"`), email footer.
+- Compatibility: Higgins intent regexes accept "apollo", "apollosg" and "apollo sg"; `incidentPlan.ts` reads both
+  "You told Apollo:" (old saved events) and "You told ApolloSG:".
+- Not changed (need owner decision / build impact): `EMAIL_FROM_NAME="Higgins Apollo"` in backend/.env, iOS
+  `iosShareExtensionName: "Apollo Share Extension"` in app.config.js.
+- Rule book re-stamped. Tests updated for new wording: backend 1212 passed; frontend 935/935; tsc clean.
+
+
 ## KB Reusable Intelligence & Sufficiency (2026-10-25)
 **Owner's choices:** show the person when a reused result was last checked; savings in the admin portal + server logs;
 automated tests only (no testing agent).

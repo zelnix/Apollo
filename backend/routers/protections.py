@@ -12,7 +12,7 @@ router = APIRouter(tags=["protections"])
 async def apollo_protection(protection_id: str):
     found = explanations.apollo_explanation(protection_id)
     if not found:
-        raise HTTPException(404, "Apollo has no protection by that name.")
+        raise HTTPException(404, "ApolloSG has no protection by that name.")
     return found
 
 
@@ -21,7 +21,7 @@ async def reviewed_device_protection(protection_id: str):
     """Only the pre-written explanation — used where the device itself can't be described (browser preview)."""
     found = explanations.reviewed_device_explanation(protection_id)
     if not found:
-        raise HTTPException(404, "Apollo has no pre-written explanation of that protection.")
+        raise HTTPException(404, "ApolloSG has no pre-written explanation of that protection.")
     return found
 
 

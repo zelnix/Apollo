@@ -53,7 +53,7 @@ test("something needs attention: answers partly, names ONE problem and ONE actio
   assert.match(out.summary, /website protection/i);
   assert.ok(!/call protection/i.test(out.summary), out.summary);
   // one action
-  assert.equal((out.summary.match(/Open Apollo's protection settings/g) ?? []).length, 1);
+  assert.equal((out.summary.match(/Open ApolloSG's protection settings/g) ?? []).length, 1);
   assert.equal(out.attentionNeeded, true);
 });
 

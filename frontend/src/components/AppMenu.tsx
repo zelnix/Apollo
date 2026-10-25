@@ -18,7 +18,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const ITEMS = [
   { label: "Settings", icon: Settings, route: "/(tabs)/settings", testID: "menu-settings" },
-  { label: "About Apollo", icon: Info, route: "/about", testID: "menu-about" },
+  { label: "About ApolloSG", icon: Info, route: "/about", testID: "menu-about" },
   { label: "How Apollo checks", icon: ListChecks, route: "/how-apollo-checks", testID: "menu-how-apollo-checks" },
   { label: "Privacy", icon: Lock, route: "/privacy", testID: "menu-privacy" },
   { label: "Support", icon: HelpCircle, route: "/support", testID: "menu-support" },

@@ -326,5 +326,5 @@ def test_the_reusable_intelligence_rules_match_the_code():
     app = (Path(rulebook.ROOT) / "frontend/src/domain/checkedAgo.ts").read_text()
     assert "From Apollo's check ${when}, still current, so it wasn't looked up again" in app
     assert "\"From Apollo's check 2 hours ago, still current, so it wasn't looked up again\"" in section
-    assert knowledge.SAVED_ANSWER_NOTE.startswith("(Apollo saved this answer earlier. Gemini, Google's AI, wrote it")
+    assert knowledge.SAVED_ANSWER_NOTE.startswith("(ApolloSG saved this answer earlier. Gemini, Google's AI, wrote it")
     assert "Intelligence Reuse" in section and ("Intelligence Reuse", "/api/admin/intel-reuse", "&#9851;") in admin_portal.NAV

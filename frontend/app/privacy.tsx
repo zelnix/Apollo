@@ -25,11 +25,11 @@ const useStyles = makeStyles((c) => ({
 }));
 
 const PRINCIPLES = [
-  { title: "Local-first processing", desc: "Apollo processes your data on-device whenever possible. Your messages, calls and personal information stay on your phone." },
-  { title: "No data selling", desc: "We never sell, share or monetise your personal data. Apollo exists to protect you, not to profit from your information." },
-  { title: "Minimal data collection", desc: "When AI analysis is needed, Apollo sends only the minimum required data. Personal details are redacted before any external call." },
-  { title: "Transparent AI usage", desc: "When Apollo uses Google Gemini for analysis, we tell you. You can see what was sent and what came back in the Magnum DI record." },
-  { title: "Your data, your control", desc: "You can export or delete your data at any time. Uninstalling Apollo removes all local data from your device." },
+  { title: "Local-first processing", desc: "ApolloSG processes your data on-device whenever possible. Your messages, calls and personal information stay on your phone." },
+  { title: "No data selling", desc: "We never sell, share or monetise your personal data. ApolloSG exists to protect you, not to profit from your information." },
+  { title: "Minimal data collection", desc: "When AI analysis is needed, ApolloSG sends only the minimum required data. Personal details are redacted before any external call." },
+  { title: "Transparent AI usage", desc: "When ApolloSG uses Google Gemini for analysis, we tell you. You can see what was sent and what came back in the Magnum DI record." },
+  { title: "Your data, your control", desc: "You can export or delete your data at any time. Uninstalling ApolloSG removes all local data from your device." },
 ];
 
 export default function Privacy() {
@@ -58,7 +58,7 @@ export default function Privacy() {
       <ScrollView contentContainerStyle={{ paddingBottom: spacing["3xl"] }}>
         <View style={s.section}>
           <Text style={s.body}>
-            Your privacy is at the heart of everything Apollo does. Here are the principles that guide how we handle your data.
+            Your privacy is at the heart of everything ApolloSG does. Here are the principles that guide how we handle your data.
           </Text>
         </View>
         <View style={s.section}>
@@ -78,7 +78,7 @@ export default function Privacy() {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Data Processing</Text>
           <Text style={s.body}>
-            When Apollo uses Google Gemini for scam analysis, it operates under Google's published Gemini API terms. Apollo does not control Google's internal retention practices. Apollo's own request-scoped processing copies are closed after completion.
+            When ApolloSG uses Google Gemini for scam analysis, it operates under Google's published Gemini API terms. ApolloSG does not control Google's internal retention practices. ApolloSG's own request-scoped processing copies are closed after completion.
           </Text>
         </View>
       </ScrollView>

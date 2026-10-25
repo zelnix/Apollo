@@ -194,7 +194,7 @@ export default function SetupGates() {
         </View>
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           <Button testID="setup-gates-recap-done" label="Next: your first check" onPress={() => router.push("/first-check")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
-          <Text style={s.note}>One last step. Apollo never assumes a new phone is clean, so it reads this device&apos;s starting point before it begins watching.</Text>
+          <Text style={s.note}>One last step. ApolloSG never assumes a new phone is clean, so it reads this device&apos;s starting point before it begins watching.</Text>
         </View>
       </View>
     );
@@ -218,14 +218,14 @@ export default function SetupGates() {
         <Card style={{ gap: spacing.sm }} testID={`setup-gates-card-${current}`}>
           <SectionTitle>What it does</SectionTitle>
           <Text style={s.why}>{copy.short}</Text>
-          <SectionTitle>Why Apollo needs this</SectionTitle>
+          <SectionTitle>Why ApolloSG needs this</SectionTitle>
           <Text style={s.why} testID="setup-gates-why">{copy.why}</Text>
         </Card>
       </View>
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Button testID="setup-gates-enable" label={busy ? "Opening…" : copy.enableLabel} onPress={() => void enable()} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <ShieldCheck size={18} color={colors.onBrandPrimary} />} />
         <Button testID="setup-gates-not-now" variant="ghost" label="Not now" onPress={() => void notNow()} disabled={busy} />
-        <Text style={s.note}>Skipping keeps Apollo active with reduced coverage — you can enable any of these later.</Text>
+        <Text style={s.note}>Skipping keeps ApolloSG active with reduced coverage — you can enable any of these later.</Text>
         {steps.length - idx > 1 ? <Button testID="setup-gates-skip-rest" variant="ghost" label="Skip the rest for now" onPress={() => void skipRest()} disabled={busy} /> : null}
       </View>
     </View>

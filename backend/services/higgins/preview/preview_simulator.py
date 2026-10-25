@@ -66,14 +66,14 @@ def _kb_passage(entry: dict, query: str, max_chars: int) -> str:
     """One entry, the way Higgins quotes the library: who says it, their words, provenance, the link."""
     words = knowledge.excerpt(entry.get("body") or entry.get("summary") or "", knowledge.terms(query), max_chars=max_chars)
     intro = (f"The Learn with Higgins article “{entry['title']}”" if entry.get("kind") == "learn_article"
-             else f"{entry.get('publisher') or 'Apollo'} — “{entry['title']}”")
+             else f"{entry.get('publisher') or 'ApolloSG'} — “{entry['title']}”")
     meta = knowledge.provenance_line(entry)
     link = f"\nRead the original: {entry['url']}" if entry.get("url") else ""
     return f"{intro}{(' ' + meta) if meta else ''}:\n{words}{link}"
 
 
 def _kb_reference(entry: dict) -> str:
-    return f"- {entry.get('publisher') or 'Apollo'}: “{entry['title']}”" + (f" — {entry['url']}" if entry.get("url") else "")
+    return f"- {entry.get('publisher') or 'ApolloSG'}: “{entry['title']}”" + (f" — {entry['url']}" if entry.get("url") else "")
 
 
 def query_text(purpose_name: str, blocks: list[EvidenceBlock]) -> str:
@@ -101,7 +101,7 @@ def _investigation_payload(blocks: list[EvidenceBlock], kb: list[dict] | None = 
     unchanged. Knowledge-base entries on the same subject are general knowledge, never a finding."""
     payload = analyse(blocks)
     if kb:
-        payload["explanationMarkdown"] += ("\n\n**From Apollo's knowledge base** (general knowledge, not a finding about what you sent):\n"
+        payload["explanationMarkdown"] += ("\n\n**From ApolloSG's knowledge base** (general knowledge, not a finding about what you sent):\n"
                                            + "\n".join(_kb_reference(entry) for entry in kb[:2]))
     return payload
 
@@ -172,9 +172,9 @@ def _chat_payload(blocks: list[EvidenceBlock] | None = None, kb: list[dict] | No
     route = next((r for words, r in _PREVIEW_ROUTE_HINTS if all(word in question for word in words)), None)
     if kb:
         passages = "\n\n".join(_kb_passage(entry, query or question, 500) for entry in kb[:2])
-        answer = f"{SIMULATED_NOTE}. Preview build — instead of Gemini, here is what Apollo's knowledge base says:\n\n{passages}"
+        answer = f"{SIMULATED_NOTE}. Preview build — instead of Gemini, here is what ApolloSG's knowledge base says:\n\n{passages}"
     else:
-        answer = (f"{SIMULATED_NOTE}. Preview build — Gemini isn't called here, and Apollo's knowledge base has nothing on "
+        answer = (f"{SIMULATED_NOTE}. Preview build — Gemini isn't called here, and ApolloSG's knowledge base has nothing on "
                   "this yet, so there is no answer to show."
                   + (" The destination below is the one Apollo matched to your question." if route else ""))
     return {
@@ -196,14 +196,14 @@ def _explanation_payload(kb: list[dict] | None, query: str) -> dict:
     if kb:
         entry = kb[0]
         words = knowledge.excerpt(entry.get("body") or entry.get("summary") or "", knowledge.terms(query), max_chars=260)
-        why = f"From {entry.get('publisher') or 'Apollo'} — “{entry['title']}”: {words}"
+        why = f"From {entry.get('publisher') or 'ApolloSG'} — “{entry['title']}”: {words}"
     else:
-        why = "Apollo's knowledge base has nothing on this protection yet."
+        why = "ApolloSG's knowledge base has nothing on this protection yet."
     return {
         "what": f"{SIMULATED_NOTE}. Preview build, so Gemini wasn't asked to explain “{query}”."[:400],
         "why": why[:400],
         "protects_against": "Shown in the published app, where Higgins explains it."[:300],
-        "recommended": "Open the published Apollo app for Higgins' explanation."[:300],
+        "recommended": "Open the published ApolloSG app for Higgins' explanation."[:300],
     }
 
 
@@ -358,14 +358,14 @@ async def teddy_lookup(blocks: list[EvidenceBlock]) -> tuple[str, dict]:
         if entry and url.startswith("https://"):
             words = knowledge.excerpt(entry.get("body") or "", knowledge.terms(question), max_chars=280).replace("\n", " ")
             status = "ANSWER" if "ANSWER" in statuses else "WARNING"
-            line = f"Q{number} | {status} | (Simulated from Apollo's knowledge base) {entry.get('publisher')}: “{entry.get('title')}” — {words}"
+            line = f"Q{number} | {status} | (Simulated from ApolloSG's knowledge base) {entry.get('publisher')}: “{entry.get('title')}” — {words}"
             host = (urlparse(url).hostname or "").removeprefix("www.")
             chunks.append({"web": {"uri": url, "title": host, "domain": host}})
             supports.append({"segment": {"start_index": offset, "end_index": offset + len(line.encode("utf-8")), "text": line},
                              "grounding_chunk_indices": [len(chunks) - 1]})
         else:
             missing = next((s for s in statuses if s.startswith(("NO_", "NOT_"))), statuses[-1])
-            line = f"Q{number} | {missing} | (Simulated) Apollo's knowledge base has nothing on {subject}; no web search is made in preview."
+            line = f"Q{number} | {missing} | (Simulated) ApolloSG's knowledge base has nothing on {subject}; no web search is made in preview."
         lines.append(line)
         offset += len(line.encode("utf-8")) + 1
     return "\n".join(lines), {"grounding_chunks": chunks, "grounding_supports": supports, "web_search_queries": []}

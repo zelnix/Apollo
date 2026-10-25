@@ -102,10 +102,10 @@ export function runProtectionHealthCheck(trigger: HealthTrigger): Promise<Protec
     // says the check didn't run, rather than presenting an old reading as the current one.
     const current = protectionHealthSnapshot();
     const reason = err instanceof NativeCallFailed
-      ? "Apollo asked this device for its protection state and the read failed."
+      ? "ApolloSG asked this device for its protection state and the read failed."
       : err instanceof Error && err.message
-        ? `Apollo couldn't complete the protection check (${err.message}).`
-        : "Apollo couldn't complete the protection check and the reason could not be determined.";
+        ? `ApolloSG couldn't complete the protection check (${err.message}).`
+        : "ApolloSG couldn't complete the protection check and the reason could not be determined.";
     const failed: ProtectionHealthSnapshot = {
       ...current, checking: false, revision: current.revision + 1,
       lastCheckFailure: { at: new Date().toISOString(), trigger, reason },

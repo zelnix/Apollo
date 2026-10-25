@@ -29,7 +29,7 @@ test("invalid production config → boot error recorded, selector returns a fail
   const adapter = selectFailClosed<Adapter>(() => validateSecurityConfig(PROD_MISSING_NATIVE_MODULE), () => { chosen++; return realAdapter; });
   const err = getSecurityBootError();
   assert.ok(err instanceof SecurityConfigurationError, "SecurityConfigurationError is recorded, not thrown");
-  assert.match(err.message, /Apollo native security module is required but unavailable/);
+  assert.match(err.message, /ApolloSG native security module is required but unavailable/);
   assert.equal(chosen, 0, "no protected feature initialises: the real adapter factory never ran");
   assert.notEqual(adapter, realAdapter);
 });
@@ -52,10 +52,10 @@ test("first error wins; later errors do not overwrite the root cause shown to th
 });
 
 test("blocking screen copy names the cause and never claims protection", () => {
-  const err = new SecurityConfigurationError("Apollo's native security module is unavailable. Install an Apollo build that includes device protection.");
+  const err = new SecurityConfigurationError("ApolloSG's native security module is unavailable. Install an ApolloSG build that includes device protection.");
   const copy = safeStartCopy(err);
-  assert.equal(copy.title, "Apollo can't start safely.");
-  assert.equal(copy.reason, "Apollo's native security module is unavailable. Install an Apollo build that includes device protection.");
+  assert.equal(copy.title, "ApolloSG can't start safely.");
+  assert.equal(copy.reason, "ApolloSG's native security module is unavailable. Install an ApolloSG build that includes device protection.");
   for (const line of Object.values(copy)) {
     assert.doesNotMatch(line, /guarding|protecting you|is protecting|patrolling/i, `no false protection claim in: ${line}`);
   }
@@ -68,7 +68,7 @@ test("valid production config → normal start-up: real adapter selected, no boo
   assert.equal(getSecurityBootError(), null);
 });
 
-test("valid production config but native Apollo Security Adapter missing → still blocked (live control is never weakened)", () => {
+test("valid production config but native ApolloSG Security Adapter missing → still blocked (live control is never weakened)", () => {
   selectFailClosed<Adapter>(() => validateSecurityConfig({ ...PROD_VALID, nativeSecurityAdapterAvailable: false }), () => realAdapter);
-  assert.match(getSecurityBootError()?.message ?? "", /Apollo native security module is required but unavailable/);
+  assert.match(getSecurityBootError()?.message ?? "", /ApolloSG native security module is required but unavailable/);
 });

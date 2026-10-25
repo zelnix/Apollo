@@ -89,7 +89,7 @@ export function ImageCropper({ visible, uri, width, height, onCancel, onDone }: 
       const out = await ImageManipulator.manipulateAsync(uri, [{ crop }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
       onDone(out.uri);
     } catch {
-      setError("Apollo couldn't crop this image. Try again.");
+      setError("ApolloSG couldn't crop this image. Try again.");
     } finally { setBusy(false); }
   };
 

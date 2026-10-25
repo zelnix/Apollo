@@ -77,11 +77,11 @@ export const EXAMPLE_THREAT_EVENT: PatrolEvent = {
       investigated:
         "Whether \"Acme IT Mobile Device Management\" (com.acme.mdm.agent) is a profile this device's owner put there",
       established:
-        "The profile was installed on 15 Oct 2026 and holds device-admin rights. Apollo could not establish who installed it, because neither Android nor iOS records that for an app to read.",
+        "The profile was installed on 15 Oct 2026 and holds device-admin rights. ApolloSG could not establish who installed it, because neither Android nor iOS records that for an app to read.",
       evidence_points: [
         "Profile name and package: \"Acme IT Mobile Device Management\" (com.acme.mdm.agent)",
         "Installed 15 Oct 2026, device-admin rights active",
-        "Installer identity: not recorded by the platform — Apollo cannot tell who added it",
+        "Installer identity: not recorded by the platform — ApolloSG cannot tell who added it",
       ],
       meaning:
         "Management profiles are often legitimate, so this is a question to answer rather than a confirmed threat.",

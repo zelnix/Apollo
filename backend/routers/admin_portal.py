@@ -257,7 +257,7 @@ async def dashboard(request: Request):
     body = f"""
     <div class="overall-banner" style="border-left:4px solid {overall_color};">
         <span class="dot" style="background:{overall_color};"></span>
-        <span><strong>Apollo Status:</strong> {overall.upper()}</span>
+        <span><strong>ApolloSG Status:</strong> {overall.upper()}</span>
         <span style="color:var(--muted);font-size:0.85em;margin-left:auto;">{_t(h.get('timestamp'))}</span>
     </div>
     {attn_html}
@@ -354,7 +354,7 @@ async def protection(request: Request):
     <tbody>{outcome_rows or '<tr><td colspan="2" style="color:var(--muted);">No investigations</td></tr>'}</tbody></table>
 
     <p style="color:var(--muted);font-size:0.82em;margin-top:16px;">
-        Protection truth rule: This portal observes Apollo. Verified enforcement comes only from genuine native enforcement evidence.
+        Protection truth rule: This portal observes ApolloSG. Verified enforcement comes only from genuine native enforcement evidence.
         This portal never creates THREAT_BLOCKED, verified_block, or "Apollo is biting" status.
     </p>
     """
@@ -964,13 +964,13 @@ async def reconciliation(request: Request):
     cost_gap_html = f"""
     <h2>6b. Cost Gap Analysis (Estimated vs Actual)</h2>
     <div class="alert alert-warning">
-        <strong>Why Apollo's estimate may be lower than actual Google billing:</strong>
+        <strong>Why ApolloSG's estimate may be lower than actual Google billing:</strong>
     </div>
     <table>
         <thead><tr><th>Component</th><th>Value</th><th>Estimated Impact</th></tr></thead>
         <tbody>
             <tr>
-                <td>Apollo estimated cost (all purposes, success-only)</td>
+                <td>ApolloSG estimated cost (all purposes, success-only)</td>
                 <td colspan="2" style="text-align:right;font-weight:700;">${total_estimated:.4f}</td>
             </tr>
             <tr>
@@ -1006,7 +1006,7 @@ async def reconciliation(request: Request):
         </tbody>
     </table>
     <p style="font-size:0.85em;color:var(--muted);margin-top:8px;">
-        <strong>count_tokens() API calls:</strong> Apollo calls <code>count_tokens()</code> before every
+        <strong>count_tokens() API calls:</strong> ApolloSG calls <code>count_tokens()</code> before every
         <code>generate_content()</code> for admission control. These calls are <strong>free</strong>
         (not billed by Google) but do add to API call volume.<br/>
         <strong>Failed calls (402):</strong> HTTP 402 billing failures do not consume tokens or incur charges.
@@ -1419,17 +1419,17 @@ def _initiator_label(source: str | None) -> str:
     """Convert trigger source to user-friendly initiator label."""
     mapping = {
         "user_initiated": "User — Check",
-        "mailbox_monitor": "Apollo — Mailbox Monitor",
-        "recovery_resume": "Apollo — Recovery/Resume",
+        "mailbox_monitor": "ApolloSG — Mailbox Monitor",
+        "recovery_resume": "ApolloSG — Recovery/Resume",
         "validation_test": "System — Test/Validation",
         "health_check": "System — Health Check",
         "chat": "User — Chat",
-        "research": "Apollo — Research",
+        "research": "ApolloSG — Research",
         "msg_check": "User — Message Check",
         "phone_check": "User — Phone Check",
-        "scam_analysis": "Apollo — Automatic",
-        "triage": "Apollo — Triage",
-        "background_text": "Apollo — Background Text",
+        "scam_analysis": "ApolloSG — Automatic",
+        "triage": "ApolloSG — Triage",
+        "background_text": "ApolloSG — Background Text",
     }
     return mapping.get(source or "", source or "Unknown")
 
@@ -1448,11 +1448,11 @@ def _initiator_category(source: str | None) -> str:
     if source in ("user_initiated", "chat", "msg_check", "phone_check"):
         return "User — Check"
     if source in ("mailbox_monitor",):
-        return "Apollo — Mailbox Monitor"
+        return "ApolloSG — Mailbox Monitor"
     if source in ("recovery_resume",):
         return "Recovery/Resume"
     if source in ("scam_analysis", "research"):
-        return "Apollo — Automatic"
+        return "ApolloSG — Automatic"
     if source in ("validation_test", "health_check"):
         return "System — Test/Validation"
     if source is None or source == "" or source == "None":
@@ -1489,8 +1489,8 @@ def _env_label(model_str: str | None) -> str:
 
 
 # How each investigation was answered (cost routing): TC FlyBy's route, or Magnum DI's Gemini call.
-ANSWERED_BY_LABELS = {"teddy_official": "Official check", "teddy_kb": "Apollo KB", "teddy_search": "Web search", "magnum_di": "Gemini"}
-_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "Apollo KB", "google_search": "Web search (TC FlyBy)"}
+ANSWERED_BY_LABELS = {"teddy_official": "Official check", "teddy_kb": "ApolloSG KB", "teddy_search": "Web search", "magnum_di": "Gemini"}
+_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "ApolloSG KB", "google_search": "Web search (TC FlyBy)"}
 
 
 def _answered_by(case: dict, magnum_calls: int) -> str:
@@ -1611,7 +1611,7 @@ def _routing_drilldown_html(case: dict | None) -> str:
             <tr><td style="color:var(--muted);">Outcome</td><td>{_outcome_badge(routing.get('outcome'))}</td></tr>
             <tr><td style="color:var(--muted);">Why</td><td>{_settled_reason_html(routing)}</td></tr>
             <tr><td style="color:var(--muted);">Message Type</td><td>{html_mod.escape(teddy.get('messageType') or 'unknown')}</td></tr>
-            <tr><td style="color:var(--muted);">Apollo KB Scam Pattern</td><td>{pattern_line}</td></tr>
+            <tr><td style="color:var(--muted);">ApolloSG KB Scam Pattern</td><td>{pattern_line}</td></tr>
             <tr><td style="color:var(--muted);">TC FlyBy Search</td><td>{teddy.get('searchCalls', 0)} call(s) &middot; {teddy.get('searchQueries', 0)} queries &middot; {teddy.get('cacheHits', 0)} from cache</td></tr>
             <tr><td style="color:var(--muted);">Magnum DI</td><td>{magnum_line}</td></tr>
             <tr><td style="color:var(--muted);">Sent To Magnum DI</td><td data-testid="magnum-issues">{issues or 'Nothing — TC FlyBy settled it'}</td></tr>
@@ -1625,7 +1625,7 @@ def _routing_drilldown_html(case: dict | None) -> str:
 
 
 # ── Higgins Plain English: the Fidelity Check of each result (services/higgins/explain) ──
-_FIDELITY_MODES = {"plain": "Plain English shown", "repaired": "Plain English shown, failed parts in Apollo's wording",
+_FIDELITY_MODES = {"plain": "Plain English shown", "repaired": "Plain English shown, failed parts in ApolloSG's wording",
                    "literal": "Apollo's wording shown"}
 
 
@@ -1695,7 +1695,7 @@ def _fidelity_texts_html(case: dict) -> str:
         except Exception:  # noqa: BLE001 — unreadable record: say so rather than guess
             response = None
     if not response:
-        return ('<p style="color:var(--muted);" data-testid="fidelity-texts-gone">The case content has left the server (Apollo keeps it no '
+        return ('<p style="color:var(--muted);" data-testid="fidelity-texts-gone">The case content has left the server (ApolloSG keeps it no '
                 'longer than 24 hours after the investigation finishes), so the two texts are no longer available. The check result stays.</p>')
     esc = lambda t: html_mod.escape(clean(t or ""))  # noqa: E731
     bullets = lambda items: "".join(f"<li>{esc(i)}</li>" for i in items if i)  # noqa: E731
@@ -2201,7 +2201,7 @@ async def investigations_cost_report(request: Request):
          else 'Discrepancy detected — some calls may have different correlation_id formats or missing attribution.'}
     </div>
     <p style="font-size:0.82em;color:var(--muted);margin-top:4px;">
-        <strong>Estimated Cost</strong> is calculated from recorded token counts using Apollo&rsquo;s pricing table.
+        <strong>Estimated Cost</strong> is calculated from recorded token counts using ApolloSG&rsquo;s pricing table.
         It may differ from your actual Google bill due to: Google Search grounding charges on research calls,
         pricing table drift, or cached-token treatment differences. It does not represent a direct Google invoice amount.
     </p>
@@ -2421,7 +2421,7 @@ async def investigation_drilldown(request: Request, case_id: str):
     <p style="font-size:0.82em;color:var(--muted);">
         <strong>Total Tokens</strong> = Input Tokens + Output Tokens + Thinking Tokens.
         Cached tokens are a subset of Input already counted there; they reduce billing but not total count.<br/>
-        <strong>Estimated Cost</strong> is calculated from Apollo&rsquo;s pricing table and may differ from actual Google billing.
+        <strong>Estimated Cost</strong> is calculated from ApolloSG&rsquo;s pricing table and may differ from actual Google billing.
     </p>
     """
 
@@ -2600,7 +2600,7 @@ async def incident_analysis_json(request: Request):
         b["cost"] += g["cost"]
 
     # Ensure all categories present
-    for cat in ["User — Check", "Apollo — Mailbox Monitor", "Apollo — Automatic",
+    for cat in ["User — Check", "ApolloSG — Mailbox Monitor", "ApolloSG — Automatic",
                  "System — Test/Validation", "Recovery/Resume", "Unknown/Unattributed"]:
         by_initiator.setdefault(cat, {"investigations": 0, "calls": 0, "tokens": 0, "cost": 0.0})
 
@@ -2875,7 +2875,7 @@ async def knowledge_page(request: Request):
               "busy": '<div class="alert alert-warning">A refresh is already running.</div>'}.get(request.query_params.get("refresh", ""), "")
     configured = '<span style="color:var(--green);">Tavily key set</span>' if state["configured"] else '<span style="color:var(--red);">Tavily key missing</span>'
     body = f"""
-    <h2>Apollo Knowledge Base</h2>
+    <h2>ApolloSG Knowledge Base</h2>
     {notice}
     <p style="font-size:0.9em;color:var(--muted);">Tavily finds and re-reads pages on trusted sources once a week. Each page keeps its source, authority tier,
     jurisdiction and dates; changed pages are versioned (old versions kept as Superseded) and pages a source stops serving become Historical.
@@ -2988,7 +2988,7 @@ async def knowledge_refresh(request: Request):
         task = asyncio.create_task(apollo_kb.run("manual"))
         _KB_TASKS.add(task)
         task.add_done_callback(_KB_TASKS.discard)
-        await _audit_log(adm.get("email", ""), "knowledge_refresh", "manual Apollo KB refresh")
+        await _audit_log(adm.get("email", ""), "knowledge_refresh", "manual ApolloSG KB refresh")
     return RedirectResponse(f"/api/admin/knowledge?refresh={'busy' if busy else 'started'}", status_code=303)
 
 
@@ -3310,9 +3310,9 @@ strong {{ color: #000; }}
 </style></head><body>
 <img src="{BANNER_PATH}" width="320" height="109" alt="{BANNER_ALT}" />
 <h1>{title}</h1>
-<p style="font-size:9px;color:#666;">Generated: {local_time.label(now_utc(), tz)} — Apollo Admin Portal. Times are local time ({local_time.zone_label(tz)}).</p>
+<p style="font-size:9px;color:#666;">Generated: {local_time.label(now_utc(), tz)} — ApolloSG Admin Portal. Times are local time ({local_time.zone_label(tz)}).</p>
 {body}
-<div class="footer">Apollo Admin Portal — Confidential</div>
+<div class="footer">ApolloSG Admin Portal — Confidential</div>
 </body></html>"""
 
 
@@ -3362,7 +3362,7 @@ def _ai_mode_badge() -> str:
     server — no Gemini calls). Read from the provider gateway itself, so it can't disagree with what runs."""
     if provider.get_provider_mode() == "preview":
         cls, label = "mode-sim", "Simulated"
-        detail = "Preview server — no Gemini calls are made. AI answers come from the simulator and Apollo's knowledge base."
+        detail = "Preview server — no Gemini calls are made. AI answers come from the simulator and ApolloSG's knowledge base."
     elif provider.GEMINI_API_KEY:
         cls, label = "mode-live", "Live AI"
         detail = "Every AI request on this server goes to Gemini and is billed."
@@ -3395,7 +3395,7 @@ def _shell(title: str, active_path: str, body: str, *, admin: dict | None = None
 
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html_mod.escape(title)} — Apollo Admin</title>
+<title>{html_mod.escape(title)} — ApolloSG Admin</title>
 <style>
 :root {{ --bg:#0d1117; --fg:#c9d1d9; --muted:#8b949e; --border:#30363d;
          --accent:#58a6ff; --card:#161b22; --green:#3fb950; --red:#f85149; --yellow:#d29922; }}

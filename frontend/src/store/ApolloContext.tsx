@@ -452,7 +452,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
       const headline = isCall ? `Apollo blocked a call from ${domain}` : `Apollo blocked ${domain}`;
       const whatHappened = isCall
-        ? `Apollo's Call Gate rejected an incoming call from ${domain} on this device before it rang — it matched a number Apollo already knew was high-risk.`
+        ? `Apollo's Call Gate rejected an incoming call from ${domain} on this device before it rang — it matched a number ApolloSG already knew was high-risk.`
         : `Apollo's Site Gate observed a real connection attempt to ${domain} and blocked it on this device.`;
       const whyLine = isCall
         ? "The call was rejected before it rang — confirmed by the operating system, not assumed."
@@ -1031,11 +1031,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           });
           investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
           if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
-          else if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
+          else if (!investigationCaseId) why.push("ApolloSG asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
         } catch (error) {
           // Triage escalated, but the deeper investigation never started. The person is told, rather
           // than being left with a deterministic-only result that looks like the full picture.
-          why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
+          why.push(`ApolloSG couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
         }
       }
     }
@@ -1115,9 +1115,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           });
           investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
           if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
-          else if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
+          else if (!investigationCaseId) why.push("ApolloSG asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.");
         } catch (error) {
-          why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
+          why.push(`ApolloSG couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`);
         }
       }
     }
@@ -1180,7 +1180,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             continue;
           }
           if (item.status === "queue_error") {
-            showToast("Apollo could not read its protected message queue. Open Support before relying on automatic text checks.", "growling");
+            showToast("ApolloSG could not read its protected message queue. Open Support before relying on automatic text checks.", "growling");
             continue;
           }
           const text = typeof item?.text === "string" ? item.text : "";
@@ -1219,7 +1219,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         // Module absent / listener not granted is reported by the capability check above, so a throw here
         // means a real read failure: Apollo cannot claim there was nothing to assess.
         if (error instanceof NativeCallFailed) {
-          showToast("Apollo couldn't read its protected message queue, so recent texts may not have been assessed. Open Support before relying on automatic text checks.", "growling");
+          showToast("ApolloSG couldn't read its protected message queue, so recent texts may not have been assessed. Open Support before relying on automatic text checks.", "growling");
         }
       }
     };
@@ -1281,9 +1281,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             initial_findings: [...nativeWhy, ...analysis.why].slice(0, 12),
           });
           investigationCaseId = typeof remote.case?.id === "string" ? remote.case.id : null;
-          if (!investigationCaseId) escalationNote = "Apollo asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.";
+          if (!investigationCaseId) escalationNote = "ApolloSG asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.";
         } catch (error) {
-          escalationNote = `Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`;
+          escalationNote = `ApolloSG couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from Apollo's deterministic checks only.`;
         }
       }
       const why = [...nativeWhy, ...analysis.why];
@@ -1333,7 +1333,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           if (!autoBlockConfirmed) autoBlockDetail = "This device didn't confirm it saved the number to Apollo's screening list.";
         } catch (error) {
           autoBlockDetail = error instanceof NativeCallFailed
-            ? "Apollo tried to add this number to its screening list and the device read failed."
+            ? "ApolloSG tried to add this number to its screening list and the device read failed."
             : "Apollo couldn't confirm the number was added to its screening list.";
         }
       }
@@ -1358,9 +1358,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           initial_findings: why,
         });
         investigationCaseId = typeof investigationResult.case?.id === "string" ? investigationResult.case.id : null;
-        if (!investigationCaseId) why.push("Apollo asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.");
+        if (!investigationCaseId) why.push("ApolloSG asked for a deeper Magnum DI investigation but the service didn't return a case, so no deeper investigation is running.");
       } catch (error) {
-        why.push(`Apollo couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from the reputation check and Apollo's deterministic rules only.`);
+        why.push(`ApolloSG couldn't start the deeper Magnum DI investigation (${error instanceof Error ? error.message : "reason could not be determined"}). This result comes from the reputation check and Apollo's deterministic rules only.`);
       }
 
       const ev: PatrolEvent = {
@@ -1412,9 +1412,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         try {
           const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
             gate: "call",
-            question: `Investigate caller ${result.number}. Apollo's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.`,
+            question: `Investigate caller ${result.number}. ApolloSG's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nReputation: no data returned (source: ${result.source})`, label: "Number with no reputation data" }],
-            initial_findings: [`Apollo's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
+            initial_findings: [`ApolloSG's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
           });
           investigationCaseId = typeof created.case?.id === "string" ? created.case.id : null;
         } catch {
@@ -1526,7 +1526,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         });
         investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
         if (remote.investigation_error) investigationError = remote.investigation_error;
-        else if (!investigationCaseId) investigationError = "Apollo asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.";
+        else if (!investigationCaseId) investigationError = "ApolloSG asked for a deeper Magnum DI investigation but no case was opened, so no deeper investigation is running.";
       } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not start the investigation."; }
     }
     // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
@@ -1591,7 +1591,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       // Rules are prepared but the Safari extension may not be enabled, or reload failed.
       // This is better than "could not verify" — the rules exist, just not fully active.
       const limitation = nativeResult.activeState === "not_enabled"
-        ? "Enable Apollo's Safari extension in Settings > Safari > Extensions."
+        ? "Enable ApolloSG's Safari extension in Settings > Safari > Extensions."
         : nativeResult.reloadState === "reload_failed"
           ? "The rule list is prepared but Safari could not reload it. Try again."
           : "The rule is prepared but Apollo cannot confirm it is active.";
@@ -1609,7 +1609,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const trustEvent = useCallback(async (event: PatrolEvent) => {
     if (event.state !== "growling" || !event.trust_allowed || !event.indicator_digest) { showToast("Trust is only available for uncertain (growling) items.", "growling"); return false; } // never overrides confirmed threats
-    if (!deviceId) { showToast("Apollo isn't set up on this device yet.", "growling"); return false; }
+    if (!deviceId) { showToast("ApolloSG isn't set up on this device yet.", "growling"); return false; }
     const entry: TrustEntry = { trust_id: Crypto.randomUUID(), device_id: deviceId, indicator_type: "url", indicator_digest: event.indicator_digest, indicator_host: event.indicator_host ?? "", event_id: event.event_id, created_at: new Date().toISOString(), local_indicator: event.local_indicator ?? undefined };
     await persistTrust([entry, ...trust]);
     const { local_indicator: _omit, ...syncable } = entry;

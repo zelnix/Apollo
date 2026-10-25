@@ -44,7 +44,7 @@ export function buildProtectionRows(
 
   // VPN / network extension / TUN interface.
   if (!p || p.enforcementMethod === "none") rows.push({ label: "VPN / TUN interface", state: p ? "Unsupported on this device" : "Status unavailable", detail: "No packet-level interface on this platform." });
-  else if (p.enforcementMethod === "packet_filter" || p.enforcementMethod === "dns_filter") rows.push({ label: "VPN / TUN interface", state: p.operational ? (p.lastVerified ? "Active and verified" : "Active") : "Warning", detail: p.operational ? "Apollo's local interface is up." : "Interface is not currently up." });
+  else if (p.enforcementMethod === "packet_filter" || p.enforcementMethod === "dns_filter") rows.push({ label: "VPN / TUN interface", state: p.operational ? (p.lastVerified ? "Active and verified" : "Active") : "Warning", detail: p.operational ? "ApolloSG's local interface is up." : "Interface is not currently up." });
   else rows.push({ label: "VPN / TUN interface", state: "Unsupported on this device", detail: "This platform enforces via a content blocker, not a VPN/TUN." });
 
   // DNS protection.
@@ -82,7 +82,7 @@ export function buildHigginsInfo(health: FullHealthCheck | null, firstCheck: Fir
   if (firstCheck) warnings.push(...firstCheck.concerns);
   if (health) {
     if (health.device.status === "degraded" || health.device.status === "unavailable") warnings.push("Apollo could not confirm device protection.");
-    if (health.backend.status === "degraded" || health.backend.status === "unavailable") warnings.push("Apollo's online services need attention.");
+    if (health.backend.status === "degraded" || health.backend.status === "unavailable") warnings.push("ApolloSG's online services need attention.");
     if (health.higgins.status === "unavailable") warnings.push("Higgins investigations are currently unavailable.");
   }
   const result = firstCheck ? `Higgins ${firstCheck.overall.replace("_", " ")}` : health?.overall === "healthy" ? "All checks passed" : health?.checkedAt ? "Some checks need attention" : UNAVAILABLE;
@@ -103,7 +103,7 @@ export function renderSupportSummaryText(s: SupportSummary, reference: string): 
   return [
     `Support Reference: ${reference}`, "",
     "APPLICATION DETAILS",
-    `App: Apollo`,
+    `App: ApolloSG`,
     `Version: ${s.app.version}`,
     `Build: ${s.app.build}`,
     `Build ID: ${s.app.buildId}`,
@@ -129,7 +129,7 @@ export function renderSupportSummaryText(s: SupportSummary, reference: string): 
 /** Email body per the spec §8 template. Description is the user's words (left blank for them to fill). */
 export function renderEmailBody(s: SupportSummary, reference: string, description = ""): string {
   return [
-    "Apollo Support Request", RECTANGLE, "",
+    "ApolloSG Support Request", RECTANGLE, "",
     `Support Reference: ${reference}`, "",
     "DESCRIPTION OF PROBLEM",
     description || "[Please describe the issue here]", "",
@@ -137,7 +137,7 @@ export function renderEmailBody(s: SupportSummary, reference: string, descriptio
     "DIAGNOSTIC ATTACHMENTS",
     "No diagnostic report is attached unless you exported one and attached it yourself.", "",
     `Support Reference: ${reference}`, "",
-    "This email was prepared by Apollo. You have reviewed it before sending.",
+    "This email was prepared by ApolloSG. You have reviewed it before sending.",
   ].join("\n");
 }
 
@@ -153,7 +153,7 @@ export function renderReportHtml(s: SupportSummary, reference: string): string {
     .ref{color:#555;margin-bottom:14px} table{width:100%;border-collapse:collapse} td{border-top:1px solid #e3e6ec;padding:6px 8px;vertical-align:top}
     .kv{display:flex;justify-content:space-between;border-top:1px solid #eef0f4;padding:5px 0} .kv b{color:#0B1B3A}
   </style></head><body>
-    <h1>Apollo Higgins Diagnostic Report</h1>
+    <h1>ApolloSG Higgins Diagnostic Report</h1>
     <div class="ref">Support Reference: ${esc(reference)} · Generated on-device ${esc(new Date().toLocaleString())}</div>
     <h2>Application</h2>
     ${[["Version", s.app.version], ["Build", s.app.build], ["Build ID", s.app.buildId], ["Update ID", s.app.updateId], ["Environment", s.app.environment], ["App first installed", s.app.installedAt], ["Bundle published", s.app.bundlePublishedAt], ["Last native update", s.app.lastNativeUpdateAt]].map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}
@@ -166,6 +166,6 @@ export function renderReportHtml(s: SupportSummary, reference: string): string {
     <div class="kv"><span>Result</span><b>${esc(s.higgins.result)}</b></div>
     <h2>Warnings</h2>
     ${warnings}
-    <p style="margin-top:18px;color:#555">Generated on-device by Apollo. Contains only status, counts and dates — no credentials, tokens, browsing history or raw app data. This is a diagnostic record, not a forensic report, and a status marked "verified" refers only to OS-confirmed enforcement.</p>
+    <p style="margin-top:18px;color:#555">Generated on-device by ApolloSG. Contains only status, counts and dates — no credentials, tokens, browsing history or raw app data. This is a diagnostic record, not a forensic report, and a status marked "verified" refers only to OS-confirmed enforcement.</p>
   </body></html>`;
 }

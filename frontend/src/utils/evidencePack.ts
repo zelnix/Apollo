@@ -63,7 +63,7 @@ ${ARTEFACT_CSS}
     ${summaryHtml}
     ${originalSourceHtml}
     ${imageHtml}
-    <div class="foot">Prepared by Apollo on the user's device.</div>
+    <div class="foot">Prepared by ApolloSG on the user's device.</div>
   </body></html>`;
 
   if (Platform.OS === "web") { await Print.printAsync({ html }); return; }

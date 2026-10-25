@@ -89,7 +89,7 @@ export default function FamilyIncident() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="family-incident-scroll" bottomOffset={24} keyboardShouldPersistTaps="handled">
         <StaleNote queries={[q, notes]} testID="family-incident-stale" />
-        {q.isLoading ? <Body>Loading…</Body> : q.isError && !inc ? <Body testID="family-incident-unavailable">Apollo can&apos;t reach the security service right now, so this shared incident can&apos;t be loaded. It hasn&apos;t gone anywhere — try again shortly.</Body> : !inc ? <Body testID="family-incident-missing">This incident isn&apos;t available (it may have been shared with someone else).</Body> : (
+        {q.isLoading ? <Body>Loading…</Body> : q.isError && !inc ? <Body testID="family-incident-unavailable">ApolloSG can&apos;t reach the security service right now, so this shared incident can&apos;t be loaded. It hasn&apos;t gone anywhere — try again shortly.</Body> : !inc ? <Body testID="family-incident-missing">This incident isn&apos;t available (it may have been shared with someone else).</Body> : (
           <>
             <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, inc.resolved ? "resting" : inc.state) }} testID="family-incident-summary">
               <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}><Pill tone={inc.state} label={STATE_NAME[inc.state]} testID="family-incident-state" />{inc.resolved ? <Pill tone="resting" label="They marked it handled" testID="family-incident-resolved" /> : <Pill tone="neutral" label={`${doneCount}/${inc.steps.length} steps done`} testID="family-incident-progress" />}</View>
@@ -98,7 +98,7 @@ export default function FamilyIncident() {
               <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
                 {inc.phone ? <Button testID="family-incident-call" label={`Call ${inc.from_label}`} icon={<Phone size={18} color={colors.onBrandPrimary} />} onPress={() => void Linking.openURL(`tel:${inc.phone.replace(/[^+\d]/g, "")}`)} /> : <Body>No phone number saved — add one from any of their alerts.</Body>}
               </View>
-              <Body>Walk them through the unticked steps below. Don&apos;t ask for their passwords or codes — Apollo never does either.</Body>
+              <Body>Walk them through the unticked steps below. Don&apos;t ask for their passwords or codes — ApolloSG never does either.</Body>
             </Card>
             <View>
               <SectionTitle>What happened to them, in order</SectionTitle>
@@ -124,7 +124,7 @@ export default function FamilyIncident() {
             </Card>
             <Card style={{ gap: spacing.md }} testID="family-note-card">
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Heart size={18} color={colors.resting} /><SectionTitle>Send a reassurance note</SectionTitle></View>
-              <Body>A short line lands on {inc.from_label}&apos;s incident timeline (and as an alert). Never ask for passwords or codes — Apollo won&apos;t either.</Body>
+              <Body>A short line lands on {inc.from_label}&apos;s incident timeline (and as an alert). Never ask for passwords or codes — ApolloSG won&apos;t either.</Body>
               <View style={s.chips}>
                 {PRESETS.map((p) => (
                   <Pressable key={p.kind} testID={`family-note-kind-${p.kind}`} accessibilityRole="radio" accessibilityState={{ selected: kind === p.kind }} onPress={() => setKind(p.kind)} style={[s.chip, kind === p.kind && s.chipOn]}><Text style={s.chipText}>{p.label}</Text></Pressable>

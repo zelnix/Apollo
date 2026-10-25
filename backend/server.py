@@ -275,7 +275,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="Apollo V1 API", lifespan=lifespan)
+app = FastAPI(title="ApolloSG V1 API", lifespan=lifespan)
 app.add_middleware(PrivacyBoundary)
 
 

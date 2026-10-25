@@ -172,7 +172,7 @@ _MAGNUM_WHY = {
     "MAGNUM-READING": "part of what you sent (a picture or scanned page) had to be read directly",
     "MAGNUM-REASONING": "the message asks you to send money, details or access through a route no official source has verified",
     "MAGNUM-RELATING": "TC FlyBy's findings pointed in different directions and needed weighing up",
-    "MAGNUM-QUESTION": "neither Apollo's knowledge base nor a targeted search could answer the question",
+    "MAGNUM-QUESTION": "neither ApolloSG's knowledge base nor a targeted search could answer the question",
 }
 _CAPABILITY_RULE = {"reading": "MAGNUM-READING", "reasoning": "MAGNUM-REASONING", "relating": "MAGNUM-RELATING"}
 
@@ -200,7 +200,7 @@ def _flyby(teddy: dict, answered_by: str) -> Optional[tuple[str, str]]:
         "clear": ("FLYBY-CLEAR", "every planned check ran over everything you sent and none found a scam indicator"),
         "unknown": ("FLYBY-UNKNOWN", "its checks couldn't establish more, and a deeper look couldn't change what you should do"),
         "knowledge": ("FLYBY-ANSWERED", "a targeted search answered the question, backed by a real web page" if answered_by == "teddy_search"
-                      else "Apollo's knowledge base answers the question from a named source"),
+                      else "ApolloSG's knowledge base answers the question from a named source"),
     }.get(basis or "")
 
 

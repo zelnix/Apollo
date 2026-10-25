@@ -107,7 +107,7 @@ class ApolloCallScreeningService : CallScreeningService() {
     // A short, on-phone history built ONLY from the incoming numbers Android itself hands to
     // onScreenCall while Apollo holds the call-screening role. Never read from the system call log.
     // Bounded to MAX_SCREENED entries and SCREENED_RETENTION_MS; cleared by the app on request and by
-    // "Delete My Apollo Data".
+    // "Delete My ApolloSG Data".
     private const val KEY_SCREENED = "screened_calls"
     private const val MAX_SCREENED = 50
     private const val SCREENED_RETENTION_MS = 30L * 24 * 60 * 60 * 1000

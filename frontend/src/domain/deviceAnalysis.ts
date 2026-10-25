@@ -136,7 +136,7 @@ export function deriveDeviceSecurityChanges(previous: DeviceSignals | null, curr
   const add = (eventType: DeviceSecurityChange["eventType"], recommendedAction: string, appName: string | null = null) => changes.push({ eventType, status: "suspicious", confidence: "high", appName, recommendedAction, occurredAt: observedAt, attributedTo: "user_or_unknown" });
   if (previous.vpnActive !== null && current.vpnActive !== null && previous.vpnActive !== current.vpnActive) {
     const apolloOwned = current.vpnActive === true && apolloVpnActive;
-    changes.push({ eventType: "vpn_change", status: apolloOwned ? "low_risk" : "suspicious", confidence: "high", appName: null, occurredAt: observedAt, attributedTo: apolloOwned ? "apollo" : "user_or_unknown", recommendedAction: apolloOwned ? "Apollo turned on its own protection VPN. No action needed." : "Open VPN settings and confirm whether you made this change." });
+    changes.push({ eventType: "vpn_change", status: apolloOwned ? "low_risk" : "suspicious", confidence: "high", appName: null, occurredAt: observedAt, attributedTo: apolloOwned ? "apollo" : "user_or_unknown", recommendedAction: apolloOwned ? "ApolloSG turned on its own protection VPN. No action needed." : "Open VPN settings and confirm whether you made this change." });
   }
   if (previous.managementProfile !== "unknown" && current.managementProfile !== "unknown" && previous.managementProfile !== current.managementProfile) add("profile_change", "Open device-management settings and confirm whether you added or removed this profile.");
   if (!sameList(previous.thirdPartyAccessibilityServices, current.thirdPartyAccessibilityServices)) {
@@ -157,7 +157,7 @@ export const DEVICE_STATUS: Record<DeviceStatus, { title: string; state: ApolloS
   protected: { title: "Protected", state: "resting", meaning: "No meaningful issues detected within what Apollo can see here." },
   review: { title: "Review recommended", state: "growling", meaning: "Some permissions or settings deserve attention." },
   action: { title: "Action required", state: "barking", meaning: "A high-risk configuration or app was detected." },
-  recovery: { title: "Recovery", state: "barking", meaning: "Risky access was already granted. Follow the steps — Apollo stays with you." },
+  recovery: { title: "Recovery", state: "barking", meaning: "Risky access was already granted. Follow the steps — ApolloSG stays with you." },
 };
 
 export interface DeviceFinding { id: string; title: string; severity: "info" | "review" | "high"; plain: string; action: string; settings: string; handoff?: "network" | "identity" | "app" }
@@ -195,10 +195,10 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
   // than describing an unnamed "a profile" the person then has to go hunting for.
   const profileNames = adminLabels.join(", ");
   const nameUnknownWhy = p === "ios"
-    ? "iPhone tells Apollo that a configuration profile is installed but never its name."
-    : "Android reported an active management profile without naming it to Apollo.";
+    ? "iPhone tells ApolloSG that a configuration profile is installed but never its name."
+    : "Android reported an active management profile without naming it to ApolloSG.";
   if (managed && !self.managementExpected) f.push({ id: "D02",
-    title: profileNames ? `Device management profile: ${profileNames}` : "Device management profile (name not available to Apollo)",
+    title: profileNames ? `Device management profile: ${profileNames}` : "Device management profile (name not available to ApolloSG)",
     severity: "high",
     plain: profileNames
       ? `${profileNames} can install apps, change network settings and read some activity on this device.`
@@ -235,14 +235,14 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
 
   const protection = context.protection;
   const protectionHealth: DeviceProtectionHealth = !protection
-    ? { status: "unavailable", title: "Protection health unavailable", detail: "Apollo could not obtain a current protection observation. This does not mean protection is running." }
+    ? { status: "unavailable", title: "Protection health unavailable", detail: "ApolloSG could not obtain a current protection observation. This does not mean protection is running." }
     : protection.operational
       ? { status: "active", title: "Apollo protection is confirmed running", detail: `The device reported protection operational${protection.checkedAt ? ` at ${new Date(protection.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}.` }
       : !protection.requested
-        ? { status: "off", title: "Apollo protection is turned off", detail: "Manual checks still work, but Apollo has no confirmed automatic protection running." }
+        ? { status: "off", title: "Apollo protection is turned off", detail: "Manual checks still work, but ApolloSG has no confirmed automatic protection running." }
         : { status: "needs_attention", title: protection.permissionIssues.length ? "Apollo protection permission is missing" : "Apollo protection is not running", detail: protection.permissionIssues.length ? `${protection.permissionIssues.join(", ")} must be restored before Apollo can confirm protection.` : protection.degradedReason ?? "Protection was requested, but the device did not confirm it running." };
-  if (protectionHealth.status === "off") f.push({ id: "D12", title: "Apollo protection is off", severity: "review", plain: protectionHealth.detail, action: "Open Apollo's protection settings, turn protection on, then re-check the device.", settings: p === "ios" ? "Settings → Apollo and Settings → Safari → Extensions" : "Settings → Network & internet → VPN", handoff: "network" });
-  if (protectionHealth.status === "needs_attention") f.push({ id: "D13", title: protection?.permissionIssues.length ? "Apollo protection permission lost" : "Apollo protection stopped", severity: "review", plain: `${protectionHealth.detail} This is an observed protection gap, not proof that somebody tampered with the device.`, action: "Restore the permission or protection service, then return to Device monitoring and re-check.", settings: p === "ios" ? "Settings → Apollo and Settings → Safari → Extensions" : "Settings → Network & internet → VPN", handoff: "network" });
+  if (protectionHealth.status === "off") f.push({ id: "D12", title: "Apollo protection is off", severity: "review", plain: protectionHealth.detail, action: "Open ApolloSG's protection settings, turn protection on, then re-check the device.", settings: p === "ios" ? "Settings → ApolloSG and Settings → Safari → Extensions" : "Settings → Network & internet → VPN", handoff: "network" });
+  if (protectionHealth.status === "needs_attention") f.push({ id: "D13", title: protection?.permissionIssues.length ? "Apollo protection permission lost" : "Apollo protection stopped", severity: "review", plain: `${protectionHealth.detail} This is an observed protection gap, not proof that somebody tampered with the device.`, action: "Restore the permission or protection service, then return to Device monitoring and re-check.", settings: p === "ios" ? "Settings → ApolloSG and Settings → Safari → Extensions" : "Settings → Network & internet → VPN", handoff: "network" });
 
   const changed = (context.recentChanges ?? []).filter((event) => ["permission_change", "service_enabled", "vpn_change", "profile_change"].includes(event.eventType) && event.status !== "low_risk" && event.confidence !== "low").slice(0, 3);
   for (const event of changed) {

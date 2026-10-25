@@ -232,7 +232,7 @@ function higginsExplanation(failure: Record<string, unknown> | null | undefined,
     if (code === "budget_exhausted") return "Magnum DI ran out of processing time before it could finish. It's attempting to continue the investigation using the information already collected.";
     return "Magnum DI encountered a temporary issue and is automatically retrying.";
   }
-  if (code === "response_invalid") return "Magnum DI couldn't complete the investigation. Gemini returned a response Apollo couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is in the technical details.";
+  if (code === "response_invalid") return "Magnum DI couldn't complete the investigation. Gemini returned a response ApolloSG couldn't validate. No investigation conclusion has been substituted — Gemini's actual reply is in the technical details.";
   if (code === "provider_configuration") return "Magnum DI couldn't access one of its analysis services because it isn't configured correctly. This needs a technical fix rather than another immediate attempt.";
   if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
   if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
@@ -353,7 +353,7 @@ function buildTimeline(state: CaseState): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const { caseData, turns, failure, phase, response } = state;
   const name = investigatorName(caseData?.answeredBy);
-  if (caseData) entries.push({ title: "Investigation opened", body: "Apollo began the investigation.", at: caseData.createdAt, iconType: "create" });
+  if (caseData) entries.push({ title: "Investigation opened", body: "ApolloSG began the investigation.", at: caseData.createdAt, iconType: "create" });
   for (const turn of turns) entries.push({ title: "Follow-up submitted", body: `You asked: "${turn.question.slice(0, 100)}${turn.question.length > 100 ? "\u2026" : ""}"`, at: turn.committedAt, iconType: "question" });
   const history = ((failure as unknown as Record<string, unknown> | null)?.retryHistory ?? (failure as unknown as Record<string, unknown> | null)?.retry_history ?? []) as Record<string, unknown>[];
   for (const rh of history) {
@@ -545,7 +545,7 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
 
       {/* Unavailable / expired notice */}
       {ev.availability === "content_expired" ? (
-        <Text style={s.muted}>Apollo&apos;s server copy was deleted after 24 hours. Your copy on this phone is kept until you delete it.</Text>
+        <Text style={s.muted}>ApolloSG&apos;s server copy was deleted after 24 hours. Your copy on this phone is kept until you delete it.</Text>
       ) : ev.availability !== "available" ? (
         <Text style={s.muted}>{ev.availability === "purged" ? "Server copy deleted. Your copy on this phone is kept until you delete it." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
       ) : null}
@@ -587,7 +587,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   useEffect(() => onRecheck((o) => {
     if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
     const fresh = o.observation ? `fresh observation: ${scrubMessage(o.observation.status)}${o.observation.unavailableReason ? ` (${scrubMessage(o.observation.unavailableReason)})` : ""}` : "no observation possible on this device";
-    const verdict = o.plan ? ({ correct: "The setting now matches what Apollo asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here \u2014 only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
+    const verdict = o.plan ? ({ correct: "The setting now matches what ApolloSG asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here \u2014 only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
     setActionNote(`Back from Settings \u2014 ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
     setFailedRecheck(o.attempt.status === "failed" && o.plan?.outcome === "failed");
     setConfirmablePlanId(o.plan?.outcome === "cannot_observe" ? o.attempt.planId : null);
@@ -600,7 +600,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     setPdfExporting(true); setPdfNote(null);
     try {
       const token = await getDeviceToken();
-      if (!token) { setPdfNote("Device not registered. Please restart Apollo."); return; }
+      if (!token) { setPdfNote("Device not registered. Please restart ApolloSG."); return; }
       // Times in the report are this phone's local time.
       const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf?tzOffset=${-new Date().getTimezoneOffset()}`;
       const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
@@ -771,7 +771,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                   void runAction(action, caseData).then((outcome) => {
                     setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this phone."
                       : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
-                      : outcome.kind === "requested" ? "Apollo asked the system for that permission. A fresh check runs when you return."
+                      : outcome.kind === "requested" ? "ApolloSG asked the system for that permission. A fresh check runs when you return."
                       : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
                     onAction?.(action, outcome);
                   });
@@ -801,7 +801,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           {confirmablePlanId && caseData ? <Button testID="inv-settings-user-confirm" variant="ghost" label="I checked this setting myself" onPress={() => {
             void investigationApi.confirmSettingsPlan(caseData.id, confirmablePlanId, true).then((result) => {
               setConfirmablePlanId(null); setActionNote(result.explanation);
-            }).catch(() => setActionNote("Apollo could not record your confirmation. Try again."));
+            }).catch(() => setActionNote("ApolloSG could not record your confirmation. Try again."));
           }} /> : null}
           {failedRecheck ? <Button testID="inv-recheck-retry" variant="ghost" label="Retry the fresh check" onPress={() => { setFailedRecheck(false); void retryFailedAttempt(); }} /> : null}
 

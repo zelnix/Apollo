@@ -278,7 +278,7 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
       <Card style={{ gap: spacing.xs }} testID="evidence-header-card">
         <Text style={s.sectionTitle}>SOURCE EVIDENCE</Text>
         <Text style={s.infoBody}>
-          The original material Apollo relied on for this investigation. Content is preserved unaltered.
+          The original material ApolloSG relied on for this investigation. Content is preserved unaltered.
         </Text>
       </Card>
 

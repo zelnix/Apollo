@@ -131,9 +131,9 @@ export const CallSdk = {
         roleHeld: caps.callScreening === "supported",
         roleAvailable: caps.callScreening !== "unsupported",
         detail: caps.callScreening === "supported"
-          ? "Apollo holds the call-screening role."
+          ? "ApolloSG holds the call-screening role."
           : caps.callScreening === "permission_required"
-            ? "Call-screening role is available but not held by Apollo. Another app may hold it."
+            ? "Call-screening role is available but not held by ApolloSG. Another app may hold it."
             : "Call screening is not supported on this device.",
       };
     } catch (err) {

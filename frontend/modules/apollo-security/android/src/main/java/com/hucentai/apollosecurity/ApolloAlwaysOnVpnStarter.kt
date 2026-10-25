@@ -31,14 +31,14 @@ class ApolloAlwaysOnVpnStarter : Service() {
     Thread({
       try {
         if (!ApolloGuardDogProductionOwner.isEligible(app)) {
-          Log.w(TAG, "Android asked Apollo to connect, but production protection is disabled in this build")
+          Log.w(TAG, "Android asked ApolloSG to connect, but production protection is disabled in this build")
         } else {
           val runtime = ApolloGuardDogProductionOwner.get(app)
           runtime.awaitPhysicalDns(NETWORK_WAIT_MS)
           runtime.startForSystemRequest()
         }
       } catch (t: Throwable) {
-        Log.w(TAG, "Android asked Apollo to connect and it couldn't: ${t.message}")
+        Log.w(TAG, "Android asked ApolloSG to connect and it couldn't: ${t.message}")
       } finally {
         stopSelf(startId)
       }

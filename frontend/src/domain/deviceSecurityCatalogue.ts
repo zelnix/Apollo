@@ -261,7 +261,7 @@ const CATALOGUE: SecurityDef[] = [
       ? ["Open System Settings → Privacy & Security", "Scroll to ‘Lockdown Mode’", "Read what it switches off before deciding"]
       : ["Open Settings → Privacy & Security", "Scroll to ‘Lockdown Mode’", "Read what it switches off before deciding"],
     action: (platform) => ({ target: "security", path: platform === "macos" ? "System Settings → Privacy & Security → Lockdown Mode" : "Settings → Privacy & Security → Lockdown Mode", label: "Read about Lockdown Mode" }),
-    unverified: "Apple does not let Apollo read this setting, so Apollo cannot tell whether it is on.",
+    unverified: "Apple does not let Apollo read this setting, so ApolloSG cannot tell whether it is on.",
   },
 
   // ── Apps on this device ───────────────────────────────────────────
@@ -331,8 +331,8 @@ const CATALOGUE: SecurityDef[] = [
     resolve: (read) => {
       if (read.unknownSources === null) return null;
       return read.unknownSources
-        ? { state: "off", health: "review", detail: "Apollo itself is allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
-        : { state: "as_recommended", detail: "Apollo is not allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" };
+        ? { state: "off", health: "review", detail: "ApolloSG itself is allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
+        : { state: "as_recommended", detail: "ApolloSG is not allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" };
     },
   },
   {
@@ -391,7 +391,7 @@ const CATALOGUE: SecurityDef[] = [
       if (mode === "automatic") return { state: "as_recommended", detail: "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
       if (mode === "hostname") return { state: "off", health: "review", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
       if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this phone’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
-      if (mode === "not_in_use") return { state: "off", health: "review", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell Apollo which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
+      if (mode === "not_in_use") return { state: "off", health: "review", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell ApolloSG which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
       return null;
     },
   },
@@ -433,7 +433,7 @@ const CATALOGUE: SecurityDef[] = [
           ? ["Open Settings → General → Software Update", "Install anything offered", "Tap ‘Automatic Updates’ and turn on ‘Security Responses & System Files’"]
           : ["Open Settings → Software update (on some phones: Settings → System → System update)", "Tap ‘Download and install’ or ‘Check for updates’", "Install anything offered, including Google Play system updates", "Turn on automatic updates if your phone offers it"],
     action: (platform) => ({ target: "security", path: platform === "windows" ? "Settings → Windows Update" : platform === "macos" ? "System Settings → General → Software Update" : platform === "ios" ? "Settings → General → Software Update" : "Settings → Software update", label: isDesktop(platform) ? "Where to find it" : "Open update settings" }),
-    unverified: "Apollo cannot tell whether an update is waiting for this device.",
+    unverified: "ApolloSG cannot tell whether an update is waiting for this device.",
     resolve: (read, now, platform) => {
       if (isDesktop(platform)) {
         if (read.osUpdatesCurrent === null) return null;
@@ -445,7 +445,7 @@ const CATALOGUE: SecurityDef[] = [
       if (age === null) return null;
       const months = Math.round(age / 30);
       if (age <= 120) {
-        return { state: "active", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months <= 1 ? "a month" : `${months} months`} old, which is current. Apollo cannot tell whether a newer one is waiting, so it is still worth checking.` };
+        return { state: "active", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months <= 1 ? "a month" : `${months} months`} old, which is current. ApolloSG cannot tell whether a newer one is waiting, so it is still worth checking.` };
       }
       return { state: "out_of_date", health: age > 365 ? "action" : "review", detail: `This device’s security patch is dated ${read.securityPatch} — about ${months} months old. That is behind, and the fixes released since then are not on this device.` };
     },
@@ -533,7 +533,7 @@ const CATALOGUE: SecurityDef[] = [
     recommended: "Higgins recommends turning this on if you rarely get calls from new numbers. If you are expecting a delivery or a clinic, turn it off for the day.",
     steps: () => ["Open Settings → Apps → Phone", "Tap ‘Silence Unknown Callers’", "Turn it on"],
     action: () => ({ target: "apps", path: "Settings → Apps → Phone → Silence Unknown Callers", label: "Check Silence Unknown Callers" }),
-    unverified: "Apple does not let Apollo read this setting, so Apollo cannot tell whether it is on.",
+    unverified: "Apple does not let Apollo read this setting, so ApolloSG cannot tell whether it is on.",
   },
   {
     id: "filter_unknown_senders",
@@ -545,7 +545,7 @@ const CATALOGUE: SecurityDef[] = [
     recommended: "Higgins recommends turning this on, and checking the ‘Unknown Senders’ list now and then for anything genuine.",
     steps: () => ["Open Settings → Apps → Messages", "Tap ‘Unknown & Spam’", "Turn on ‘Filter Unknown Senders’"],
     action: () => ({ target: "apps", path: "Settings → Apps → Messages → Unknown & Spam", label: "Check message filtering" }),
-    unverified: "Apple does not let Apollo read this setting, so Apollo cannot tell whether it is on.",
+    unverified: "Apple does not let Apollo read this setting, so ApolloSG cannot tell whether it is on.",
   },
 
   // ── If it is lost or stolen ───────────────────────────────────────
@@ -970,7 +970,7 @@ export function previewProtectionRows(read: SecurityStateRead = EMPTY_SECURITY_R
     const where = def.platforms.map((p) => osName(p)).join(", ");
     return toRow(
       def, read, platform, UNKNOWN_DEVICE,
-      { state: "not_readable_here", detail: `Apollo is not running on the device itself here, so it could not read this. On ${where}, open Apollo on the device to see the real state.` },
+      { state: "not_readable_here", detail: `ApolloSG is not running on the device itself here, so it could not read this. On ${where}, open ApolloSG on the device to see the real state.` },
       ownerOf(def, platform),
     );
   });

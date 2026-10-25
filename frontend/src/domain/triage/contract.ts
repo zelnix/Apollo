@@ -80,7 +80,7 @@ export function gapIsRecoverable(code: string): boolean {
 
 /** Plain-English translation of a Coverage Gap code — Higgins' wording, never a technical code. */
 export function gapPlainEnglish(code: string): string {
-  return GAP_META[code]?.plain ?? "Apollo couldn't complete part of this check.";
+  return GAP_META[code]?.plain ?? "ApolloSG couldn't complete part of this check.";
 }
 
 /** Historical SAFE/SUSPICIOUS/UNCERTAIN results, mapped for display only. */

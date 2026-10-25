@@ -81,7 +81,7 @@ export default function TextGuard() {
     setOpeningSettings(true);
     try {
       const r = await MessagingSdk.openSmsListenerSettings();
-      if (r.opened) showToast("Settings opened. Turn on Apollo under notification access, then come back.", "neutral");
+      if (r.opened) showToast("Settings opened. Turn on ApolloSG under notification access, then come back.", "neutral");
     } finally { setOpeningSettings(false); }
   };
 
@@ -178,7 +178,7 @@ export default function TextGuard() {
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
-        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection and link and public evidence checks: TC FlyBy first, and Magnum DI only if a deeper look could change the answer. Raw content is not retained by Apollo.</Body>
+        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection and link and public evidence checks: TC FlyBy first, and Magnum DI only if a deeper look could change the answer. Raw content is not retained by ApolloSG.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="textguard-auto-card">
           <View style={s.rowTop}>
@@ -188,7 +188,7 @@ export default function TextGuard() {
               label={capsReadFailed ? "Couldn't check" : smsOn ? "On" : smsSupported ? "Off" : "Not available"} testID="textguard-auto-status" />
           </View>
           {capsReadFailed ? (
-            <Body testID="textguard-auto-detail">Apollo asked this device whether automatic scanning is on and the read failed, so it can&apos;t say either way. Nothing here confirms texts are being scanned. Pull down to try again, or paste a text below.</Body>
+            <Body testID="textguard-auto-detail">ApolloSG asked this device whether automatic scanning is on and the read failed, so it can&apos;t say either way. Nothing here confirms texts are being scanned. Pull down to try again, or paste a text below.</Body>
           ) : Platform.OS === "android" ? (
             smsOn ? (
               <Body testID="textguard-auto-detail">Apollo checks new text-message notifications from your chosen messaging app as they arrive. Notification text is sent for the same purpose-limited assessment as a manual check, then discarded. Apollo never reads your SMS inbox or message history.</Body>
@@ -199,7 +199,7 @@ export default function TextGuard() {
               </>
             )
           ) : (
-            <Body testID="textguard-auto-detail">Apple doesn&apos;t let apps read your Messages automatically — there&apos;s no setting Apollo can turn on for this. Paste a suspicious text below or use a screenshot. If the app it&apos;s in offers Share, you can share it to Apollo.</Body>
+            <Body testID="textguard-auto-detail">Apple doesn&apos;t let apps read your Messages automatically — there&apos;s no setting ApolloSG can turn on for this. Paste a suspicious text below or use a screenshot. If the app it&apos;s in offers Share, you can share it to ApolloSG.</Body>
           )}
         </Card>
 

@@ -72,11 +72,11 @@ async def _xposedornot_scan(email: str) -> dict[str, Any]:
             async with httpx.AsyncClient(base_url=_XON_BASE, timeout=15, headers={"user-agent": "Apollo-GuardDog"}) as client:
                 r = await _xon_get(client, f"/v1/check-email/{encoded}")
         except httpx.HTTPError:
-            return _unavailable("xposedornot", "The breach service didn\u2019t answer after retrying. Apollo will try again on the next check.")
+            return _unavailable("xposedornot", "The breach service didn\u2019t answer after retrying. ApolloSG will try again on the next check.")
     if r.status_code == 404:
         return _clear("xposedornot")
     if r.status_code == 429:
-        return _unavailable("xposedornot", "The breach service is busy right now. Apollo will try again on the next check.")
+        return _unavailable("xposedornot", "The breach service is busy right now. ApolloSG will try again on the next check.")
     if r.status_code != 200:
         return _unavailable("xposedornot", "The breach service is unavailable right now.")
     try:
@@ -115,7 +115,7 @@ async def _hibp_scan(email: str) -> dict[str, Any]:
                                      params={"truncateResponse": "false"},
                                      headers={"hibp-api-key": HIBP_API_KEY or "", "user-agent": "Apollo-GuardDog"})
         except httpx.HTTPError:
-            return _unavailable("hibp", "The breach service didn\u2019t answer after retrying. Apollo will try again on the next check.")
+            return _unavailable("hibp", "The breach service didn\u2019t answer after retrying. ApolloSG will try again on the next check.")
     if r.status_code == 404:
         return _clear("hibp")
     if r.status_code != 200:
@@ -140,4 +140,4 @@ async def scan_email(email: str) -> dict[str, Any]:
         return await _xposedornot_scan(email)
     except Exception:  # noqa: BLE001 — provider failures must degrade to "unavailable", never to "clear"
         logger.warning("breach scan failed for one address (provider=%s)", active_provider())
-        return _unavailable(active_provider(), "Apollo couldn't complete this check. It will try again on the next check.")
+        return _unavailable(active_provider(), "ApolloSG couldn't complete this check. It will try again on the next check.")

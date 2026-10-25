@@ -55,7 +55,7 @@ export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSec
     throw new SecurityConfigurationError("GuardDog production authority can be selected only in a production build.");
   }
   if ((input.hostPlatform === "android" || input.hostPlatform === "ios") && input.nativeSecurityAdapterAvailable === false) {
-    throw new SecurityConfigurationError("Apollo native security module is required but unavailable. Use a build that includes modules/apollo-security (Expo Go cannot load it).");
+    throw new SecurityConfigurationError("ApolloSG native security module is required but unavailable. Use a build that includes modules/apollo-security (Expo Go cannot load it).");
   }
   return { appEnvironment, androidEnforcementEngine };
 }

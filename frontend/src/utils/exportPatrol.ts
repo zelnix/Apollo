@@ -28,7 +28,7 @@ export function patrolHtml(events: PatrolEvent[], deviceId: string | null): stri
     <div class="meta">Exported ${esc(new Date().toLocaleString())} · ${events.length} event${events.length === 1 ? "" : "s"} · Anonymous device ${esc(deviceId ? deviceId.slice(0, 8) : "n/a")}…</div>
     <div class="legend"><b>Patrolling</b> = no concern identified within completed checks · <b>Growling</b> = possible concern needing caution · <b>Barking</b> = significant concern needing attention · <b>Biting</b> = actual protective block confirmed. Protection availability is separate: use Gates to see what is automatic, manual or unavailable.</div>
     <table><thead><tr><th>When</th><th>Apollo state</th><th>What happened / why</th><th>What to do</th></tr></thead><tbody>${rows || "<tr><td colspan=4>No events.</td></tr>"}</tbody></table>
-    <p class="meta" style="margin-top:16px">Generated on-device by Apollo. This document is a record of the app's observations and is not a forensic report.</p>
+    <p class="meta" style="margin-top:16px">Generated on-device by ApolloSG. This document is a record of the app's observations and is not a forensic report.</p>
   </body></html>`;
 }
 

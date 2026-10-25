@@ -255,7 +255,7 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     rec: "Only trust payment you can see in your own bank or the marketplace app. Don't use the link.", verify: VERIFY.marketplace };
   if (s.urls.length && (s.urgency || s.threat || s.loginRequest || s.paymentRequest)) return { scenario: "M04", title: "Suspicious link with pressure", state: "growling", verdict: "This message pushes you to a link with urgency.",
     why: ["It contains a link.", s.threat ? "It threatens a consequence." : "It hurries you.", s.loginRequest ? "It asks you to log in." : "It asks you to act via the link."],
-    rec: "Don't tap the link. Check the link with Apollo first, or go to the organisation yourself.", verify: VERIFY[s.brandKind ?? "none"] };
+    rec: "Don't tap the link. Check the link with ApolloSG first, or go to the organisation yourself.", verify: VERIFY[s.brandKind ?? "none"] };
   return { scenario: "M15", title: "No concern identified", state: "resting", verdict: "No concern was identified within the checks completed for this message.",
     why: ["No suspicious links.", "No payment, code or identity request.", "No impersonation or threat language."],
     rec: "Nothing to do. If it's from a number you don't know, reply cautiously and never share codes or payment details.", verify: VERIFY.none };

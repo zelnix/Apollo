@@ -12,9 +12,9 @@ function nativeModule() {
 
 export async function loadNativeShareHandoff(id: string): Promise<SharedPayload> {
   const module = nativeModule();
-  if (!module?.getShareHandoff) throw new Error("This Apollo build cannot open the protected share handoff.");
+  if (!module?.getShareHandoff) throw new Error("This ApolloSG build cannot open the protected share handoff.");
   const result = JSON.parse(await module.getShareHandoff(id)) as NativeResult;
-  if (result.status !== "ready" || !result.payload) throw new Error(result.detail || "The shared items are no longer available. Share them with Apollo again.");
+  if (result.status !== "ready" || !result.payload) throw new Error(result.detail || "The shared items are no longer available. Share them with ApolloSG again.");
   return result.payload;
 }
 

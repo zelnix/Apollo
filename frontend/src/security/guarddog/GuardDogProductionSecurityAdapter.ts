@@ -83,7 +83,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
         detail: `Production protection is not active (${reason}).` }];
     } }
   async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
-    catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. Apollo did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
+    catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. ApolloSG did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
   async analyseURL(url: string) { await this.ensureConfigured(); return this.json<NativeUrlAnalysis>(this.mod().analyzeGuardDogProductionUrl(url)); }
   analyseDomain(domain: string) { return this.analyseURL(`https://${domain}/`); }
   blockDestination(): Promise<BlockResult> { return Promise.resolve({ verified: false, method: "none", detail: "Production rules are server-managed; manual blocking is unavailable.", adapterLabel: this.label, blockedAt: null, evidence: null }); }
@@ -163,7 +163,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
       if (!expiresAt) {
         const rejection = this.lastRefreshRejection;
         const detail = rejection
-          ? `Apollo's backend delivered a rule bundle but the device's native validator rejected it (${rejection}). The signing key in this build may not match the backend's signing key, or the bundle version may conflict with a previously accepted version.`
+          ? `ApolloSG's backend delivered a rule bundle but the device's native validator rejected it (${rejection}). The signing key in this build may not match the backend's signing key, or the bundle version may conflict with a previously accepted version.`
           : "Apollo's protection reported no expiry for its security rules, so their age could not be confirmed.";
         return { observable: true, current: null, expiresAt: null, detail };
       }
@@ -181,7 +181,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
         ? `native validator rejected the rule bundle (${rejection})`
         : error instanceof Error && error.message ? error.message : "the reason could not be determined";
       return { observable: true, current: null, expiresAt: null,
-        detail: `Apollo couldn't establish current security rules (${reason}). This is not a confirmation that they are current.` };
+        detail: `ApolloSG couldn't establish current security rules (${reason}). This is not a confirmation that they are current.` };
     }
   }
 

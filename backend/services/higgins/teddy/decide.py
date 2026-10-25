@@ -148,7 +148,7 @@ def magnum_issues(plan_: Plan, texts: dict[str, str]) -> list[Issue]:
     if plan_.has_message and requests:
         asks = "; ".join(f"{r['type'].replace('_', ' ')} (“{r['quote']}”" + (f" → {', '.join(r['targets'][:3])}" if r["targets"] else "") + ")"
                          for r in requests[:4])
-        partly = (f" Apollo KB: the material partly matches the {plan_.pattern['name']} ({plan_.pattern['publisher']}), general knowledge only."
+        partly = (f" ApolloSG KB: the material partly matches the {plan_.pattern['name']} ({plan_.pattern['publisher']}), general knowledge only."
                   if plan_.pattern and plan_.pattern["stage"] == "partial" else "")
         analysis = next((c.id for c in plan_.checks if c.kind == "message_analysis"), None)
         issues.append(Issue("reasoning", f"Message and deception analysis. The material asks the person to act — {asks} — through a route "

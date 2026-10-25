@@ -27,7 +27,7 @@ async def process_once(limit: int = 20) -> int:
             statuses = await send_push([row["recipient_id"]], {
                 "title": f"{session['owner_display_name']} is asking for help",
                 "message": "They can choose to share their screen. You cannot control their device.",
-                "subtext": "Tap to respond in Apollo.", "action_url": f"/family/help/join?sessionId={session['session_id']}", **PUSH_FAMILY,
+                "subtext": "Tap to respond in ApolloSG.", "action_url": f"/family/help/join?sessionId={session['session_id']}", **PUSH_FAMILY,
             }, idempotency_key=row["effect_key"], owner_id=session["sharer_owner_id"])
             state = "submitted" if statuses else "recipient_unregistered"
             await db.family_assist_outbox.update_one({"effect_key": row["effect_key"]}, {"$set": {"state": state, "updated_at": now_utc()}, "$inc": {"attempts": 1}})

@@ -50,7 +50,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
 
   const prepare = useCallback(async () => {
     setPrepError(null);
-    if (!screening.strippedImageUri) { setPrepError("Apollo couldn't prepare this image. Nothing was sent."); return; }
+    if (!screening.strippedImageUri) { setPrepError("ApolloSG couldn't prepare this image. Nothing was sent."); return; }
     // Fail-closed: if on-device screening was unable to verify the image is credential-free, withhold it.
     if (screening.status === "ocr_unavailable") {
       setPrepError("Apollo can't verify this image is safe to send because on-device text recognition is unavailable. Type the text manually, or use a native build for automatic screening.");
@@ -59,7 +59,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
     // A credential the recogniser read but couldn't place has no box to black out — a zero-size box
     // would leave it plainly visible on the copy that gets sent. Fail closed.
     if (credentials.some((r) => !r.frame || r.frame.width <= 0 || r.frame.height <= 0)) {
-      setPrepError("This image appears to show a password, PIN or verification code, and Apollo couldn't work out exactly where it sits, so it couldn't black it out and the image wasn't sent. Crop that part out and try again.");
+      setPrepError("This image appears to show a password, PIN or verification code, and ApolloSG couldn't work out exactly where it sits, so it couldn't black it out and the image wasn't sent. Crop that part out and try again.");
       return;
     }
     setBusy("Preparing image…");
@@ -73,7 +73,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
       const uri = await captureRef(captureViewRef, { format: "jpg", quality: 0.85 });
       onComplete({ ...base, decision: "credentials_redacted", imageUri: uri, redactedRegions: credentials.length });
     } catch {
-      setPrepError("This image appears to show a password, PIN or verification code, and Apollo couldn't black it out, so the image wasn't sent. Crop that part out and try again.");
+      setPrepError("This image appears to show a password, PIN or verification code, and ApolloSG couldn't black it out, so the image wasn't sent. Crop that part out and try again.");
     } finally {
       setBusy(null);
     }
@@ -82,7 +82,7 @@ export function ImageUploadPrep({ visible, screening: initial, onComplete, onCan
   const onCropped = useCallback(async (uri: string) => {
     setCropping(false); setPrepError(null); setBusy("Checking cropped image…");
     try { setScreening(await screenImage(uri, purpose)); setCropped(true); }
-    catch { setPrepError("Apollo couldn't prepare the cropped image. Nothing was sent."); }
+    catch { setPrepError("ApolloSG couldn't prepare the cropped image. Nothing was sent."); }
     finally { setBusy(null); }
   }, [purpose]);
 

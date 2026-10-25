@@ -116,9 +116,9 @@ function getHigginsGuidance(gate: GatePresentation): HigginsGuidance {
     const permName = getPermissionName(gate.id);
     return {
       needsGuidance: true,
-      whatsWrong: `${gate.title} isn't working because Apollo doesn't have the ${permName} it needs.`,
+      whatsWrong: `${gate.title} isn't working because ApolloSG doesn't have the ${permName} it needs.`,
       whyItMatters: `Without this permission, Apollo can't ${getProtectionVerb(gate.id)} automatically.`,
-      whatToDo: `Open your device settings and grant the ${permName} to Apollo. I can take you there.`,
+      whatToDo: `Open your device settings and grant the ${permName} to ApolloSG. I can take you there.`,
       howToConfirm: "When you come back, I'll check whether the permission has been granted and update the status.",
       actionLabel: "Open device settings",
       actionType: "open_settings",
@@ -211,9 +211,9 @@ function getHigginsGuidance(gate: GatePresentation): HigginsGuidance {
     return {
       needsGuidance: true,
       whatsWrong: auto?.limitation ?? `${gate.title} is running with reduced coverage.`,
-      whyItMatters: "Some protection capabilities are restricted. Apollo is still working within its available scope.",
+      whyItMatters: "Some protection capabilities are restricted. ApolloSG is still working within its available scope.",
       whatToDo: auto?.limitation?.includes("DNS") || auto?.limitation?.includes("dns")
-        ? "Set Private DNS to Automatic in your phone’s settings, then come back here and Apollo will re-check."
+        ? "Set Private DNS to Automatic in your phone’s settings, then come back here and ApolloSG will re-check."
         : "Check device settings if you'd like to expand coverage. Otherwise, Apollo continues protecting within its current scope.",
       howToConfirm: "After any changes, return here to see the updated status.",
       actionLabel: "Check device settings",

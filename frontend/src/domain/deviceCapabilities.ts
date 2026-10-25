@@ -51,10 +51,10 @@ export type CapabilityClass =
   | "not_readable_here";
 
 export const CAPABILITY_CLASS_LABEL: Record<CapabilityClass, string> = {
-  apollo_can_use: "Available to Apollo",
+  apollo_can_use: "Available to ApolloSG",
   permission_required: "Permission needed",
   not_exposed: "Managed by your device",
-  unavailable: "Not available to Apollo",
+  unavailable: "Not available to ApolloSG",
   unknown: "Apollo couldn’t check",
   not_readable_here: "Can’t be read in this preview",
 };
@@ -177,15 +177,15 @@ export function allCapabilityRows(view: DeviceCapabilityView): CapabilityRow[] {
     case "apollo_can_use":
       return null;
     case "permission_required":
-      return `Allowing ${row.title.toLowerCase()} helps Apollo spot suspicious activity this capability covers. Apollo asks for it at the moment it is needed — you can also turn it on in Settings now.`;
+      return `Allowing ${row.title.toLowerCase()} helps Apollo spot suspicious activity this capability covers. ApolloSG asks for it at the moment it is needed — you can also turn it on in Settings now.`;
     case "not_exposed":
       return ownedByPlatform
-        ? `Nothing to do. ${row.attributedTo} keeps this private from every app, so Apollo works from what you choose to show it instead.`
-        : `Keep ${row.attributedTo} switched on — it protects you whether or not it shares what it finds with Apollo. Higgins can show you where to check it.`;
+        ? `Nothing to do. ${row.attributedTo} keeps this private from every app, so ApolloSG works from what you choose to show it instead.`
+        : `Keep ${row.attributedTo} switched on — it protects you whether or not it shares what it finds with ApolloSG. Higgins can show you where to check it.`;
     case "unknown":
       return "Nothing is wrong yet — Apollo simply could not read this. Run a device check again and it may settle.";
     case "not_readable_here":
-      return "Open Apollo on your phone to see the real state of this.";
+      return "Open ApolloSG on your phone to see the real state of this.";
     default:
       return null;
   }
@@ -262,7 +262,7 @@ const CATALOGUE: CapabilityDef[] = [
     purpose: "Catch an app covering your banking screen with a fake one.",
     platforms: ["android"],
     capKey: "overlayApps",
-    notExposed: { android: "Android does not let Apollo list which other apps are drawing over the screen." },
+    notExposed: { android: "Android does not let ApolloSG list which other apps are drawing over the screen." },
     action: { target: "overlay", path: "Settings → Apps → Special access → Display over other apps", label: "Open overlay settings" },
   },
   {
@@ -298,7 +298,7 @@ const CATALOGUE: CapabilityDef[] = [
     platforms: ["android", "ios"],
     capKey: "installEvents",
     notExposed: {
-      android: "Android does not give Apollo a live feed of app installs; Apollo compares what it can see between checks instead.",
+      android: "Android does not give ApolloSG a live feed of app installs; Apollo compares what it can see between checks instead.",
       ios: "Apple does not tell any app when another app is installed.",
     },
   },
@@ -322,7 +322,7 @@ const CATALOGUE: CapabilityDef[] = [
     purpose: "Let you pick a recent caller to check instead of typing the number.",
     platforms: ["android", "ios"],
     notExposed: { ios: "Apple does not let any app read your call history." },
-    action: { target: "apps", path: "Settings → Apps → Apollo → Permissions → Phone", label: "Open Apollo’s permissions" },
+    action: { target: "apps", path: "Settings → Apps → ApolloSG → Permissions → Phone", label: "Open ApolloSG’s permissions" },
   },
   {
     id: "message_inbox",
@@ -332,14 +332,14 @@ const CATALOGUE: CapabilityDef[] = [
     benefit: "You can pick the message you’re worried about instead of copying it across — and Apollo reads only the one you pick.",
     purpose: "Let you pick a message to check instead of copying it across.",
     platforms: ["android", "ios"],
-    notExposed: { ios: "Apple does not let any app read your messages. You can still share a message into Apollo yourself." },
-    action: { target: "apps", path: "Settings → Apps → Apollo → Permissions → SMS", label: "Open Apollo’s permissions" },
+    notExposed: { ios: "Apple does not let any app read your messages. You can still share a message into ApolloSG yourself." },
+    action: { target: "apps", path: "Settings → Apps → ApolloSG → Permissions → SMS", label: "Open ApolloSG’s permissions" },
   },
   {
     id: "installed_apps",
     title: "Installed apps",
     area: "apps",
-    what: "The apps on this phone that Apollo is allowed to see.",
+    what: "The apps on this phone that ApolloSG is allowed to see.",
     benefit: "You can choose the app you want checked from a list, instead of having to spell its name exactly.",
     purpose: "Offer a pick-from-list when you want an app checked.",
     platforms: ["android", "ios"],
@@ -350,7 +350,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "native_call_verdict",
     title: "Your phone’s own scam-call warning",
     area: "calls_messages",
-    what: "The spam or scam label your phone itself puts on an incoming call — from Samsung, Google or your carrier, never from Apollo.",
+    what: "The spam or scam label your phone itself puts on an incoming call — from Samsung, Google or your carrier, never from ApolloSG.",
     benefit: "When your phone shares that label, Apollo can record it as their finding and start its own investigation from it, instead of waiting for you to report the call.",
     purpose: "Use your phone’s own spam warning as evidence and start an Apollo investigation from it.",
     platforms: ["android", "ios"],
@@ -359,7 +359,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "native_message_verdict",
     title: "Your phone’s own spam-text warning",
     area: "calls_messages",
-    what: "The spam label your messaging app itself puts on a text — from Google Messages, Samsung or your carrier, never from Apollo.",
+    what: "The spam label your messaging app itself puts on a text — from Google Messages, Samsung or your carrier, never from ApolloSG.",
     benefit: "When your messaging app shares that label, Apollo can record it as their finding and investigate from there, instead of waiting for you to notice.",
     purpose: "Use your messaging app’s own spam warning as evidence and start an Apollo investigation from it.",
     platforms: ["android", "ios"],
@@ -410,7 +410,7 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
         ? `${p.provider} is not on this device.`
         : `Apollo could not read whether ${p.provider} is present.`;
   const evidenceLine = p.classificationAccessible
-    ? `${p.provider} shares its classification with Apollo. When it flags something, Apollo records it as ${p.provider}’s finding and opens its own investigation from there.`
+    ? `${p.provider} shares its classification with ApolloSG. When it flags something, Apollo records it as ${p.provider}’s finding and opens its own investigation from there.`
     : p.note;
   const health = healthFor(state);
   return {
@@ -440,7 +440,7 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
 
   // Apollo isn't on the phone at all here, so nothing was read. That is not "absent".
   if (input.hostIsDevice === false) {
-    return { ...base, klass: "not_readable_here", detail: "Apollo is not running on your phone here, so it could not read this. Open Apollo on your phone to see the real state." };
+    return { ...base, klass: "not_readable_here", detail: "ApolloSG is not running on your phone here, so it could not read this. Open ApolloSG on your phone to see the real state." };
   }
 
   if (!def.platforms.includes(platform)) {
@@ -454,14 +454,14 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
 
   if (def.capKey) {
     if (!caps) {
-      return { ...base, klass: "unknown", detail: "Apollo asked this device and the read failed, so this is genuinely unknown — not an all-clear.", action: def.action };
+      return { ...base, klass: "unknown", detail: "ApolloSG asked this device and the read failed, so this is genuinely unknown — not an all-clear.", action: def.action };
     }
     const status = caps[def.capKey];
     if (status === "supported") {
       return { ...base, klass: "apollo_can_use", detail: def.scope ?? def.purpose, action: def.action };
     }
     if (status === "permission_required") {
-      return { ...base, klass: "permission_required", detail: `Apollo can use this once you allow it. Apollo asks at the moment it is needed, never up front.`, action: def.action };
+      return { ...base, klass: "permission_required", detail: `ApolloSG can use this once you allow it. ApolloSG asks at the moment it is needed, never up front.`, action: def.action };
     }
     return notExposedRow(def, base, platform);
   }
@@ -472,14 +472,14 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
   // Android picker-backed reads use Play-restricted permissions this build declares only under an
   // approved switch. Without it Apollo does not read them at all — say what it uses instead.
   if (platform === "android" && def.id === "call_history" && input.restrictedPickers?.callLog !== true) {
-    return { ...base, klass: "unavailable", detail: "This version of Apollo doesn’t read your call log. Calls Apollo screened lists the incoming numbers Android passes to Apollo’s call screening — tap one to check it, or type the number." };
+    return { ...base, klass: "unavailable", detail: "This version of ApolloSG doesn’t read your call log. Calls Apollo screened lists the incoming numbers Android passes to Apollo’s call screening — tap one to check it, or type the number." };
   }
   if (platform === "android" && def.id === "message_inbox" && input.restrictedPickers?.sms !== true) {
-    return { ...base, klass: "unavailable", detail: "This version of Apollo doesn’t read your text messages. Text Guard checks new texts through notification access; you can also paste a message, use a screenshot, or share it to Apollo where the app offers Share." };
+    return { ...base, klass: "unavailable", detail: "This version of ApolloSG doesn’t read your text messages. Text Guard checks new texts through notification access; you can also paste a message, use a screenshot, or share it to ApolloSG where the app offers Share." };
   }
   // Declared picker-backed reads are permission-gated and asked for in the moment.
   if (platform === "android" && (def.id === "call_history" || def.id === "message_inbox")) {
-    return { ...base, klass: "permission_required", detail: "Apollo asks for this only when you choose to pick a recent caller or message, and only reads the one you pick.", action: def.action };
+    return { ...base, klass: "permission_required", detail: "ApolloSG asks for this only when you choose to pick a recent caller or message, and only reads the one you pick.", action: def.action };
   }
   return { ...base, klass: "apollo_can_use", detail: def.scope ?? def.purpose, action: def.action };
 }
@@ -490,9 +490,9 @@ function notExposedRow(def: CapabilityDef, base: RowBase, platform: CapabilityPl
   const reason = def.notExposed?.[platform];
   if (reason) return { ...base, klass: "not_exposed", detail: reason, attributedTo: platformName(platform), action: def.action };
   if (platform === "android" || platform === "ios") {
-    return { ...base, klass: "not_exposed", detail: `${platformName(platform)} does not expose this to Apollo on this device.`, attributedTo: platformName(platform), action: def.action };
+    return { ...base, klass: "not_exposed", detail: `${platformName(platform)} does not expose this to ApolloSG on this device.`, attributedTo: platformName(platform), action: def.action };
   }
-  return { ...base, klass: "unavailable", detail: `This capability is not available to Apollo on ${platformName(platform)}.`, attributedTo: platformName(platform) };
+  return { ...base, klass: "unavailable", detail: `This capability is not available to ApolloSG on ${platformName(platform)}.`, attributedTo: platformName(platform) };
 }
 
 function resolveNativeVerdict(
@@ -511,7 +511,7 @@ function resolveNativeVerdict(
     return {
       ...base,
       klass: "apollo_can_use",
-      detail: `${sharing.map((p) => p.provider).join(", ")} share${sharing.length === 1 ? "s" : ""} its classification with Apollo. Apollo records it as their finding and opens its own investigation from there.`,
+      detail: `${sharing.map((p) => p.provider).join(", ")} share${sharing.length === 1 ? "s" : ""} its classification with ApolloSG. Apollo records it as their finding and opens its own investigation from there.`,
       attributedTo: sharing.map((p) => p.provider).join(", "),
     };
   }
@@ -521,7 +521,7 @@ function resolveNativeVerdict(
     return {
       ...base,
       klass: "not_exposed",
-      detail: `${names} ${present.length === 1 ? "decides" : "decide"} this on your device, but ${present.length === 1 ? "does" : "do"} not share that classification with Apollo through any supported interface. Apollo will not guess it from blocked calls or unknown numbers.`,
+      detail: `${names} ${present.length === 1 ? "decides" : "decide"} this on your device, but ${present.length === 1 ? "does" : "do"} not share that classification with ApolloSG through any supported interface. Apollo will not guess it from blocked calls or unknown numbers.`,
       attributedTo: names,
       action: kind === "call"
         ? { target: "apps", path: "Phone app → Settings → Caller ID & spam", label: `Check ${present[0].provider} settings` }
@@ -578,10 +578,10 @@ export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCap
   const notReadableHere = rows.filter((r) => r.klass === "not_readable_here");
 
   const summary = notReadableHere.length
-    ? `Apollo is not running on your phone here, so it could not read any of the ${rows.length} capabilities it looks for. Open Apollo on your phone to see the real state.`
+    ? `ApolloSG is not running on your phone here, so it could not read any of the ${rows.length} capabilities it looks for. Open ApolloSG on your phone to see the real state.`
     : unknown.length
-      ? `Apollo can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for here. ${unknown.length} could not be read, so ${unknown.length === 1 ? "it is" : "they are"} reported as unknown rather than clear.`
-      : `Apollo can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for on this device. ${needsPermission.length} need your permission and ${notAccessible.length} are kept private by ${platformName(input.platform)}.`;
+      ? `ApolloSG can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for here. ${unknown.length} could not be read, so ${unknown.length === 1 ? "it is" : "they are"} reported as unknown rather than clear.`
+      : `ApolloSG can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for on this device. ${needsPermission.length} need your permission and ${notAccessible.length} are kept private by ${platformName(input.platform)}.`;
 
   return { deviceProtects, apolloCanUse, needsPermission, notAccessible, unavailable, unknown, notReadableHere, recommendations, summary };
 }
@@ -619,7 +619,7 @@ export function capabilitySnapshotLines(reading: CapabilityReadingLike): Capabil
   const protections = ordered.map((p) => {
     const evidence = p.kind === "device"
       ? ""
-      : ` — ${p.classificationAccessible ? "shares its classification with Apollo" : "does not share its classification with Apollo"}`;
+      : ` — ${p.classificationAccessible ? "shares its classification with ApolloSG" : "does not share its classification with ApolloSG"}`;
     return `${p.title} — ${p.subtitle} — ${p.stateLabel} (per ${p.attributedTo})${evidence}`;
   });
   const capabilities = allCapabilityRows(view)
@@ -628,7 +628,7 @@ export function capabilitySnapshotLines(reading: CapabilityReadingLike): Capabil
   const recommended = groups.needsChecking.map((r) =>
     `${r.title} — ${r.stateLabel} — ${r.guidance?.recommended ?? ""}`.trim());
   const summary = !reading.hasNativeHost
-    ? "Apollo is not running on the device itself right now, so it cannot read this device's capabilities or its built-in protection."
+    ? "ApolloSG is not running on the device itself right now, so it cannot read this device's capabilities or its built-in protection."
     : reading.capsReadFailed || reading.nativeReadFailed
       ? `${view.summary} Some reads failed, so those are unknown rather than clear.`
       : view.summary;

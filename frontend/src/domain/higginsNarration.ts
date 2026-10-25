@@ -72,7 +72,7 @@ export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boole
   if (plan.steps.length) {
     chunks.push({ id: "plan", label: "Follow my lead", text: `Here's what we're going to do. ${plan.steps.length} step${plan.steps.length > 1 ? "s" : ""}, starting with the most important. I'll walk you through each one.` });
     plan.steps.forEach((st, i) => chunks.push({ id: `step-${i}`, label: `Step ${i + 1}`, text: `Step ${i + 1}${ticked[st.id] ? ", already done" : ""}: ${st.text}` }));
-    chunks.push({ id: "end", label: "That's all", text: plan.allResolved ? "Everything is handled. Apollo keeps the record for reference." : "That covers everything. Work through each step and tick them off as you go. Ask me if anything is unclear." });
+    chunks.push({ id: "end", label: "That's all", text: plan.allResolved ? "Everything is handled. ApolloSG keeps the record for reference." : "That covers everything. Work through each step and tick them off as you go. Ask me if anything is unclear." });
   }
   return chunks;
 }

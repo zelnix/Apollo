@@ -47,7 +47,7 @@ export function privateDnsAdvice(status: PrivateDnsStatus | null | undefined): P
     const host = status.privateDnsServer ?? "a provider hostname";
     return {
       id: "hostname",
-      title: "Private DNS is going around Apollo",
+      title: "Private DNS is going around ApolloSG",
       body: `Private DNS is set to ${host}, so Android sends every website lookup straight to ${status.privateDnsServer ? "that provider" : "it"} and Apollo’s website checks never see them. Choose Automatic so Apollo can check websites again.`,
       actionLabel: ACTION_LABEL,
     };
@@ -56,7 +56,7 @@ export function privateDnsAdvice(status: PrivateDnsStatus | null | undefined): P
     return {
       id: "not_in_use",
       title: "Check Private DNS is set to Automatic",
-      body: "Android says Private DNS isn’t encrypting website lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell Apollo which. If it isn’t Automatic, choose Automatic.",
+      body: "Android says Private DNS isn’t encrypting website lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell ApolloSG which. If it isn’t Automatic, choose Automatic.",
       actionLabel: ACTION_LABEL,
     };
   }

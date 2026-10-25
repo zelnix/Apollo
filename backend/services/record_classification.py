@@ -215,7 +215,7 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
     if has_investigation:
         investigated = f"Magnum DI looked into a {cat_label} concern{f' involving {subject}' if subject != cat_label else ''}."
     elif record_class == "diagnostic_result":
-        investigated = f"Apollo ran a {cat_label} check on your device."
+        investigated = f"ApolloSG ran a {cat_label} check on your device."
     elif record_class == "protection_issue":
         investigated = f"Apollo noticed a problem with your {cat_label}."
     elif record_class == "threat_stopped":
@@ -257,7 +257,7 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
     if record_class == "security_threat":
         meaning = "This needs your attention — have a look at the details and follow the recommended steps."
     elif record_class == "threat_stopped":
-        meaning = "Apollo took care of this for you. Nothing more is needed on your part."
+        meaning = "ApolloSG took care of this for you. Nothing more is needed on your part."
     elif record_class == "protection_issue":
         meaning = "You're not under attack. A protection feature just needs a bit of attention to keep working properly."
     elif record_class == "resolved":

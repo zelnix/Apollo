@@ -94,7 +94,7 @@ const DIAGNOSTIC_PATTERNS: PatternRule[] = [
     patterns: [
       /\b(?:am i|is (?:my|the|this))\s+(?:phone|device)?\s*(?:protected|safe|secure)\b/i,
       /\b(?:protection|security)\s+(?:status|state|health)\b/i,
-      /\b(?:is|are)\s+(?:apollo|protection|security)\s+(?:on|running|active|working|enabled)\b/i,
+      /\b(?:is|are)\s+(?:apollo(?:\s?sg)?|protection|security)\s+(?:on|running|active|working|enabled)\b/i,
       /\b(?:what(?:'s| is))\s+(?:my)?\s*(?:protection|security)\s+(?:status|state)\b/i,
     ],
     route: "local_diagnostic",
@@ -177,7 +177,7 @@ const DIAGNOSTIC_PATTERNS: PatternRule[] = [
     patterns: [
       /\b(?:permission|permissions)\s+(?:status|state|granted|missing|needed|required)\b/i,
       /\b(?:what|which)\s+permissions?\b/i,
-      /\b(?:do i need|does (?:apollo|it) (?:need|require))\s+(?:any )?permissions?\b/i,
+      /\b(?:do i need|does (?:apollo(?:\s?sg)?|it) (?:need|require))\s+(?:any )?permissions?\b/i,
     ],
     route: "local_diagnostic",
     diagnosticIntent: "permission_status",
@@ -189,7 +189,7 @@ const DIAGNOSTIC_PATTERNS: PatternRule[] = [
     patterns: [
       /\b(?:any|what|are there)\s+(?:issues?|problems?|warnings?|alerts?|errors?)\b/i,
       /\b(?:what(?:'s| is))\s+wrong\b/i,
-      /\b(?:why is|why'?s)\s+(?:apollo|it)\s+(?:barking|growling|warning|alerting)\b/i,
+      /\b(?:why is|why'?s)\s+(?:apollo(?:\s?sg)?|it)\s+(?:barking|growling|warning|alerting)\b/i,
       /\b(?:needs?|requires?|requiring)\s+attention\b/i,
     ],
     route: "local_diagnostic",
@@ -241,21 +241,21 @@ const KNOWLEDGE_PATTERNS: PatternRule[] = [
   },
   {
     patterns: [
-      /\b(?:how (?:does|do)|what (?:is|are)|explain|tell me about)\s+(?:apollo|higgins|magnum|gates?|protection|screening)\b/i,
+      /\b(?:how (?:does|do)|what (?:is|are)|explain|tell me about)\s+(?:apollo(?:\s?sg)?|higgins|magnum|gates?|protection|screening)\b/i,
       /\b(?:where (?:is|do i find))\s+(?:the\s+)?(?:settings?|protections?|checks?|home|patrol)\b/i,
-      /\b(?:what can (?:you|higgins|apollo) do)\b/i,
-      /\b(?:who (?:is|are) (?:you|higgins|apollo|magnum))\b/i,
+      /\b(?:what can (?:you|higgins|apollo(?:\s?sg)?) do)\b/i,
+      /\b(?:who (?:is|are) (?:you|higgins|apollo(?:\s?sg)?|magnum))\b/i,
     ],
     route: "local_knowledge",
     knowledgeIntent: "how_apollo_works",
     confidence: 0.8,
-    reason: "Knowledge/help question about Apollo",
+    reason: "Knowledge/help question about ApolloSG",
   },
   // Navigation help — only explicit "help" or "how do I navigate" requests
   {
     patterns: [
       /\b(?:help)\b(?!\s+(?:me\s+)?(?:recogni[sz]e|spot|identify|avoid|prevent|understand|learn))/i,
-      /\b(?:how (?:do i|to))\s+(?:navigate|use|find|open|access)\s+(?:apollo|the app|settings|features)\b/i,
+      /\b(?:how (?:do i|to))\s+(?:navigate|use|find|open|access)\s+(?:apollo(?:\s?sg)?|the app|settings|features)\b/i,
     ],
     route: "local_knowledge",
     knowledgeIntent: "help_navigation",
@@ -298,7 +298,7 @@ function resolveAmbiguous(
         route: "local_diagnostic",
         diagnosticIntent: "protection_status",
         confidence: 0.7,
-        reason: "Ambiguous but context suggests device/Apollo question",
+        reason: "Ambiguous but context suggests device/ApolloSG question",
       };
     }
 

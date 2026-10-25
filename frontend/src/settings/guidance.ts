@@ -27,8 +27,8 @@ export interface SettingsDescriptor {
 }
 
 export const SETTINGS_DESCRIPTORS: readonly SettingsDescriptor[] = [
-  { id: "open_settings.app", label: "Open Apollo's settings", platforms: ["android", "ios"], iosPath: "Apollo", observes: null, keywords: ["apollo", "app settings", "this app"] },
-  { id: "open_settings.notifications", label: "Open notification settings", platforms: ["android", "ios"], androidIntent: "android.settings.APP_NOTIFICATION_SETTINGS", iosPath: "Apollo › Notifications", observes: "notifications", keywords: ["notification", "alert"] },
+  { id: "open_settings.app", label: "Open ApolloSG's settings", platforms: ["android", "ios"], iosPath: "ApolloSG", observes: null, keywords: ["apollo", "app settings", "this app"] },
+  { id: "open_settings.notifications", label: "Open notification settings", platforms: ["android", "ios"], androidIntent: "android.settings.APP_NOTIFICATION_SETTINGS", iosPath: "ApolloSG › Notifications", observes: "notifications", keywords: ["notification", "alert"] },
   { id: "open_settings.vpn", label: "Open VPN settings", platforms: ["android"], androidIntent: "android.settings.VPN_SETTINGS", observes: "vpn_config", keywords: ["vpn", "dns filter", "site gate"] },
   { id: "open_settings.accessibility", label: "Open accessibility settings", platforms: ["android"], androidIntent: "android.settings.ACCESSIBILITY_SETTINGS", observes: null, keywords: ["accessibility"] },
   { id: "open_settings.notification_access", label: "Open notification access", platforms: ["android"], androidIntent: "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS", observes: null, keywords: ["notification access", "notification listener", "text gate"] },
@@ -37,7 +37,7 @@ export const SETTINGS_DESCRIPTORS: readonly SettingsDescriptor[] = [
   { id: "open_settings.overlay", label: "Open display-over-apps settings", platforms: ["android"], androidIntent: "android.settings.action.MANAGE_OVERLAY_PERMISSION", observes: null, keywords: ["overlay", "display over", "draw over"] },
   { id: "open_settings.developer", label: "Open developer options", platforms: ["android"], androidIntent: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS", observes: null, keywords: ["developer", "usb debugging"] },
   { id: "open_settings.apps", label: "Open app list", platforms: ["android"], androidIntent: "android.settings.MANAGE_APPLICATIONS_SETTINGS", observes: null, keywords: ["uninstall", "installed app", "app list", "app info"] },
-  { id: "open_settings.safari_extensions", label: "Open Safari extension settings", platforms: ["ios"], iosPath: "Safari › Extensions › Apollo", observes: "network_filter", keywords: ["safari", "content blocker", "extension", "site gate"] },
+  { id: "open_settings.safari_extensions", label: "Open Safari extension settings", platforms: ["ios"], iosPath: "Safari › Extensions › ApolloSG", observes: "network_filter", keywords: ["safari", "content blocker", "extension", "site gate"] },
   // Desktop hosts (Tauri): fixed OS Settings destinations only.
   { id: "open_settings.desktop_notifications", label: "Open notification settings", platforms: ["windows", "macos"], desktopTarget: "notifications", observes: "notifications", keywords: ["notification", "alert"] },
   { id: "open_settings.desktop_network", label: "Open network settings", platforms: ["windows", "macos"], desktopTarget: "network", observes: null, keywords: ["network", "wi-fi", "wifi", "ethernet"] },

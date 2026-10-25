@@ -61,15 +61,15 @@ def initiator_label(source):
     """Convert trigger_source to user-friendly label."""
     mapping = {
         "user_initiated": "User — Check",
-        "mailbox_monitor": "Apollo — Mailbox Monitor",
+        "mailbox_monitor": "ApolloSG — Mailbox Monitor",
         "recovery_resume": "Recovery/Resume",
         "validation_test": "System — Test/Validation",
         "health_check": "System — Health Check",
         "chat": "User — Chat",
-        "research": "Apollo — Research",
+        "research": "ApolloSG — Research",
         "msg_check": "User — Message Check",
         "phone_check": "User — Phone Check",
-        "scam_analysis": "Apollo — Automatic",
+        "scam_analysis": "ApolloSG — Automatic",
     }
     return mapping.get(source or "", source or "Unknown")
 
@@ -79,11 +79,11 @@ def initiator_category(source):
     if source in ("user_initiated", "chat", "msg_check", "phone_check"):
         return "User — Check"
     if source in ("mailbox_monitor",):
-        return "Apollo — Mailbox Monitor"
+        return "ApolloSG — Mailbox Monitor"
     if source in ("recovery_resume",):
         return "Recovery/Resume"
     if source in ("scam_analysis", "research"):
-        return "Apollo — Automatic"
+        return "ApolloSG — Automatic"
     if source in ("validation_test", "health_check"):
         return "System — Test/Validation"
     if source is None or source == "" or source == "None":
@@ -340,8 +340,8 @@ async def main():
     # Ensure all requested categories appear
     REQUIRED_CATS = [
         "User — Check",
-        "Apollo — Mailbox Monitor",
-        "Apollo — Automatic",
+        "ApolloSG — Mailbox Monitor",
+        "ApolloSG — Automatic",
         "System — Test/Validation",
         "Recovery/Resume",
         "Unknown/Unattributed",
@@ -557,7 +557,7 @@ async def main():
             research_count = p["calls"]
     
     grounding_cost = research_count * 0.035  # $35/1k queries
-    print(f"  Apollo estimated total:                ${total_success_cost:.4f}")
+    print(f"  ApolloSG estimated total:                ${total_success_cost:.4f}")
     print(f"  Google Search grounding ({research_count} research):  +${grounding_cost:.4f}  (at $35/1k queries)")
     print(f"  Pricing table drift (estimated):       +$1.00 — $3.00")
     print(f"  Estimated actual range:                ${total_success_cost + grounding_cost + 1:.2f} — ${total_success_cost + grounding_cost + 3:.2f}")

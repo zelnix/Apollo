@@ -38,7 +38,7 @@ export default function About() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle}>About Apollo</Text>
+          <Text style={s.headerTitle}>About ApolloSG</Text>
           <AppMenuButton testID="about-menu" />
         </View>
       </View>
@@ -48,10 +48,10 @@ export default function About() {
         </View>
         <View style={s.section}>
           <Text style={s.body}>
-            Apollo is your personal scam protection companion. With Higgins by your side, Apollo watches over your digital life — checking messages, calls, emails and websites for scams and threats.
+            ApolloSG is your personal scam protection companion. With Higgins by your side, Apollo watches over your digital life — checking messages, calls, emails and websites for scams and threats.
           </Text>
           <Text style={s.body}>
-            Apollo operates locally on your device whenever possible, keeping your personal information private. When AI analysis is needed, Apollo uses Google Gemini with strict privacy controls.
+            ApolloSG operates locally on your device whenever possible, keeping your personal information private. When AI analysis is needed, ApolloSG uses Google Gemini with strict privacy controls.
           </Text>
           <Text style={s.body}>
             Built to protect people from the rising tide of scams and online fraud.

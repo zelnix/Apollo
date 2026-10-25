@@ -90,7 +90,7 @@ export function buildEmailCheckResult(args: {
         ? `${dangerous} link${dangerous > 1 ? "s" : ""} confirmed dangerous.`
         : offDomain > 0
           ? `${offDomain} link${offDomain > 1 ? "s go" : " goes"} to a domain that isn't ${a.claimedBrand}'s.`
-          : `${a.urls.length} link${a.urls.length > 1 ? "s" : ""} found — check each with Apollo.`,
+          : `${a.urls.length} link${a.urls.length > 1 ? "s" : ""} found — check each with ApolloSG.`,
       raw: { urls: a.urls, lookalikes: a.lookalikeUrls },
     });
   }

@@ -169,7 +169,7 @@ export default function CheckNetwork() {
           <Button testID="network-refresh" variant="ghost" label={refreshing ? "Checking…" : "Refresh"} onPress={verifyNow} disabled={refreshing} />
         </Card>
 
-        <Button testID="network-run" label="Check with Apollo" onPress={() => void run()} disabled={!network} />
+        <Button testID="network-run" label="Check with ApolloSG" onPress={() => void run()} disabled={!network} />
         <Pressable testID="network-more-details" accessibilityRole="button" onPress={() => setShowNetworkDetails(!showNetworkDetails)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
           <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showNetworkDetails ? "Hide details" : "Add more details"}</Text>
         </Pressable>

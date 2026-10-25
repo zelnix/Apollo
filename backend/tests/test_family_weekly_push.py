@@ -102,7 +102,7 @@ class TestWeeklyCheckinScheduler:
                 w2 = {**w, "total": 3, "alerts": 2, "open_alerts": 0, "handled_alerts": 2}
                 assert server.weekly_sentence(w2) == "Mum had 2 alerts this week and handled them all. Quite so."
                 w3 = {**w, "total": 0, "last_seen_at": None}
-                assert server.weekly_sentence(w3).startswith("Apollo hasn't heard from Mum's phone")
+                assert server.weekly_sentence(w3).startswith("ApolloSG hasn't heard from Mum's phone")
             finally:
                 server.db = orig_db
                 client.close()

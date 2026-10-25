@@ -16,8 +16,8 @@ test("details list blocked + shared incidents", () => {
   assert.deepEqual(weeklyDetails(base({ total: 3, active_days: 1, blocked: 1, handled_alerts: 1, shared_incidents: 1, shared_resolved: 1 })), ["3 checks over 1 day", "1 blocked by Apollo", "1 alert handled", "1 incident shared with you, all handled"]);
 });
 test("last seen labels", () => {
-  assert.equal(lastSeenLabel(base({}), NOW), "Their Apollo was active in the last hour.");
-  assert.equal(lastSeenLabel(base({ last_seen_at: "2026-06-15T06:00:00Z" }), NOW), "Their Apollo was active 6h ago.");
-  assert.equal(lastSeenLabel(base({ last_seen_at: "2026-06-12T06:00:00Z" }), NOW), "Their Apollo was last active 3 days ago.");
-  assert.equal(lastSeenLabel(base({ last_seen_at: null }), NOW), "Apollo has not yet heard from their phone.");
+  assert.equal(lastSeenLabel(base({}), NOW), "Their ApolloSG was active in the last hour.");
+  assert.equal(lastSeenLabel(base({ last_seen_at: "2026-06-15T06:00:00Z" }), NOW), "Their ApolloSG was active 6h ago.");
+  assert.equal(lastSeenLabel(base({ last_seen_at: "2026-06-12T06:00:00Z" }), NOW), "Their ApolloSG was last active 3 days ago.");
+  assert.equal(lastSeenLabel(base({ last_seen_at: null }), NOW), "ApolloSG has not yet heard from their phone.");
 });

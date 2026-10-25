@@ -25,7 +25,7 @@ export default function SavedReportDetail() {
     if (!report) return;
     setExporting(true); setError(null);
     try { const file = await prepareReportPdf(report); try { await Sharing.shareAsync(file.uri, { mimeType: "application/pdf", dialogTitle: "Share Higgins report" }); } finally { file.dispose(); } }
-    catch { setError("Apollo could not prepare this saved report for sharing."); }
+    catch { setError("ApolloSG could not prepare this saved report for sharing."); }
     finally { setExporting(false); }
   };
   return <View style={s.root} testID="saved-report-detail-screen"><View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-report-detail-title">Saved report</Text><CloseButton testID="saved-report-detail-close" label="Close saved report" onPress={() => goBackOrHome(router)} /></View>

@@ -69,11 +69,11 @@ export default function IncidentTimeline() {
       if (r.shared_with === 0) { showToast("No family linked yet. Pair someone in Family first.", "neutral"); return; }
       setShared(true); save(ticked, true);
       showToast(`Shared with ${r.shared_with} family member${r.shared_with > 1 ? "s" : ""}. They can see the timeline and your progress — nothing else.`, "resting");
-    } catch { showToast("Couldn't reach Apollo's relay right now.", "barking"); } finally { setSharing(false); }
+    } catch { showToast("Couldn't reach ApolloSG's relay right now.", "barking"); } finally { setSharing(false); }
   };
   if (ready && !setupDone) return <Redirect href="/" />;
 
-  const resolveAll = async () => { const at = new Date().toISOString(); for (const e of linked) if (e.status === "active") await upsertEvent({ ...e, status: "resolved", resolved_at: at }); save(ticked, shared, true); showToast("Incident marked handled. Apollo keeps the record.", "resting"); };
+  const resolveAll = async () => { const at = new Date().toISOString(); for (const e of linked) if (e.status === "active") await upsertEvent({ ...e, status: "resolved", resolved_at: at }); save(ticked, shared, true); showToast("Incident marked handled. ApolloSG keeps the record.", "resting"); };
 
   return (
     <View style={s.root}>
@@ -131,7 +131,7 @@ export default function IncidentTimeline() {
                 </Pressable>
               );
             })}
-            <Body>Tick steps as you go. Apollo doesn&apos;t know what was taken — only what was risky — so don&apos;t assume the worst, but do the steps.</Body>
+            <Body>Tick steps as you go. ApolloSG doesn&apos;t know what was taken — only what was risky — so don&apos;t assume the worst, but do the steps.</Body>
           </Card>
 
           <Card style={{ gap: spacing.sm }} testID="incident-actions">

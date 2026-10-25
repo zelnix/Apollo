@@ -180,7 +180,7 @@ async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[s
                 try:
                     nxt, _ = sanitize_url(raw_nxt)
                 except HTTPException:
-                    complete, reason = False, "the chain pointed at a destination Apollo could not safely follow"
+                    complete, reason = False, "the chain pointed at a destination ApolloSG could not safely follow"
                     break
                 if nxt in chain:
                     break

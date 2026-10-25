@@ -134,7 +134,7 @@ export async function collectPostureSnapshot(
       "vpn_protection", "VPN Protection", "network",
       true, vpnOk, vpnOk ? "Active" : "Inactive",
       vpnOk ? "ok" : "critical",
-      vpnOk ? "Apollo VPN protection is running." : "Apollo VPN protection is not running.",
+      vpnOk ? "ApolloSG VPN protection is running." : "ApolloSG VPN protection is not running.",
     ));
   } else {
     checks.push(check("vpn_protection", "VPN Protection", "network", true, false, "Unknown", "warning", "Could not determine VPN protection status."));
@@ -207,12 +207,12 @@ export async function collectPostureSnapshot(
   // 7. Apollo Notifications
   if (native) {
     checks.push(check(
-      "notifications", "Apollo Notifications", "settings",
+      "notifications", "ApolloSG Notifications", "settings",
       true, native.notificationsEnabled, native.notificationsEnabled ? "Enabled" : "Disabled",
       native.notificationsEnabled ? "ok" : "critical",
       native.notificationsEnabled
-        ? "Apollo can send notifications to alert you."
-        : "Apollo notifications are disabled. You will not receive security alerts.",
+        ? "ApolloSG can send notifications to alert you."
+        : "ApolloSG notifications are disabled. You will not receive security alerts.",
     ));
   } else {
     // Can check via expo-notifications on any platform
@@ -221,13 +221,13 @@ export async function collectPostureSnapshot(
       const perm = await getPermissionsAsync();
       const granted = perm.granted;
       checks.push(check(
-        "notifications", "Apollo Notifications", "settings",
+        "notifications", "ApolloSG Notifications", "settings",
         true, granted, granted ? "Enabled" : "Disabled",
         granted ? "ok" : "critical",
-        granted ? "Apollo can send notifications." : "Apollo notifications are disabled.",
+        granted ? "ApolloSG can send notifications." : "ApolloSG notifications are disabled.",
       ));
     } catch {
-      checks.push(check("notifications", "Apollo Notifications", "settings", false, null, "Not observable", "ok", "Cannot read notification permission."));
+      checks.push(check("notifications", "ApolloSG Notifications", "settings", false, null, "Not observable", "ok", "Cannot read notification permission."));
     }
   }
 
@@ -366,8 +366,8 @@ export async function collectPostureSnapshot(
       true, native.otherVpnActive, native.otherVpnActive ? "Another VPN active" : "No interference",
       native.otherVpnActive ? "critical" : "ok",
       native.otherVpnActive
-        ? "Another VPN or profile is active and may be interfering with Apollo's protection."
-        : "No other VPN is interfering with Apollo.",
+        ? "Another VPN or profile is active and may be interfering with ApolloSG's protection."
+        : "No other VPN is interfering with ApolloSG.",
     ));
   } else {
     checks.push(check("vpn_config", "VPN Configuration", "network", false, null, "Not observable", "ok", "Cannot read on this platform."));

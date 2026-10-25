@@ -22,7 +22,7 @@ export function inferRecoveryKinds(events: PatrolEvent[]): RecoveryKind[] {
   const kinds = new Set<RecoveryKind>();
   for (const e of events) {
     for (const kind of e.recovery_kinds ?? []) if (kind in TOLD_LABEL) kinds.add(kind as RecoveryKind);
-    for (const w of e.why) { const m = w.match(/^(?:You told Apollo|You told Higgins|You reported): (.+)\.$/); if (m) for (const k of Object.keys(TOLD_LABEL) as RecoveryKind[]) if (TOLD_LABEL[k] === m[1]) kinds.add(k); }
+    for (const w of e.why) { const m = w.match(/^(?:You told Apollo(?:SG)?|You told Higgins|You reported): (.+)\.$/); if (m) for (const k of Object.keys(TOLD_LABEL) as RecoveryKind[]) if (TOLD_LABEL[k] === m[1]) kinds.add(k); }
     const sc = e.scenario ?? "";
     if (/^AC12/.test(sc)) kinds.add("code");
     if (/^AC11/.test(sc)) kinds.add("password");

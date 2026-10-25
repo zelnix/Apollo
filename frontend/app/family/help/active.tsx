@@ -18,13 +18,13 @@ export default function ActiveFamilyHelp() {
   const reconcile = useCallback(async () => { if (!sessionId) return; await reconcileNativeCapture(sessionId, await getNativeFamilyHelpState()); await query.refetch(); }, [query, sessionId]);
   useEffect(() => { const subscription = observeNativeFamilyHelp(() => { void reconcile(); }); return () => subscription.remove(); }, [reconcile]);
   useEffect(() => { if (expected && session?.state === expected) { setExpected(null); setControlError(null); } }, [expected, session?.state]);
-  useEffect(() => { if (!expected) return; const timer = setTimeout(() => { setExpected(null); setControlError("Apollo kept sharing in the safest available state. Check the status and try again."); void reconcile(); }, 5000); return () => clearTimeout(timer); }, [expected, reconcile]);
+  useEffect(() => { if (!expected) return; const timer = setTimeout(() => { setExpected(null); setControlError("ApolloSG kept sharing in the safest available state. Check the status and try again."); void reconcile(); }, 5000); return () => clearTimeout(timer); }, [expected, reconcile]);
   useEffect(() => { if (session && ["ended", "expired", "revoked", "failed"].includes(session.state)) void stopNative(session).catch(() => undefined); }, [session]);
   const control = async () => {
     if (!session) return; const nativeControl = captureControlFor(session.state); if (!nativeControl) return;
     const next = nativeControl === "pause" ? "paused" : "active"; setExpected(next); setControlError(null);
     try { if (nativeControl === "pause") await pauseNative(session); else await resumeNative(session); }
-    catch { setExpected(null); setControlError("The native screen-sharing control failed. Apollo did not claim the state changed."); }
+    catch { setExpected(null); setControlError("The native screen-sharing control failed. ApolloSG did not claim the state changed."); }
   };
   const stop = async () => { if (!session) return; await stopNative(session).catch(() => undefined); await endFamilyHelpById(session.sessionId).catch(() => undefined); router.replace("/family"); };
   const label = session?.state === "paused" ? "Paused" : session?.state === "active" ? "Sharing is on" : "Connecting securely";

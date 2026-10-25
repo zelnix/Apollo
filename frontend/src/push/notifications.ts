@@ -52,7 +52,7 @@ export async function getNotificationHealth(): Promise<NotificationHealth> {
       fullyEnabled: false,
       disabledReason: permission === "blocked"
         ? "Notification permission is blocked. Open device Settings to re-enable it."
-        : "Notification permission has not been granted. Apollo needs notifications to alert you about threats.",
+        : "Notification permission has not been granted. ApolloSG needs notifications to alert you about threats.",
     };
   }
 
@@ -124,7 +124,7 @@ export async function ensureNotificationChannels(): Promise<void> {
       name: "Apollo alerts",
       importance: N.AndroidImportance.MAX,
       sound: "default",
-      description: "All Apollo scam protection alerts, warnings, and notifications.",
+      description: "All ApolloSG scam protection alerts, warnings, and notifications.",
     });
 
     // Step 2: Preserve Family channel only — it's a genuinely separate notification
@@ -133,7 +133,7 @@ export async function ensureNotificationChannels(): Promise<void> {
       name: "Family replies",
       importance: N.AndroidImportance.HIGH,
       sound: "apollo_chime.wav",
-      description: "Replies and updates from Apollo Family Help.",
+      description: "Replies and updates from ApolloSG Family Help.",
     });
 
     // Step 3: Migration — delete legacy channels so existing installations don't
@@ -156,7 +156,7 @@ export async function scheduleLocalAlert(alert: LocalAlert, logId?: string): Pro
     if (!logId) await recordAlert({ id, title: alert.title, body: alert.body, at: new Date().toISOString(), state: "failed", detail: message });
     throw new Error(message);
   };
-  if (!N) return fail("Local notifications need an installed Apollo build.");
+  if (!N) return fail("Local notifications need an installed ApolloSG build.");
   await ensureNotificationChannels();
   if (await getNotificationStatus() !== "granted") return fail("Notification permission is not granted.");
   // Route all alerts through the consolidated channel. Family uses its own channel.

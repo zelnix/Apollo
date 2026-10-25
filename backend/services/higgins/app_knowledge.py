@@ -69,13 +69,13 @@ NAV_ROUTES: dict[str, str] = {
     "/settings/email-accounts": "Email accounts",
     "/settings/feed-health": "Feed health",
     "/settings/rule-book": "Rule book",
-    "/privacy-data": "What Apollo stores",
+    "/privacy-data": "What ApolloSG stores",
     "/privacy-disclosure": "Privacy statement",
     "/third-party-register": "Third-party services",
     "/compliance-matrix": "Compliance matrix",
     "/notification-check": "Notification check",
     "/family": "Family sharing",
-    "/support": "Get help with Apollo",
+    "/support": "Get help with ApolloSG",
 }
 
 
@@ -110,7 +110,7 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
         "/app-check": "Check an app — installed or being considered",
         "/account": "Check an account alert — login/breach/recovery warning",
         "/device": "Check my device — screen lock, biometrics, OS updates",
-        "/device-protection": "Device capabilities — what this device protects by itself, what Apollo may use, what the OS withholds, and which native settings to turn on",
+        "/device-protection": "Device capabilities — what this device protects by itself, what ApolloSG may use, what the OS withholds, and which native settings to turn on",
         "/network": "Check my internet — current Wi-Fi or mobile connection",
         "/vision": "Check a screenshot — any picture of something suspicious",
         "/text-guard": "Message screening — paste text or turn on auto-screening (Android)",
@@ -134,11 +134,11 @@ ROUTE_GROUPS: dict[str, dict[str, str]] = {
         "/settings/personal-data": "My personal data",
         "/settings/feed-health": "Feed health — sync status of each government feed",
         "/settings/rule-book": "Rule book — every rule Apollo, TC FlyBy, Magnum DI and Higgins follow, word for word",
-        "/privacy-data": "What Apollo stores",
+        "/privacy-data": "What ApolloSG stores",
         "/privacy-disclosure": "Privacy statement",
         "/third-party-register": "Third-party services",
         "/compliance-matrix": "Compliance matrix",
-        "/support": "Get help with Apollo",
+        "/support": "Get help with ApolloSG",
     },
     "learning": {
         "/higgins/learning": "Learn with Higgins — article library on scams",
@@ -166,7 +166,7 @@ def _render_route_group(name: str) -> str:
 # PERMANENT: role separation (always in prompt — safety invariant)
 _ROLES = """WHO DOES WHAT — NEVER BLUR THESE:
 - APOLLO: protection and detection. Watches, detects, blocks, records. Acts on the device.
-- TC FLYBY: fast, low-cost investigation. Checks official sources, Apollo's knowledge base and one targeted search, and stops as soon as more checking couldn't change the answer. When it settles a check, Magnum DI is not called.
+- TC FLYBY: fast, low-cost investigation. Checks official sources, ApolloSG's knowledge base and one targeted search, and stops as soon as more checking couldn't change the answer. When it settles a check, Magnum DI is not called.
 - MAGNUM DI: deep investigation, only when TC FlyBy can't settle something that could change the answer. Examines just what's still open and produces the full briefing.
 - You do NOT investigate or search externally.
 - HIGGINS (you): knows this app completely and knows scams. Explains, guides, navigates, hands off. When investigation is needed, say so and hand it to Apollo's investigators (TC FlyBy first, Magnum DI only if needed)."""
@@ -196,7 +196,7 @@ def _screens_block(route_groups: Sequence[str]) -> str:
 
 # CONDITIONAL: how flows work
 _FLOWS = """HOW APOLLO'S FLOWS WORK:
-- Sharing into Apollo: in apps that offer Share, tap Share and choose Apollo. Not every app offers Share — copy/paste or a screenshot always works. Apollo asks which app, shows what it received, waits for confirmation.
+- Sharing into ApolloSG: in apps that offer Share, tap Share and choose ApolloSG. Not every app offers Share — copy/paste or a screenshot always works. ApolloSG asks which app, shows what it received, waits for confirmation.
 - One case per check: checking the same thing twice reuses and updates the existing case.
 - Triage then investigation: every check runs deterministic triage first (rules + reputation, no AI). If clean, that's the answer. If possible threat or inconclusive, it is investigated: TC FlyBy first, and Magnum DI only if a deeper look could change the answer. The full rules are on the How Apollo checks screen.
 - Deliberate checks escalate; background screening stays deterministic and never silently starts an investigation.
@@ -214,24 +214,24 @@ _PRIVACY = """APOLLO'S PRIVACY RULES (state accurately):
 - Conversations and speech: encrypted, max 15 minutes on server. Clearing temporary history invalidates immediately.
 - Background access, mailbox connections, ongoing monitoring each need separate opt-in.
 - Phone number shared only if added for family calling.
-- Full details: Privacy statement `/privacy-disclosure`, What Apollo stores `/privacy-data`, Third-party services `/third-party-register`."""
+- Full details: Privacy statement `/privacy-disclosure`, What ApolloSG stores `/privacy-data`, Third-party services `/third-party-register`."""
 
 # CONDITIONAL: call screening detail
 _CALL_SCREENING = """CALL SCREENING:
-- Android: Apollo can become default call screener via Settings > Default apps > Caller ID & spam blocking. Offered during setup and on Check a number `/call-guard`.
+- Android: ApolloSG can become default call screener via Settings > Default apps > Caller ID & spam blocking. Offered during setup and on Check a number `/call-guard`.
 - Android: "Calls Apollo screened" on `/call-guard` lists the incoming numbers Android passed to Apollo's call screening (usually numbers not in contacts), kept on the phone for up to 30 days; tap one to check it. Apollo does not read the call log or SMS inbox in this version — never offer "pick from your call log" or "pick from your inbox".
-- Text Guard (Android) checks new texts through opt-in notification access. Otherwise: paste the text, use a screenshot, or Share → Apollo where the source app offers Share.
-- iOS: Apple provides no equivalent. No app can be the call screener. Apollo works from numbers the person checks and a blocked-number list. Say this plainly; never imply parity."""
+- Text Guard (Android) checks new texts through opt-in notification access. Otherwise: paste the text, use a screenshot, or Share → ApolloSG where the source app offers Share.
+- iOS: Apple provides no equivalent. No app can be the call screener. ApolloSG works from numbers the person checks and a blocked-number list. Say this plainly; never imply parity."""
 
 # CONDITIONAL: settings structure
 _SETTINGS_DETAIL = """SETTINGS `/(tabs)/settings` — eight groups:
 1. Protection — View all protections `/gates`.
 2. Alerts — notification permission, Notification check, alert preview, quiet hours.
 3. Accounts & family — Email accounts, Family sharing, trusted links.
-4. Your data — Personal data, What Apollo stores, clear Threat history.
-5. App — battery saver, show why each result was settled (one line naming the settling rule, on by default), minimise Apollo, retrofit past investigations.
+4. Your data — Personal data, What ApolloSG stores, clear Threat history.
+5. App — battery saver, show why each result was settled (one line naming the settling rule, on by default), minimise ApolloSG, retrofit past investigations.
 6. Diagnostics — Feed health `/settings/feed-health`: each government feed's last successful sync, records loaded, last error, and a Healthy / Stale (no sync in 24 hours) / Failing badge.
-7. Help & about — Get help, how to share into Apollo, About Apollo, Rule book `/settings/rule-book` (the full rules, word for word; also linked from How Apollo checks).
+7. Help & about — Get help, how to share into ApolloSG, About ApolloSG, Rule book `/settings/rule-book` (the full rules, word for word; also linked from How Apollo checks).
 8. Policies — Privacy statement, Third-party services, Compliance matrix."""
 
 

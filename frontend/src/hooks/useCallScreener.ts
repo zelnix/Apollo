@@ -40,8 +40,8 @@ export interface CallScreener {
 const IOS_DETAIL = "Apple does not let any app screen incoming calls on iPhone. Apollo checks numbers you give it and keeps a blocked-number list instead.";
 
 export const SCREENER_SUMMARY: Record<ScreenerState, string> = {
-  held: "Apollo is your default call screener",
-  available: "Apollo is not your call screener yet",
+  held: "ApolloSG is your default call screener",
+  available: "ApolloSG is not your call screener yet",
   unsupported: "This phone cannot offer call screening",
   ios: "Call screening is not possible on iPhone",
   unavailable: "Call screening can't be read in the preview",
@@ -61,7 +61,7 @@ export function useCallScreener(): CallScreener {
       setDetail("Apollo can't read the call-screening role here. It is readable on an installed Android build.");
       return;
     }
-    if (result.roleHeld) { setState("held"); setDetail("Android hands every incoming call to Apollo before it rings."); return; }
+    if (result.roleHeld) { setState("held"); setDetail("Android hands every incoming call to ApolloSG before it rings."); return; }
     if (result.roleAvailable) { setState("available"); setDetail(result.detail ?? "Another app may currently hold the role."); return; }
     setState("unsupported");
     setDetail(result.detail ?? "This Android version does not offer a call-screening role.");

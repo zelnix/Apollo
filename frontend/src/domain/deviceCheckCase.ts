@@ -57,7 +57,7 @@ export function deviceCheckEvent(args: {
       ? briefing.action
       : clear
         ? "Nothing to do. No concerns were found within what this device allows Apollo to check."
-        : "Run the check again when you can, so Apollo has a complete reading.",
+        : "Run the check again when you can, so ApolloSG has a complete reading.",
     indicator_host: null,
     indicator_digest: null,
     local_indicator: platformLabel,

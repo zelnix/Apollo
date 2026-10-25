@@ -145,9 +145,9 @@ export default function ScamAlertDetailScreen() {
     try {
       const r = await shareScamAlertWithFamily(deviceId, alert.url);
       if (r.shared_with === 0) setNoFamily(true);
-      else showToast(`Sent to ${r.shared_with} family member${r.shared_with === 1 ? "" : "s"} in Apollo.`, "resting");
+      else showToast(`Sent to ${r.shared_with} family member${r.shared_with === 1 ? "" : "s"} in ApolloSG.`, "resting");
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Apollo couldn't send this alert right now.", "neutral");
+      showToast(e instanceof Error ? e.message : "ApolloSG couldn't send this alert right now.", "neutral");
     } finally { setSending(false); }
   };
   useEffect(() => {
@@ -189,10 +189,10 @@ export default function ScamAlertDetailScreen() {
         </View>
         {tab === "overview" ? <OverviewTab a={alert} /> : tab === "signs" ? <SignsTab a={alert} /> : tab === "safe" ? <SafeTab a={alert} /> : <SourceTab a={alert} />}
         <Button testID="scam-detail-official" label="Read the official alert" icon={<ExternalLink size={18} color={colors.onBrandPrimary} />} onPress={() => void Linking.openURL(alert.url)} style={{ marginTop: spacing.md }} />
-        <Button testID="scam-detail-family" variant="secondary" label={sending ? "Sending…" : "Send to my family"} disabled={sending || !deviceId} icon={<Users2 size={18} color={colors.onSurface} />} accessibilityHint="Sends this alert to family linked in Apollo" onPress={() => void sendToFamily()} />
+        <Button testID="scam-detail-family" variant="secondary" label={sending ? "Sending…" : "Send to my family"} disabled={sending || !deviceId} icon={<Users2 size={18} color={colors.onSurface} />} accessibilityHint="Sends this alert to family linked in ApolloSG" onPress={() => void sendToFamily()} />
         {noFamily ? (
           <Card testID="scam-detail-no-family" style={{ gap: spacing.sm }}>
-            <Body>No family members are linked in Apollo yet. Link a family device to send alerts to them in one tap.</Body>
+            <Body>No family members are linked in ApolloSG yet. Link a family device to send alerts to them in one tap.</Body>
             <Button testID="scam-detail-link-family" variant="secondary" label="Link family" onPress={() => router.push("/family")} />
           </Card>
         ) : null}

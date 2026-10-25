@@ -1,6 +1,6 @@
-# Apollo rule book
+# ApolloSG rule book
 
-How a check moves through Apollo, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
+How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
 _Last reviewed against the code: 2026-10-25._
 
@@ -8,7 +8,7 @@ This is the only copy. Whenever a rule or process changes, this book is updated 
 
 **The path of every check**
 
-Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → Apollo KB → one targeted search) → settled, *or* → **Magnum DI** (one Gemini call) → **Higgins** explains the result.
+Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → ApolloSG KB → one targeted search) → settled, *or* → **Magnum DI** (one Gemini call) → **Higgins** explains the result.
 
 Each check creates exactly one entry in the Threats list. The phone's first detection and the later investigation update the same card.
 
@@ -89,7 +89,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 | Licence | Who holds it on ASIC's register, and is it current? |
 | Person + company | Is the person publicly associated with the company? |
 | Quoted phrase | Does this exact text appear elsewhere online or in scam warnings? |
-| Claims, scam alerts | Apollo KB only |
+| Claims, scam alerts | ApolloSG KB only |
 | Message analysis | Planned, but it reaches Magnum DI only if the deciding test says so |
 
 ---
@@ -100,7 +100,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 ### Stage 1: official and direct sources (no AI, 8 s per lookup)
 - **Link**
-  - On Apollo's official-domain register (government and regulator domains, plus organisations' own domains) → **settles it as clear**.
+  - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **settles it as clear**.
   - Redirects somewhere → warning sign. The final destination is checked too.
   - Listed by Safe Browsing or Apollo's blocklist → **decisive concern**. Not listed → clear.
   - Registered less than 90 days ago, or flagged as new → warning sign.
@@ -118,7 +118,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 **Stops here only for a decisive concern → Confirmed scam or threat.**
 
-### Stage 2: Apollo Knowledge Base (no AI)
+### Stage 2: ApolloSG Knowledge Base (no AI)
 - **Scam patterns.** There are 8 patterns from Scamwatch: family "new number" ("Hi Mum"), organisation phishing, delivery/toll, government threat, unexpected money or prize, job/paid task, investment returns, and remote access/tech support.
   - **Full match:** every defining indicator plus the ask. Organisation phishing also needs an organisation named and a link that isn't its own. Delivery/toll needs a link that isn't official.
   - **Opening:** every indicator but no ask yet. This applies to the family pattern only.
@@ -132,7 +132,7 @@ Each check creates exactly one entry in the Threats list. The phone's first dete
 
 ### Stage 3: one targeted web search
 - Only open checks with a question get here: at most 6 questions in **one** call to the low-cost model, with Google Search.
-- Apollo's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
+- ApolloSG's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
 - An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as clear.
 - How answers are treated:
@@ -221,7 +221,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 
 If the answer fails, the check fails honestly. The raw reply is kept only in the technical details.
 
-**Information Magnum DI can ask for (no other part of Apollo can)**
+**Information Magnum DI can ask for (no other part of ApolloSG can)**
 - **A question to the person**, as free text, yes/no or multiple choice, always with the reason it's needed. The case waits, and the answer continues the investigation as a new turn.
 - **A fresh device reading, a setting to open or a permission to grant**, only when the phone advertises that capability.
 
@@ -242,9 +242,9 @@ It can't override what is already established, and it isn't called to move a cas
 2. **Something to check** → goes to the pipeline. What counts as something to check is set out under Ask Higgins below.
 3. **A scam alert** the person opened → shown in the source's own words.
 4. **A Learn article** → shown in its own words.
-5. **Patrol records, the phone's live state, recent investigations or Apollo product knowledge** → shown as they are.
-6. **Apollo's KB** → quoted with publisher and link, labelled as general knowledge.
-7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
+5. **Patrol records, the phone's live state, recent investigations or ApolloSG product knowledge** → shown as they are.
+6. **ApolloSG's KB** → quoted with publisher and link, labelled as general knowledge.
+7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
 8. **A general scam-safety question nothing else answers** → **one** Gemini call with the question alone (no device state, history or case). The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
 
 **Rules**
@@ -255,7 +255,7 @@ It can't override what is already established, and it isn't called to move a cas
 ### Plain English and the Fidelity Check
 Every finished TC FlyBy or Magnum DI result is explained in plain English before it is shown. Higgins writes it from the result itself, in Apollo's wording only. No AI is used and it costs nothing. A general question with nothing checked has nothing to explain, so it is shown as answered.
 
-**The evidence lock.** The plain English can't add, drop or change a fact, a link, address, number, date or amount, how sure Apollo is, how serious it is, what to do, or who established it. The result itself is never changed: the explanation sits beside it, and where the two could ever differ the result wins.
+**The evidence lock.** The plain English can't add, drop or change a fact, a link, address, number, date or amount, how sure ApolloSG is, how serious it is, what to do, or who established it. The result itself is never changed: the explanation sits beside it, and where the two could ever differ the result wins.
 
 **What Higgins may change**
 - Markdown is removed, and formal words are swapped for plain ones from a fixed list ("in order to" → "to", "is unable to" → "can't", "do not" → "don't" and similar). Quoted words and identifiers are never touched.
@@ -269,7 +269,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 | Action needed | How serious: you need to act. See what you can do. |
 | Urgent | How serious: urgent. Act now. |
 
-- Each finding says who established it and how firmly: "Seen directly by TC FlyBy", "From what you told Apollo" or "Magnum DI's reading of the evidence, not seen directly", then high, medium or low confidence.
+- Each finding says who established it and how firmly: "Seen directly by TC FlyBy", "From what you told ApolloSG" or "Magnum DI's reading of the evidence, not seen directly", then high, medium or low confidence.
 - The first jargon word in a finding (domain, phishing, redirect, registration record, Safe Browsing, IPQualityScore, ABN, PayID, remote access and others) gets one of Apollo's fixed explanations, shown beside the finding, never as evidence.
 
 **The Fidelity Check** runs before anything is shown. It passes only when:
@@ -280,7 +280,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 - every link, address, number, date and amount is kept, none is added, and quoted words stay word for word;
 - a contradiction in the evidence ("but", "although") stays a contradiction;
 - nothing sounds more certain, safer, milder or more alarming than the result, and the right investigator gets the credit;
-- every step of what to do is kept, and every explanation is one of Apollo's fixed ones.
+- every step of what to do is kept, and every explanation is one of ApolloSG's fixed ones.
 
 **On FAIL.** The parts that failed are put back in Apollo's own wording and checked once more. If it still fails, the person sees Apollo's own wording only. A renderer error never fails an investigation; Apollo's wording is shown.
 
@@ -305,7 +305,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 3. **Where something is, or how to do something** ("where is…", "how do I turn on…", "take me to…", "which screen…") → Higgins on the server, who answers with a tap straight to the screen.
 4. **This phone's state:** protection status, device health, website, call, text or app protection, the VPN, permissions, current issues or the last check → answered on the phone from its live reading. Nothing is sent.
 5. **Something suspicious, described without the form** ("is this a scam?", "I got a dodgy text", "someone called me…") → Higgins on the server.
-6. **About Apollo itself:** how Apollo works, who Higgins or Magnum DI is, the protections, finding your way around, or what Apollo's states mean → a fixed answer on the phone, with taps to the right screens.
+6. **About ApolloSG itself:** how ApolloSG works, who Higgins or Magnum DI is, the protections, finding your way around, or what Apollo's states mean → a fixed answer on the phone, with taps to the right screens.
 7. **A short message that's still unclear:**
    - Under 60 characters: words about the phone working (working, running, active, on, off, enabled, disabled, status, state, ok, fine, healthy, broken, down) → its protection status, on the phone. Words about a threat (scam, scams, scammed, scammer, scammers, phishing, fraud, fraudulent, suspicious, malware, virus, viruses, hacked, hacker, hackers, compromised, stolen, unsafe, dangerous) → Higgins on the server. Both kinds, or neither, → the next step. Only whole words count, so "on" inside "someone" or "phone" doesn't.
    - Under 40 characters with no question mark → one question back: "Do you mean whether Apollo is protecting your phone, or would you like me to investigate something specific?"
@@ -330,7 +330,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 - **Pictures.** The phone reads the text in the picture first, and that text goes with it. A picture showing a password, PIN or one-time code isn't sent, and nor is any picture when the phone's text reader isn't available.
 - **Size.** A file or picture over 10 MB is refused. An email's attachments over 10 MB in total aren't downloaded; they are listed, with advice to check each one on its own.
 
-**Coming in from elsewhere in Apollo**
+**Coming in from elsewhere in ApolloSG**
 - **A scam alert:** its title, source, summary and official link go in as the first message, and Higgins answers in the source's own words.
 - **A Learn article:** shown in its own words.
 - **A Patrol finding, an incident or a Device Check result with no case:** explained on the phone from Apollo's own findings, in fixed wording, with no AI and no investigation. "Ask Apollo to investigate" starts a separate check only when tapped.
@@ -350,7 +350,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 **Suggestions**
 - There are 20 quick questions. Four show while the chat is empty, and the person's own most-asked questions (asked at least twice) take up to 2 of those places.
 - Once a conversation has started, up to 3 of the person's most-asked questions show above the message box while it is empty.
-- Apollo remembers up to 30 asked questions, skipping any under 6 or over 120 characters.
+- ApolloSG remembers up to 30 asked questions, skipping any under 6 or over 120 characters.
 
 **When something goes wrong**
 - Higgins can't answer: "Higgins couldn't answer right now. No investigation was started.", with Try again.
@@ -389,7 +389,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - Personal details and sender information in a picture are kept as evidence.
 
 **What may leave the phone**
-- Every request is checked against its own list of allowed fields. Any other field stops the request: "Apollo couldn't safely prepare this request. Retry this step."
+- Every request is checked against its own list of allowed fields. Any other field stops the request: "ApolloSG couldn't safely prepare this request. Retry this step."
 - Never accepted in any request: contacts, messages, SMS, email bodies, page content, the clipboard, location, IMEI, serial number, phone number or advertising ID. A number the person types to check is sent only as the number to check.
 - In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
 - What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
@@ -402,7 +402,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 
 ---
 
-## 8. Apollo's knowledge base (KB) {#knowledge-base}
+## 8. ApolloSG's knowledge base (KB) {#knowledge-base}
 
 **Job:** sourced general knowledge that Higgins and TC FlyBy can use with no AI. KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
 
@@ -411,13 +411,13 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 |---|---|
 | Learn articles | Published Learn with Higgins articles, each linked to its screen |
 | Scam alerts | Official alerts and advisories from the government feeds, in the source's own words |
-| Official guidance | cyber.gov.au guidance shipped with Apollo (CC BY 4.0, attributed) |
+| Official guidance | cyber.gov.au guidance shipped with ApolloSG (CC BY 4.0, attributed) |
 | Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
 | Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
 
 Gemini's saved answers are **not** in the KB. They are reusable intelligence (below), labelled as Gemini's and never treated as sourced knowledge.
 
-**Trusted sources.** A page on any other website never becomes Apollo knowledge.
+**Trusted sources.** A page on any other website never becomes ApolloSG knowledge.
 - **Tier 1, official authority (24 websites):** government agencies, regulators, police and national cyber-security authorities in Australia, the US, the UK, New Zealand, Canada and the EU.
 - **Tier 2, established security research (11 websites):** recognised research organisations and security companies.
 - **Tier 3, supporting (5 websites):** credible specialist and consumer sources.
@@ -443,7 +443,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - Knowledge is the source's own words. A fact the page doesn't state stays missing.
 - **Same page:** if its words are at least 92% the same, it is only marked as checked again. If they changed, it becomes a new version and the old version is kept as Superseded. "Updated" shows for 30 days.
 - **Same words on another page** (at least 85% the same) are recorded as another place it is published, not a new entry.
-- A page Apollo already holds from a government feed, the shipped guidance or a Learn article isn't added again.
+- A page ApolloSG already holds from a government feed, the shipped guidance or a Learn article isn't added again.
 - **Historical, never deleted:** a page that fails to load on 2 re-reads, or a scam alert published more than 2 years ago.
 - When the checks are tightened, a page that no longer passes is removed everywhere: its Learn article is archived and its Scam Alert withdrawn.
 
@@ -463,7 +463,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - In the source's own words: the passages that best match the question, in their original order.
 - Each quote names the publisher, its authority, where it applies and when it was published or last checked, with a link to read the original.
 - A historical entry says it may be out of date. Guidance from outside Australia says contacts and reporting steps may differ.
-- Every quote ends with: "This is general knowledge from Apollo's library. It isn't a finding about anything you've asked Apollo to check."
+- Every quote ends with: "This is general knowledge from ApolloSG's library. It isn't a finding about anything you've asked Apollo to check."
 
 **Where the KB is used**
 - **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
@@ -471,13 +471,13 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - **Preview:** the simulator answers from the KB instead of calling Gemini, and says so.
 
 ### Reusable intelligence (not KB knowledge)
-**Job:** results Apollo already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
+**Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
 
 **What it holds**
 - Gemini's answer to a general scam-safety question nothing else answered.
 - TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
 - Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
-- Each result records who produced it, by which Apollo process, when Apollo first obtained it, when it was last checked, and when it stops counting as current.
+- Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
 
 **Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated Gemini answer is never saved.
 
@@ -515,13 +515,13 @@ Every finished result can show one plain sentence naming the rule that settled i
 | Rule ID | Rule | Settled by | When it applies |
 |---|---|---|---|
 | FLYBY-THREAT | Confirmed threat | TC FlyBy | A direct safety check, an official scam advisory, or an official source found by the search names this exact link, number, address or company as a scam or threat. |
-| FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in Apollo's knowledge base, and nothing contradicts it. |
+| FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in ApolloSG's knowledge base, and nothing contradicts it. |
 | FLYBY-IMPERSONATION | Corroborated impersonation | TC FlyBy | An organisation is named, a link isn't its website, and a separate check on that link backs this up. |
 | FLYBY-OPENING | Known scam opening | TC FlyBy | The message opens like the family "new number" scam but hasn't asked for anything yet. |
 | FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found real warning signs, but not enough to call it a scam. |
 | FLYBY-CLEAR | Nothing found, everything checked | TC FlyBy | Every planned check ran over everything sent and none found a scam indicator. |
 | FLYBY-UNKNOWN | Can't establish more | TC FlyBy | The checks couldn't establish more, and a deeper look couldn't change what to do. |
-| FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by Apollo's knowledge base or a sourced search. |
+| FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by ApolloSG's knowledge base or a sourced search. |
 | MAGNUM-READING | Reading | Magnum DI | Part of what was sent (a picture or scanned page) had to be read directly. |
 | MAGNUM-REASONING | Reasoning | Magnum DI | The material asks for money, details or access through a route no official source verified. |
 | MAGNUM-RELATING | Relating | Magnum DI | TC FlyBy's findings pointed in different directions and needed weighing up. |
@@ -534,7 +534,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 
 ## 10. Your data: what is kept and for how long {#your-data}
 
-**The rule:** what the person sends Apollo lives on their phone. The server keeps only what a feature needs, only for as long as it needs it, and the person can delete all of it.
+**The rule:** what the person sends ApolloSG lives on their phone. The server keeps only what a feature needs, only for as long as it needs it, and the person can delete all of it.
 
 **On the phone (the person decides)**
 | What | How long |
@@ -544,12 +544,12 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 | Ask Higgins chat | Up to 1 hour, and at most the last 40 messages |
 | Calls Apollo screened (Android) | The last 50 calls, for up to 30 days |
 | Email addresses watched for breaches | Until the person removes them. The last 12 scans are kept |
-| Settings and preferences | Until the person deletes all their data or uninstalls Apollo |
+| Settings and preferences | Until the person deletes all their data or uninstalls ApolloSG |
 
-**On Apollo's server**
+**On ApolloSG's server**
 - **Investigations:** the content is encrypted with a key used for nothing else, and the server's working copy expires 15 minutes after it opens. Retries and reads never extend it. The finished record lives on the phone; the server doesn't keep finished investigations.
-- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if Apollo's own clean-up has stopped, and it is never served after that.
-- **The note on each result.** Every saved result says when its pictures and files were removed from Apollo's server, or the latest time they will leave it. Results saved before this note existed say only that they have left, once 24 hours have passed.
+- **Pictures and files:** everything submitted for a check (pictures, files and text) is deleted from the server within 24 hours of the investigation finishing, whether it was answered, failed or was cancelled. A check that is still running is never cut short: the 24 hours start when it finishes, and start again if a follow-up question sends it back to work. Most of it goes much sooner, as soon as the phone has saved the result or with the 15-minute working copy. The database removes it by itself at 24 hours, even if ApolloSG's own clean-up has stopped, and it is never served after that.
+- **The note on each result.** Every saved result says when its pictures and files were removed from ApolloSG's server, or the latest time they will leave it. Results saved before this note existed say only that they have left, once 24 hours have passed.
 - **Ask Higgins:** the question and answer for 5 minutes, then a receipt with no content for 30 days (see Ask Higgins).
 - **What Higgins remembers between chats:** a recent result for 7 days, protection status for 1 hour, a preference for 90 days, a goal for 30 days and a permission for 1 day. At most 25 of each kind and 100 in all.
 - **Threats records:** fixed wording and a domain only (see Privacy and redaction). Kept until the person clears the Threats history, which hides them, or deletes all their data, which deletes them.
@@ -563,7 +563,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - **Saved AI answers:** kept only when the question holds no secret and no personal detail. Current for 90 days, then deleted 90 days after that (see Reusable intelligence).
 
 **Deleting everything**
-- **Settings → What Apollo stores → Delete My Apollo Data** first wipes everything Apollo keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so Apollo starts again as a new anonymous device.
+- **Settings → What ApolloSG stores → Delete My ApolloSG Data** first wipes everything ApolloSG keeps on the phone. It then deletes everything the server holds for this phone, in 7 groups: Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, and Diagnostics & app signals. Last, it removes the phone's identity, so ApolloSG starts again as a new anonymous device.
 - The same screen counts what the server holds in each group before anything is deleted.
 
 ---
@@ -593,7 +593,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
 - Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
 - **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content, unless the person sends them a summary (below).
-- **Send to family** (on every threat): one tap sends linked family in Apollo a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. Apollo sends no email for this. Family can answer with a quick note ("I'm calling you now", "Don't do anything yet" or their own words, up to 140 characters); it shows on that threat on the person's phone and in Family responses.
+- **Send to family** (on every threat): one tap sends linked family in ApolloSG a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. ApolloSG sends no email for this. Family can answer with a quick note ("I'm calling you now", "Don't do anything yet" or their own words, up to 140 characters); it shows on that threat on the person's phone and in Family responses.
 - **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
 
 ---
@@ -623,20 +623,20 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 ## 13. Messages and calls: Call Guard and Text Guard {#call-text-guard}
 
 **Call Guard (Android)**
-- Works only when the person makes Apollo the phone's caller ID & spam app. Android then hands Apollo each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
+- Works only when the person makes ApolloSG the phone's caller ID & spam app. Android then hands ApolloSG each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
 - Apollo never listens to a call and never reads the call log. It sees only the one incoming number.
 - It compares that number with three lists kept on the phone: numbers the person blocked, numbers they allowed, and numbers this phone looked up earlier and found high-risk.
-- An allowed number always rings. For a blocked or high-risk number, Apollo asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
-- Every other call rings normally. Apollo never delays or silences a call on a guess, and if screening fails the call rings.
-- A number with no local signal is queued (up to 20) and looked up the next time Apollo is open. Android allows only a few seconds to answer, which is too short for the lookup.
+- An allowed number always rings. For a blocked or high-risk number, ApolloSG asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
+- Every other call rings normally. ApolloSG never delays or silences a call on a guess, and if screening fails the call rings.
+- A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
 - **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
-- **iPhone:** Apple lets no app screen calls. Apollo says so rather than suggesting protection it can't give.
+- **iPhone:** Apple lets no app screen calls. ApolloSG says so rather than suggesting protection it can't give.
 
 **Text Guard**
 - **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
-- Store builds of Apollo never ask to read text messages or the call log.
-- **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to Apollo where the app offers Share.
+- Store builds of ApolloSG never ask to read text messages or the call log.
+- **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to ApolloSG where the app offers Share.
 - Every message goes through the same checks as a pasted one: 30 message rules, plus the link check for each link. Calls have 16 rules of their own.
 - **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, a job, investment or romance discussion without scam mechanics, an unknown caller, a number that isn't in contacts, and a number's reputation without matching behaviour.
 
@@ -645,18 +645,18 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 ## 14. Email and accounts {#email-accounts}
 
 **Gmail**
-- Read-only access only. Apollo never sends, deletes, labels or changes anything in the mailbox, and never sees or stores the mailbox password.
+- Read-only access only. ApolloSG never sends, deletes, labels or changes anything in the mailbox, and never sees or stores the mailbox password.
 - The person connects through Google's own sign-in, and the sign-in link expires after 10 minutes. More than one account can be connected.
 - The connection, an encrypted token, is kept until the person disconnects. Disconnecting also cancels it with Google.
 - **Monitoring:** every 15 minutes, Apollo reads the next 15 messages of each connected account and gives each one the same checks as a pasted email.
-- Message content is used for that check only and never written to Apollo's database. A receipt for each message, with no content, stops it from being checked twice.
+- Message content is used for that check only and never written to ApolloSG's database. A receipt for each message, with no content, stops it from being checked twice.
 - An attachment is checked by its fingerprint when the file-reputation service is connected; the attachment itself isn't uploaded.
 - There are 19 email rules. **Never a threat on their own:** a calendar invitation, a form-builder domain, valid sender checks (SPF, DKIM and DMARC) from a form provider, and an address appearing in a breach.
 
 **Account checks**
 - The email addresses the person watches stay on the phone.
 - Each scan sends an address once to the breach service, Have I Been Pwned when it is connected and XposedOrNot otherwise, and the address isn't stored or logged.
-- Apollo never asks for a password. Anything in a pasted account alert that looks like one is removed before it is checked.
+- ApolloSG never asks for a password. Anything in a pasted account alert that looks like one is removed before it is checked.
 - Links in a pasted account alert are compared with the organisation's official websites.
 - "No breach found" is never called proof that the account is safe.
 
@@ -669,13 +669,13 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - Files can be up to 10 MB. The phone reads the start of the file and a text sample; nothing is uploaded for this first look.
 - Links inside a file are checked as links.
 - If the file is sent for an investigation, the server decides its type from its own bytes, not its name, and records any mismatch.
-- Apollo only ever cleans up the copy its own picker made. A shared original is never touched.
+- ApolloSG only ever cleans up the copy its own picker made. A shared original is never touched.
 - There are 19 file rules. **Never a threat on their own:** encryption or password protection, ordinary file characteristics, and a QR code itself.
-- Apollo never calls a file 100% safe, and unknown never means malicious.
+- ApolloSG never calls a file 100% safe, and unknown never means malicious.
 
 **Apps**
 - Apollo doesn't judge an app by its name. It looks at what the app is allowed to do, where it came from and what happened around the install.
-- It works from what the person tells Apollo plus what the phone's security checks can see, and never pretends to read other apps.
+- It works from what the person tells ApolloSG plus what the phone's security checks can see, and never pretends to read other apps.
 - Up to 10 web addresses the app uses are checked against the same reputation sources as a link.
 - A remote-access app matters when it follows a suspicious call, message or website.
 - There are 14 app rules. **Never a threat on their own:** an app from an official store, permissions the app is expected to need, and installing a web app.
@@ -685,21 +685,21 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 ## 16. Device and internet {#device-internet}
 
 **Device check**
-- Apollo shows only what this phone and this version of Apollo can truly see, plus what the person reports. It is never a full scan. Anything it can't see is shown as not visible, never as safe.
+- ApolloSG shows only what this phone and this version of ApolloSG can truly see, plus what the person reports. It is never a full scan. Anything it can't see is shown as not visible, never as safe.
 
 | Result | Meaning |
 |---|---|
 | Protected | No meaningful issues detected within what Apollo can see here. |
 | Review recommended | Some permissions or settings deserve attention. |
 | Action required | A high-risk configuration or app was detected. |
-| Recovery | Risky access was already granted. Follow the steps — Apollo stays with you. |
+| Recovery | Risky access was already granted. Follow the steps — ApolloSG stays with you. |
 
 - **Security & Privacy Review:** the same 9 areas on every kind of device. Each setting gets one of: Checked, Review recommended, Action required, Manual review required, Unavailable or Not applicable. The review is never one blanket "Protected".
 - **Protection changes** say only what changed, never who changed it or why. A setting Apollo couldn't read is never counted as a change, and Apollo's own protection VPN is recognised as Apollo's.
-- There are 15 device rules. **Never a threat on their own:** expected management or device administration, expected accessibility access, Apollo or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
+- There are 15 device rules. **Never a threat on their own:** expected management or device administration, expected accessibility access, ApolloSG or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
 
 **Internet (Check this network)**
-- Apollo uses only what the phone reports: connection type, Wi-Fi security, a sign-in page (captive portal) and VPN status. The person adds where they are (home, work or school, a public place, or not sure), the network name they expect, and whether they turned the VPN on.
+- ApolloSG uses only what the phone reports: connection type, Wi-Fi security, a sign-in page (captive portal) and VPN status. The person adds where they are (home, work or school, a public place, or not sure), the network name they expect, and whether they turned the VPN on.
 - Public isn't malicious, open isn't intercepted, and a VPN the person chose is fine.
 - There are 9 network rules. **Never a threat on their own:** public Wi-Fi, open or WEP Wi-Fi, an unknown Wi-Fi network, a lookalike network name, a captive portal, a trusted home or work connection, and a mobile data connection.
 
@@ -710,7 +710,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 **Job:** show the specific scams that official sources are reporting, each explained from the source itself.
 
 **Where alerts come from**
-- Recognised government and official cyber-authority sources in Australia, the USA, the UK and the EU, plus Tier 1 pages found for Apollo's knowledge base (see Apollo's knowledge base).
+- Recognised government and official cyber-authority sources in Australia, the USA, the UK and the EU, plus Tier 1 pages found for ApolloSG's knowledge base (see ApolloSG's knowledge base).
 - Each source is named in full, never as a bare acronym.
 
 **How often feeds are read**
@@ -726,7 +726,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 - The most recent first, up to 50.
 - Each alert once: an article its feed lists twice is shown once, and a link a feed wraps in page code is read for the article's real address.
 - **Where an alert applies (no AI):** an alert is local to its source's country when its headline or summary names something only that country has: a national agency (FTC, IRS, HMRC, ATO…), a benefit, a payment service, an election, a state or its people. Naming another country as well makes it apply everywhere. Otherwise it applies everywhere.
-- **Home is the phone's region setting** (Apollo never asks for location). The main list shows alerts that apply everywhere or in the home country. An alert local to another country is hidden there but stays under that country's filter, and the list says how many are hidden.
+- **Home is the phone's region setting** (ApolloSG never asks for location). The main list shows alerts that apply everywhere or in the home country. An alert local to another country is hidden there but stays under that country's filter, and the list says how many are hidden.
 - An alert local to a country other than Australia is labelled Overseas only and never growls.
 - **Growling for an alert:** only for a specific scam rated High or Extreme that has reached Australia, or that may reach Australia and was reported within the last 180 days.
 
@@ -734,9 +734,9 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 
 ## 18. Phone permissions {#permissions}
 
-**The rule:** Apollo asks only when the person chooses something that needs the permission, and says why first. If the person says no, Apollo asks once more at most, when the phone allows it, and after that offers Open Settings. Saying no only switches off that one feature.
+**The rule:** ApolloSG asks only when the person chooses something that needs the permission, and says why first. If the person says no, ApolloSG asks once more at most, when the phone allows it, and after that offers Open Settings. Saying no only switches off that one feature.
 
-| Permission | What it's for | When Apollo asks |
+| Permission | What it's for | When ApolloSG asks |
 |---|---|---|
 | Notifications | Receive important threat and family alerts | During setup, or with Allow security alerts in Settings |
 | Camera | Scan QR codes and photograph suspicious items for Apollo to check | When the person scans a code or takes a photo |
@@ -747,7 +747,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 | Gmail read-only (an account, not a phone permission) | Check a connected mailbox | When the person connects Gmail |
 
 - **Never asked for:** the microphone and location. Store builds never ask to read text messages or the call log.
-- Where a phone hides Wi-Fi details without location permission, Apollo shows them as unknown rather than asking.
+- Where a phone hides Wi-Fi details without location permission, ApolloSG shows them as unknown rather than asking.
 - A reminder to set up a protection the person skipped comes back after about 3 days, only while it is still off.
 
 ---

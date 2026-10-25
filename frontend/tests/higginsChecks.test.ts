@@ -69,7 +69,7 @@ import { higginsPermissionNote } from "../src/domain/higginsChecks.ts";
 test("permission note: null when nothing is gated, first-person and named when it is", () => {
   assert.equal(higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "active", detail: "" }]), null);
   const one = higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" }]);
-  assert.match(one!, /^Apollo needs your permission for Site/);
+  assert.match(one!, /^ApolloSG needs your permission for Site/);
   assert.match(one!, /Open it and choose the setup action/);
   const two = higginsPermissionNote([
     { id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" },

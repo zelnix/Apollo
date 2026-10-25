@@ -84,7 +84,7 @@ export async function shareScamAlert(alert: GovernmentAlert): Promise<void> {
     `Severity: ${severityLabel(alert.severity)} · ${RELEVANCE_LABEL[alert.australianRelevance]}`,
     headline ? `\n${headline}` : "",
     `\nOfficial source: ${alert.url}`,
-    `\nShared from Apollo Cyber Security.`,
+    `\nShared from ApolloSG Cyber Security.`,
   ].filter(Boolean).join("\n");
   try {
     await Share.share({ title: alert.title, message, url: alert.url }, { subject: `Scam alert: ${alert.title}`, dialogTitle: "Share this scam alert" });

@@ -71,7 +71,7 @@ export default function PatrolHistory() {
       const outcome = await exportPatrolPdf(events, deviceId);
       if (outcome === "printed") showToast("Opened the history for printing or saving.", "neutral");
     } catch {
-      showToast("Apollo couldn't produce the history file.", "growling");
+      showToast("ApolloSG couldn't produce the history file.", "growling");
     } finally { setExporting(false); }
   };
 
@@ -81,7 +81,7 @@ export default function PatrolHistory() {
         <CheckToolHeader
           title="Patrol history"
           info={{ title: "About patrol history", body: [
-            "Everything Apollo has filed on this device, newest first: checks you ran, findings, blocks and device checks.",
+            "Everything ApolloSG has filed on this device, newest first: checks you ran, findings, blocks and device checks.",
             "Threats lists one row per case. This lists the record as it happened, including cases that are closed or found nothing.",
           ] }}
           testID="patrol-history"
@@ -90,7 +90,7 @@ export default function PatrolHistory() {
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="patrol-history-scroll">
         {days.length === 0 ? (
           <Card testID="patrol-history-empty">
-            <Body>Apollo hasn&apos;t filed anything yet. Checks you run and anything Apollo finds will be recorded here.</Body>
+            <Body>ApolloSG hasn&apos;t filed anything yet. Checks you run and anything Apollo finds will be recorded here.</Body>
           </Card>
         ) : (
           <>

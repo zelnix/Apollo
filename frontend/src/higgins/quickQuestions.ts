@@ -20,8 +20,8 @@ export const QUICK_QUESTIONS: string[] = [
   "I want to check a link",
   "How do I check a phone number?",
   "Where do I see my past threats?",
-  "How do I share something into Apollo?",
-  "What does Apollo keep about me?",
+  "How do I share something into ApolloSG?",
+  "What does ApolloSG keep about me?",
   // Scams and safety
   "What scams are going around right now?",
   "How do I spot a fake delivery text?",

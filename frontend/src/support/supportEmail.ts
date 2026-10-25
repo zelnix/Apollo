@@ -11,7 +11,7 @@ export type EmailOutcome = "composed" | "mailto" | "unavailable";
 
 /** Subject always begins with "Apollo" and carries the support reference (spec §7). */
 export function supportSubject(reference: string): string {
-  return `Apollo Support [${reference}]`;
+  return `ApolloSG Support [${reference}]`;
 }
 
 /** mailto: with correct percent-encoding. Guards against an oversized URL silently truncating the body. */
@@ -39,7 +39,7 @@ export async function openSupportEmail(reference: string, body: string, ccSelf?:
     return "mailto";
   }
   // A full mailto would truncate the summary — hand back a short mailto so the user still gets a draft.
-  const shortBody = `Support Reference: ${reference}\n\nPlease describe your issue here. Tap "Copy Support Summary" in Apollo and paste the details below.`;
+  const shortBody = `Support Reference: ${reference}\n\nPlease describe your issue here. Tap "Copy Support Summary" in ApolloSG and paste the details below.`;
   const shortMailto = buildMailto(reference, shortBody, cc);
   if (shortMailto && (await Linking.canOpenURL(shortMailto))) {
     await Linking.openURL(shortMailto);

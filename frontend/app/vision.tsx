@@ -243,7 +243,7 @@ export default function VisionScreen() {
       setResult(response);
       setStage("result");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Apollo couldn't send the image. Nothing was sent.";
+      const msg = err instanceof Error ? err.message : "ApolloSG couldn't send the image. Nothing was sent.";
       console.warn("[Vision] upload error:", msg);
       setVisionGateSubmission({ phase: "error", errorMessage: msg });
     }
@@ -442,7 +442,7 @@ export default function VisionScreen() {
                     </Text>
                   </View>
                   <Text style={s.higginsExplanation} testID="vision-higgins-explanation">
-                    {result.higgins?.explanation || "Apollo processed this image but could not create a full investigation case."}
+                    {result.higgins?.explanation || "ApolloSG processed this image but could not create a full investigation case."}
                   </Text>
                   {result.higgins?.action ? (
                     <Text style={s.higginsAction} testID="vision-higgins-action">{result.higgins.action}</Text>

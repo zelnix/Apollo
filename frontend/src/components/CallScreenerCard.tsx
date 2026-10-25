@@ -48,10 +48,10 @@ export function CallScreenerCard({ testID = "call-screener-card" }: { testID?: s
       <Body testID={`${testID}-detail`}>{screener.detail}</Body>
       {screener.canRequest ? (
         <>
-          <Body>Apollo can only check a call as it arrives if your phone makes Apollo the screener. You choose this in Android&apos;s own settings, and you can change it back at any time.</Body>
+          <Body>Apollo can only check a call as it arrives if your phone makes ApolloSG the screener. You choose this in Android&apos;s own settings, and you can change it back at any time.</Body>
           <Button
             testID={`${testID}-request`}
-            label={screener.requesting ? "Opening…" : "Make Apollo my call screener"}
+            label={screener.requesting ? "Opening…" : "Make ApolloSG my call screener"}
             onPress={() => void screener.request()}
             disabled={screener.requesting}
           />

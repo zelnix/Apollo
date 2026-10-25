@@ -145,11 +145,11 @@ const CHECKS: CheckDef[] = [
       if (sig.active) return checked(`${sig.activeProviders.join(", ")} active. ${sig.detail}`);
       return review("No native message-spam protection was detected as the active handler.", "Check that your messaging app's built-in spam filter is turned on.", sig.detail);
     } },
-  { id: "apollo_protection", category: "malware", title: "Apollo background protection", platforms: ["android", "ios", "windows", "macos"],
-    settings: { android: "Settings → Network & internet → VPN", ios: "Settings → Apollo", windows: "Apollo → Protection", macos: "Apollo → Protection" },
-    evaluate: (i) => !i.protection ? unavailable("Apollo couldn't obtain a current protection reading. This does not mean protection is running.")
+  { id: "apollo_protection", category: "malware", title: "ApolloSG background protection", platforms: ["android", "ios", "windows", "macos"],
+    settings: { android: "Settings → Network & internet → VPN", ios: "Settings → ApolloSG", windows: "ApolloSG → Protection", macos: "ApolloSG → Protection" },
+    evaluate: (i) => !i.protection ? unavailable("ApolloSG couldn't obtain a current protection reading. This does not mean protection is running.")
       : i.protection.operational ? checked(`The device confirmed Apollo protection operational${i.protection.checkedAt ? ` at ${new Date(i.protection.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}.`)
-        : !i.protection.requested ? review("No automatic background protection is running.", "Open Apollo's protection settings and turn protection on.", "Protection is currently turned off.")
+        : !i.protection.requested ? review("No automatic background protection is running.", "Open ApolloSG's protection settings and turn protection on.", "Protection is currently turned off.")
           : action("Protection was requested but the device did not confirm it running.", i.protection.permissionIssues.length ? `Restore: ${i.protection.permissionIssues.join(", ")}, then re-check.` : "Restore the protection service, then re-check.", i.protection.permissionIssues.length ? `Missing permission: ${i.protection.permissionIssues.join(", ")}.` : i.protection.degradedReason ?? "Protection did not confirm running.") },
   { id: "antivirus", category: "malware", title: "Antivirus / malware protection", platforms: ["windows", "macos", "android"],
     settings: DESKTOP_SET("Settings → Privacy & security → Windows Security → Virus & threat protection", "Open your antivirus app"),
@@ -229,7 +229,7 @@ const CHECKS: CheckDef[] = [
       if (managed && !i.self.managementExpected) return action(
         named
           ? `${named} can install apps, change network settings and read some activity.`
-          : "A management profile can install apps, change network settings and read some activity. The platform did not give Apollo its name.",
+          : "A management profile can install apps, change network settings and read some activity. The platform did not give ApolloSG its name.",
         named
           ? `Find ${named} in the settings path above. If your work or school didn't set it up, remove it.`
           : "Open the settings path above, where the profile is listed by name. If your work or school didn't set it up, remove it.",

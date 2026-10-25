@@ -28,7 +28,7 @@ export function timeoutFor(path: string): number { return LONG_PATHS.some((p) =>
 /** Bearer credential for every call. Fails closed: with no identity the request is not sent. */
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getDeviceToken();
-  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  if (!token) throw new ApiError(401, "ApolloSG hasn't registered this device yet.");
   return { Authorization: `Bearer ${token}` };
 }
 
@@ -121,10 +121,10 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
   xhr.setRequestHeader("Content-Type", "application/json");
   xhr.setRequestHeader("Accept", "text/event-stream");
   void getDeviceToken().then((token) => {
-    if (!token) { finish("Apollo hasn't registered this device yet."); return; }
+    if (!token) { finish("ApolloSG hasn't registered this device yet."); return; }
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.send(JSON.stringify(enforceEgress(endpoint, body)));
-  }).catch((error: unknown) => finish(error instanceof Error ? error.message : "Apollo could not prepare this request."));
+  }).catch((error: unknown) => finish(error instanceof Error ? error.message : "ApolloSG could not prepare this request."));
   const consume = () => {
     const text = xhr.responseText ?? "";
     const chunk = text.slice(seen);
@@ -147,7 +147,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     consume();
     if (xhr.status >= 500) markBackendFailure("server_error"); else markBackendOk();
     // 401 → identity reset; 403 → forbidden, identity untouched.
-    if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); }
+    if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("ApolloSG needs to re-register this device. Try again in a moment."); }
     else if (xhr.status === 403) finish("This device isn't allowed to do that.");
     else if (xhr.status >= 400) finish("I couldn't answer right now.");
     else if (!finished) finish("The connection ended before Magnum DI completed this answer. Retry this question.");

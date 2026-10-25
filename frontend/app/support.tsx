@@ -59,7 +59,7 @@ async function fetchRuleDiagnostic(): Promise<DiagnosticResult> {
 const STATUS: Record<CheckStatus, string> = { pending: "Could not check", checking: "Checking", healthy: "Working", degraded: "Needs attention", unavailable: "Could not check" };
 const RESULT_TEXT = {
   device: { working: "Protection on this phone is working.", problem: "Apollo cannot confirm protection right now." },
-  backend: { working: "Apollo's online services are working.", problem: "Apollo's online services need attention. Protection on this phone may continue." },
+  backend: { working: "ApolloSG's online services are working.", problem: "ApolloSG's online services need attention. Protection on this phone may continue." },
   higgins: { working: "Higgins can complete investigations.", problem: "Higgins cannot complete an investigation right now." },
   report: { working: "Higgins can prepare reports.", problem: "Higgins cannot prepare a report right now." },
 } as const;
@@ -225,7 +225,7 @@ export default function SupportScreen() {
     const html = renderReportHtml(summary!, ref!);
     if (Platform.OS === "web") { await Print.printAsync({ html }); return; }
     const { uri } = await Print.printToFileAsync({ html });
-    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "Apollo Higgins Diagnostic Report" });
+    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "ApolloSG Higgins Diagnostic Report" });
     else await Print.printAsync({ uri });
     showToast("Diagnostic report ready to share.", "resting");
   };
@@ -262,7 +262,7 @@ export default function SupportScreen() {
           <InfoRow label="App first installed" value={appDevice.data.app.installedAt} />
           <InfoRow label="Bundle published" value={appDevice.data.app.bundlePublishedAt} />
           <InfoRow label="Last native update" value={appDevice.data.app.lastNativeUpdateAt} />
-          {!appDevice.data.app.nativeBuild ? <Body style={s.detail}>This preview doesn&apos;t include native build metadata. A native Apollo build shows real build numbers and install dates.</Body> : null}
+          {!appDevice.data.app.nativeBuild ? <Body style={s.detail}>This preview doesn&apos;t include native build metadata. A native ApolloSG build shows real build numbers and install dates.</Body> : null}
           <Button testID="support-more-details" variant="ghost" label={moreDetails ? "Hide extra details" : "More details"} onPress={() => setMoreDetails((v) => !v)} />
           {moreDetails ? <View style={s.card} testID="support-more-details-panel">
             <View style={s.row}><Text style={s.label}>Version</Text><Text style={s.value} testID="support-version">{appDevice.data.app.version}</Text></View>
@@ -275,7 +275,7 @@ export default function SupportScreen() {
 
       {/* 2. Protection & Services */}
       <Section title="Protection & Services" testID="support-protection-section">
-        <Body style={s.detail}>Live states from Apollo&apos;s native telemetry. A reachable service or enabled setting is not the same as a verified block — only &quot;Active and verified&quot; reflects OS-confirmed enforcement.</Body>
+        <Body style={s.detail}>Live states from ApolloSG&apos;s native telemetry. A reachable service or enabled setting is not the same as a verified block — only &quot;Active and verified&quot; reflects OS-confirmed enforcement.</Body>
         {protectionRows.map((p) => (
           <View key={p.label} testID={`support-protection-${p.label.replace(/[^a-z]+/gi, "-").toLowerCase()}`}>
             <View style={s.statusRow}><Text style={s.rowLabel}>{p.label}</Text><Pill tone={protectionTone(p.state)} label={p.state} /></View>
@@ -295,7 +295,7 @@ export default function SupportScreen() {
         {missingPerms.length ? <View testID="support-missing-perms" style={{ gap: 2 }}><Text style={s.label}>Missing permissions</Text>{missingPerms.map((p) => <Body key={p.id} style={s.detail}>• {p.title}: {p.why}</Body>)}</View> : null}
         {health.checkedAt ? <>
           <ResultRow id="device" label="Apollo protection" result={health.device} />
-          <ResultRow id="backend" label="Apollo services" result={health.backend} />
+          <ResultRow id="backend" label="ApolloSG services" result={health.backend} />
           <ResultRow id="higgins" label="Higgins investigations" result={health.higgins} />
           {providerStatusLines(health.provider).map((line) => <Body key={line} style={s.detail} testID="support-higgins-provider">{line}</Body>)}
           <ResultRow id="report" label="Higgins reports" result={health.report} />
@@ -315,15 +315,15 @@ export default function SupportScreen() {
       </Section>
 
       {/* 5. Contact Apollo Support */}
-      <Section title="Contact Apollo Support" testID="support-contact-section">
-        <Body>Prepare an email to Apollo support. Your email app opens with everything filled in — you review and send it yourself. Nothing is sent automatically and logs are never attached unless you attach them.</Body>
+      <Section title="Contact ApolloSG Support" testID="support-contact-section">
+        <Body>Prepare an email to ApolloSG support. Your email app opens with everything filled in — you review and send it yourself. Nothing is sent automatically and logs are never attached unless you attach them.</Body>
         {ref ? <View style={s.refBox} testID="support-reference-box"><Text style={s.detail}>Support reference</Text><Text style={s.refValue} testID="support-reference">{ref}</Text></View> : null}
         <View style={{ gap: 4 }}>
           <Text style={s.label}>Your email (optional — for a copy)</Text>
           <TextInput testID="support-user-email" value={userEmail} onChangeText={(t) => { setUserEmail(t); void storage.setItem(USER_EMAIL_KEY, t.trim()); }} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} style={s.emailInput} />
-          <Body style={s.detail}>Add your address and Apollo will CC you, so a copy lands in your inbox as well as your Sent folder.</Body>
+          <Body style={s.detail}>Add your address and ApolloSG will CC you, so a copy lands in your inbox as well as your Sent folder.</Body>
         </View>
-        <Button testID="support-email" label="Email Apollo Support" icon={<Mail size={18} color={colors.onBrandPrimary} />} disabled={!ready} onPress={() => void emailSupport()} />
+        <Button testID="support-email" label="Email ApolloSG Support" icon={<Mail size={18} color={colors.onBrandPrimary} />} disabled={!ready} onPress={() => void emailSupport()} />
         <Button testID="support-new-request" variant="ghost" label="Start a new support request" onPress={() => void newRequest()} />
         {history.data && history.data.length > 1 ? <View testID="support-inbox" style={{ gap: spacing.xs }}>
           <Text style={s.label}>Past requests</Text>

@@ -106,7 +106,7 @@ export async function observe(request: DeviceRequest): Promise<DeviceResult> {
     }
     return unavailable(base, "not_implemented");
   } catch (e: unknown) {
-    if (e instanceof EgressViolation) return { ...base, status: "failed", observedAt: null, values: { error: "Apollo's privacy boundary prohibited this observation." }, unavailableReason: "privacy_prohibited" };
+    if (e instanceof EgressViolation) return { ...base, status: "failed", observedAt: null, values: { error: "ApolloSG's privacy boundary prohibited this observation." }, unavailableReason: "privacy_prohibited" };
     return { ...base, status: "failed", observedAt: null, values: { error: e instanceof Error ? e.message : "adapter failure" }, unavailableReason: "adapter_failed" };
   }
 }

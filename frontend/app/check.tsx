@@ -274,7 +274,7 @@ export default function CheckLink() {
           <Button testID="tech-details-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
         </Sheet>
         <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
-          <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
+          <Body>Think ApolloSG got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
           {reportError ? <Body testID="report-error">{reportError}</Body> : null}
           <Button testID="report-send" label={reportBusy ? "Sending\u2026" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks \u2014 report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
           <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
@@ -382,7 +382,7 @@ export default function CheckLink() {
           style={({ pressed }) => [s.goldBtn, (!deviceId || busy || !hasValidUrl) && s.goldBtnDisabled, { opacity: pressed && hasValidUrl ? 0.85 : 1 }]}
         >
           <Search size={22} color={colors.onSurface} />
-          <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : "Check website link"}</Text>
+          <Text style={s.goldBtnText}>{!deviceId ? "Preparing ApolloSG\u2026" : "Check website link"}</Text>
         </Pressable>
 
         {/* ── Screenshot error (privacy screening or navigation failure) ── */}
@@ -431,7 +431,7 @@ export default function CheckLink() {
                 </Pressable>
               ) : null}
             </View>
-            <Text style={s.recentSub}>Tap a link to check it with Apollo.</Text>
+            <Text style={s.recentSub}>Tap a link to check it with ApolloSG.</Text>
           </View>
 
           {/* Link rows */}

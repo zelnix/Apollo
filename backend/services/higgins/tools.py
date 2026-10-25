@@ -65,7 +65,7 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
     except ValueError:
         return {"status": "invalid", "note": "That evidence item is not a URL."}
     if re.search(r"(?i)[?&](token|code|otp|session|sig|signature|auth|key)=", url):
-        return {"status": "blocked", "note": "This link carries a credential-like parameter; Apollo does not follow links whose retrieval may itself perform a sensitive action.", "url": url}
+        return {"status": "blocked", "note": "This link carries a credential-like parameter; ApolloSG does not follow links whose retrieval may itself perform a sensitive action.", "url": url}
     url_meta = await repo.evidence_meta(url_row)
     offset = int(args.get("cursor") or 0)
     snapshot_id = url_meta.get("sourceSnapshotId")
@@ -112,7 +112,7 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
                 "_pendingMark": [snapshot.id, offset, end, len(text)]}
     except webcrawl.CrawlBlocked as exc:
         await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"coverage.status": "unavailable", "coverage.reason": "fetch blocked by safety policy"}})
-        return {"status": "blocked", "originalUrl": url, "redirectChain": chain, "note": f"Fetch refused by Apollo's safe-fetch policy ({exc}). This is a limitation, not proof of fraud or safety."}
+        return {"status": "blocked", "originalUrl": url, "redirectChain": chain, "note": f"Fetch refused by ApolloSG's safe-fetch policy ({exc}). This is a limitation, not proof of fraud or safety."}
     except Exception:  # noqa: BLE001 — DNS/HTTP errors are tool results
         await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"coverage.status": "unavailable", "coverage.reason": "destination unreachable"}})
         return {"status": "unavailable", "originalUrl": url, "redirectChain": chain, "note": "The destination could not be fetched (DNS/connection/HTTP failure). Unavailable is not takedown, unauthorised ownership or safety."}

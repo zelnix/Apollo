@@ -83,7 +83,7 @@ async def report_device_posture(body: PostureReportIn, request: Request):
                 await send_push(
                     recipients=[owner],
                     data={
-                        "title": "Apollo: Device security change detected",
+                        "title": "ApolloSG: Device security change detected",
                         "message": change_summary[:200],
                         "action_url": "/alerts",
                         **PUSH_THREAT,

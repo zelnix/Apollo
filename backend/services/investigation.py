@@ -31,7 +31,7 @@ logger = logging.getLogger("apollo.investigation")
 
 TEMPORARY_COPY_POLICY = (
     "Submitted content is processed temporarily and discarded after the investigation. "
-    "Apollo does not retain copies of submitted text, URLs or files beyond the investigation session."
+    "ApolloSG does not retain copies of submitted text, URLs or files beyond the investigation session."
 )
 
 

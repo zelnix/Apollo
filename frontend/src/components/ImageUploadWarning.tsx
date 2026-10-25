@@ -11,7 +11,7 @@ export const IMAGE_UPLOAD_WARNING = {
   title: "Before you upload",
   body: [
     "Check that the image doesn't contain personal, medical or financial information about you that you don't want to share for this investigation.",
-    "Apollo keeps information that may be important evidence. Passwords, PINs, verification codes and similar credentials are protected where Apollo can detect them.",
+    "ApolloSG keeps information that may be important evidence. Passwords, PINs, verification codes and similar credentials are protected where Apollo can detect them.",
     "Only upload the image if you're comfortable using its contents for this investigation.",
   ],
 };

@@ -147,7 +147,7 @@ export function describeArtefact(src: OriginalSource, hasImage = false): Artefac
     body: src.fields?.length ? (src.text?.trim() || null) : parsed.body,
     links: linksIn(src.text, src.url),
     bannerTitle: `This is the original ${banner}`,
-    bannerBody: `You are viewing the exact ${banner} ${src.origin === "this_device" ? "as captured on this device" : "Apollo received for this investigation"}. It is stored only on this device and has not been modified.`,
+    bannerBody: `You are viewing the exact ${banner} ${src.origin === "this_device" ? "as captured on this device" : "ApolloSG received for this investigation"}. It is stored only on this device and has not been modified.`,
   };
 }
 

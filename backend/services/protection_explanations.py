@@ -68,7 +68,7 @@ def apollo_explanation(protection_id: str) -> Optional[dict]:
     if not item:
         return None
     return {"protectionId": protection_id, "title": item["title"], "explanation": _wire(item), "version": item["version"],
-            "source": "apollo_reviewed", "scopeLabel": "Every Apollo user"}
+            "source": "apollo_reviewed", "scopeLabel": "Every ApolloSG user"}
 
 
 def _clean(value: Optional[str], pattern: str = r"[^a-z0-9 .\-]") -> str:
@@ -141,7 +141,7 @@ async def _new_today(owner: str) -> int:
     return await db.protection_explanations.count_documents({"requested_by": owner, "claimed_at": {"$gte": now_utc() - timedelta(days=1)}})
 
 
-SYSTEM = ("You are Higgins, the security adviser inside the Apollo app. Explain ONE device protection to a non-technical person, "
+SYSTEM = ("You are Higgins, the security adviser inside the ApolloSG app. Explain ONE device protection to a non-technical person, "
           "in plain English, one or two short sentences per field. Describe the protection in general for the platform and maker given. "
           "You do not know this person's settings: never say whether it is on, off, set or missing on their device, and never invent "
           "settings paths. If you are not sure the protection exists as named, say what it most likely is and keep it general.")

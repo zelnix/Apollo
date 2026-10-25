@@ -16,7 +16,7 @@ const OPENERS: Record<TimeOfDay, string[]> = {
   morning: ["Good morning.", "Good morning to you.", "A very good morning."],
   afternoon: ["Good afternoon.", "Good afternoon to you.", "Afternoon."],
   evening: ["Good evening.", "Good evening to you.", "A pleasant evening to you."],
-  night: ["Still up, I see.", "Burning the midnight oil.", "A late hour, but Apollo doesn't mind."],
+  night: ["Still up, I see.", "Burning the midnight oil.", "A late hour, but ApolloSG doesn't mind."],
 };
 
 const STATE_LINES: Record<ApolloState | "lost", string[]> = {

@@ -19,8 +19,8 @@ const GATE: Record<string, { label: string; route: string; note: string }> = {
   system: { label: "Re-check this device", route: "/device", note: "Apollo reads this device live, so the re-check runs in the Device check." },
   app: { label: "Re-check the app", route: "/app-check", note: "Apollo reads the app's current permissions, so the re-check runs in the App check." },
   connection: { label: "Re-check this connection", route: "/network", note: "Apollo reads the live connection, so the re-check runs in the Internet check." },
-  account: { label: "Re-check my accounts", route: "/account-monitor", note: "Apollo re-queries the breach service in Check My Accounts." },
-  file: { label: "Re-check the file", route: "/file", note: "Apollo needs the file again to inspect it, so the re-check runs in the File check." },
+  account: { label: "Re-check my accounts", route: "/account-monitor", note: "ApolloSG re-queries the breach service in Check My Accounts." },
+  file: { label: "Re-check the file", route: "/file", note: "ApolloSG needs the file again to inspect it, so the re-check runs in the File check." },
 };
 
 export function recheckPlan(event: PatrolEvent): RecheckPlan {
@@ -45,5 +45,5 @@ export function recheckPlan(event: PatrolEvent): RecheckPlan {
 
   const gate = GATE[category];
   if (gate) return { kind: "gate", ...gate };
-  return { kind: "none", label: "Re-check", reason: "Apollo can't re-run this kind of check from the case record." };
+  return { kind: "none", label: "Re-check", reason: "ApolloSG can't re-run this kind of check from the case record." };
 }

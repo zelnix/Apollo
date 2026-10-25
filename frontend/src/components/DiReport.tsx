@@ -45,12 +45,12 @@ function CardCopy({ text, label, testID }: { text: string; label: string; testID
       setTimeout(() => setCopied(false), 3000);
       showToast(`${label} copied. Paste it into an email, message or report.`, "neutral");
     } catch {
-      showToast("Apollo couldn't copy to the clipboard on this device.", "growling");
+      showToast("ApolloSG couldn't copy to the clipboard on this device.", "growling");
     }
   };
   const share = async () => {
     try { await Share.share({ message: text, title: label }); }
-    catch { showToast("Apollo couldn't open the share sheet on this device.", "growling"); }
+    catch { showToast("ApolloSG couldn't open the share sheet on this device.", "growling"); }
   };
   return (
     <Pressable

@@ -807,7 +807,7 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
         reason = met_records[0].title + (f" (+{len(met_records) - 1} more deterministic rule(s) met)" if len(met_records) > 1 else "")
     elif gaps:
         outcome = Outcome.LIMITED
-        reason = "Apollo couldn't obtain enough evidence to decide: " + ", ".join(sorted(gaps))
+        reason = "ApolloSG couldn't obtain enough evidence to decide: " + ", ".join(sorted(gaps))
     elif evidence.get("unresolved_concern"):
         outcome = Outcome.LIMITED
         gaps["INSUFFICIENT_EVIDENCE"] = CoverageGap("INSUFFICIENT_EVIDENCE",

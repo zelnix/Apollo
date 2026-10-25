@@ -94,7 +94,7 @@ def minimal_patrol(body, verified):
         why=[
             f'The connection was blocked based on verified threat intelligence.'
             if verified
-            else f'Apollo\'s on-device check identified {state_phrase}. For your privacy, detailed findings stay on this device.'
+            else f'ApolloSG\'s on-device check identified {state_phrase}. For your privacy, detailed findings stay on this device.'
         ],
         what_to_do=(
             f'Do not interact with this {cat_label}. Open the Check tab on your device to see the full assessment and decide what to do.'
@@ -103,7 +103,7 @@ def minimal_patrol(body, verified):
         ),
         indicator_host=body.indicator_host if body.category != 'call' and domain_only(body.indicator_host) else None,
         claimed_brand=None, scenario=body.scenario if body.scenario and re.fullmatch(r'[A-Z]{1,3}\d{1,3}[a-z]?', body.scenario) else None,
-        adapter_label='Apollo on-device assessment', verified_block=verified,
+        adapter_label='ApolloSG on-device assessment', verified_block=verified,
         supporting_references=safe_refs,
     )
     return payload

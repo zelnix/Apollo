@@ -73,7 +73,7 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
   } else if (event.evidence_provenance === "server_projected") {
     sources.push({
       id: "server",
-      name: "Apollo's servers",
+      name: "ApolloSG's servers",
       returned: "A privacy-projected summary of a finding recorded on another device",
       at: event.occurred_at,
       answered: true,

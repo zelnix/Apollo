@@ -62,7 +62,7 @@ export function buildMessageCheckResult(args: {
       status: dangerous > 0 ? "concern" : "incomplete",
       finding: dangerous > 0
         ? `${dangerous} link${dangerous > 1 ? "s" : ""} confirmed dangerous.`
-        : `${a.signals.urls.length} link${a.signals.urls.length > 1 ? "s" : ""} found. Check each with Apollo.`,
+        : `${a.signals.urls.length} link${a.signals.urls.length > 1 ? "s" : ""} found. Check each with ApolloSG.`,
       raw: { urls: a.signals.urls },
     });
   }

@@ -71,7 +71,7 @@ export default function ComplianceMatrixScreen() {
 
         <View>
           <SectionTitle>Application controls</SectionTitle>
-          <Body>Controls Apollo implements directly, verified through source-code review, automated tests or device testing.</Body>
+          <Body>Controls ApolloSG implements directly, verified through source-code review, automated tests or device testing.</Body>
           <Card testID="matrix-app-controls" style={{ gap: 0, marginTop: spacing.sm }}>
             {data.appControls.map((ctrl, i) => (
               <View key={ctrl.control} style={s.controlItem} testID={`matrix-ctrl-${i}`}>
@@ -93,7 +93,7 @@ export default function ComplianceMatrixScreen() {
               <View key={item.requirement} style={s.opsItem} testID={`matrix-ops-${i}`}>
                 <Text style={s.opsReq}>{item.requirement}</Text>
                 <View>
-                  <Text style={s.opsLabel}>What Apollo does</Text>
+                  <Text style={s.opsLabel}>What ApolloSG does</Text>
                   <Text style={s.opsText}>{item.appDoes}</Text>
                 </View>
                 <View>
@@ -112,7 +112,7 @@ export default function ComplianceMatrixScreen() {
           </Card>
         </View>
 
-        <Text style={s.footer}>Accountable organisation: Harmony Wellness Group (HWG). Full compliance matrix maintained in Apollo&apos;s compliance documentation.</Text>
+        <Text style={s.footer}>Accountable organisation: Harmony Wellness Group (HWG). Full compliance matrix maintained in ApolloSG&apos;s compliance documentation.</Text>
       </ScrollView>
     </View>
   );

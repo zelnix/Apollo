@@ -32,13 +32,13 @@ export const GATE_PERMISSIONS: Record<GatePermId, GatePermCopy> = {
   call: {
     id: "call", title: "Call screening",
     short: "Screens incoming calls and rejects numbers you've blocked or that are known high-risk.",
-    why: "Choose Apollo for call screening so it can check callers before they ring. On iPhone this is turned on under Phone settings.",
+    why: "Choose ApolloSG for call screening so it can check callers before they ring. On iPhone this is turned on under Phone settings.",
     enableLabel: "Enable call screening", pendingLabel: "Permission required", route: "/call-guard",
   },
   email: {
     id: "email", title: "Email monitoring",
     short: "Checks a connected mailbox for phishing, impersonation and dangerous links.",
-    why: "Connect Gmail with read-only access. Apollo never sends email on your behalf, and you can disconnect anytime.",
+    why: "Connect Gmail with read-only access. ApolloSG never sends email on your behalf, and you can disconnect anytime.",
     enableLabel: "Connect your email accounts", pendingLabel: "Not connected", route: "/email",
   },
 };

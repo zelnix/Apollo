@@ -52,7 +52,7 @@ def weekly_sentence(w: dict[str, Any], at: Optional[datetime] = None) -> str:
     seen = w.get("last_seen_at")
     silent_days = ((at or now_utc()) - seen.replace(tzinfo=timezone.utc)).days if seen else 999
     if w["total"] == 0 and silent_days >= 7:
-        return f"Apollo hasn't heard from {who}'s phone this week. A friendly check-in would not go amiss."
+        return f"ApolloSG hasn't heard from {who}'s phone this week. A friendly check-in would not go amiss."
     if w["total"] == 0:
         return f"A quiet week for {who}. Nothing came up that needed a look."
     if w["open_alerts"] > 0:
@@ -266,7 +266,7 @@ async def weekly_send_now(body: WeeklySendNowIn):
         except HTTPException:
             raise
         except Exception:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail="Apollo's alert relay didn't respond. Try again in a minute.")
+            raise HTTPException(status_code=502, detail="ApolloSG's alert relay didn't respond. Try again in a minute.")
     if body.preview_only:
         rollup = await _weekly_rollup(body.device_id)
         if not rollup:
@@ -278,4 +278,4 @@ async def weekly_send_now(body: WeeklySendNowIn):
     except HTTPException:
         raise
     except Exception:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail="Apollo's alert relay didn't respond. Try again in a minute.")
+        raise HTTPException(status_code=502, detail="ApolloSG's alert relay didn't respond. Try again in a minute.")

@@ -24,7 +24,7 @@ export function completedCheckAlert(event: PatrolEvent): LocalAlert | null {
   // was away: this is genuinely meaningful — they asked for it or it escalated from triage.
   if (event.investigation_case_id && event.status === "resolved" && (event.state === "ears_up" || event.state === "growling" || event.state === "barking")) {
     return {
-      title: "Apollo completed an investigation",
+      title: "ApolloSG completed an investigation",
       body: event.headline || "Review the investigation result in Patrol.",
       channel: "apollo_alerts",
       actionUrl: `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`,
@@ -40,8 +40,8 @@ export function protectionUpdateAlert(event: PatrolEvent): LocalAlert | null {
   if (!event.what_happened?.toLowerCase().includes("update")) return null;
 
   return {
-    title: "Apollo updated your protection",
-    body: event.headline || "Apollo successfully installed updated website security rules.",
+    title: "ApolloSG updated your protection",
+    body: event.headline || "ApolloSG successfully installed updated website security rules.",
     channel: "apollo_alerts",
     actionUrl: `/patrol/${encodeURIComponent(event.event_id)}`,
   };

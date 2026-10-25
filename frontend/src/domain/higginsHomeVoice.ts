@@ -76,7 +76,7 @@ const CAPABILITY_LABEL: Record<Capability["id"], string> = {
   site_guard: "Website protection",
   connection_guard: "Internet monitoring",
   known_threats: "Known Threat Lookup",
-  share_intake: "Share to Apollo",
+  share_intake: "Share to ApolloSG",
   message_guard: "Message screening",
   app_guard: "App checking",
 };
@@ -186,8 +186,8 @@ export function buildHomeVoice(input: {
       const rawSubject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
       const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
-        ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
-        : `Apollo ${verb} — Magnum DI is investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
+        ? `ApolloSG ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
+        : `ApolloSG ${verb} — Magnum DI is investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
       return {
         text,
         ctaLabel: "View what Apollo is checking",
@@ -336,10 +336,10 @@ export function buildHomeVoice(input: {
   // 5) Recovering — no active event, waiting on a fresh verification check.
   if (resolution.recovering) {
     return {
-      text: "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear.",
+      text: "ApolloSG is staying cautious after a recent alert. He needs a fresh check to confirm things are clear.",
       ctaLabel: "View protection",
       ctaRoute: "/(tabs)/protection",
-      spoken: "Apollo is staying cautious after a recent alert.",
+      spoken: "ApolloSG is staying cautious after a recent alert.",
     };
   }
 

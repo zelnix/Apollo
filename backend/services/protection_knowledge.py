@@ -14,9 +14,9 @@ APOLLO_PROTECTIONS: dict[str, dict] = {
              "what": "Apollo's own filter that checks the websites this device tries to open against known scam and malware sites.",
              "why": "Many scams end on a convincing fake website. Stopping the page before it loads means there is nothing to type a password or card number into.",
              "protects_against": "Fake banking and shopping sites, phishing pages and sites that push harmful downloads.",
-             "recommended": "Keep Website protection switched on. Apollo shows when it is verified as working and when it isn't."},
+             "recommended": "Keep Website protection switched on. ApolloSG shows when it is verified as working and when it isn't."},
     "link": {"version": 1, "title": "Link checking",
-             "what": "Apollo follows a link you give it to see where it really leads, and checks what it finds there.",
+             "what": "ApolloSG follows a link you give it to see where it really leads, and checks what it finds there.",
              "why": "A scam link often looks like a real one. Checking it first tells you where it goes before you trust it.",
              "protects_against": "Disguised links, look-alike web addresses and links that lead to fake sites or downloads.",
              "recommended": "Check any link you weren't expecting before you tap it — especially one that asks you to log in or pay."},
@@ -34,7 +34,7 @@ APOLLO_PROTECTIONS: dict[str, dict] = {
                 "what": "Apollo reports which connection you're using and whether its own protection for that connection is running.",
                 "why": "Your protection is only as good as the connection it covers. Knowing when it isn't running means you're never protected in name only.",
                 "protects_against": "Gaps in Apollo's protection on a new or changed network, and unprotected connections you didn't know about.",
-                "recommended": "Keep Apollo's protection on for Wi-Fi and mobile data, and take care on public Wi-Fi."},
+                "recommended": "Keep ApolloSG's protection on for Wi-Fi and mobile data, and take care on public Wi-Fi."},
     "account": {"version": 1, "title": "Account alerts",
                 "what": "Apollo checks warnings about your accounts — breach notices, sign-in alerts — and whether your own email addresses appear in known breaches.",
                 "why": "A real account warning needs fast action, and a fake one is itself a scam. Checking it tells you which you have.",
@@ -59,7 +59,7 @@ APOLLO_PROTECTIONS: dict[str, dict] = {
                "what": "Apollo checks whether its own protections and the permissions they rely on are in place and working on this device.",
                "why": "Protection that has quietly stopped is worse than none, because you think you're covered. Monitoring tells you when something stops.",
                "protects_against": "Apollo protection being switched off, permissions being removed, and gaps you wouldn't otherwise notice.",
-               "recommended": "Fix anything Apollo marks as needing attention, and keep the permissions Apollo asks for at the moment it needs them."},
+               "recommended": "Fix anything Apollo marks as needing attention, and keep the permissions ApolloSG asks for at the moment it needs them."},
 }
 
 
@@ -100,7 +100,7 @@ DEVICE_SEEDS: dict[str, dict] = {
                       "protects_against": "Rare, highly targeted spyware attacks."},
     # ── App security and installation ──
     "app_scanner": {"what": "The scan your phone runs over apps before and after you install them — Google Play Protect on most Android phones.",
-                    "why": "It covers ground Apollo can't reach: the app's code itself. If you're talked into installing something harmful, this is the check most likely to stop it.",
+                    "why": "It covers ground ApolloSG can't reach: the app's code itself. If you're talked into installing something harmful, this is the check most likely to stop it.",
                     "protects_against": "Known harmful apps, including apps installed from outside the store."},
     "antivirus": {"what": "Real-time scanning of files and programs as they arrive and run — Microsoft Defender or the security product you installed.",
                   "why": "Remote-access scams usually end with a file being downloaded and run. This is the layer that catches a known-bad one first.",

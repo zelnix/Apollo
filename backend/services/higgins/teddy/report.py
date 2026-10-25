@@ -13,7 +13,7 @@ from services.higgins import outcomes
 from services.higgins.teddy.decide import Decision, corroborated_impersonation
 from services.higgins.teddy.triage import Check, Plan
 
-ROUTE_LABEL = {"teddy_official": "official source checks", "teddy_kb": "Apollo's knowledge base", "teddy_search": "a targeted web search"}
+ROUTE_LABEL = {"teddy_official": "official source checks", "teddy_kb": "ApolloSG's knowledge base", "teddy_search": "a targeted web search"}
 
 
 def _finding(f: dict, evidence_ids: list[str], confidence: str) -> dict:
@@ -51,7 +51,7 @@ def _knowledge_block(checks: list[Check]) -> str:
     if not notes:
         return ""
     lines = "\n".join(f"- {f['text']}" + (f" — {f['source']['url']}" if (f.get("source") or {}).get("url") else "") for f in notes[:4])
-    return f"\n\n**What Apollo's knowledge base adds** (general knowledge, not evidence about what you sent)\n{lines}"
+    return f"\n\n**What ApolloSG's knowledge base adds** (general knowledge, not evidence about what you sent)\n{lines}"
 
 
 def _evidence_for(subject: str, material: dict[str, str], teddy_item: str) -> list[str]:
@@ -72,9 +72,9 @@ def _routes(checks: list[Check]) -> str:
     used = {c.route for c in checks if c.route}
     searched = [c for c in checks if c.route == "google_search"]
     reused = [c for c in searched if any((f.get("source") or {}).get("reused") for f in c.facts)]
-    search = ("a targeted web search" if not reused else "Apollo's recent targeted web search, reused while still current"
-              if len(reused) == len(searched) else "a targeted web search, partly reused from Apollo's recent lookups")
-    names = [label for route, label in (("official_source", "official source checks"), ("apollo_kb", "Apollo's knowledge base"),
+    search = ("a targeted web search" if not reused else "ApolloSG's recent targeted web search, reused while still current"
+              if len(reused) == len(searched) else "a targeted web search, partly reused from ApolloSG's recent lookups")
+    names = [label for route, label in (("official_source", "official source checks"), ("apollo_kb", "ApolloSG's knowledge base"),
                                         ("google_search", search)) if route in used]
     return _join(names) or "official source checks"
 
@@ -142,7 +142,7 @@ def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item
                     f"Nothing Apollo checked raises a concern about {_subject(plan_)}. That isn't proof the site is safe — only that these checks found nothing.")
         means = ("These checks look at who runs the address and whether any safety list or warning names it. They don't show what the page asks "
                  "you to do, so still never enter passwords or codes on a page you reached from a message.")
-        uncertainties = ["Apollo didn't open the page, so what it shows or asks for wasn't checked."]
+        uncertainties = ["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."]
     else:
         overview = ("Apollo's checks found no scam indicators in what you sent. That isn't proof it's genuine — only that these checks found "
                     "nothing, and it doesn't ask you to send money, codes or details anywhere that hasn't been verified.")
@@ -202,7 +202,7 @@ def pattern_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
                  "but checking first costs nothing.")
         attention, reason = "review", "Replying or acting before you've checked is what messages like this rely on."
     return _result(plan_, checks, overview=overview, found=found, means=means, outcome=outcome, attention=attention, reason=reason,
-                   how=f"TC FlyBy checked the material using {_routes(checks)}, comparing it with the established scam patterns in Apollo's "
+                   how=f"TC FlyBy checked the material using {_routes(checks)}, comparing it with the established scam patterns in ApolloSG's "
                        f"knowledge base. {_NOT_NEEDED}",
                    actions=[_action(label, instruction) for label, instruction in advice],
                    uncertainties=["Apollo can't confirm who actually sent this — a pattern match supports the assessment but isn't proof about the sender.",
@@ -228,7 +228,7 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
         actions=[_action("Don't use the link", f"Don't open {place} and don't enter anything on it."),
                  _action(f"Contact {brand} yourself", f"Contact {brand} using their official app, a website address you type yourself, or the number on your card or statement."),
                  _action("Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already entered details, contact the organisation now.")],
-        uncertainties=["Apollo didn't open the page, so what it shows or asks for wasn't checked.",
+        uncertainties=["ApolloSG didn't open the page, so what it shows or asks for wasn't checked.",
                        *_missing(checks, "it couldn't change the outcome or what to do")])
 
 
@@ -253,7 +253,7 @@ def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
         how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
         reason="Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
         uncertainties=[*_missing(checks, "it couldn't change the outcome or what to do"),
-                       *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
+                       *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
 
 
 def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
@@ -264,12 +264,12 @@ def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], ted
     return _result(
         plan_, checks, outcome="unable_to_determine", attention="review", actions=[_action("Check before using it", _CHECK_FIRST)],
         found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks)],
-        overview=(f"Apollo couldn't establish enough about {subject} to say either way. Nothing it found raises a concern, but that isn't the same "
+        overview=(f"ApolloSG couldn't establish enough about {subject} to say either way. Nothing it found raises a concern, but that isn't the same "
                   f"as it being safe — {after}"),
         means="Some of what would settle this couldn't be checked, so the available evidence can't establish more.",
         how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
-        reason="Something Apollo couldn't fully check may still be unsafe.",
-        uncertainties=[*_missing(checks, None), *(["Apollo didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
+        reason="Something ApolloSG couldn't fully check may still be unsafe.",
+        uncertainties=[*_missing(checks, None), *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
 
 
 def _with_gaps(result: dict, plan_: Plan) -> dict:
@@ -302,7 +302,7 @@ def compose(decision: Decision, plan_: Plan, material: dict[str, str], teddy_ite
 def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[str]) -> dict:
     """A general question answered from Apollo's KB or a targeted search — information, not a finding."""
     if route == "teddy_kb":
-        overview = "Here's what Apollo's library says on this, from the sources below."
+        overview = "Here's what ApolloSG's library says on this, from the sources below."
         body = presented
     else:
         lead = next((f for f in check.facts if f.get("class") == "live_evidence"), None)
@@ -311,7 +311,7 @@ def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[
         body = f"{overview}\n\nSources:\n{sources}" if sources else overview
     return {
         "overview": overview[:900],
-        "explanationMarkdown": f"{body}\n\n**How Apollo answered**\nTC FlyBy answered this with {ROUTE_LABEL[route]}. It's general information, "
+        "explanationMarkdown": f"{body}\n\n**How ApolloSG answered**\nTC FlyBy answered this with {ROUTE_LABEL[route]}. It's general information, "
                                "not a finding about anything you've submitted.",
         "assessment": "no_concern_found_within_scope", "outcome": None, "attention": "none", "attentionReason": None, "findings": [],
         "uncertainties": ["This is general information. If something specific has happened to you, send it to Apollo to check."],
@@ -341,7 +341,7 @@ def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict,
         parts.append("Looked up, not found or unavailable (missing evidence, not proof either way):\n" + "\n".join(missing))
     if pattern:
         how = {"full": "matches", "opening": "matches the opening of", "partial": "partly matches"}[pattern["stage"]]
-        parts.append(f"Apollo KB pattern check (general knowledge, not evidence about this case): the material {how} the "
+        parts.append(f"ApolloSG KB pattern check (general knowledge, not evidence about this case): the material {how} the "
                      f"{pattern['name']} described by {pattern['publisher']}.")
     if issues:
         parts.append("For Magnum DI to settle — only these; everything above is already established:\n"

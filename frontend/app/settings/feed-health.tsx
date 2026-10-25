@@ -17,9 +17,9 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 const INFO: ScreenInfo = { title: "About Feed health", body: [
-  "Apollo reads official scam and cyber-security feeds from government sources. This screen shows whether each one is syncing.",
+  "ApolloSG reads official scam and cyber-security feeds from government sources. This screen shows whether each one is syncing.",
   "Healthy: the latest sync worked and it was in the last 24 hours. Stale: no successful sync in the last 24 hours. Failing: the latest sync attempt failed — the reason is shown under the feed.",
-  "Apollo retries every feed on its own schedule. Pull down to refresh this screen.",
+  "ApolloSG retries every feed on its own schedule. Pull down to refresh this screen.",
 ] };
 
 const useStyles = makeStyles((c) => ({
@@ -51,7 +51,7 @@ export default function FeedHealthScreen() {
     try {
       setReport(await feedHealth()); setError(null);
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : "Apollo couldn't load feed health.");
+      setError(e instanceof Error && e.message ? e.message : "ApolloSG couldn't load feed health.");
     } finally {
       setNow(Date.now()); setLoading(false); setRefreshing(false);
     }

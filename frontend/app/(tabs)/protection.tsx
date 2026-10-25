@@ -430,7 +430,7 @@ export default function ProtectionScreen() {
               <Text style={[styles.subtitle, { color: colors.onSurfaceSecondary }]} testID="protection-check-failed-age">
                 {health.checkedAt
                   ? `What you see below is Apollo's last successful reading, taken ${agoLabel(Date.parse(health.checkedAt), Date.now())}. It is not confirmation of the current state.`
-                  : "Apollo has no successful reading to show, so nothing below confirms the current state."}
+                  : "ApolloSG has no successful reading to show, so nothing below confirms the current state."}
               </Text>
             </View>
           </View>

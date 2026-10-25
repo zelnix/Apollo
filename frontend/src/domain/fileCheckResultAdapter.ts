@@ -61,7 +61,7 @@ export function buildFileCheckResult(args: {
       id: "file:urls",
       name: "Embedded links",
       status: "incomplete",
-      finding: `${a.urls.length} link${a.urls.length > 1 ? "s" : ""} found inside the file. Each can be checked with Apollo.`,
+      finding: `${a.urls.length} link${a.urls.length > 1 ? "s" : ""} found inside the file. Each can be checked with ApolloSG.`,
       raw: { urls: a.urls },
     });
   }

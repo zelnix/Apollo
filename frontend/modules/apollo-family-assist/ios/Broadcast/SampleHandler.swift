@@ -18,7 +18,7 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
   override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return fail("Protected storage is unavailable.") }
     let url = root.appendingPathComponent("family-assist-handoff.json")
-    guard let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(Handoff.self, from: data), value.expiresAt > Date() else { return fail("This help request expired. Return to Apollo and try again.") }
+    guard let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(Handoff.self, from: data), value.expiresAt > Date() else { return fail("This help request expired. Return to ApolloSG and try again.") }
     try? FileManager.default.removeItem(at: url); handoff = value; publishState("starting", event: "capture_starting"); connect(value)
   }
   override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {

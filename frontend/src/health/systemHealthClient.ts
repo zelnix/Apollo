@@ -8,7 +8,7 @@ export async function readiness(): Promise<Readiness> {
   const body = await apiGetReadiness<Readiness>("/health/readiness");
   if (body?.schemaVersion !== 1 || !["healthy", "degraded", "unavailable"].includes(body.status) ||
       !Array.isArray(body.components) || typeof body.checkedAt !== "string" || !Number.isFinite(Date.parse(body.checkedAt))) {
-    throw new Error("Apollo's readiness response is incomplete.");
+    throw new Error("ApolloSG's readiness response is incomplete.");
   }
   return body;
 }

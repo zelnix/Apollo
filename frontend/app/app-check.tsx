@@ -118,8 +118,8 @@ export default function CheckApp() {
       // A failed read is not an empty device. Say so and leave the manual entry available.
       setInstalledApps(null);
       showToast(error instanceof NativeCallFailed
-        ? "Apollo couldn't read the list of installed apps from this device. Type the app name instead."
-        : "Apollo couldn't read the list of installed apps. Type the app name instead.", "growling");
+        ? "ApolloSG couldn't read the list of installed apps from this device. Type the app name instead."
+        : "ApolloSG couldn't read the list of installed apps. Type the app name instead.", "growling");
     }
     finally { setAppsLoading(false); }
   };
@@ -186,13 +186,13 @@ export default function CheckApp() {
     const sub = AppState.addEventListener("change", (st) => {
       if (st !== "active" || !awaitingReturn.current) return;
       awaitingReturn.current = false;
-      if (Platform.OS !== "android" || !pickedPackage || !result) { setVerifyNote("Apollo can't re-read this app's live permissions on this build, so it couldn't confirm the change. Check the screen you just left."); return; }
+      if (Platform.OS !== "android" || !pickedPackage || !result) { setVerifyNote("ApolloSG can't re-read this app's live permissions on this build, so it couldn't confirm the change. Check the screen you just left."); return; }
       void AppDeviceSdk.getInstalledAppAssessment(pickedPackage).then((sdk) => {
         if (!sdk) { setVerifyNote("Apollo couldn't confirm the change — it can't read this app's permissions right now."); return; }
         const resolved = confirmedResolved(buildPermissionFindings(result.a.permissionNotes, result.sdk), buildPermissionFindings(result.a.permissionNotes, sdk));
         setResult((cur) => (cur ? { ...cur, sdk } : cur));
-        setVerifyNote(resolved.length ? `Apollo confirmed: ${resolved.map((f) => f.label).join(", ")} ${resolved.length > 1 ? "are" : "is"} now off for this app.` : "Apollo re-checked this app. No change to its access was confirmed.");
-      }).catch(() => setVerifyNote("Apollo tried to re-read this app's permissions and the device read failed, so it couldn't confirm the change."));
+        setVerifyNote(resolved.length ? `Apollo confirmed: ${resolved.map((f) => f.label).join(", ")} ${resolved.length > 1 ? "are" : "is"} now off for this app.` : "ApolloSG re-checked this app. No change to its access was confirmed.");
+      }).catch(() => setVerifyNote("ApolloSG tried to re-read this app's permissions and the device read failed, so it couldn't confirm the change."));
     });
     return () => sub.remove();
   }, [pickedPackage, result]);
@@ -292,7 +292,7 @@ export default function CheckApp() {
 
             {/* ── Manual app name entry (secondary) ── */}
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="App name" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
-            <Button testID="app-run" label={busy ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!canRun} />
+            <Button testID="app-run" label={busy ? "Sniffing…" : "Check with ApolloSG"} onPress={() => void run()} disabled={!canRun} />
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="app-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes ({[...new Set(recentLinked.map((e) => e.category))].join(", ")}). An app installed now will be assessed as part of that sequence.</Body></Card> : null}
             <Pressable testID="app-more-details" accessibilityRole="button" onPress={() => setShowMoreFields(!showMoreFields)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
               <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showMoreFields ? "Hide details" : "Add more details"}</Text>
@@ -323,7 +323,7 @@ export default function CheckApp() {
       <Sheet visible={pickerOpen} onClose={() => { setPickerOpen(false); setAppQuery(""); }} title="Pick an installed app" testID="app-picker-sheet">
         <TextInput testID="app-picker-search" style={s.input} value={appQuery} onChangeText={setAppQuery} placeholder="Search your apps" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
         {appsLoading ? <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}><ActivityIndicator color={colors.gold} /></View>
-          : (installedApps?.length ?? 0) === 0 ? <Body testID="app-picker-empty">Apollo can&apos;t list installed apps on this build. Type the app name instead — this feature needs a production Android build.</Body>
+          : (installedApps?.length ?? 0) === 0 ? <Body testID="app-picker-empty">ApolloSG can&apos;t list installed apps on this build. Type the app name instead — this feature needs a production Android build.</Body>
           : <ScrollView style={{ maxHeight: 360 }} testID="app-picker-list" keyboardShouldPersistTaps="handled" nestedScrollEnabled>
               {filteredApps.length === 0 ? <Body>No apps match “{appQuery}”.</Body> : filteredApps.map((app) => (
                 <Pressable key={app.packageId} testID={`app-picker-${app.packageId}`} accessibilityRole="button" onPress={() => pickApp(app)} style={({ pressed }) => [s.permRow, { paddingVertical: spacing.md, opacity: pressed ? 0.7 : 1 }]}>
@@ -339,7 +339,7 @@ export default function CheckApp() {
         title="Installed apps"
         note="Each one stands in for an app and its stated permissions. Apollo runs the real app check on whichever you pick."
         preview={simulation.included}
-        error={simulation.included ? null : "Apollo can't list installed apps on this build. Type the app name below instead — this needs a production Android build."}
+        error={simulation.included ? null : "ApolloSG can't list installed apps on this build. Type the app name below instead — this needs a production Android build."}
         items={simulation.apps.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
         emptyText="There are no apps to choose from here."
         onSelect={(id: string) => {

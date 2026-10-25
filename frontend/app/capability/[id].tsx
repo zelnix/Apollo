@@ -124,7 +124,7 @@ export default function CapabilityDetailScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Back" testID="capability-back" onPress={() => goBackOrHome(router)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle} numberOfLines={1}>{capability ? "What Apollo can use" : "Device Protection"}</Text>
+          <Text style={s.headerTitle} numberOfLines={1}>{capability ? "What ApolloSG can use" : "Device Protection"}</Text>
           <AlertsButton testID="capability-alerts" />
           <AppMenuButton testID="capability-menu" />
         </View>
@@ -134,7 +134,7 @@ export default function CapabilityDetailScreen() {
         {!row ? (
           <View style={s.section}>
             <Body testID="capability-missing">
-              {!assessment ? "Reading this device…" : "Apollo doesn’t have anything by that name. Go back to Device Protections and tap the row you want."}
+              {!assessment ? "Reading this device…" : "ApolloSG doesn’t have anything by that name. Go back to Device Protections and tap the row you want."}
             </Body>
           </View>
         ) : protectionRow ? (
@@ -186,7 +186,7 @@ export default function CapabilityDetailScreen() {
                   <Text style={s.text}>{explanation.state.result.explanation.protectsAgainst}</Text>
                   <Text style={s.attr} testID="capability-explanation-source">
                     {explanation.state.result.source === "apollo_reviewed" ? "Explanation reviewed by Apollo."
-                      : explanation.state.result.source === "preview_simulator" ? "SIMULATED — preview build, no Gemini call was made. Drawn from Apollo’s knowledge base where it had something."
+                      : explanation.state.result.source === "preview_simulator" ? "SIMULATED — preview build, no Gemini call was made. Drawn from ApolloSG’s knowledge base where it had something."
                         : `Explained by Higgins for ${explanation.state.result.scopeLabel}.`}
                   </Text>
                 </View>
@@ -268,7 +268,7 @@ export default function CapabilityDetailScreen() {
             <View style={s.section}>
               <Text style={s.sectionTitle}>What you should do</Text>
               <Text style={s.text} testID="capability-advice">
-                {capabilityAdvice(capability) ?? "Nothing. Apollo is already using this whenever it checks something for you."}
+                {capabilityAdvice(capability) ?? "Nothing. ApolloSG is already using this whenever it checks something for you."}
               </Text>
             </View>
           </>
@@ -287,7 +287,7 @@ export default function CapabilityDetailScreen() {
               testID="capability-ask-higgins"
               variant="ghost"
               label="Ask Higgins about this"
-              onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: `Can you explain “${row.title}” on my phone? Apollo says its status is “${statusLabel}”. What does that mean for me and should I do anything?` } })}
+              onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: `Can you explain “${row.title}” on my phone? ApolloSG says its status is “${statusLabel}”. What does that mean for me and should I do anything?` } })}
             />
           </View>
         ) : null}

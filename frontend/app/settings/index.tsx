@@ -35,7 +35,7 @@ const ALERT_LABEL: Record<NotificationStatus, string> = { granted: "Allowed", de
 // public Stripe Payment Links exist. It never unlocks protection or creates a paid security tier.
 const SHOW_CONTRIBUTION = false;
 const SETTINGS_INFO: ScreenInfo = { title: "About Settings", body: [
-  "Manage your protection, alerts, accounts, family, your own data and Apollo's privacy choices.",
+  "Manage your protection, alerts, accounts, family, your own data and ApolloSG's privacy choices.",
   "The groups are ordered by what matters most day to day: protection and alerts first, then the people and accounts Apollo watches for you, then your data. App options and the policy documents sit at the bottom.",
   "Changes apply straight away on this device.",
 ] };
@@ -145,7 +145,7 @@ export default function SettingsScreen() {
         <View style={[s.rowItem, s.divider]}>
           <View style={{ flex: 1 }}>
             <Text style={s.rowLabel}>Notification categories</Text>
-            <Text style={s.rowHint}>Choose which types of alerts Apollo sends you. Critical alerts cannot be turned off.</Text>
+            <Text style={s.rowHint}>Choose which types of alerts ApolloSG sends you. Critical alerts cannot be turned off.</Text>
           </View>
         </View>
         {/* Always-on categories */}
@@ -183,7 +183,7 @@ export default function SettingsScreen() {
       {/* 4 ── The person's own data */}
       <Group icon={Lock} title="Your data" tone="data" testID="settings-privacy">
         <NavRow first label="My personal data" hint="Add your names, numbers, emails and addresses so Apollo can protect them" onPress={() => router.push("/settings/personal-data")} testID="settings-personal-data" />
-        <NavRow label="What Apollo stores" hint="See everything Apollo holds and delete all your data" onPress={() => router.push("/privacy-data")} testID="settings-privacy-data" />
+        <NavRow label="What ApolloSG stores" hint="See everything ApolloSG holds and delete all your data" onPress={() => router.push("/privacy-data")} testID="settings-privacy-data" />
         <NavRow label="Clear Patrol history" hint="Hide local summaries and ask the service to hide synced ones" onPress={() => setConfirmClear(true)} testID="settings-clear-patrol" />
       </Group>
 
@@ -191,7 +191,7 @@ export default function SettingsScreen() {
       <Group icon={Smartphone} title="App" tone="app" testID="settings-preferences">
         <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
         <SwitchRow label="Show why each result was settled" hint="One line naming the rule that settled it" value={showReasons} onValueChange={(value) => void setShowResultReasons(value)} testID="settings-result-reasons-switch" />
-        <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
+        <NavRow label="Minimise ApolloSG" hint="Move ApolloSG to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
         <NavRow label="Retrofit new enhancements" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
       </Group>
 
@@ -202,25 +202,25 @@ export default function SettingsScreen() {
 
       {/* 7 ── Help */}
       <Group icon={LifeBuoy} title="Help &amp; about" tone="help" testID="settings-help">
-        <NavRow first label="Get help with Apollo" hint="App details, protection issues, device checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
-        <Pressable testID="settings-share" accessibilityRole="button" accessibilityLabel="How to share into Apollo" onPress={() => setShowShare((v) => !v)} style={[s.rowItem, s.divider]}>
-          <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
+        <NavRow first label="Get help with ApolloSG" hint="App details, protection issues, device checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
+        <Pressable testID="settings-share" accessibilityRole="button" accessibilityLabel="How to share into ApolloSG" onPress={() => setShowShare((v) => !v)} style={[s.rowItem, s.divider]}>
+          <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into ApolloSG</Text></View><ChevronRight size={20} color={colors.muted} />
         </Pressable>
-        {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Many messaging, mail and browser apps offer Share — tap it, then choose Apollo. Not every app does; if yours doesn&apos;t, copy and paste the text or use a screenshot. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
-        <NavRow label="About Apollo" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
+        {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Many messaging, mail and browser apps offer Share — tap it, then choose ApolloSG. Not every app does; if yours doesn&apos;t, copy and paste the text or use a screenshot. ApolloSG always waits for you to confirm before it checks anything you share.</Body> : null}
+        <NavRow label="About ApolloSG" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
         <NavRow label="Rule book" hint="Every rule Apollo, TC FlyBy, Magnum DI and Higgins follow, word for word" onPress={() => router.push("/settings/rule-book")} testID="settings-rule-book" />
       </Group>
 
       {/* 8 ── The documents, last: read occasionally, never urgent */}
       <Group icon={FileText} title="Policies &amp; assurance" tone="policies" testID="settings-policies">
-        <NavRow first label="Privacy statement" hint="What Apollo stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
+        <NavRow first label="Privacy statement" hint="What ApolloSG stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
         <NavRow label="Third-party services" hint="External services, what they receive and HWG accountability" onPress={() => router.push("/third-party-register")} testID="settings-third-party" />
         <NavRow label="Compliance matrix" hint="Standards, application controls and operational assurance" onPress={() => router.push("/compliance-matrix")} testID="settings-compliance-matrix" />
       </Group>
 
       {SHOW_CONTRIBUTION ? <View testID="settings-contribution"><Card><Body>Apollo protects everyone. If you believe in the mission, help keep Apollo on watch.</Body></Card></View> : null}
 
-      <Text style={s.footer} testID="settings-footer">{`Apollo ${APP_VERSION} · No account · No advertising tracking`}</Text>
+      <Text style={s.footer} testID="settings-footer">{`ApolloSG ${APP_VERSION} · No account · No advertising tracking`}</Text>
     </ScrollView>
     <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />
     <AboutApolloSheet visible={showAbout} onClose={() => setShowAbout(false)} />

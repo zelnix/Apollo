@@ -45,9 +45,9 @@ export async function registerDeviceIdentity(base: string, meta: Record<string, 
   try { res = await fetch(`${base}/devices/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta), signal: ctl.signal }); }
   catch { const kind = ctl.signal.aborted ? "timeout" : "offline"; markBackendFailure(kind); throw new Error(FAILURE_MESSAGE[kind]); }
   finally { clearTimeout(t); }
-  if (res.status >= 500) { markBackendFailure("server_error"); throw new Error("Apollo couldn't register this device right now."); }
+  if (res.status >= 500) { markBackendFailure("server_error"); throw new Error("ApolloSG couldn't register this device right now."); }
   markBackendOk();
-  if (!res.ok) throw new Error("Apollo couldn't register this device right now.");
+  if (!res.ok) throw new Error("ApolloSG couldn't register this device right now.");
   let j: { device_id?: unknown; device_token?: unknown; token_expires_at?: unknown };
   try { j = (await res.json()) as typeof j; } catch { markBackendFailure("malformed"); throw new Error(FAILURE_MESSAGE.malformed); }
   if (typeof j.device_id !== "string" || typeof j.device_token !== "string" || j.device_token.length < 32) { markBackendFailure("malformed"); throw new Error(FAILURE_MESSAGE.malformed); }

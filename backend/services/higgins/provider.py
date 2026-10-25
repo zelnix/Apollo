@@ -513,8 +513,8 @@ def configuration() -> dict:
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
             "accountAccess": "Preview provider (no external calls)" if preview_active else "Direct Google AI Studio API key",
             "providerRetention": "Preview: no data leaves this server." if preview_active else
-                                 "Apollo uses the Gemini API directly via the google-genai SDK under Google's published "
-                                 "Gemini API terms. Apollo does not control or independently verify Google's internal "
-                                 "retention practices. Apollo's own request-scoped processing copies are closed after completion.",
-            "dataFlow": "Device -> Apollo service -> Preview provider (local)." if preview_active else
-                        "Device -> Apollo service -> Google Gemini API."}
+                                 "ApolloSG uses the Gemini API directly via the google-genai SDK under Google's published "
+                                 "Gemini API terms. ApolloSG does not control or independently verify Google's internal "
+                                 "retention practices. ApolloSG's own request-scoped processing copies are closed after completion.",
+            "dataFlow": "Device -> ApolloSG service -> Preview provider (local)." if preview_active else
+                        "Device -> ApolloSG service -> Google Gemini API."}

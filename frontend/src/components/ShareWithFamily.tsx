@@ -33,15 +33,15 @@ export function ShareWithFamily({ summary, when }: { summary: FamilySummary; whe
   const send = useMutation({
     mutationFn: () => apiPost<{ shared_with: number }>("/family/threats/share", "family", { device_id: deviceId, ...summaryWire(summary) }),
     onSuccess: (r) => showToast(r.shared_with
-      ? `Sent to ${r.shared_with === 1 ? "your family member" : `${r.shared_with} family members`} in Apollo.`
-      : "No family is linked in Apollo yet.", r.shared_with ? "resting" : "neutral"),
-    onError: () => showToast("Apollo couldn't send this to your family right now. Try again shortly.", "growling"),
+      ? `Sent to ${r.shared_with === 1 ? "your family member" : `${r.shared_with} family members`} in ApolloSG.`
+      : "No family is linked in ApolloSG yet.", r.shared_with ? "resting" : "neutral"),
+    onError: () => showToast("ApolloSG couldn't send this to your family right now. Try again shortly.", "growling"),
   });
   const shareOther = async () => {
     try {
-      await Share.share({ message: summaryText(summary, when), title: "Apollo SG threat summary" });
+      await Share.share({ message: summaryText(summary, when), title: "ApolloSG threat summary" });
     } catch {
-      showToast("Apollo couldn't open the share menu on this device.", "growling");
+      showToast("ApolloSG couldn't open the share menu on this device.", "growling");
     }
   };
   const what = summary.involved ? `the ${summary.involved.label === "Website" ? "website" : "number"} involved` : null;
@@ -55,14 +55,14 @@ export function ShareWithFamily({ summary, when }: { summary: FamilySummary; whe
       {linked > 0 ? (
         <Button
           testID="tc-share-family-send"
-          label={send.isPending ? "Sending…" : "Send to family in Apollo"}
+          label={send.isPending ? "Sending…" : "Send to family in ApolloSG"}
           icon={<Users size={18} color={colors.onBrandPrimary} />}
           onPress={() => send.mutate()}
           disabled={send.isPending || !deviceId}
         />
       ) : links.isSuccess ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }} testID="tc-share-family-none">
-          <Text style={s.muted}>No family is linked in Apollo yet.</Text>
+          <Text style={s.muted}>No family is linked in ApolloSG yet.</Text>
           <Text style={s.link} onPress={() => router.push("/family")} accessibilityRole="link" testID="tc-share-family-link">Link family</Text>
         </View>
       ) : null}

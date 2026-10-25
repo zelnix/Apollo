@@ -96,10 +96,10 @@ def official_domain(host: str) -> tuple[str, str] | None:
     """(publisher, basis) when the host belongs to an official government/organisation domain on Apollo's register."""
     source = kb_sources.source_for(f"https://{host}")
     if source and source.tier == kb_sources.TIER_1:
-        return source.publisher, "Apollo's register of official government and regulator domains"
+        return source.publisher, "ApolloSG's register of official government and regulator domains"
     for name, domain in BRANDS.values():
         if registrable(host) == registrable(domain):
-            return name, f"{name}'s published domain ({domain}) on Apollo's register of organisation domains"
+            return name, f"{name}'s published domain ({domain}) on ApolloSG's register of organisation domains"
     return None
 
 
@@ -127,7 +127,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
     if owner:
         publisher, basis = owner
         check.facts.append(fact(f"{host} is {publisher}'s official domain.", "clear", decisive=True, topic="official_domain",
-                                source=source_ref("Apollo official-domain register", authority="official", basis=basis)))
+                                source=source_ref("ApolloSG official-domain register", authority="official", basis=basis)))
     urls = check.urls or [f"https://{host}/"]
     checked_any = False
     for url in urls[:2]:
@@ -181,11 +181,11 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
     for item in pg["downloads"]:
         if host in (item.get("url") or "").lower():
             check.facts.append(fact(f"The link downloads a file directly ({item.get('filename', 'a file')}).", "anomaly",
-                                    source=source_ref("Apollo download-link detection", authority="independent", basis="Static link analysis")))
+                                    source=source_ref("ApolloSG download-link detection", authority="independent", basis="Static link analysis")))
     for match in pg["advisories"] + plan_.advisories:
         if (match.get("matched_on") or "") == f"domain: {host}" or (match.get("matched_on") or "") == f"domain: {domain}":
             check.facts.append(fact(f"An official scam advisory names {host}: “{match.get('title', 'advisory')}”.", "concern", decisive=True,
-                                    source=source_ref("Official scam advisory feed", authority="official", basis="Government advisory held by Apollo")))
+                                    source=source_ref("Official scam advisory feed", authority="official", basis="Government advisory held by ApolloSG")))
     if any(f["decisive"] for f in check.facts):
         check.status, check.route = "resolved", "official_source"
     elif not checked_any and not owner:
@@ -217,11 +217,11 @@ def _impersonation(check: Check, plan_: Plan) -> None:
             else:
                 text, topic = f"The material names {name}, but {place} is not {name}'s domain ({official}).", "impersonation"
             check.facts.append(fact(text, "anomaly", topic=topic,
-                                    source=source_ref("Apollo official-domain register", basis=f"{name}'s published domain")) | {"place": place})
+                                    source=source_ref("ApolloSG official-domain register", basis=f"{name}'s published domain")) | {"place": place})
         check.status, check.open_issue = "needs_reasoning", f"Impersonation: whether the material genuinely comes from {name}."
     else:
         check.facts.append(fact(f"Every link and address in the material uses {official}, {name}'s official domain.", "clear",
-                                source=source_ref("Apollo official-domain register", basis=f"{name}'s published domain")))
+                                source=source_ref("ApolloSG official-domain register", basis=f"{name}'s published domain")))
         check.status, check.route = "resolved", "official_source"
 
 
@@ -240,10 +240,10 @@ def _email(check: Check, plan_: Plan) -> None:
     owner = official_domain(domain)
     if owner:
         check.facts.append(fact(f"{check.subject} uses {domain}, {owner[0]}'s official domain.", "clear",
-                                source=source_ref("Apollo official-domain register", basis=owner[1])))
+                                source=source_ref("ApolloSG official-domain register", basis=owner[1])))
     elif domain in FREE_MAIL and plan_.entities.brands:
         check.facts.append(fact(f"{check.subject} is a free personal email account ({domain}), not an address of {plan_.entities.brands[0][0]}.", "anomaly",
-                                topic="freemail", source=source_ref("Apollo official-domain register", basis="Free email providers are not organisation domains")))
+                                topic="freemail", source=source_ref("ApolloSG official-domain register", basis="Free email providers are not organisation domains")))
 
 
 def _registration_number(check: Check) -> None:
@@ -281,4 +281,4 @@ async def run(plan_: Plan, pre_gathered: dict | None, text: str) -> None:
                 if on.startswith("keyword"):
                     check.facts.append(fact(f"An official advisory describes a similar scam: “{match.get('title', 'advisory')}” (severity {match.get('severity', 'unknown')}).",
                                             "context", kind="apollo_knowledge",
-                                            source=source_ref("Official scam advisory feed", basis="Government advisory held by Apollo — general knowledge")))
+                                            source=source_ref("Official scam advisory feed", basis="Government advisory held by ApolloSG — general knowledge")))

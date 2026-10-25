@@ -112,7 +112,7 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
     attentionNeeded: issues.length > 0 || !serviceRunning,
     observedAt: health.checkedAt,
     caveats: health.checking
-      ? ["Apollo is running a health check right now. This is the latest snapshot — results may update in a moment."]
+      ? ["ApolloSG is running a health check right now. This is the latest snapshot — results may update in a moment."]
       : [],
   };
 }
@@ -224,11 +224,11 @@ export function getVpnStatus(health: ProtectionHealthSnapshot): DiagnosticResult
 
   const parts: string[] = [];
   if (vpnActive) {
-    parts.push("Apollo's secure connection is on.");
+    parts.push("ApolloSG's secure connection is on.");
     if (siteRunning) parts.push("Website protection is using it to check the addresses your device looks up and block dangerous websites.");
     else parts.push("However, website protection is not currently running.");
   } else {
-    parts.push("Apollo's secure connection is off, so website protection can't run.");
+    parts.push("ApolloSG's secure connection is off, so website protection can't run.");
     // Use the gate's own limitation/status text rather than generating independently.
     if (siteGate) {
       const reason = siteGate.capability.automatic?.limitation || siteGate.currentHelp;
@@ -305,14 +305,14 @@ function buildProtectionSummary(facts: ProtectionFacts, activeCount: number, tot
     parts.push("The first thing to do is turn Apollo's protection back on.");
   } else if (attention.length > 0) {
     const first = attention[0];
-    parts.push(`Partly. Apollo is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
+    parts.push(`Partly. ApolloSG is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
     parts.push(`The first thing to sort out is ${first.title.toLowerCase()} — ${(first.limitation || first.statusLabel).toLowerCase()}.`);
-    parts.push("Open Apollo's protection settings and turn it on, then ask me to check again.");
+    parts.push("Open ApolloSG's protection settings and turn it on, then ask me to check again.");
   } else if (activeCount < totalCount) {
-    parts.push(`Partly. Apollo is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
+    parts.push(`Partly. ApolloSG is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
     parts.push(`The ${totalCount - activeCount === 1 ? "other one isn't" : `other ${totalCount - activeCount} aren't`} available on this device, so ${totalCount - activeCount === 1 ? "it can't" : "they can't"} be switched on here.`);
   } else {
-    parts.push(`Yes — Apollo is running and all ${totalCount} protections on this device are on.`);
+    parts.push(`Yes — ApolloSG is running and all ${totalCount} protections on this device are on.`);
   }
 
   if (facts.rulesCurrent === false) {

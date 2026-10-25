@@ -134,7 +134,7 @@ def test_with_nothing_in_the_knowledge_base_it_says_so_and_invents_nothing():
 
 def test_an_investigation_adds_knowledge_as_general_knowledge_never_as_a_finding():
     result = json.loads(simulated_text(Purpose.INVESTIGATION, True, evidence_blocks(_contents(BANK_TEXT)), kb=[KB_ENTRY]))
-    assert "**From Apollo's knowledge base** (general knowledge, not a finding about what you sent)" in result["explanationMarkdown"]
+    assert "**From ApolloSG's knowledge base** (general knowledge, not a finding about what you sent)" in result["explanationMarkdown"]
     assert "Scamwatch: “Romance scams”" in result["explanationMarkdown"]
     assert all("Romance" not in f["text"] for f in result["findings"])
     assert result["sourceIds"] == []

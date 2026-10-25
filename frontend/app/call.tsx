@@ -146,7 +146,7 @@ export default function CheckCall() {
         <Text style={s.title}>Call screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <CloseButton testID="call-close" onPress={() => goBackOrHome(router)} />
-          <InfoButton info={{ title: "About call screening", body: ["This screen is designed for use during a live call. Big buttons and short answers help you make decisions under pressure.", "Tell Apollo what the caller is asking you to do and it will assess the risk. No audio is recorded — Apollo analyses only what you select or type."] }} testID="call-info" />
+          <InfoButton info={{ title: "About call screening", body: ["This screen is designed for use during a live call. Big buttons and short answers help you make decisions under pressure.", "Tell ApolloSG what the caller is asking you to do and it will assess the risk. No audio is recorded — Apollo analyses only what you select or type."] }} testID="call-info" />
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
@@ -192,7 +192,7 @@ export default function CheckCall() {
             </Pressable>
           ))}
         </View>
-        <Button testID="call-check" label="Check with Apollo" onPress={() => void run()} disabled={asks.length === 0 && !number.trim()} />
+        <Button testID="call-check" label="Check with ApolloSG" onPress={() => void run()} disabled={asks.length === 0 && !number.trim()} />
         <Button testID="call-more-toggle" variant="ghost" label={more ? "Hide extra details" : "Add caller number or description (optional)"} onPress={() => setMore((m) => !m)} />
         {more ? (
           <>
@@ -200,7 +200,7 @@ export default function CheckCall() {
             <TextInput testID="call-transcript" style={[s.input, { minHeight: 100, textAlignVertical: "top" }]} value={transcript} onChangeText={setTranscript} placeholder="Type what the caller said (optional)" placeholderTextColor={colors.muted} multiline />
           </>
         ) : null}
-        <Text style={s.small}>Apollo does not listen to or record calls. It works from what you select here, any text you paste, and your recent Apollo events.</Text>
+        <Text style={s.small}>Apollo does not listen to or record calls. It works from what you select here, any text you paste, and your recent ApolloSG events.</Text>
         <Button testID="call-check-number" variant="ghost" label="Just want to check a number? Use Check a Number" onPress={() => router.push("/call-guard")} />
         <CheckHistoryCard gate="call" refreshKey={historyKey} testID="call-history" />
       </KeyboardAwareScrollView>

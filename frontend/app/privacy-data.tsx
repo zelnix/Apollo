@@ -64,11 +64,11 @@ export default function PrivacyDataScreen() {
     const res = await requestDataDeletion();
     setBusy(false);
     if (res.ok) {
-      showToast("Your Apollo data has been deleted. Set up Apollo again whenever you're ready.", "neutral");
+      showToast("Your ApolloSG data has been deleted. Set up ApolloSG again whenever you're ready.", "neutral");
       router.replace("/onboarding");
     } else {
       setPending(true);
-      showToast("You're offline. Apollo will finish deleting your data as soon as it reconnects.", "growling");
+      showToast("You're offline. ApolloSG will finish deleting your data as soon as it reconnects.", "growling");
     }
   };
 
@@ -81,23 +81,23 @@ export default function PrivacyDataScreen() {
         <CloseButton testID="privacy-data-close" onPress={() => goBackOrHome(router)} />
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="privacy-data-scroll" keyboardShouldPersistTaps="handled">
-        <Body testID="privacy-data-intro">Apollo uses an anonymous device identity — no account, no name, no advertising tracking. Here is everything Apollo stores for this device, where it lives and for how long.</Body>
+        <Body testID="privacy-data-intro">ApolloSG uses an anonymous device identity — no account, no name, no advertising tracking. Here is everything ApolloSG stores for this device, where it lives and for how long.</Body>
 
         {pending ? (
           <Card testID="privacy-data-pending" style={s.pending}>
             <Text style={s.dangerTitle}>Deletion pending</Text>
-            <Body>You asked Apollo to delete your data while offline. Nothing has been erased yet. Apollo will finish the moment it reconnects — stay on Wi-Fi or mobile data.</Body>
+            <Body>You asked ApolloSG to delete your data while offline. Nothing has been erased yet. ApolloSG will finish the moment it reconnects — stay on Wi-Fi or mobile data.</Body>
             <Button testID="privacy-data-retry" variant="secondary" label="Try now" onPress={() => void runDelete()} />
           </Card>
         ) : null}
 
         <View>
-          <SectionTitle>What Apollo stores</SectionTitle>
+          <SectionTitle>What ApolloSG stores</SectionTitle>
           <Card testID="privacy-data-inventory">
             {loading ? <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}><ActivityIndicator color={colors.brand} /></View> : null}
             {!loading && invError ? (
               <View style={{ gap: spacing.sm }}>
-                <Body testID="privacy-data-inv-error">Apollo couldn&apos;t load the live count right now. The categories below still apply.</Body>
+                <Body testID="privacy-data-inv-error">ApolloSG couldn&apos;t load the live count right now. The categories below still apply.</Body>
                 <Button testID="privacy-data-inv-retry" variant="ghost" label="Try again" onPress={() => void loadInventory()} />
               </View>
             ) : null}
@@ -124,10 +124,10 @@ export default function PrivacyDataScreen() {
         </View>
 
         <View>
-          <SectionTitle>Delete my Apollo data</SectionTitle>
+          <SectionTitle>Delete my ApolloSG data</SectionTitle>
           <Card testID="privacy-data-delete" style={s.dangerCard}>
             <Text style={s.dangerTitle}>This cannot be undone</Text>
-            <Body>Deleting erases everything above — on Apollo&apos;s service and on this phone — and signs this device out. Apollo returns to the welcome screen and you can set it up fresh anytime. Trusted links, saved checks, Patrol history, Higgins conversations and family pairings are all removed.</Body>
+            <Body>Deleting erases everything above — on ApolloSG&apos;s service and on this phone — and signs this device out. ApolloSG returns to the welcome screen and you can set it up fresh anytime. Trusted links, saved checks, Patrol history, Higgins conversations and family pairings are all removed.</Body>
             <Body>To confirm, type <Text style={{ fontFamily: fonts.textSemibold, color: colors.onSurface }}>{CONFIRM_WORD}</Text> below.</Body>
             <TextInput
               testID="privacy-data-confirm-input"
@@ -143,7 +143,7 @@ export default function PrivacyDataScreen() {
             <Button
               testID="privacy-data-delete-button"
               variant="danger"
-              label={busy ? "Deleting…" : "Delete My Apollo Data"}
+              label={busy ? "Deleting…" : "Delete My ApolloSG Data"}
               disabled={!confirmed || busy}
               icon={busy ? <ActivityIndicator color={colors.onError} /> : undefined}
               onPress={() => setShowSheet(true)}
@@ -153,7 +153,7 @@ export default function PrivacyDataScreen() {
       </ScrollView>
 
       <Sheet visible={showSheet} onClose={() => setShowSheet(false)} title="Delete everything?" testID="privacy-data-sheet">
-        <Body>This permanently erases all of your Apollo data on the service and on this phone. You can&apos;t get it back.</Body>
+        <Body>This permanently erases all of your ApolloSG data on the service and on this phone. You can&apos;t get it back.</Body>
         <Button testID="privacy-data-sheet-confirm" variant="danger" label="Yes, delete everything" onPress={() => void runDelete()} />
         <Button testID="privacy-data-sheet-cancel" variant="ghost" label="Keep my data" onPress={() => setShowSheet(false)} />
       </Sheet>

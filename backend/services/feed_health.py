@@ -16,24 +16,24 @@ _ORDER = {"failing": 0, "stale": 1, "healthy": 2}
 
 # Our own rejection reasons (stored as error_detail) and OutboundBlocked codes, in plain words.
 _DETAIL_MESSAGES = {
-    "fetch_failed": "The source never answered Apollo's server. The site may be down, or blocking requests from cloud servers.",
+    "fetch_failed": "The source never answered ApolloSG's server. The site may be down, or blocking requests from cloud servers.",
     "dns_failed": "Apollo couldn't find the source's web address. The site may be down or renamed.",
-    "private_target": "The source's address pointed somewhere Apollo won't connect to, so the sync was stopped.",
+    "private_target": "The source's address pointed somewhere ApolloSG won't connect to, so the sync was stopped.",
     "invalid_target": "The feed address isn't a valid web address.",
-    "body_too_large": "The source sent more data than Apollo accepts.",
-    "encoded_body_not_supported": "The source sent its feed in a format Apollo doesn't accept.",
+    "body_too_large": "The source sent more data than ApolloSG accepts.",
+    "encoded_body_not_supported": "The source sent its feed in a format ApolloSG doesn't accept.",
     "feed URL outside source allowlist": "The feed address is outside the source's approved websites.",
-    "feed redirect escaped source allowlist": "The source redirected Apollo to a website that isn't approved.",
+    "feed redirect escaped source allowlist": "The source redirected ApolloSG to a website that isn't approved.",
     "feed response rejected": "The source answered, but not with a usable feed (an error page, the wrong format, or too much data).",
     "HTML source was not explicitly approved": "This web page hasn't been approved as a feed.",
-    "archive_unavailable": "The Internet Archive couldn't make or find a copy of this feed. Apollo will try again.",
+    "archive_unavailable": "The Internet Archive couldn't make or find a copy of this feed. ApolloSG will try again.",
     "archive_copy_too_old": "The newest Internet Archive copy of this feed is more than a day old.",
-    "archive_wrong_capture": "The Internet Archive returned a copy of a different address, so Apollo didn't use it.",
+    "archive_wrong_capture": "The Internet Archive returned a copy of a different address, so ApolloSG didn't use it.",
 }
 _CODE_MESSAGES = {
     "SourceUnavailable": "This feed's government source is switched off or no longer recognised.",
     "FeedRefreshFailure": "The sync stopped unexpectedly.",
-    "OutboundBlocked": "Apollo couldn't complete the connection to this source.",
+    "OutboundBlocked": "ApolloSG couldn't complete the connection to this source.",
     "ValueError": "The source answered, but its response didn't pass Apollo's checks.",
     "ConnectTimeout": "The source took too long to answer.",
     "ReadTimeout": "The source took too long to answer.",
@@ -41,11 +41,11 @@ _CODE_MESSAGES = {
     "PoolTimeout": "The source took too long to answer.",
     "TimeoutException": "The source took too long to answer.",
     "TimeoutError": "The source took too long to answer.",
-    "ConnectError": "Apollo couldn't connect to the source.",
+    "ConnectError": "ApolloSG couldn't connect to the source.",
     "ReadError": "The source closed the connection before the sync finished.",
     "RemoteProtocolError": "The source closed the connection before the sync finished.",
-    "ParseError": "The source sent a feed Apollo couldn't read.",
-    "JSONDecodeError": "The source sent a feed Apollo couldn't read.",
+    "ParseError": "The source sent a feed ApolloSG couldn't read.",
+    "JSONDecodeError": "The source sent a feed ApolloSG couldn't read.",
 }
 
 

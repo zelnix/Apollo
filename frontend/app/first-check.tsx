@@ -57,7 +57,7 @@ export default function FirstCheckOnboarding() {
           <ApolloLogo size={96} />
           <Text style={s.eyebrow}>Higgins First Check</Text>
           <Text style={s.title}>Checking this device&apos;s starting point…</Text>
-          <Text style={s.sub}>Apollo never assumes a new device is clean. Higgins is reading the security signals this device allows — it takes a moment.</Text>
+          <Text style={s.sub}>ApolloSG never assumes a new device is clean. Higgins is reading the security signals this device allows — it takes a moment.</Text>
           <ActivityIndicator color={colors.brand} />
         </View>
       </View>
@@ -78,7 +78,7 @@ export default function FirstCheckOnboarding() {
         {report.overall === "ERROR" ? (
           <Button testID="first-check-retry" variant="secondary" label="Try the check again" icon={<RefreshCw size={18} color={colors.brand} />} onPress={() => void run()} />
         ) : null}
-        <Button testID="first-check-continue" label="Finish — go to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+        <Button testID="first-check-continue" label="Finish — go to ApolloSG" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
         <Text style={s.note}>That&apos;s setup done. You can repeat this check anytime from Check It → Re-check my device.</Text>
       </View>
     </View>

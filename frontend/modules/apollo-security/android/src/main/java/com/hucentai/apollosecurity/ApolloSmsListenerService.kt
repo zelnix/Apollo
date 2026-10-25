@@ -245,13 +245,13 @@ class ApolloSmsListenerService : NotificationListenerService() {
           val existing = nm.getNotificationChannel(WARNING_CHANNEL)
           if (existing == null) {
             nm.createNotificationChannel(NotificationChannel(WARNING_CHANNEL, "Apollo alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-              description = "All Apollo scam protection alerts, warnings, and notifications."
+              description = "All ApolloSG scam protection alerts, warnings, and notifications."
             })
           }
         }
         // Build notification — no message content, only that a warning was generated
-        val title = if (result.state == "growling") "Apollo: suspicious message" else "Apollo: message worth checking"
-        val body = "A message${if (sender.isNotBlank()) " notification" else ""} triggered Apollo's local detection. Open Apollo to review."
+        val title = if (result.state == "growling") "ApolloSG: suspicious message" else "ApolloSG: message worth checking"
+        val body = "A message${if (sender.isNotBlank()) " notification" else ""} triggered Apollo's local detection. Open ApolloSG to review."
         // Intent to open the app
         val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
         val pendingIntent = if (launchIntent != null) PendingIntent.getActivity(ctx, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) else null

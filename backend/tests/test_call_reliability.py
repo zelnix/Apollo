@@ -35,7 +35,7 @@ async def test_no_ipqs_key_returns_unknown_decision():
             result = await check_phone_risk("+15550001234", "test-device")
             assert result.decision == "unknown", f"Expected 'unknown' but got '{result.decision}'"
             assert result.source == "not_configured"
-            assert result.higgins["found"].startswith("Apollo could not obtain")
+            assert result.higgins["found"].startswith("ApolloSG could not obtain")
         finally:
             pr.IPQS_API_KEY = original_key
 

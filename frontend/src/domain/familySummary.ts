@@ -41,7 +41,7 @@ export const untappable = (host: string) => host.replace(/\./g, "[.]");
 /** The text the phone's share menu sends (a message, WhatsApp or an email). */
 export function summaryText(s: FamilySummary, when: string): string {
   return [
-    "Apollo SG: a threat on my phone",
+    "ApolloSG: a threat on my phone",
     `Result: ${s.result}`,
     `What happened: ${s.whatHappened || s.headline}`,
     s.whatToDo ? `What to do: ${s.whatToDo}` : null,

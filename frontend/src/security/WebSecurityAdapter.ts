@@ -32,12 +32,12 @@ class WebSecurityAdapterImpl implements SecurityPlatformAdapter {
 
   async getCapabilities(): Promise<Capability[]> {
     return [
-      { id: "link_guard", title: "Link checking", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
+      { id: "link_guard", title: "Link checking", status: "available", detail: "Checks links you paste into ApolloSG; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: "available", detail: "Privacy-preserving reputation checks using the link only." },
-      { id: "site_guard", title: "Website protection", status: "unsupported", detail: "A browser cannot run a website filter for this device. Install the Apollo app to enable website protection." },
+      { id: "site_guard", title: "Website protection", status: "unsupported", detail: "A browser cannot run a website filter for this device. Install the ApolloSG app to enable website protection." },
       { id: "connection_guard", title: "Internet monitoring", status: "unsupported", detail: "Browsers do not expose Wi‑Fi security or captive-portal details. Network details you describe can still be investigated." },
-      { id: "share_intake", title: "Share to Apollo", status: "coming_later", detail: "Sharing from other apps needs the installed Apollo app. In the browser, use the Shared-with-Apollo screen via the apollo://share link." },
-      { id: "message_guard", title: "Message screening", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo. Automatic access is never assumed." },
+      { id: "share_intake", title: "Share to ApolloSG", status: "coming_later", detail: "Sharing from other apps needs the installed ApolloSG app. In the browser, use the Shared-with-ApolloSG screen via the apollo://share link." },
+      { id: "message_guard", title: "Message screening", status: "available", detail: "Checks texts and chats you paste or screenshot into ApolloSG. Automatic access is never assumed." },
       { id: "app_guard", title: "App checking", status: "available", detail: "Checks an app or device concern from the details you provide; the browser cannot read installed apps." },
     ];
   }
@@ -47,12 +47,12 @@ class WebSecurityAdapterImpl implements SecurityPlatformAdapter {
       running: false, requested: false, operational: false, enforcementMethod: "none",
       coverage: "This browser build cannot filter or block anything on this device. Manual checks and Higgins are fully real.",
       coverageScope: [], lastVerified: null,
-      degradedReason: "Browsers provide no network-filter or content-blocker mechanism to Apollo.",
+      degradedReason: "Browsers provide no network-filter or content-blocker mechanism to ApolloSG.",
       visibility: "none", since: null, adapterLabel: this.label, checkedAt: new Date().toISOString(),
     };
   }
 
-  async analyseURL(): Promise<NativeUrlAnalysis> { return { supported: false, verdict: "unknown", reasons: ["No native URL analyser in a browser; Apollo's server-side link checks are used instead."] }; }
+  async analyseURL(): Promise<NativeUrlAnalysis> { return { supported: false, verdict: "unknown", reasons: ["No native URL analyser in a browser; ApolloSG's server-side link checks are used instead."] }; }
   async analyseDomain(): Promise<NativeUrlAnalysis> { return { supported: false, verdict: "unknown", reasons: ["No native domain analyser in a browser."] }; }
 
   async blockDestination(): Promise<BlockResult> {

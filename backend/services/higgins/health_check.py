@@ -17,8 +17,8 @@ from services.higgins import report_store
 
 RECENT_WINDOW = timedelta(hours=24)
 RECENT_CALLS = 5
-FIXED_RESPONSE = {"overview": "The health check completed from Apollo's own records.",
-                  "explanationMarkdown": "Higgins read whether Apollo's AI service is set up and how recent investigations went. No AI call was made.",
+FIXED_RESPONSE = {"overview": "The health check completed from ApolloSG's own records.",
+                  "explanationMarkdown": "Higgins read whether ApolloSG's AI service is set up and how recent investigations went. No AI call was made.",
                   "assessment": "uncertain", "attention": "none", "scope": "AI service set-up and recent investigation outcomes only.",
                   "sourceIds": [], "findings": [], "uncertainties": ["No real device was assessed."], "actions": []}
 

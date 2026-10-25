@@ -419,8 +419,8 @@ def test_the_result_says_when_a_search_was_reused():
         c.route, c.facts = "google_search", [{"source": {"reused": reused}}]
         return c
     assert report._routes([searched(False)]) == "a targeted web search"
-    assert report._routes([searched(True)]) == "Apollo's recent targeted web search, reused while still current"
-    assert report._routes([searched(True), searched(False)]) == "a targeted web search, partly reused from Apollo's recent lookups"
+    assert report._routes([searched(True)]) == "ApolloSG's recent targeted web search, reused while still current"
+    assert report._routes([searched(True), searched(False)]) == "a targeted web search, partly reused from ApolloSG's recent lookups"
 
 
 # ── IPQualityScore and RDAP: cache hits avoid the call and are counted ───────

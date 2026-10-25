@@ -53,7 +53,7 @@ test("benchmark, acceptance and notification probes are not mobile routes", () =
 
 test("Support has exactly four health results and the approved plain-English labels", () => {
   const support = readFileSync("app/support.tsx", "utf8");
-  for (const label of ["Apollo protection", "Apollo services", "Higgins investigations", "Higgins reports"]) assert.match(support, new RegExp(`label="${label}"`));
+  for (const label of ["Apollo protection", "ApolloSG services", "Higgins investigations", "Higgins reports"]) assert.match(support, new RegExp(`label="${label}"`));
   for (const label of ["Checking", "Working", "Needs attention", "Could not check"]) assert.match(support, new RegExp(label));
   assert.match(support, /testID="support-go-to-check" label="Go to Check"/);
   assert.doesNotMatch(support, /support-health-overall|support-services-card|support-build-card/);

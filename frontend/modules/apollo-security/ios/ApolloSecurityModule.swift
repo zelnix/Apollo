@@ -99,14 +99,14 @@ public class ApolloSecurityModule: Module {
       self.refreshBlockerState { enabled in
         let running = self.requested
         let site: (String, String) = enabled == true
-          ? (running ? "active" : "inactive", running ? "Safari blocks verified threat domains via Apollo's content blocker." : "Turn protection on to activate the Safari content blocker.")
-          : ("permission_required", "Enable Apollo in Settings › Safari › Extensions to block threat sites in Safari.")
+          ? (running ? "active" : "inactive", running ? "Safari blocks verified threat domains via ApolloSG's content blocker." : "Turn protection on to activate the Safari content blocker.")
+          : ("permission_required", "Enable ApolloSG in Settings › Safari › Extensions to block threat sites in Safari.")
         promise.resolve(self.json([
-          ["id": "link_guard", "title": "Link Guard", "status": running ? "active" : "available", "detail": "Checks links you paste or share into Apollo."],
+          ["id": "link_guard", "title": "Link Guard", "status": running ? "active" : "available", "detail": "Checks links you paste or share into ApolloSG."],
           ["id": "known_threats", "title": "Known Threat Lookup", "status": running ? "active" : "available", "detail": "Privacy-preserving reputation checks using the link only."],
           ["id": "site_guard", "title": "Site Guard", "status": site.0, "detail": site.1],
           ["id": "connection_guard", "title": "Connection Guard", "status": running ? "active" : "available", "detail": "Limited on iOS: Apple only reveals whether the current Wi‑Fi is open or secured."],
-          ["id": "share_intake", "title": "Share to Apollo", "status": "active", "detail": "Share a link from any app to check it."],
+          ["id": "share_intake", "title": "Share to ApolloSG", "status": "active", "detail": "Share a link from any app to check it."],
         ]))
       }
     }
@@ -138,7 +138,7 @@ public class ApolloSecurityModule: Module {
           promise.resolve(self.json([
             "verified": false,
             "method": "content_blocker",
-            "detail": error == nil ? (enabled == true ? "Safari accepted Apollo's updated rule list. Safari does not report whether this destination is later matched." : "The rule list is prepared, but Apollo's Safari extension is not enabled.") : "The rule list is prepared, but Safari could not reload it.",
+            "detail": error == nil ? (enabled == true ? "Safari accepted Apollo's updated rule list. Safari does not report whether this destination is later matched." : "The rule list is prepared, but ApolloSG's Safari extension is not enabled.") : "The rule list is prepared, but Safari could not reload it.",
             "adapterLabel": self.label,
             "blockedAt": NSNull(),
             "rulesState": "prepared",
@@ -349,9 +349,9 @@ public class ApolloSecurityModule: Module {
           }
           promise.resolve(self.json([
             self.perm("network_filter", "Safari content blocker", enabled == true ? "granted" : (enabled == false ? "denied" : "undetermined"), true,
-                      "Enable Apollo under Settings › Safari › Extensions so Safari can block verified threat sites. Safari never shares what you browse with Apollo.", observedAt, enabled: enabled),
+                      "Enable ApolloSG under Settings › Safari › Extensions so Safari can block verified threat sites. Safari never shares what you browse with ApolloSG.", observedAt, enabled: enabled),
             self.perm("notifications", "Notifications", notifState, notifState != "denied", "Lets Apollo tell you when it barks.", observedAt, enabled: notifState == "granted"),
-            self.perm("vpn_config", "Local VPN", "not_applicable", false, "Apollo on iOS uses a Safari content blocker, not a VPN.", observedAt, enabled: nil, unavailableReason: "not_implemented"),
+            self.perm("vpn_config", "Local VPN", "not_applicable", false, "ApolloSG on iOS uses a Safari content blocker, not a VPN.", observedAt, enabled: nil, unavailableReason: "not_implemented"),
             self.perm("accessibility", "Accessibility service", "not_applicable", false, "iOS exposes no accessibility-service permission to apps.", observedAt, enabled: nil, unavailableReason: "os_restricted"),
           ]))
         }
@@ -363,13 +363,13 @@ public class ApolloSecurityModule: Module {
       let observedAt = self.now()
       if id == "network_filter", let url = URL(string: UIApplication.openSettingsURLString) {
         DispatchQueue.main.async { UIApplication.shared.open(url) }
-        promise.resolve(self.json(self.perm(id, "Safari content blocker", "undetermined", true, "Opened Settings. Enable Apollo under Safari › Extensions, then return.", observedAt, enabled: nil)))
+        promise.resolve(self.json(self.perm(id, "Safari content blocker", "undetermined", true, "Opened Settings. Enable ApolloSG under Safari › Extensions, then return.", observedAt, enabled: nil)))
       } else if id == "notifications" {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-          promise.resolve(self.json(self.perm(id, "Notifications", granted ? "granted" : "denied", false, granted ? "Granted." : "Declined in the system prompt. It can be changed under Settings › Apollo › Notifications.", self.now(), enabled: granted)))
+          promise.resolve(self.json(self.perm(id, "Notifications", granted ? "granted" : "denied", false, granted ? "Granted." : "Declined in the system prompt. It can be changed under Settings › ApolloSG › Notifications.", self.now(), enabled: granted)))
         }
       } else {
-        promise.resolve(self.json(self.perm(id, id, "not_applicable", false, "Apollo does not request this permission on iOS.", observedAt, enabled: nil, unavailableReason: "not_implemented")))
+        promise.resolve(self.json(self.perm(id, id, "not_applicable", false, "ApolloSG does not request this permission on iOS.", observedAt, enabled: nil, unavailableReason: "not_implemented")))
       }
     }
 
@@ -489,7 +489,7 @@ public class ApolloSecurityModule: Module {
       "requested": wants,
       "operational": d.operational,
       "enforcementMethod": d.enforcementMethod,
-      "coverage": d.operational ? coverage : "Nothing is being blocked in Safari right now. Link checks you run in Apollo still work.",
+      "coverage": d.operational ? coverage : "Nothing is being blocked in Safari right now. Link checks you run in ApolloSG still work.",
       "coverageScope": d.operational ? coverageScope : [],
       "lastVerified": blockerVerifiedAt ?? NSNull(),
       "degradedReason": d.degradedReason ?? NSNull(),
@@ -541,7 +541,7 @@ public class ApolloSecurityModule: Module {
     }
     if let value = object["expiresAt"] as? String, let expiry = ISO8601DateFormatter().date(from: value), expiry <= Date() {
       try? FileManager.default.removeItem(at: directory)
-      return json(["status": "expired", "handoffId": id, "detail": "The protected shared items expired. Share them with Apollo again."])
+      return json(["status": "expired", "handoffId": id, "detail": "The protected shared items expired. Share them with ApolloSG again."])
     }
     guard let payload = object["payload"] as? [String: Any] else { return json(["status": "invalid", "handoffId": id, "detail": "The share manifest is invalid."]) }
     return json(["status": "ready", "handoffId": id, "payload": payload])

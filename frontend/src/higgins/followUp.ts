@@ -22,7 +22,7 @@ const ASSESSMENT_TEXT: Record<string, string> = {
   uncertain: "{name} couldn't reach a firm conclusion.",
 };
 const ATTENTION_TEXT: Record<string, string> = { none: "No action is needed.", review: "It's worth reviewing.", action_needed: "Action is needed.", urgent: "This is urgent." };
-const BASIS_TEXT: Record<string, string> = { observation: "observed in the evidence", user_report: "from what you told Apollo", inference: "{name}'s inference from the evidence" };
+const BASIS_TEXT: Record<string, string> = { observation: "observed in the evidence", user_report: "from what you told ApolloSG", inference: "{name}'s inference from the evidence" };
 
 const INTENTS: [string, RegExp][] = [
   ["recheck", /\bre-?check|\bfresh (?:observation|reading)|\bre-?assess|\bcheck (?:it |this |that )?again\b/i],
@@ -34,7 +34,7 @@ const INTENTS: [string, RegExp][] = [
   ["why", /\bwhy\b|\bsuspicious\b|what makes|what'?s wrong/i],
   ["meaning", /mean(?:s)? for me|what does (?:this|it|that) mean|\bworr|am i (?:safe|at risk|ok)|is (?:this|it|that) (?:safe|a scam|dangerous|legit|real|ok)/i],
   ["actions", /what (?:should|can|do) i do|next steps?|what now|what next|how do i (?:fix|stop|protect)|\brecommend|\bshould i\b|\bactions?\b/i],
-  ["findings", /what did (?:you|magnum(?: di)?|it|apollo) find|\bfindings?\b|what was found|\bsummar|\boverview\b|tell me (?:more|about)|\bexplain\b|what happened/i],
+  ["findings", /what did (?:you|magnum(?: di)?|it|apollo(?:\s?sg)?) find|\bfindings?\b|what was found|\bsummar|\boverview\b|tell me (?:more|about)|\bexplain\b|what happened/i],
 ];
 const WATCH_WORDS = /\b(watch|look out|be wary|be careful|beware|signs?|suspicious|unexpected)\b/i;
 
@@ -44,7 +44,7 @@ const NEW_ITEMS: [string, RegExp][] = [
   ["a link", /\bhttps?:\/\/\S+|\bwww\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|app|xyz|top|online|site|shop|link|co|au|uk|nz)(?:\/\S*)?\b/gi],
   ["a phone number", /(?:^|[^\w.])(\+?\d[\d ()-]{6,}\d)(?![\w.])/g],
 ];
-export const NEW_ITEM_NOTE = (items: string) => `You've mentioned something new (${items}) that wasn't part of this investigation. Apollo doesn't reopen a finished investigation, so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.`;
+export const NEW_ITEM_NOTE = (items: string) => `You've mentioned something new (${items}) that wasn't part of this investigation. ApolloSG doesn't reopen a finished investigation, so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.`;
 
 const bullets = (lines: string[]) => lines.filter(Boolean).map((line) => `• ${line}`).join("\n");
 const join = (labels: string[]) => labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;

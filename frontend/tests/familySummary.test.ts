@@ -14,7 +14,7 @@ const auspost: FamilySummary = {
 
 test("the shared text has the result, what happened, what to do and an untappable website", () => {
   const text = summaryText(auspost, "Oct 25, 2026, 6:17 AM");
-  assert.match(text, /^Apollo SG: a threat on my phone\nResult: Confirmed scam or threat\n/);
+  assert.match(text, /^ApolloSG: a threat on my phone\nResult: Confirmed scam or threat\n/);
   assert.match(text, /What to do: Don't open the link\./);
   assert.match(text, /Website involved: testsafebrowsing\[\.\]appspot\[\.\]com \(written so it can't be tapped\)/);
   assert.match(text, /Case TC-2026-F843E · Oct 25, 2026, 6:17 AM/);

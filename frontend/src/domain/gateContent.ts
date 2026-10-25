@@ -183,7 +183,7 @@ export const GATE_CONTENT: Record<GateId, GateContent> = {
       "Runs when you share or submit a file for checking.",
     ],
     coverage: [
-      "Document files (PDF, Office, etc.) shared with Apollo.",
+      "Document files (PDF, Office, etc.) shared with ApolloSG.",
       "Downloaded files and email attachments.",
       "Detection of hidden executable content and suspicious macros.",
     ],

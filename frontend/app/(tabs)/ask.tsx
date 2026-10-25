@@ -55,8 +55,8 @@ import { investigatorName } from "@/src/domain/messageVoice";
 import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
-const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in Apollo, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. TC FlyBy checks evidence quickly against official sources, Apollo's knowledge base and a targeted search, and Magnum DI looks deeper only when that could change the answer; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
+const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand ApolloSG, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
+const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in ApolloSG, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. TC FlyBy checks evidence quickly against official sources, ApolloSG's knowledge base and a targeted search, and Magnum DI looks deeper only when that could change the answer; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
@@ -437,7 +437,7 @@ export default function Ask() {
   useEffect(() => {
     const id = params.handoffId ? String(params.handoffId) : ""; if (!id || id === seenRoute.current || !deviceId) return; seenRoute.current = id;
     const transfer = takeHandoff(id); const context = transfer?.context ?? (params.context ? parseHigginsIssueContext(String(params.context)) : null); router.setParams({ handoffId: "", context: "", prompt: "" });
-    if (!context) { setRouteError("Apollo could not prepare this issue for Higgins. Return to the result and try again."); return; }
+    if (!context) { setRouteError("ApolloSG could not prepare this issue for Higgins. Return to the result and try again."); return; }
     const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim();
     if (context.case_id) { setActiveContext(context); setInvestigationMode(true); void attach(context.case_id).then((opened) => { if (opened && question) void ask(question); }); return; }
     // Explaining a Patrol finding, an incident or a Device Check result: Apollo's own findings, in fixed wording.

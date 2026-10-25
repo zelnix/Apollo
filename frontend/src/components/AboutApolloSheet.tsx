@@ -34,10 +34,10 @@ const useStyles = makeStyles((c) => ({
 export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const s = useStyles();
   return (
-    <Sheet visible={visible} onClose={onClose} title="About Apollo" testID="about-apollo-sheet">
+    <Sheet visible={visible} onClose={onClose} title="About ApolloSG" testID="about-apollo-sheet">
       <Image source={require("../../assets/images/higgins-apollo-full.png")} style={s.hero} contentFit="cover" accessibilityLabel="Apollo with Higgins" />
       <Text style={s.tagline}>Meet Apollo 🐾</Text>
-      <Text style={s.taglineSub}>Apollo</Text>
+      <Text style={s.taglineSub}>ApolloSG</Text>
       <Text style={s.body}>Apollo helps protect you from online scams, suspicious activity and cyber threats.</Text>
 
       <Text style={s.heading}>🛡️ Apollo&apos;s 10 Protections</Text>
@@ -51,7 +51,7 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
 
       <Text style={s.heading}>💬 Social Media &amp; Messaging Protection</Text>
       <Text style={s.body}>Apollo helps protect you from online scams, phishing links and known malicious websites encountered through social media and messaging platforms, including Facebook, Instagram, TikTok, X, Messenger, WhatsApp, Snapchat and others.</Text>
-      <Text style={[s.body, { marginTop: spacing.sm }]}>Protection is provided through Apollo&apos;s existing security capabilities, depending on your device and its capabilities.</Text>
+      <Text style={[s.body, { marginTop: spacing.sm }]}>Protection is provided through ApolloSG&apos;s existing security capabilities, depending on your device and its capabilities.</Text>
 
       <Text style={s.heading}>👨‍💼 Meet Higgins</Text>
       <View style={s.higginsRow}>
@@ -68,7 +68,7 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
       <View style={s.divider} />
       <Text style={s.heading}>🔒 Your Privacy &amp; Data</Text>
       <Text style={[s.body, { fontFamily: fonts.textSemibold, color: undefined }]}>No account. No login. No passwords required.</Text>
-      <Text style={s.body}>Apollo uses a randomly generated device identifier rather than requiring you to create an account.</Text>
+      <Text style={s.body}>ApolloSG uses a randomly generated device identifier rather than requiring you to create an account.</Text>
 
       <Text style={s.subHeading}>Where is information stored?</Text>
       <Text style={s.body}>Routine protection information and preferences can be kept on your device. Some security checks and Higgins conversations require secure online processing.</Text>
@@ -80,13 +80,13 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
       <Text style={s.bullet}>• Deletion: You can clear your history. However, some server records may remain after being hidden or marked deleted. A guaranteed permanent-deletion timeframe has not yet been established.</Text>
 
       <Text style={s.subHeading}>What about external services?</Text>
-      <Text style={s.body}>When required, approved analysis and security services may process submitted information. Their data handling and retention periods are governed by their own applicable terms and may differ from Apollo&apos;s limits.</Text>
+      <Text style={s.body}>When required, approved analysis and security services may process submitted information. Their data handling and retention periods are governed by their own applicable terms and may differ from ApolloSG&apos;s limits.</Text>
       <Text style={[s.body, { marginTop: spacing.xs }]}>For more information, see Privacy Disclosure in Settings.</Text>
 
       <View style={s.divider} />
       <Text style={s.heading}>💙 Free Forever</Text>
-      <Text style={s.body}>Apollo is 100% free, with no subscriptions, advertising or hidden costs.</Text>
-      <Text style={s.body}>Voluntary donations help keep Apollo free and accessible to everyone.</Text>
+      <Text style={s.body}>ApolloSG is 100% free, with no subscriptions, advertising or hidden costs.</Text>
+      <Text style={s.body}>Voluntary donations help keep ApolloSG free and accessible to everyone.</Text>
 
       <Text style={s.closing}>Smart protection. Simple explanations. Peace of mind.</Text>
       <Text style={s.credit}>Created by Harmony Wellness Group.</Text>

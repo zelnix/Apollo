@@ -343,7 +343,7 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     # Ingest the lightweight findings as evidence items
     for index, finding in enumerate(local_findings):
         await evidence.ingest_text(device_id, case, f"mailbox-{digest}-finding-{index}", finding, origin="apollo_inference",
-                                   label="Apollo background intake observation", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
+                                   label="ApolloSG background intake observation", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
 
     # VirusTotal attachment scanning — only for escalated items (saves API calls for SAFE mail)
     vt_findings = await _scan_attachments_vt(device_id, message, provider)

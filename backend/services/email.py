@@ -167,5 +167,5 @@ def _wrap(body: str) -> str:
     banner = (f'<tr><td style="padding:24px 24px 0"><img src="{BANNER_URL}" width="480" height="163" alt="{escape(BANNER_ALT)}" '
               'style="display:block;width:100%;max-width:480px;height:auto;border:0"></td></tr>') if BANNER_URL else ""
     return (f'<table role="presentation" width="100%">{banner}<tr><td style="padding:24px;font-family:Arial,sans-serif;color:#111">{body}'
-            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}. Apollo is a brand of Harmony Wellness Group. '
-            'Higgins Apollo never asks for passwords, codes or payment details by email.</p></td></tr></table>')
+            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}. ApolloSG is a brand of Harmony Wellness Group. '
+            'ApolloSG never asks for passwords, codes or payment details by email.</p></td></tr></table>')

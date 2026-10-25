@@ -87,4 +87,4 @@ def test_the_banner_is_public_and_tops_every_email():
 def test_the_investigation_pdf_carries_the_banner():
     from services.higgins.pdf_export import generate_pdf
     pdf = generate_pdf({"id": "case-1234567890", "response": {"overview": "Nothing found.", "assessment": "low"}}, [], subject="Test")
-    assert pdf.startswith(b"%PDF") and b"/Subtype /Image" in pdf and b"Apollo SG" in pdf
+    assert pdf.startswith(b"%PDF") and b"/Subtype /Image" in pdf and b"ApolloSG" in pdf

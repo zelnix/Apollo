@@ -17,7 +17,7 @@ const TONE: Record<string, "resting" | "growling" | "barking" | "neutral"> = {
 const MEANING: Record<string, string> = {
   NO_THREAT_IDENTIFIED: "Apollo found nothing threatening in the checks it completed.",
   POSSIBLE_THREAT_IDENTIFIED: "Apollo's deterministic rules matched a known threat pattern, so it investigated further.",
-  LIMITED_UNABLE_TO_DETERMINE: "Apollo can't currently say either that this is safe or that it is a possible threat.",
+  LIMITED_UNABLE_TO_DETERMINE: "ApolloSG can't currently say either that this is safe or that it is a possible threat.",
 };
 
 export function TriageSummary({ record, onRecheck }: { record: TriageInvestigationRecord; onRecheck?: () => void }) {
@@ -55,7 +55,7 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
 
       {record.retries.some((retry) => retry.attempts > 1) && (
         <Body testID="triage-retries">
-          {`Apollo retried ${record.retries.filter((r) => r.attempts > 1).length} check(s) before recording this result.`}
+          {`ApolloSG retried ${record.retries.filter((r) => r.attempts > 1).length} check(s) before recording this result.`}
         </Body>
       )}
 
@@ -63,7 +63,7 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
         <Button label="Check again" onPress={onRecheck} variant="secondary" testID="triage-recheck" />
       ) : record.coverageGaps.length > 0 ? (
         <Body testID="triage-no-recheck">
-          Re-checking won&apos;t help: this information isn&apos;t available to Apollo on this device.
+          Re-checking won&apos;t help: this information isn&apos;t available to ApolloSG on this device.
         </Body>
       ) : null}
     </Card>

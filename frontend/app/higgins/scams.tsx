@@ -136,7 +136,7 @@ export default function GovernmentScamsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.brand} />}
         ListHeaderComponent={
           <View style={{ gap: spacing.sm, marginBottom: spacing.xs }}>
-            <Text style={s.subtitle} testID="higgins-scams-sourced">{sourcedLabel}{sourced.stale && sourced.exact ? "  ·  Apollo is still trying to refresh" : ""}{pendingCount > 0 ? `  ·  Reading ${pendingCount} new…` : ""}</Text>
+            <Text style={s.subtitle} testID="higgins-scams-sourced">{sourcedLabel}{sourced.stale && sourced.exact ? "  ·  ApolloSG is still trying to refresh" : ""}{pendingCount > 0 ? `  ·  Reading ${pendingCount} new…` : ""}</Text>
             {compact ? (
               <View style={{ gap: spacing.xs }}>
                 <Pressable testID="scam-filter-dropdown-btn" accessibilityRole="button" accessibilityLabel={`Region: ${REGIONS.find((r) => r.id === region)!.label}`} accessibilityState={{ expanded: regionOpen }} onPress={() => setRegionOpen(!regionOpen)} style={s.dropBtn}>
@@ -202,9 +202,9 @@ export default function GovernmentScamsScreen() {
         }
         renderItem={({ item, index }) => <AlertRow item={item} index={index} />}
         ListEmptyComponent={loading ? <ActivityIndicator testID="higgins-scams-loading" color={colors.brand} /> : error ? (
-          <Card testID="higgins-scams-error"><Body>Official guidance could not be loaded. Apollo will not substitute unrecognised sources.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={() => load()} /></Card>
+          <Card testID="higgins-scams-error"><Body>Official guidance could not be loaded. ApolloSG will not substitute unrecognised sources.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={() => load()} /></Card>
         ) : (
-          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "Apollo is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : region === "ALL" ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts for this region right now."}</Body></Card>
+          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "ApolloSG is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : region === "ALL" ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts for this region right now."}</Body></Card>
         )}
         ListFooterComponent={shownEmerging.length > 0 ? (
           <View style={{ gap: spacing.sm }}>

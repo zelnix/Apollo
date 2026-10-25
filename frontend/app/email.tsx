@@ -564,7 +564,7 @@ export default function CheckEmail() {
       });
     });
     if (a.handoff.file) {
-      emailActions.push({ testID: "email-check-file", variant: "secondary", label: "Check the attachment with Apollo", onPress: () => router.push({ pathname: "/file", params: { source: "email" } }) });
+      emailActions.push({ testID: "email-check-file", variant: "secondary", label: "Check the attachment with ApolloSG", onPress: () => router.push({ pathname: "/file", params: { source: "email" } }) });
       emailActions.push({ testID: "email-attachment-limitation", variant: "ghost", label: "Note: the file itself was not transferred \u2014 only metadata is checked here", onPress: () => {} });
     }
     emailActions.push({
@@ -700,7 +700,7 @@ export default function CheckEmail() {
           </Pressable>
 
           {recentEmailsOpen ? <>
-            <Text style={s.recentDropdownSub}>Tap an email to check it with Apollo.</Text>
+            <Text style={s.recentDropdownSub}>Tap an email to check it with ApolloSG.</Text>
             {/* Account filter pills */}
             {allAccounts.length > 1 ? (
               <View style={[s.accountFilterRow, { paddingHorizontal: spacing.lg }]}>
@@ -935,7 +935,7 @@ export default function CheckEmail() {
                 </>
               ) : (
                 <>
-                  <Body style={{ fontSize: 13 }}>Connect Gmail for read-only access. Apollo never asks for or stores your Gmail password.</Body>
+                  <Body style={{ fontSize: 13 }}>Connect Gmail for read-only access. ApolloSG never asks for or stores your Gmail password.</Body>
                   <Button testID="email-gmail-connect" variant="secondary" icon={gmailBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Mail size={18} color={colors.brand} />} label={gmailBusy ? "Opening Google\u2026" : "Connect Gmail (read-only)"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
                 </>
               )}

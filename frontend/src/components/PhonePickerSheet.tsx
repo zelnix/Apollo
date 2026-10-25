@@ -83,17 +83,17 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
   return (
     <Sheet visible={visible} onClose={onClose} title={title} testID={`phone-picker-${mode}`}>
       {phase === "unsupported" ? (
-        <Body testID="phone-picker-unsupported">This version of Apollo doesn&apos;t read your {mode === "calls" ? "call log" : "messages"}. You can still {mode === "calls" ? "type or paste the caller number" : "paste the message or use a screenshot"}.</Body>
+        <Body testID="phone-picker-unsupported">This version of ApolloSG doesn&apos;t read your {mode === "calls" ? "call log" : "messages"}. You can still {mode === "calls" ? "type or paste the caller number" : "paste the message or use a screenshot"}.</Body>
       ) : phase === "need_permission" ? (
         <View style={{ gap: spacing.md }}>
-          <Body testID="phone-picker-explain">{mode === "calls" ? "Apollo can list your recent callers so you can pick the number to check. It reads them only when you open this picker — never in the background." : "Apollo can list your recent inbox messages so you can pick one to check. It reads them only when you open this picker — never in the background."}</Body>
+          <Body testID="phone-picker-explain">{mode === "calls" ? "ApolloSG can list your recent callers so you can pick the number to check. It reads them only when you open this picker — never in the background." : "ApolloSG can list your recent inbox messages so you can pick one to check. It reads them only when you open this picker — never in the background."}</Body>
           <Button testID="phone-picker-allow" label={mode === "calls" ? "Allow recent calls" : "Allow messages"} onPress={() => void allow()} />
         </View>
       ) : phase === "requesting" || phase === "checking" ? (
         <View style={s.center}><ActivityIndicator color={colors.gold} /><Body>{phase === "requesting" ? "Waiting for your permission…" : "Checking…"}</Body></View>
       ) : phase === "denied" ? (
         <View style={{ gap: spacing.md }}>
-          <Body testID="phone-picker-denied">Permission isn&apos;t granted, so Apollo can&apos;t list {mode === "calls" ? "recent callers" : "your messages"}. You can enable it in Settings, or {mode === "calls" ? "type the number" : "paste the message"} by hand.</Body>
+          <Body testID="phone-picker-denied">Permission isn&apos;t granted, so ApolloSG can&apos;t list {mode === "calls" ? "recent callers" : "your messages"}. You can enable it in Settings, or {mode === "calls" ? "type the number" : "paste the message"} by hand.</Body>
           <Button testID="phone-picker-settings" variant="secondary" label="Open Settings" onPress={() => void Linking.openSettings()} />
           <Button testID="phone-picker-retry" variant="ghost" label="Try again" onPress={() => void evaluate()} />
         </View>

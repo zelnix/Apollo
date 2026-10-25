@@ -17,7 +17,7 @@ export interface AlertHistoryRow {
 }
 
 const FAILURE_REASON: Record<string, string> = {
-  push_key_invalid: "Apollo's alert key was rejected",
+  push_key_invalid: "ApolloSG's alert key was rejected",
   insufficient_credits: "the app owner's alert credit ran out",
   integration_disabled: "alerts are switched off for this app",
   daily_limit_reached: "the daily alert limit was reached",

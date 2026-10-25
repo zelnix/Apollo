@@ -62,7 +62,7 @@ def export_from_apollo(api_url: str, token: str | None, limit: int) -> list[dict
 
     entries = data.get("entries", [])
     total = data.get("count", len(entries))
-    log(f"Received {total} entries from Apollo backend")
+    log(f"Received {total} entries from ApolloSG backend")
     return entries
 
 
@@ -170,7 +170,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Apollo PIR Server Data Sync")
     parser.add_argument("--export-only", action="store_true", help="Export to file only, don't push to PIR server")
     parser.add_argument("--pir-url", type=str, default=None, help="PIR server reindex endpoint URL (overrides PIR_SERVER_URL env)")
-    parser.add_argument("--api-url", type=str, default=None, help="Apollo backend URL (overrides APOLLO_API_URL env)")
+    parser.add_argument("--api-url", type=str, default=None, help="ApolloSG backend URL (overrides APOLLO_API_URL env)")
     parser.add_argument("--limit", type=int, default=None, help="Max entries to export (overrides PIR_EXPORT_LIMIT env)")
     parser.add_argument("--data-dir", type=str, default=None, help="Output directory (overrides PIR_DATA_DIR env)")
     args = parser.parse_args()

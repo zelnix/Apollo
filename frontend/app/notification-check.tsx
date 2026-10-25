@@ -71,7 +71,7 @@ export default function NotificationCheckScreen() {
     setRegistrationError(null);
     setHealth(await getNotificationHealth().catch(() => null));
     try { setRegistration(await getPushRegistration()); }
-    catch (e) { setRegistration(null); setRegistrationError(e instanceof Error ? e.message : "Apollo's servers could not be reached."); }
+    catch (e) { setRegistration(null); setRegistrationError(e instanceof Error ? e.message : "ApolloSG's servers could not be reached."); }
     setLastFailure(await readLastFailure());
     const [server, device] = await Promise.all([
       getAlertHistory().catch(() => []),
@@ -90,12 +90,12 @@ export default function NotificationCheckScreen() {
     setDeviceResult(null);
     try {
       await scheduleLocalAlert({
-        title: "Apollo test alert",
-        body: "If you can see this in your notifications, alerts from Apollo work on this phone.",
+        title: "ApolloSG test alert",
+        body: "If you can see this in your notifications, alerts from ApolloSG work on this phone.",
         channel: "apollo_alerts",
         actionUrl: "/notification-check",
       });
-      setDeviceResult("Apollo asked this phone to show a notification. Check your notification bar — if nothing appeared there, the alert was blocked after Apollo handed it over.");
+      setDeviceResult("ApolloSG asked this phone to show a notification. Check your notification bar — if nothing appeared there, the alert was blocked after ApolloSG handed it over.");
     } catch (e) {
       setDeviceResult(e instanceof Error ? e.message : "This phone refused the notification.");
     } finally {
@@ -110,7 +110,7 @@ export default function NotificationCheckScreen() {
     setServerResult(null);
     const reg = await registerRemotePush();
     if (!reg.registered) {
-      setServerResult(`Apollo could not register this installation for alerts: ${reg.reason}`);
+      setServerResult(`ApolloSG could not register this installation for alerts: ${reg.reason}`);
       setBusy(null);
       void load();
       return;
@@ -119,7 +119,7 @@ export default function NotificationCheckScreen() {
       const status = await sendServerTestAlert();
       setServerResult(
         status.state === "provider_accepted" || status.state === "device_observed"
-          ? `Accepted for delivery (${status.state}). If it doesn't appear, the platform push service dropped it after Apollo's part succeeded.`
+          ? `Accepted for delivery (${status.state}). If it doesn't appear, the platform push service dropped it after ApolloSG's part succeeded.`
           : `Delivery state: ${status.state}${status.failureCode ? ` — ${status.failureCode}` : ""}.`,
       );
     } catch (e) {
@@ -139,7 +139,7 @@ export default function NotificationCheckScreen() {
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="notification-check-scroll">
       <Body testID="notification-check-intro">
         An alert has to pass three separate steps before you see it: this phone must allow notifications, the
-        Apollo alerts category must be on, and — for alerts that arrive while Apollo is closed — Apollo&apos;s
+        Apollo alerts category must be on, and — for alerts that arrive while ApolloSG is closed — ApolloSG&apos;s
         servers must hold a current registration for this installation. Each step below is read from its real
         source, and the tests report exactly what happened.
       </Body>
@@ -195,11 +195,11 @@ export default function NotificationCheckScreen() {
       </View>
 
       <View>
-        <SectionTitle>Alerts while Apollo is closed</SectionTitle>
+        <SectionTitle>Alerts while ApolloSG is closed</SectionTitle>
         <Card testID="notification-check-server">
           <View style={s.row}>
             <View style={s.rowHead}>
-              <Text style={s.rowLabel}>Apollo&apos;s alert channel</Text>
+              <Text style={s.rowLabel}>ApolloSG&apos;s alert channel</Text>
               <Pill
                 tone={registration?.configured ? "resting" : "growling"}
                 label={registration?.configured ? "configured" : "not configured"}
@@ -221,17 +221,17 @@ export default function NotificationCheckScreen() {
             <Body>
               {registration?.registered
                 ? `Registered ${registration.registeredAt ? new Date(registration.registeredAt).toLocaleString() : "at an unrecorded time"}.`
-                : "Apollo's servers have no destination for this installation, so an alert cannot be sent while Apollo is closed."}
+                : "ApolloSG's servers have no destination for this installation, so an alert cannot be sent while ApolloSG is closed."}
             </Body>
             <Text style={s.mono}>
-              Apollo registers this phone with its managed alert service. The phone&apos;s notification token stays with
-              that service — it is never kept in Apollo&apos;s own records.
+              ApolloSG registers this phone with its managed alert service. The phone&apos;s notification token stays with
+              that service — it is never kept in ApolloSG&apos;s own records.
             </Text>
           </View>
           <Button
             testID="notification-check-test-server"
             variant="secondary"
-            label={busy === "server" ? "Sending…" : "Send a test alert from Apollo's servers"}
+            label={busy === "server" ? "Sending…" : "Send a test alert from ApolloSG's servers"}
             onPress={() => void testFromServer()}
             disabled={busy !== null}
           />
@@ -259,7 +259,7 @@ export default function NotificationCheckScreen() {
                   {row.status}
                   {row.opened ? " · Opened on this phone" : ""}
                 </Body>
-                <Text style={s.mono}>{row.source === "server" ? "Sent from Apollo's servers" : "Raised on this phone"}</Text>
+                <Text style={s.mono}>{row.source === "server" ? "Sent from ApolloSG's servers" : "Raised on this phone"}</Text>
               </View>
             ))
           )}

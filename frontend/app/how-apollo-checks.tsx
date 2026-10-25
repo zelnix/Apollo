@@ -126,7 +126,7 @@ export default function HowApolloChecks() {
         </View>
 
         <View testID="how-checks-promises">
-          <SectionTitle>Apollo&apos;s promises</SectionTitle>
+          <SectionTitle>ApolloSG&apos;s promises</SectionTitle>
           {PROMISES.map((promise) => (
             <View key={promise} style={s.promiseRow}>
               <ShieldCheck size={18} color={colors.restingText} />

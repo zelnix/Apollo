@@ -16,7 +16,7 @@ COLLECTION = "triage_investigations"
 _STATE = {Outcome.NO_THREAT: "resting", Outcome.LIMITED: "ears_up", Outcome.POSSIBLE_THREAT: "growling"}
 _HEADLINE = {
     Outcome.NO_THREAT: "Triage: no threat identified",
-    Outcome.LIMITED: "Triage: limited — Apollo couldn't reach a reliable decision",
+    Outcome.LIMITED: "Triage: limited — ApolloSG couldn't reach a reliable decision",
     Outcome.POSSIBLE_THREAT: "Triage: possible threat identified",
 }
 
@@ -55,7 +55,7 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
         "what_happened": investigation.reason[:600],
         "why": why,
         "what_to_do": ("Nothing to do — Apollo found no deterministic threat." if investigation.outcome is Outcome.NO_THREAT
-                       else "Apollo couldn't obtain enough evidence. Treat the item with normal caution."
+                       else "ApolloSG couldn't obtain enough evidence. Treat the item with normal caution."
                        if investigation.outcome is Outcome.LIMITED
                        else "Apollo is investigating this further."),
         "indicator_host": indicator_host, "indicator_digest": None, "local_indicator": None,

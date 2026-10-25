@@ -229,7 +229,7 @@ export default function EmailAccountsScreen() {
         await loadAccounts(true);
       } else if (result === "denied") {
         setNote({
-          text: "Permission was denied. Apollo needs read-only access to check emails for threats. No emails are modified or sent.",
+          text: "Permission was denied. ApolloSG needs read-only access to check emails for threats. No emails are modified or sent.",
           type: "error",
         });
       } else if (result === "cancelled") {
@@ -248,7 +248,7 @@ export default function EmailAccountsScreen() {
   const confirmDisconnect = (email: string) => {
     Alert.alert(
       "Disconnect account?",
-      `Apollo will lose access to ${email}. You can reconnect at any time.`,
+      `ApolloSG will lose access to ${email}. You can reconnect at any time.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -345,7 +345,7 @@ export default function EmailAccountsScreen() {
       >
         <Text style={s.description}>
           Connect email accounts so Apollo can check your emails for threats.{"\n"}
-          Apollo uses read-only access and never modifies or sends emails.
+          ApolloSG uses read-only access and never modifies or sends emails.
         </Text>
 
         {/* ── Note banner ── */}
@@ -573,11 +573,11 @@ export default function EmailAccountsScreen() {
           <SectionTitle>About email access</SectionTitle>
           <Card>
             <Body>
-              Apollo requests read-only access to your Gmail inbox through Google&apos;s secure
-              OAuth flow. Your credentials are never stored by Apollo.
+              ApolloSG requests read-only access to your Gmail inbox through Google&apos;s secure
+              OAuth flow. Your credentials are never stored by ApolloSG.
             </Body>
             <Body>
-              You can disconnect any account at any time. Disconnecting removes Apollo&apos;s
+              You can disconnect any account at any time. Disconnecting removes ApolloSG&apos;s
               access immediately.
             </Body>
             {monitoringEnabled ? (

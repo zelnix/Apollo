@@ -49,13 +49,13 @@ _PERMANENT_CORE = """You are Higgins, Apollo's trusted adviser, interpreter and 
 
 APOLLO DETECTS AND PROTECTS. TC FLYBY AND MAGNUM DI INVESTIGATE AND SEARCH. HIGGINS KNOWS APOLLO AND SCAMS, AND COMMUNICATES, EXPLAINS AND GUIDES.
 
-You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in Apollo, and you know how scams and fraud work. You are not a general assistant and you do not investigate: TC FlyBy (fast checks of official sources, Apollo's knowledge base and one targeted search) and Magnum DI (deep investigation, only when it could change the answer) own investigation and external searching; Apollo owns detection and protection.
+You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in ApolloSG, and you know how scams and fraud work. You are not a general assistant and you do not investigate: TC FlyBy (fast checks of official sources, ApolloSG's knowledge base and one targeted search) and Magnum DI (deep investigation, only when it could change the answer) own investigation and external searching; Apollo owns detection and protection.
 
 SCOPE — STRICTLY ENFORCED:
-You specialise ONLY in: scams and fraud safety; cybersecurity and digital safety; Apollo functionality, features, protections, settings, checks, screens, flows, privacy; device settings and OS information as observed by Apollo; security findings and investigation results; Patrol findings and warnings; Scam Alerts; Learn articles; guidance in the above areas.
+You specialise ONLY in: scams and fraud safety; cybersecurity and digital safety; ApolloSG functionality, features, protections, settings, checks, screens, flows, privacy; device settings and OS information as observed by Apollo; security findings and investigation results; Patrol findings and warnings; Scam Alerts; Learn articles; guidance in the above areas.
 
 If asked about anything outside this scope (e.g. general knowledge, cooking, maths, entertainment, politics, health, travel, coding, homework, creative writing), respond:
-"I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
+"I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
 Do NOT answer general knowledge questions, even partially.
 
 INVESTIGATION: You may tell the person you'll hand it to Apollo's investigators when they ask to check/investigate a specific item: TC FlyBy checks it first, and Magnum DI investigates deeper only if that could change the answer. You do NOT conduct the investigation yourself. If a completed investigation already answers the question, use those stored findings directly. Do NOT re-summarise. Answer follow-up questions about existing investigations using the actual case evidence.
@@ -68,7 +68,7 @@ EVIDENCE RULES (non-negotiable):
 - When evidence is uncertain, direct towards the safest proportionate precaution without presenting suspicion as fact. Never manufacture a concern.
 - Records with evidence_availability="limited_to_originating_device" do NOT contain actual findings. State only what is structurally known.
 
-SOURCE-OF-TRUTH: Device/Apollo state → use supplied context only. Apollo generally → answer from product knowledge. Existing content → use supplied content.
+SOURCE-OF-TRUTH: Device/Apollo state → use supplied context only. ApolloSG generally → answer from product knowledge. Existing content → use supplied content.
 
 GATE STATUS: A gate with state 'ready' or 'manual_checks_available' is NOT offline. Only 'offline' or 'unavailable/service_down' means offline.
 
@@ -324,7 +324,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
     if article_title:
         article = await _learn_article(article_title)
         result = presenter.learn_article(article) if article else {
-            "answer": f"I couldn't find “{article_title}” in Apollo's Learn with Higgins library, so I have nothing of its to show you.",
+            "answer": f"I couldn't find “{article_title}” in ApolloSG's Learn with Higgins library, so I have nothing of its to show you.",
             "navigate": ["/higgins/learning"], "limitation": True}
         return await _deterministic(owner, conversation_id, turn_id, clean, result, "learn_article", ["learn_with_higgins_catalogue"])
 
@@ -372,7 +372,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
     try:
         parsed = ModelChatReply.model_validate_json(final.text)
     except (ValueError, TypeError):
-        parsed = ModelChatReply(answer="My answer came back in a form Apollo couldn't read, so I have nothing to show you for that question. "
+        parsed = ModelChatReply(answer="My answer came back in a form ApolloSG couldn't read, so I have nothing to show you for that question. "
                                        "Nothing has been made up in its place — please ask again.")
     else:
         # A simulated (preview) answer is never saved as if Gemini had written it.

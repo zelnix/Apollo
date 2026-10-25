@@ -265,8 +265,8 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     if (actualOperational()) { recordSystemStart("already_running", null); return@serialized statusLocked() }
     try {
       requireProductionEnabled()
-      checkNotNull(config) { "website protection hasn't been set up on this phone yet. Open Apollo and turn it on" }
-      check(ruleBundleCurrent()) { "Apollo has no current security rules on this phone. Open Apollo with an internet connection to fetch them" }
+      checkNotNull(config) { "website protection hasn't been set up on this phone yet. Open ApolloSG and turn it on" }
+      check(ruleBundleCurrent()) { "ApolloSG has no current security rules on this phone. Open ApolloSG with an internet connection to fetch them" }
       check(prefs.edit().putBoolean("requested", true).commit()) { "Could not record the protection request" }
       startLocked().also { recordSystemStart("started", null) }
     } catch (t: Throwable) {
@@ -351,7 +351,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val systemStartFailure = if (prefs.getString("system_start_outcome", null) == "failed") prefs.getString("system_start_reason", null) else null
     val reason = when {
       acceptedBundleExpiresAt == null -> "No accepted production rule bundle"; recheckAuthority && !ruleBundleCurrent() -> "Production rule bundle expired"
-      !operational && systemStartFailure != null -> "Android asked Apollo to reconnect its protection (Always-on VPN) and it couldn't: $systemStartFailure"
+      !operational && systemStartFailure != null -> "Android asked ApolloSG to reconnect its protection (Always-on VPN) and it couldn't: $systemStartFailure"
       requested && !GuardDogVpnRuntime.websiteGateActive -> "Website Gate DNS/sinkhole runtime is inactive"; requested && !operational -> "TUN/route/reporter observations are incomplete"; else -> null }
     // Android only answers these for the app whose VPN is currently connected, so they are read
     // while Apollo's tunnel is up and are otherwise unknown (null) — never "off".

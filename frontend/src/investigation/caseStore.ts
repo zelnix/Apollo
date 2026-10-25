@@ -142,7 +142,7 @@ export function useInvestigation(boundOperationId?: string | null) {
         const consumed = event.sequence;
         void observe(event.payload).then((result) => { pendingDeviceResult.current = { caseId, result, job, after: consumed }; return api.submitDeviceResult(caseId, result); }).then(({ jobId }) => {
           pendingDeviceResult.current = null; if (live()) follow(caseId, { ...job, id: jobId ?? job.id }, consumed);
-        }).catch(() => { if (live()) update({ phase: "failed", error: "Apollo couldn't safely deliver this device observation. Retry sends the same observation without starting a new check." }); });
+        }).catch(() => { if (live()) update({ phase: "failed", error: "ApolloSG couldn't safely deliver this device observation. Retry sends the same observation without starting a new check." }); });
       } else if (event.type === "completed") {
         pending.current = null;
         void refresh(caseId, gen).then(async (caseData) => {
@@ -167,7 +167,7 @@ export function useInvestigation(boundOperationId?: string | null) {
       }
     }, (reason) => {
       if (!live() || reason === "terminal") return;
-      if (reason === "unauthorized") { update({ phase: "failed", error: "Apollo needs to re-register this device." }); return; }
+      if (reason === "unauthorized") { update({ phase: "failed", error: "ApolloSG needs to re-register this device." }); return; }
       update({ phase: "reconnecting" });
       setTimeout(() => {
         if (!live()) return;
@@ -264,7 +264,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const unsubscribe = subscribeManagedOperation(operationId, adoptManaged);
     try {
       const record = await appendManagedOperation(operationId, caseData, input); adoptManaged(record); return record.phase !== "failed";
-    } catch (error: unknown) { update({ phase: "failed", error: error instanceof Error ? error.message : "Apollo could not append the fresh observation." }); return false; }
+    } catch (error: unknown) { update({ phase: "failed", error: error instanceof Error ? error.message : "ApolloSG could not append the fresh observation." }); return false; }
     finally { unsubscribe(); }
   }, [adoptManaged, boundOperationId, state.caseData, state.response, state.sources]);
 
@@ -273,7 +273,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     if (pendingDeviceResult.current) {
       const pendingResult = pendingDeviceResult.current; update({ phase: "working", error: null, progress: ["Retrying the same device observation."] });
       try { const { jobId } = await api.submitDeviceResult(pendingResult.caseId, pendingResult.result); pendingDeviceResult.current = null; follow(pendingResult.caseId, { ...pendingResult.job, id: jobId ?? pendingResult.job.id }, pendingResult.after); }
-      catch { update({ phase: "failed", error: "Apollo still couldn't safely deliver this device observation. Retry remains available." }); }
+      catch { update({ phase: "failed", error: "ApolloSG still couldn't safely deliver this device observation. Retry remains available." }); }
       return;
     }
     if (operationRef.current) {
@@ -310,12 +310,12 @@ export function useInvestigation(boundOperationId?: string | null) {
         error: "This turn finished with an error before cancellation took effect." }); return; }
       if (!["complete", "failed", "cancelled", "expired", "waiting_user"].includes(result.status) && fresh.activeJobId) {
         const active = (await api.getJob(caseData.id, fresh.activeJobId)).job;
-        update({ notice: "This turn was no longer active; Apollo stayed connected to the current work." }); follow(caseData.id, active);
+        update({ notice: "This turn was no longer active; ApolloSG stayed connected to the current work." }); follow(caseData.id, active);
       } else { stream.current?.abort(); update({ notice: "This turn was no longer active, so no cancellation was applied." }); }
     } catch (error: unknown) {
       if (live()) update({ phase: "failed", notice: null, error: error instanceof ApiError && error.status === 409
         ? "Cancellation was not confirmed because this is no longer the same active turn. Retry against current work."
-        : "Cancellation was not confirmed. Apollo kept the investigation connected; Retry to try again." });
+        : "Cancellation was not confirmed. ApolloSG kept the investigation connected; Retry to try again." });
     }
   }, [state, refresh, follow]);
   useEffect(() => { cancelAction.current = cancel; }, [cancel]);

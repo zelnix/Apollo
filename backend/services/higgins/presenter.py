@@ -19,12 +19,12 @@ ASSESSMENT_TEXT = {
     "uncertain": "{name} couldn't reach a firm conclusion.",
 }
 ATTENTION_TEXT = {"none": "No action is needed.", "review": "It's worth reviewing.", "action_needed": "Action is needed.", "urgent": "This is urgent."}
-BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told Apollo", "inference": "{name}'s inference from the evidence"}
+BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told ApolloSG", "inference": "{name}'s inference from the evidence"}
 STATE_TEXT = {"resting": "all clear", "sniffing": "Apollo is looking closer", "ears_up": "worth a look", "growling": "possible concern",
               "barking": "significant concern", "biting": "Apollo blocked it", "unknown": "state not known"}
 SEVERITY_TEXT = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "LOW": "Low"}
 
-OUT_OF_SCOPE = ("I specialise in helping you stay safe from scams and cyber threats through Apollo. For that question, a general "
+OUT_OF_SCOPE = ("I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general "
                 "assistant would be a better fit. Is there anything security-related I can help with?")
 
 _FOLLOW_UP_INTENTS: list[tuple[str, re.Pattern]] = [(name, re.compile(pattern, re.I)) for name, pattern in [
@@ -57,7 +57,7 @@ _NEW_ITEMS: list[tuple[str, re.Pattern]] = [
     ("a link", re.compile(r"\bhttps?://\S+|\bwww\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|app|xyz|top|online|site|shop|link|co|au|uk|nz)(?:/\S*)?\b", re.I)),
     ("a phone number", re.compile(r"(?<![\w.])\+?\d[\d ()-]{6,}\d(?![\w.])")),
 ]
-NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of this investigation. Apollo doesn't reopen a finished investigation, "
+NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of this investigation. ApolloSG doesn't reopen a finished investigation, "
                  "so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.")
 
 
@@ -218,7 +218,7 @@ def device_state(snapshot: Any, question: str, intent: Optional[str] = None, *, 
                           "Open Your protections to see it.", "navigate": ["/(tabs)/guard"], "limitation": True}
     s = snapshot
     when = f" (read {s.checked_at})" if s.checked_at else ""
-    missing = "Apollo doesn't have a reading for that on this phone."
+    missing = "ApolloSG doesn't have a reading for that on this phone."
     lines: list[str] = []
     navigate: list[str] = []
     if named:
@@ -228,11 +228,11 @@ def device_state(snapshot: Any, question: str, intent: Optional[str] = None, *, 
     elif intent == "permissions":
         lines = ["Permissions on this phone:\n" + _bullets(s.permissions)] if s.permissions else [missing]
     elif intent == "device_protections":
-        lines = ["Protection built into this device (provided by the device maker or operating system, not by Apollo):\n" + _bullets(s.device_protections)] \
+        lines = ["Protection built into this device (provided by the device maker or operating system, not by ApolloSG):\n" + _bullets(s.device_protections)] \
             if s.device_protections else [missing]
         navigate = ["/device-protection"]
     elif intent == "capabilities":
-        lines = [p for p in [s.capability_summary or "", "What Apollo is allowed to use:\n" + _bullets(s.capabilities) if s.capabilities else ""] if p] or [missing]
+        lines = [p for p in [s.capability_summary or "", "What ApolloSG is allowed to use:\n" + _bullets(s.capabilities) if s.capabilities else ""] if p] or [missing]
         navigate = ["/device-protection"]
     elif intent == "settings":
         lines = ["Apollo can't read these settings, so please check them yourself:\n" + _bullets(s.recommended_settings)] if s.recommended_settings else [missing]
@@ -270,7 +270,7 @@ def device_state(snapshot: Any, question: str, intent: Optional[str] = None, *, 
 
 def patrol_findings(items: list[dict[str, Any]]) -> dict[str, Any]:
     if not items:
-        return {"answer": "Apollo has no recent findings recorded for this device.", "navigate": ["/(tabs)/patrol"], "limitation": False}
+        return {"answer": "ApolloSG has no recent findings recorded for this device.", "navigate": ["/(tabs)/patrol"], "limitation": False}
     lines = []
     for item in items[:5]:
         line = f"{item.get('headline') or 'Finding'} — {STATE_TEXT.get(item.get('effectiveState'), item.get('effectiveState') or 'state not known')}."
@@ -308,7 +308,7 @@ def recent_investigations(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 def scam_alerts(alerts: list[dict[str, Any]]) -> dict[str, Any]:
     if not alerts:
-        return {"answer": "There are no current official scam alerts from the government sources Apollo follows.", "navigate": ["/(tabs)/scams"],
+        return {"answer": "There are no current official scam alerts from the government sources ApolloSG follows.", "navigate": ["/(tabs)/scams"],
                 "limitation": False, "sources": []}
     lines = [f"{a['title']} — {a['source']}, {a.get('dateLabel') or 'date not stated'}. Urgency: {SEVERITY_TEXT.get(a.get('severity'), 'not rated')}."
              for a in alerts[:5]]
@@ -334,7 +334,7 @@ def scam_alert_card(title: str, source: str, summary: str, url: str) -> dict[str
     """An alert Apollo no longer holds the full record for: only what the card itself carried, and where to read the rest."""
     parts = [f"“{title}”" + (f" — {source}." if source else "."),
              f"What the source says:\n{summary}" if summary else "The alert card didn't include the source's summary.",
-             "Apollo doesn't hold the rest of this alert right now, so I won't add to it."
+             "ApolloSG doesn't hold the rest of this alert right now, so I won't add to it."
              + (" The full details are on the official page." if url else "")]
     sources = [{"title": title, "publisher": source or "Official source", "url": url, "route": None, "licence": None}] if url else []
     return {"answer": "\n\n".join(parts), "navigate": ["/(tabs)/scams"], "limitation": not summary, "sources": sources}

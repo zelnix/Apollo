@@ -71,9 +71,9 @@ export interface SafeStartCopy {
 /** Plain-language copy for the blocking screen. Never claims any protection is active. */
 export function safeStartCopy(error: SecurityConfigurationError): SafeStartCopy {
   return {
-    title: "Apollo can't start safely.",
+    title: "ApolloSG can't start safely.",
     reason: error.message.replace(/^SECURITY CONFIGURATION ERROR:\s*/, ""),
-    meaning: "Apollo has not started. Nothing is being watched, checked or blocked, and nothing has been sent anywhere.",
-    guidance: "This build is missing a required security component, so Apollo stops here rather than pretend. Install an updated build of Apollo, or contact Harmony Wellness Group support.",
+    meaning: "ApolloSG has not started. Nothing is being watched, checked or blocked, and nothing has been sent anywhere.",
+    guidance: "This build is missing a required security component, so ApolloSG stops here rather than pretend. Install an updated build of ApolloSG, or contact Harmony Wellness Group support.",
   };
 }

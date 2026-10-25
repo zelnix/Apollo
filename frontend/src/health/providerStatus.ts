@@ -6,7 +6,7 @@ const FAILURE_TEXT: Record<string, string> = {
   rate_limited: "the AI service was busy",
   provider_unavailable: "the AI service didn't respond",
   timeout: "it took too long",
-  response_invalid: "the answer came back in a form Apollo couldn't read",
+  response_invalid: "the answer came back in a form ApolloSG couldn't read",
 };
 
 export function providerStatusLines(status: ProviderStatus | null | undefined, locale?: string): string[] {

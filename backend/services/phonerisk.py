@@ -45,10 +45,10 @@ def _higgins(decision: str, data: dict) -> dict:
         found = "The number has strong reputation signals associated with fraud or recent abuse."
         action = "Do not return the call using this number. Find the organisation's number in its official app or website."
     elif decision == "review":
-        found = "The number has some reputation signals worth checking, but Apollo cannot establish who is calling."
+        found = "The number has some reputation signals worth checking, but ApolloSG cannot establish who is calling."
         action = "Let the call go to voicemail, then verify the caller using an independently sourced number."
     elif decision == "unknown":
-        found = "Apollo could not obtain reputation information for this number. This does not mean the number is safe or dangerous."
+        found = "ApolloSG could not obtain reputation information for this number. This does not mean the number is safe or dangerous."
         action = "If the call was unexpected, verify the caller independently before sharing personal information or sending money."
     else:
         found = "The current reputation check did not find strong abuse signals for this number."

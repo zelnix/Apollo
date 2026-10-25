@@ -205,7 +205,7 @@ export function summariseDeviceProtections(groups: DeviceProtectionGroups, hasNa
   const checking = groups.needsChecking.length;
   const ok = groups.protectedRows.length;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  if (!hasNativeHost) return { overall: "unread", headline: "Not checked here", detail: "Open Apollo on your device to check its own protections." };
+  if (!hasNativeHost) return { overall: "unread", headline: "Not checked here", detail: "Open ApolloSG on your device to check its own protections." };
   const checkLine = checking ? `${plural(checking, "to check manually", "to check manually")}.` : "";
   if (attention) {
     const actions = groups.needsAttention.filter((r) => r.health === "action").length;

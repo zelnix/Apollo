@@ -224,7 +224,7 @@ test("explicit message payload preserves assessment context but redacts secret U
     steps: [{ id: "s1", text: "send code" }],
     headline: "private marker",
   } as any);
-  assert.equal((family as any).headline, "Shared Apollo security incident");
+  assert.equal((family as any).headline, "Shared ApolloSG security incident");
   assert.doesNotMatch(JSON.stringify(family), /\+614|password|private marker/i);
 });
 
