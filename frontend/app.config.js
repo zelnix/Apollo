@@ -110,7 +110,7 @@ module.exports = {
       "./modules/apollo-family-assist/plugin/withApolloFamilyAssist",
       "expo-router",
       ["expo-notifications", { sounds: ["./assets/sounds/apollo_bark.wav", "./assets/sounds/apollo_chime.wav"] }],
-      ["expo-splash-screen", { image: "./assets/images/splash-image.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#F5F7FA" }],
+      ["expo-splash-screen", { image: "./assets/images/splash-logo.png", imageWidth: 288, resizeMode: "contain", backgroundColor: "#F5F7FA" }],
       "expo-font",
       "expo-asset",
       "expo-image",

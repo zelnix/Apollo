@@ -3552,3 +3552,9 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - `government_alerts._alert` adds `appliesIn` / `appliesInLabel` / `appliesInReason`. An alert local to a country other than Australia becomes overseas_only and never growls.
 - Frontend: home is the phone's region setting (`homeRegion()`; GB counts as UK, EU members as EU). The "All" list hides alerts that are local to another country and shows a count of hidden ones. Each stays under its country's filter. The Home priority notice follows the same rule. The detail Source tab shows "Where it applies".
 - Tests: `backend/tests/test_scam_scope.py`. Rulebook §17 updated and stamped.
+
+## New brand logo (June 2026) — DONE
+- The owner's new Apollo SG logo, with the "Better Protection…" tagline removed and a transparent background (letter counters too): `frontend/assets/images/apollo-sg-logo.png` (1200×392).
+- Home header (`app/(tabs)/home.tsx`) now uses it at 58% of screen width, capped at 280.
+- Splash: `assets/images/splash-logo.png`, a 1024 square with the logo kept inside Android 12's circle safe zone. `app.config.js` uses imageWidth 288 on #F5F7FA. It only shows in a new native build.
+- Removed the old `apollo-scam-guard-logo.png` and `splash-image.png`.
