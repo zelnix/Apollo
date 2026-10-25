@@ -1,6 +1,6 @@
 {
   "backend/content/triage_catalogue.json": "5f8d9fbdef795da35d5cf70a565280ff9d392b4da5da70c69c0dbbfdab144add",
-  "backend/core/config.py": "b057670f2e84033ad742543c1d998ac5d87cf6446eee3bbb7c65b288dfcd97db",
+  "backend/core/config.py": "b779495e0bb4a9cd16d4c01bca3057726dc0fd6ab07913bf817eea7ea0c4160a",
   "backend/core/redaction.py": "406e7586d27a8e47f19c6da7bc1c0dc0ca7b6de051be00c282aa26ae3bb6fd37",
   "backend/routers/analysis.py": "adc23d2b6c57ca082cbb12b3554fcd04e8e8ecab7da8656652346123da0ac883",
   "backend/routers/patrol.py": "3d5d903a5ff69d5a66c6cfaa6812be44bd9f4c6f3b63f44ec30dcbdd497bd6d2",

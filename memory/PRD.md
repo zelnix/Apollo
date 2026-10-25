@@ -12,8 +12,9 @@ barks…, its findings and protections); Higgins explains. **Owner's choice for 
   base", "ApolloSG KB"), cost/admin labels, notification fallbacks, iOS Settings path (`iosPath: "ApolloSG"`), email footer.
 - Compatibility: Higgins intent regexes accept "apollo", "apollosg" and "apollo sg"; `incidentPlan.ts` reads both
   "You told Apollo:" (old saved events) and "You told ApolloSG:".
-- Not changed (need owner decision / build impact): `EMAIL_FROM_NAME="Higgins Apollo"` in backend/.env, iOS
-  `iosShareExtensionName: "Apollo Share Extension"` in app.config.js.
+- Email sender name is now fixed in code as "ApolloSG" (`core/config.py`; owner skipped the settings card). The old
+  `EMAIL_FROM_NAME` env value is no longer read and was removed from the parity settings list.
+- Not changed (build impact): iOS `iosShareExtensionName: "Apollo Share Extension"` in app.config.js.
 - Rule book re-stamped. Tests updated for new wording: backend 1212 passed; frontend 935/935; tsc clean.
 
 

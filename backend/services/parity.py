@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _CODE_DIRS = ("core", "routers", "services", "content")
 # Settings whose VALUES are safe to compare (no credentials).
 SETTINGS = ("GEMINI_CHAT_MODEL", "GEMINI_TRIAGE_MODEL", "APOLLO_PREVIEW_SIMULATOR", "FAMILY_ASSIST_ENABLED",
-            "FAMILY_ASSIST_TURN_PROVIDER", "EMAIL_FROM_NAME")
+            "FAMILY_ASSIST_TURN_PROVIDER")
 # Credentials: only whether each one is set is reported — never the value.
 CREDENTIALS = ("GEMINI_API_KEY", "EMERGENT_LLM_KEY", "SAFE_BROWSING_API_KEY", "VIRUSTOTAL_API_KEY", "IPQS_API_KEY",
                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GMAIL_TOKEN_ENCRYPTION_KEY", "EMERGENT_EMAIL_KEY",

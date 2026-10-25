@@ -25,7 +25,7 @@ SB_THREAT_TYPES = ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENT
 
 TOKEN_TTL_DAYS = 365
 
-EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
+EMAIL_FROM_NAME = "ApolloSG"  # the sender name families see on every email (owner's choice; not an env setting)
 PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "").rstrip("/")  # canonical public origin; no trailing slash
 
 ADMIN_KEY = os.environ.get("APOLLO_ADMIN_KEY", "")

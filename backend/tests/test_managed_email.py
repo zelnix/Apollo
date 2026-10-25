@@ -37,15 +37,15 @@ async def test_managed_email_uses_brand_and_server_key(monkeypatch):
     monkeypatch.setattr(email, "db", SimpleNamespace(delivery_receipts=receipts))
     monkeypatch.setattr(email.httpx, "AsyncClient", FakeClient)
     provider_id = await email.send_email(
-        to="delivered@resend.dev", subject="Higgins Apollo family invitation",
-        html=email._wrap('<p>A family member invited you.</p><p><a href="https://apollo.example/family">Review in Higgins Apollo</a></p>'),
+        to="delivered@resend.dev", subject="ApolloSG family invitation",
+        html=email._wrap('<p>A family member invited you.</p><p><a href="https://apollo.example/family">Review in ApolloSG</a></p>'),
         event_id="test-managed-email",
     )
     assert provider_id == "email-test-reference"
     url, call = FakeClient.last_call
     assert url == "https://integrations.emergentagent.com/api/v1/email/send"
     assert call["headers"]["X-Email-Key"] == email.EMAIL_KEY
-    assert call["json"]["from_name"] == "Higgins Apollo"
+    assert call["json"]["from_name"] == "ApolloSG"
     assert "contact_email" not in call["json"]
     assert "from" not in call["json"]
     assert receipts.update_one.await_count == 3
