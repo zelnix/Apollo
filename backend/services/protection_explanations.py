@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from services.protection_knowledge import APOLLO_PROTECTIONS, DEVICE_SEEDS
+from services.protection_knowledge import APOLLO_PROTECTIONS, DEVICE_SEEDS, PROVIDER_KIND_SEEDS, PROVIDER_SEEDS
 
 
 def _wire(explanation: dict) -> dict:
@@ -28,8 +28,10 @@ def apollo_explanation(protection_id: str) -> Optional[dict]:
 
 
 def reviewed_device_explanation(protection_id: str) -> Optional[dict]:
-    """The reviewed explanation of a common Device Protection, or None."""
-    seed = DEVICE_SEEDS.get(protection_id)
+    """The reviewed explanation of a Device Protection, or None. A call or message protection app the phone reports
+    gets its own explanation where ApolloSG has one, otherwise the one that is true of every app of its kind."""
+    kind, _, package = protection_id.partition(":")
+    seed = DEVICE_SEEDS.get(protection_id) or PROVIDER_SEEDS.get(protection_id) or (PROVIDER_KIND_SEEDS.get(kind) if package else None)
     if not seed:
         return None
     return {"protectionId": protection_id, "explanation": _wire(seed), "source": "apollo_reviewed", "scopeLabel": "Reviewed by Apollo"}

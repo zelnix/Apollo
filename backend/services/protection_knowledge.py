@@ -190,3 +190,64 @@ DEVICE_SEEDS: dict[str, dict] = {
                         "why": "Without it, anyone with the machine can read your files. With it, a lost laptop is not a data breach.",
                         "protects_against": "Files being read from a lost or stolen computer."},
 }
+
+
+# The phone's own call and message protection, by app (row id "call:<package>" / "message:<package>").
+PROVIDER_SEEDS: dict[str, dict] = {
+    # ── Calls ──
+    "call:com.apple.mobilephone": {
+        "what": "The iPhone's own Phone app and Apple's call protections, such as Silence Unknown Callers, which sends numbers you haven't saved to voicemail.",
+        "why": "Most scam calls come from numbers you've never saved. Letting them go to voicemail takes away the ringing phone and the pressure to answer.",
+        "protects_against": "Scam and spam calls from unknown numbers reaching you while you're busy or caught off guard."},
+    "call:com.google.android.dialer": {
+        "what": "Google's Phone app. Its caller ID and spam protection labels suspected spam calls as they ring, and on supported phones Call Screen can answer an unknown caller for you.",
+        "why": "A “Suspected spam” label, or hearing who is calling before you pick up, gives you a moment to think before a scammer can start talking.",
+        "protects_against": "Known spam and scam calls, and unknown callers who won't say who they are."},
+    "call:com.samsung.android.dialer": {
+        "what": "Samsung's Phone app. With caller ID and spam protection switched on, it names businesses and labels calls reported as spam or scams as they ring.",
+        "why": "Seeing “Suspected spam” before you answer is often all it takes to let a scam call go.",
+        "protects_against": "Known spam and scam calls on a Samsung Galaxy phone."},
+    "call:com.samsung.android.smartcallprovider": {
+        "what": "Samsung Smart Call — the service behind the Samsung Phone app's caller ID and spam protection.",
+        "why": "It is what lets your Galaxy phone name an unknown caller or warn you that others have reported the number.",
+        "protects_against": "Spam and scam calls from numbers other people have already reported."},
+    "call:com.hiya.star": {
+        "what": "Hiya, a caller ID and spam-blocking app that identifies callers and labels numbers reported for spam or fraud.",
+        "why": "A warning on screen while the phone rings lets you decide before you answer, instead of after a scammer has started talking.",
+        "protects_against": "Known spam and fraud calls, and unknown callers it can identify."},
+    "call:com.tmobile.scamshield": {
+        "what": "T-Mobile's Scam Shield, which labels likely scam calls as “Scam Likely” and can block them before they ring.",
+        "why": "Your carrier sees calling patterns across its whole network, so it can spot scam campaigns a single phone can't.",
+        "protects_against": "Scam calls carried on the T-Mobile network."},
+    "call:com.att.callprotect": {
+        "what": "AT&T ActiveArmor (formerly Call Protect), which labels suspected spam and fraud calls and can block them.",
+        "why": "Your carrier sees calling patterns across its whole network, so it can spot scam campaigns a single phone can't.",
+        "protects_against": "Spam and fraud calls carried on the AT&T network."},
+    "call:com.verizon.callfilter": {
+        "what": "Verizon Call Filter, which detects spam calls, labels them by risk and can send high-risk ones to voicemail.",
+        "why": "Your carrier sees calling patterns across its whole network, so it can spot scam campaigns a single phone can't.",
+        "protects_against": "Spam and scam calls carried on the Verizon network."},
+    # ── Messages ──
+    "message:com.apple.MobileSMS": {
+        "what": "The iPhone's own Messages app, which can file messages from unknown senders and suspected junk into separate lists and lets you report junk.",
+        "why": "A scam text works best sitting right next to real messages from your bank or a delivery company. Keeping it apart breaks that illusion.",
+        "protects_against": "Scam and junk texts from unknown senders mixing in with messages you trust."},
+    "message:com.google.android.apps.messaging": {
+        "what": "Google Messages. Its spam protection warns about suspected spam and scam texts and can move them out of your conversations.",
+        "why": "A warning on the message itself catches scam texts before you tap their link or reply.",
+        "protects_against": "Known spam and scam texts, including ones with dangerous links."},
+    "message:com.samsung.android.messaging": {
+        "what": "Samsung Messages, which can block numbers and move texts it recognises as spam into a separate folder.",
+        "why": "Moving a scam text out of your conversations keeps it from sitting next to a real message from your bank.",
+        "protects_against": "Spam and scam texts on a Samsung Galaxy phone."},
+}
+
+# Any other call or message protection app the phone reports — true of every app in that list, whichever it is.
+PROVIDER_KIND_SEEDS: dict[str, dict] = {
+    "call": {"what": "A call-protection service on this phone — from its maker, an app or your carrier — that labels or blocks suspected scam and spam calls.",
+             "why": "A warning while the phone rings gives you a moment to think before a scammer can start talking.",
+             "protects_against": "Spam and scam calls the service already knows about."},
+    "message": {"what": "A message-protection service on this phone — from its messaging app or your carrier — that warns about or filters suspected spam and scam texts.",
+                "why": "A warning on a text, or moving it out of your conversations, catches scam messages before you tap their link or reply.",
+                "protects_against": "Spam and scam texts the service already knows about."},
+}

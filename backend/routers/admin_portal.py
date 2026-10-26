@@ -3451,14 +3451,65 @@ def _week_start(offset_minutes: int) -> datetime:
     return monday.astimezone(timezone.utc)
 
 
-async def gemini_usage_by_feature(start: datetime) -> dict[str, dict]:
+async def gemini_usage_by_feature(start: datetime, end: Optional[datetime] = None) -> dict[str, dict]:
+    when: dict = {"$gte": start} if end is None else {"$gte": start, "$lt": end}
     rows = await db.gemini_usage.aggregate([
-        {"$match": {"timestamp": {"$gte": start}}},
+        {"$match": {"timestamp": when}},
         {"$group": {"_id": _FEATURE_OF_RECORD, "calls": {"$sum": 1}, "failed": {"$sum": {"$cond": ["$success", 0, 1]}},
                     "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}}, "searches": {"$sum": {"$ifNull": ["$search_queries", 0]}},
                     "last": {"$max": "$timestamp"}}},
     ]).to_list(100)
     return {r["_id"]: r for r in rows}
+
+
+_TREND_WEEKS = 4
+
+
+def _change_html(now: float, before: float) -> str:
+    """How this week's cost compares with the week before: up in red, down in green."""
+    if not before and not now:
+        return ""
+    if not before:
+        return " <span class='trend up'>new</span>"
+    pct = (now - before) / before * 100
+    if abs(pct) < 0.5:
+        return " <span class='trend'>±0%</span>"
+    return f" <span class='trend {'up' if pct > 0 else 'down'}'>{'▲' if pct > 0 else '▼'} {abs(pct):.0f}%</span>"
+
+
+def _trend_table(weeks: list[datetime], usage: list[dict[str, dict]], tz: int) -> str:
+    """The last four weeks side by side for each feature, oldest first, each cost compared with the week before."""
+    zone = timezone(timedelta(minutes=tz))
+    current = [key for key, *_ in _GEMINI_FEATURES]
+    names = {key: name for key, name, *_ in _GEMINI_FEATURES}
+
+    def pick(week: dict[str, dict], which: str) -> tuple[int, float]:
+        if which == "total":
+            rows = list(week.values())
+        elif which == "other":
+            rows = [v for k, v in week.items() if k not in current]
+        else:
+            rows = [week[which]] if which in week else []
+        return sum(r["calls"] for r in rows), sum(r["cost"] for r in rows)
+
+    def row(label: str, which: str, strong: bool = False) -> str:
+        cells, before = "", None
+        for i, week in enumerate(usage):
+            calls, cost = pick(week, which)
+            # This week isn't finished, so comparing it with a whole week would always look like a drop.
+            change = _change_html(cost, before) if before is not None and i < len(usage) - 1 else ""
+            cells += f"<td class='num'>${cost:.4f}{change}<br><span class='muted'>{calls:,} calls</span></td>"
+            before = cost
+        name = f"<strong>{html_mod.escape(label)}</strong>" if strong else html_mod.escape(label)
+        return f"<tr data-testid='gemini-trend-{which}'><td>{name}</td>{cells}</tr>"
+
+    heads = "".join(f"<th class='num'>{'This week so far' if i == len(weeks) - 1 else 'Week of'}<br>"
+                    f"{w.astimezone(zone).strftime('%a %-d %b')}</th>" for i, w in enumerate(weeks))
+    body = "".join(row(names[k], k) for k in current) + row("Removed or retired features", "other") + row("All Gemini calls", "total", strong=True)
+    return (f'<h2>Last four weeks</h2><p class="muted">Estimated cost and calls per week (Monday to Sunday), oldest first. '
+            f'Each finished week is compared with the week before it; this week isn\'t finished, so it has no comparison yet.</p>'
+            f'<div class="table-scroll"><table data-testid="gemini-trend-table"><thead><tr><th>Feature</th>{heads}</tr></thead>'
+            f'<tbody>{body}</tbody></table></div>')
 
 
 def _usage_cells(row: Optional[dict]) -> str:
@@ -3474,7 +3525,9 @@ async def gemini_map_page(request: Request):
         return _login_redirect()
     tz = _tz_param(request)
     start = _week_start(tz)
-    usage = await gemini_usage_by_feature(start)
+    weeks = [start - timedelta(weeks=n) for n in range(_TREND_WEEKS - 1, -1, -1)]
+    trend = [await gemini_usage_by_feature(w, w + timedelta(weeks=1) if w != start else None) for w in weeks]
+    usage = trend[-1]
     esc = html_mod.escape
     rows = "".join(
         f"<tr data-testid='gemini-feature-{key}'><td><strong>{esc(name)}</strong><br><span class='muted'>{esc(what)}</span></td>"
@@ -3495,9 +3548,11 @@ async def gemini_map_page(request: Request):
     <th>When it calls</th>{head}</tr></thead><tbody>{rows}</tbody></table></div>
     <p class="muted">Every call goes through one gateway, <code>generate()</code> in <code>services/higgins/provider.py</code>,
     which records it. Models can be changed with the GEMINI_*_MODEL settings.</p>
+    {_trend_table(weeks, trend, tz)}
     {f'<h2>Other calls this week</h2><p class="muted">From features that have been removed or no longer call Gemini.</p><table data-testid="gemini-map-other"><thead><tr><th>Feature</th>{head}</tr></thead><tbody>{other_rows}</tbody></table>' if other_rows else ""}
     <script>(function(){{if(!/[?&]tz=/.test(location.search)){{location.replace(location.pathname+'?tz='+(-new Date().getTimezoneOffset()));}}}})();</script>"""
-    css = (".muted{color:var(--muted);font-size:0.85em;} td.num{text-align:right;white-space:nowrap;} .table-scroll{overflow-x:auto;}"
+    css = (".muted{color:var(--muted);font-size:0.85em;} td.num,th.num{text-align:right;white-space:nowrap;} .table-scroll{overflow-x:auto;}"
+           " .trend{font-size:0.8em;margin-left:4px;color:var(--muted);} .trend.up{color:var(--red);} .trend.down{color:var(--green);}"
            " .main{min-width:0;} td code{font-size:0.8em;}")
     return _shell("Gemini Map", "/api/admin/gemini-map", body, admin=adm, extra_css=css)
 

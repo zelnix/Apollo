@@ -1,3 +1,14 @@
+## Gemini Map 4-week trend; pre-written explanations for the phone's own call/message protection (2026-10-26)
+- **Last four weeks** table on `/api/admin/gemini-map`: Magnum DI, TC FlyBy, Ask Higgins, removed/retired, all calls;
+  cost + calls per Monday–Sunday week (admin's zone), oldest first; finished weeks show ▲/▼ % vs the week before
+  (red up, green down, "new" from zero); this week has no comparison. `gemini_usage_by_feature(start, end)`.
+- **Explanations:** every catalogue protection (39) already had one; the gap was provider rows `call:<pkg>` /
+  `message:<pkg>`. Added `PROVIDER_SEEDS` (iOS Phone, iOS Messages, Google Phone, Samsung Phone, Samsung Smart Call,
+  Hiya, T-Mobile Scam Shield, AT&T ActiveArmor, Verizon Call Filter, Google Messages, Samsung Messages) and
+  `PROVIDER_KIND_SEEDS` (true of any call / message protection app) in services/protection_knowledge.py; the
+  `GET /protections/device/{id}` lookup uses them. Tests check every catalogue id and every Android
+  NATIVE_PROTECTION package has reviewed text.
+
 ## Gemini Map admin page; page readers and protection explanations removed (2026-10-26)
 - **Gemini Map** (`/api/admin/gemini-map`, nav item): the 3 features that call Gemini (Magnum DI, TC FlyBy web search,
   Ask Higgins) with code location, model, when it calls, and this week's calls / failed / searches / est. cost / last
