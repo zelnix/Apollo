@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 from core.db import db, now_utc
+from services.triage import telemetry
 from services.triage.catalogue import LIMITED_CAUTION, gap_plain
 from services.triage.contract import Outcome, TriageInvestigation
 
@@ -34,13 +35,19 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
                                 indicator_host: str | None = None) -> str:
     """Save the Triage Investigation and project it into Patrol History (idempotent)."""
     wire = investigation.wire()
-    await db[COLLECTION].update_one(
+    saved = await db[COLLECTION].update_one(
         {"device_id": device_id, "investigation_id": investigation.investigation_id},
         {"$set": {"device_id": device_id, "investigation_id": investigation.investigation_id,
                   "category": category, "subject": subject[:200], "record": wire,
                   "outcome": investigation.outcome.value, "evaluated_at": investigation.evaluated_at or now_utc(),
                   "investigation_case_id": investigation_case_id, "updated_at": now_utc()},
          "$setOnInsert": {"created_at": now_utc()}}, upsert=True)
+    if saved.upserted_id:
+        # Once per evaluation (this save is idempotent): outcome and cause codes for the "Limited by cause" report.
+        device = await db.devices.find_one({"device_id": device_id}, {"_id": 0, "device_id": 1, "platform": 1, "adapter_mode": 1})
+        await telemetry.record(device or {"device_id": device_id}, origin="server", source_type=wire["sourceType"],
+                               outcome=wire["outcome"], causes=telemetry.causes_for(wire),
+                               gap_codes=[g["code"] for g in wire["coverageGaps"]], catalogue_version=wire["catalogueVersion"])
 
     event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-triage:{device_id}:{investigation.investigation_id}"))
     state = _STATE[investigation.outcome]

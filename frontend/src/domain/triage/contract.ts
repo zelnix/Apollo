@@ -14,6 +14,9 @@ export interface CatalogueRule {
   evidence?: string[];
   platformDependent?: boolean;
   gapCode?: string;
+  /** The rule needs an observation this context may not offer (e.g. "browser_observation"). Without it the rule
+   *  cannot execute here, so it is NOT APPLICABLE — recorded with the reason — never a coverage gap. */
+  notApplicableWithout?: string;
 }
 
 export interface RuleRecord {

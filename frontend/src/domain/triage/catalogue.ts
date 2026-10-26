@@ -3,7 +3,7 @@
 // tests/triage.test.ts fails if this drifts from the backend file.
 
 const CATALOGUE = {
-  "version": 1,
+  "version": 2,
   "updated": "2026-06",
   "outcomes": [
     "NO_THREAT_IDENTIFIED",
@@ -189,7 +189,7 @@ const CATALOGUE = {
     {
       "id": "QR-01",
       "category": "link",
-      "title": "QR code contains a URL \u2014 the destination is triaged as a link",
+      "title": "QR code contains a URL — the destination is triaged as a link",
       "evidence": [
         "qr_payload"
       ]
@@ -236,7 +236,7 @@ const CATALOGUE = {
         "deception_evidence"
       ],
       "platformDependent": true,
-      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+      "notApplicableWithout": "browser_observation"
     },
     {
       "id": "BITM-02",
@@ -248,7 +248,7 @@ const CATALOGUE = {
         "deception_evidence"
       ],
       "platformDependent": true,
-      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+      "notApplicableWithout": "browser_observation"
     },
     {
       "id": "BITM-03",
@@ -260,7 +260,7 @@ const CATALOGUE = {
         "realtime_relay"
       ],
       "platformDependent": true,
-      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+      "notApplicableWithout": "browser_observation"
     },
     {
       "id": "BITM-04",
@@ -272,7 +272,7 @@ const CATALOGUE = {
         "realtime_relay"
       ],
       "platformDependent": true,
-      "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"
+      "notApplicableWithout": "browser_observation"
     },
     {
       "id": "BITM-05",
@@ -1157,7 +1157,7 @@ const CATALOGUE = {
     {
       "id": "FQR-01",
       "category": "file",
-      "title": "QR code detected in a file or image \u2014 destination is triaged as a link",
+      "title": "QR code detected in a file or image — destination is triaged as a link",
       "evidence": [
         "qr_payload"
       ]

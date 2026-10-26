@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { evaluateTriage, runWithRetries } from "../src/domain/triage/engine.ts";
+import { BROWSER_OBSERVATION_NA, evaluateTriage, runWithRetries } from "../src/domain/triage/engine.ts";
 import { legacyOutcome, recheckCanHelp, gapPlainEnglish, RULES } from "../src/domain/triage/contract.ts";
 import CATALOGUE from "../src/domain/triage/catalogue.ts";
 import { linkTriageEvidence, messageTriageEvidence, callTriageEvidence, numberRiskTriageEvidence } from "../src/domain/triage/evidence.ts";
@@ -73,13 +73,18 @@ test("positive threat evidence is not downgraded by an unavailable check", () =>
   assert.ok(record.rulesMet.length > 0);
 });
 
-test("browser-only rules record a non-recoverable gap instead of pretending to check", () => {
+test("browser-observation rules that can't execute on a phone are NOT APPLICABLE with the reason — never a gap", () => {
   const local = analyseUrlLocally("https://login-microsoft-verify.xyz/signin");
   const record = evaluateTriage(linkTriageEvidence({ local, intel: { verdict: "clean" }, credentialInteraction: true }));
   const bitm = record.rules.filter((r) => r.ruleId.startsWith("BITM-") && r.ruleId !== "BITM-05");
-  assert.ok(bitm.length === 4 && bitm.every((r) => r.result === "coverage_gap"));
-  const gap = record.coverageGaps.find((g) => g.code === "BROWSER_VISIBILITY_UNAVAILABLE");
-  assert.ok(gap && gap.recoverable === false);
+  assert.equal(bitm.length, 4);
+  for (const rule of bitm) {
+    assert.equal(rule.result, "not_applicable", rule.ruleId);
+    assert.equal(rule.applicable, false);
+    assert.equal(rule.evidence[0], BROWSER_OBSERVATION_NA, "the reason stays on the record for the DI");
+    assert.ok(!record.rulesApplicable.includes(rule.ruleId));
+  }
+  assert.ok(!record.coverageGaps.some((g) => g.code === "BROWSER_VISIBILITY_UNAVAILABLE"));
 });
 
 test("structural-only URL indicators stay LIMITED, never a manufactured threat", () => {

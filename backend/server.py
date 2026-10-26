@@ -42,7 +42,7 @@ from services import triage_engine
 from services import gmail as gmail_service
 from services import family_assist
 from services.threat_revalidation import ensure_indexes as ensure_threat_indexes, migrate_blocklist_entries
-from routers import admin, admin_portal, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, posture, product, protections, push, usage
+from routers import admin, admin_portal, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, posture, product, protections, push, triage_telemetry, usage
 from routers.family_weekly import weekly_checkin_loop
 from services.seed_learning_images import router as seed_images_router
 
@@ -102,6 +102,8 @@ async def lifespan(_: FastAPI):
     await triage_engine.ensure_indexes()
     from services.triage.store import ensure_indexes as ensure_triage_history_indexes
     await ensure_triage_history_indexes()
+    from services.triage.telemetry import ensure_indexes as ensure_triage_telemetry_indexes
+    await ensure_triage_telemetry_indexes()
     await db.admin_sessions.create_index("expires_at", expireAfterSeconds=0)
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()
@@ -296,7 +298,7 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, push, analysis, gmail, call, posture, protections):
+for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, push, analysis, gmail, call, posture, protections, triage_telemetry):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin_portal.router, prefix="/api", tags=["admin-portal"])

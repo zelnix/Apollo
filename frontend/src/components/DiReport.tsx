@@ -258,11 +258,16 @@ function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null
               {rule.detail ? <Text style={s.stepDetail} selectable>{rule.detail}</Text> : null}
             </View>
           ))}
-          {notApplicable.length ? (
-            <Text style={[s.stepDetail, { marginTop: spacing.xs }]} selectable>
-              {`Not applicable to this item (${notApplicable.length}): ${notApplicable.map((r) => r.ruleId).join(", ")}`}
-            </Text>
-          ) : null}
+          {notApplicable.length ? <Text style={s.subTitle}>{`Not applicable (${notApplicable.length})`}</Text> : null}
+          {notApplicable.map((rule) => (
+            <View key={rule.ruleId} style={s.ruleRow} testID={`tc-di-rule-na-${rule.ruleId}`}>
+              <Text style={s.evidenceFieldValue} selectable>
+                <Text style={{ fontFamily: fonts.textSemibold }}>{`${rule.ruleId} · NOT APPLICABLE`}</Text>
+                {`\n${rule.title}`}
+              </Text>
+              <Text style={s.stepDetail} selectable>{rule.evidence[0] || rule.detail || "Not applicable to this kind of item."}</Text>
+            </View>
+          ))}
           {triage.coverageGaps.length ? <Text style={s.subTitle}>Coverage gaps</Text> : null}
           {triage.coverageGaps.map((gap) => (
             <DiRow key={gap.code} label={`${gap.code}:`} value={gap.detail || "no detail recorded"}

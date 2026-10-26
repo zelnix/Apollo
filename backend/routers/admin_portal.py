@@ -2642,6 +2642,58 @@ async def incident_analysis_json(request: Request):
 
 # ── Triage Dashboard ─────────────────────────────────────────────────────────
 
+async def _limited_by_cause_html(request: Request) -> str:
+    """Triage outcomes and Limited-by-cause from device + server telemetry. Real phones only by default, so
+    web previews and mock adapters (test traffic) don't skew the picture; ?scope=all includes them."""
+    from services.triage.telemetry import CAUSE_LABELS, limited_by_cause
+    days = 7 if request.query_params.get("days") == "7" else 30
+    phones_only = request.query_params.get("scope") != "all"
+    stats = await limited_by_cause(datetime.now(timezone.utc) - timedelta(days=days), phones_only=phones_only)
+    total, outcomes = stats["total"], stats["outcomes"]
+    limited = outcomes["LIMITED_UNABLE_TO_DETERMINE"]
+
+    def pct(n: int, of: int) -> str:
+        return f"{n / of * 100:.1f}%" if of else "—"
+
+    cause_rows = "".join(
+        f"<tr><td>{html_mod.escape(CAUSE_LABELS.get(cause, cause))}<div style='font-size:0.78em;color:var(--muted);'><code>{html_mod.escape(cause)}</code></div></td>"
+        f"<td>{html_mod.escape(source or '—')}</td><td style='text-align:right;'>{n:,}</td><td style='text-align:right;'>{pct(n, limited)}</td></tr>"
+        for cause, source, n in stats["by_cause"])
+    retry_rows = "".join(f"<tr><td><code>{html_mod.escape(k)}</code></td><td style='text-align:right;'>{v:,}</td></tr>"
+                         for k, v in sorted(stats["lookup_retries"].items()))
+
+    def link(label: str, d: int, scope: str) -> str:
+        active = d == days and (scope == "phones") == phones_only
+        style = "font-weight:700;" if active else ""
+        return f'<a href="/api/admin/triage?days={d}&scope={scope}" style="{style}" data-testid="triage-cause-{scope}-{d}">{label}</a>'
+
+    return f"""
+    <h2 data-testid="triage-limited-by-cause">Limited by cause</h2>
+    <p style="font-size:0.82em;color:var(--muted);margin-bottom:8px;">
+        Every Triage outcome reports its cause codes (no content). Showing the last {days} days ·
+        {"real phones only (iOS/Android, not mock)" if phones_only else "all traffic, including web previews and test devices"}.
+        {link("Phones · 30 days", 30, "phones")} · {link("Phones · 7 days", 7, "phones")} ·
+        {link("All traffic · 30 days", 30, "all")} · {link("All traffic · 7 days", 7, "all")}
+    </p>
+    <table data-testid="triage-outcome-totals">
+        <thead><tr><th>Outcome</th><th>Count</th><th>Share</th></tr></thead>
+        <tbody>
+            <tr><td>No threat identified</td><td style="text-align:right;">{outcomes['NO_THREAT_IDENTIFIED']:,}</td><td style="text-align:right;">{pct(outcomes['NO_THREAT_IDENTIFIED'], total)}</td></tr>
+            <tr><td>Possible threat identified</td><td style="text-align:right;">{outcomes['POSSIBLE_THREAT_IDENTIFIED']:,}</td><td style="text-align:right;">{pct(outcomes['POSSIBLE_THREAT_IDENTIFIED'], total)}</td></tr>
+            <tr><td>Limited / unable to determine</td><td style="text-align:right;">{limited:,}</td><td style="text-align:right;">{pct(limited, total)}</td></tr>
+        </tbody>
+    </table>
+    <table data-testid="triage-limited-causes" style="margin-top:12px;">
+        <thead><tr><th>Cause</th><th>Source type</th><th>Limited results</th><th>Share of Limited</th></tr></thead>
+        <tbody>{cause_rows or '<tr><td colspan="4" style="color:var(--muted);">No Limited results reported in this period</td></tr>'}</tbody>
+    </table>
+    <p style="font-size:0.78em;color:var(--muted);">A result with two causes is counted once under each.</p>
+    <h3 style="margin-top:12px;">Reputation lookup retries</h3>
+    <table data-testid="triage-lookup-retries">
+        <thead><tr><th>Lookup outcome</th><th>Count</th></tr></thead>
+        <tbody>{retry_rows or '<tr><td colspan="2" style="color:var(--muted);">No lookups reported in this period</td></tr>'}</tbody>
+    </table>"""
+
 @router.get("/admin/triage", response_class=HTMLResponse)
 async def triage_dashboard(request: Request):
     """Higgins Triage performance dashboard — screening cost KPI tracker."""
@@ -2779,6 +2831,7 @@ async def triage_dashboard(request: Request):
     <p style="font-size:0.88em;color:var(--muted);margin-bottom:16px;">
         3-tier cost-optimised screening. Target: &le; $0.001 average cost per automatically screened item.
     </p>
+    {await _limited_by_cause_html(request)}
     {cards_html}
     {config_html}
     {provider_html}

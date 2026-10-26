@@ -4,6 +4,8 @@
 // with libphonenumber: anything that is not a real telephone number (a date, an amount, a reference)
 // is rejected there and dropped, rather than being reported as a number Apollo couldn't check.
 
+import type { LookupFailure } from "./reputationLookup.ts";
+
 export interface EvidencePhoneResult {
   /** Exactly as the number appeared in the material. */
   raw: string;
@@ -20,6 +22,8 @@ export interface EvidencePhoneResult {
   /** Which source answered. Anything other than a named service means nothing was established. */
   source: "ipqualityscore" | "not_configured" | "unavailable";
   checked_at: string;
+  /** Set when the lookup established nothing: how it failed (after the controlled retry), or why the answer was empty. */
+  lookupFailure?: LookupFailure | null;
 }
 
 const URL_RE = /(?:https?:\/\/|www\.)\S+/gi;

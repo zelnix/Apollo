@@ -15,7 +15,12 @@ type Verdict = { result: RuleResult; evidence: string[]; gap?: string };
 const met = (...evidence: string[]): Verdict => ({ result: "met", evidence: evidence.filter(Boolean) });
 const unmet = (...evidence: string[]): Verdict => ({ result: "not_met", evidence: evidence.filter(Boolean) });
 const na: Verdict = { result: "not_applicable", evidence: [] };
+/** Not applicable, with the reason — so the DI shows the rule was considered and why it couldn't run here. */
+const naBecause = (reason: string): Verdict => ({ result: "not_applicable", evidence: [reason] });
 const gap = (code: string, ...evidence: string[]): Verdict => ({ result: "coverage_gap", evidence: evidence.filter(Boolean), gap: code });
+
+/** Why the browser-observation rules (BITM-01..04) can't execute in a phone app's context. */
+export const BROWSER_OBSERVATION_NA = "Not applicable here: this rule needs live observation inside the browser session (page and WebSocket traffic), which this device context cannot provide.";
 
 const sig = (ev: TriageEvidence, name: string): boolean => !!ev.signals?.[name];
 const prov = (ev: TriageEvidence, name: string): Record<string, any> => (ev[name] && typeof ev[name] === "object" ? ev[name] : {});
@@ -39,7 +44,7 @@ const LINK: Record<string, (ev: TriageEvidence) => Verdict> = {
   "LINK-01": (ev) => {
     const rep = prov(ev, "reputation");
     if (!Object.keys(rep).length) return na;
-    if (["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "reputation lookup did not complete");
+    if (["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", `reputation lookup did not complete${rep.failure ? ` (${rep.failure})` : ""}`);
     return rep.verdict === "malicious" ? met(`reputation verdict: malicious (${rep.source ?? "threat intelligence"})`) : unmet("reputation verdict: not listed as malicious");
   },
   "LINK-02": (ev) => {
@@ -130,10 +135,10 @@ const LINK: Record<string, (ev: TriageEvidence) => Verdict> = {
 
 for (const id of ["BITM-01", "BITM-02", "BITM-03", "BITM-04"]) {
   LINK[id] = (ev) => {
+    // Without browser/WebSocket observation these rules cannot execute at all in this context, so they are
+    // NOT APPLICABLE (reason recorded) — different from a check that should have run but failed.
+    if (!ev.visibility?.browser || !ev.visibility?.websocket) return naBecause(BROWSER_OBSERVATION_NA);
     if (!ev.credential_interaction && !ev.code_interaction) return unmet("no sensitive authentication interaction observed");
-    if (!ev.visibility?.browser || !ev.visibility?.websocket) {
-      return gap("BROWSER_VISIBILITY_UNAVAILABLE", "real-time authentication-relay evidence is not observable on this platform");
-    }
     const relay = !!ev.realtime_relay;
     const inconsistent = !!(ev.auth_origin_unrelated || ev.brand_mismatch);
     const deception = !!(ev.deception_evidence || ["suspicious", "malicious"].includes(ev.local_level));

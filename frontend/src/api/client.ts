@@ -53,9 +53,9 @@ async function fetchWithBudget(url: string, init: RequestInit, timeoutMs: number
   } finally { clearTimeout(t); }
 }
 
-async function request<T>(path: string, init?: RequestInit, acceptUnavailable = false): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, acceptUnavailable = false, timeoutMs?: number): Promise<T> {
   const auth = await authHeaders();
-  const res = await fetchWithBudget(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) } }, timeoutFor(path));
+  const res = await fetchWithBudget(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) } }, timeoutMs ?? timeoutFor(path));
   if (!res.ok && !(acceptUnavailable && res.status === 503)) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail ?? detail; } catch { /* keep statusText */ }
@@ -80,8 +80,9 @@ export function apiPostEmpty<T>(path: string, idempotencyKey: string) {
   return request<T>(path, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } });
 }
 export function apiDelete<T>(path: string) { return request<T>(path, { method: "DELETE" }); }
-export function apiPost<T>(path: string, endpoint: EgressEndpoint, body: Record<string, unknown>) {
-  return request<T>(path, { method: "POST", body: JSON.stringify(enforceEgress(endpoint, body)) });
+/** `timeoutMs` overrides the path's budget for one call (e.g. a reputation lookup that will be retried). */
+export function apiPost<T>(path: string, endpoint: EgressEndpoint, body: Record<string, unknown>, options?: { timeoutMs?: number }) {
+  return request<T>(path, { method: "POST", body: JSON.stringify(enforceEgress(endpoint, body)) }, false, options?.timeoutMs);
 }
 /** Multipart upload (voice notes). Text fields go through the egress allow-list like any JSON body; the file is appended
  *  in the runtime's own shape (web needs a real Blob, native needs { uri, name, type }). Content-Type is left to the runtime. */

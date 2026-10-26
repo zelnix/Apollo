@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "updated": "2026-06",
   "outcomes": ["NO_THREAT_IDENTIFIED", "POSSIBLE_THREAT_IDENTIFIED", "LIMITED_UNABLE_TO_DETERMINE"],
   "coverageGapCodes": [
@@ -33,10 +33,10 @@
     {"id": "QR-02", "category": "link", "title": "QR destination with brand or domain deception", "evidence": ["qr_payload", "brand_mismatch"]},
     {"id": "QR-03", "category": "link", "title": "QR destination with a credential or payment lure and a suspicious, unrated or newly registered destination", "evidence": ["qr_payload", "credential_interaction", "domain_age"], "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"},
     {"id": "DATA-01", "category": "link", "title": "data: or blob: content collecting credentials in a deceptive brand context", "evidence": ["scheme", "credential_interaction"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
-    {"id": "BITM-01", "category": "link", "title": "Sensitive credential interaction with observable real-time relay and an inconsistent destination", "evidence": ["credential_interaction", "realtime_relay", "destination_consistency", "deception_evidence"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
-    {"id": "BITM-02", "category": "link", "title": "Brand authentication presented through an unauthorised origin with relay or strong deception", "evidence": ["auth_origin", "realtime_relay", "deception_evidence"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
-    {"id": "BITM-03", "category": "link", "title": "Message, email, QR or call leads to a site presenting another brand's authentication with relay behaviour", "evidence": ["correlation", "auth_origin", "realtime_relay"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
-    {"id": "BITM-04", "category": "link", "title": "MFA or security-code interaction on an unrelated authentication origin with observable relay evidence", "evidence": ["code_interaction", "auth_origin", "realtime_relay"], "platformDependent": true, "gapCode": "BROWSER_VISIBILITY_UNAVAILABLE"},
+    {"id": "BITM-01", "category": "link", "title": "Sensitive credential interaction with observable real-time relay and an inconsistent destination", "evidence": ["credential_interaction", "realtime_relay", "destination_consistency", "deception_evidence"], "platformDependent": true, "notApplicableWithout": "browser_observation"},
+    {"id": "BITM-02", "category": "link", "title": "Brand authentication presented through an unauthorised origin with relay or strong deception", "evidence": ["auth_origin", "realtime_relay", "deception_evidence"], "platformDependent": true, "notApplicableWithout": "browser_observation"},
+    {"id": "BITM-03", "category": "link", "title": "Message, email, QR or call leads to a site presenting another brand's authentication with relay behaviour", "evidence": ["correlation", "auth_origin", "realtime_relay"], "platformDependent": true, "notApplicableWithout": "browser_observation"},
+    {"id": "BITM-04", "category": "link", "title": "MFA or security-code interaction on an unrelated authentication origin with observable relay evidence", "evidence": ["code_interaction", "auth_origin", "realtime_relay"], "platformDependent": true, "notApplicableWithout": "browser_observation"},
     {"id": "BITM-05", "category": "link", "title": "Destination matches authoritative intelligence for active BitM/AiTM phishing infrastructure", "evidence": ["reputation"], "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"},
 
     {"id": "MSG-01", "category": "message", "title": "OTP, MFA or security code requested", "evidence": ["signals.code_request"]},

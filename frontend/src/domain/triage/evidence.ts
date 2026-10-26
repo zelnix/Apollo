@@ -20,6 +20,8 @@ export interface UrlIntel {
   redirect_chain?: string[] | null;
   final_url?: string | null;
   domain_info?: { newly_registered?: boolean; available?: boolean } | null;
+  /** "none" = no reputation source could check anything — unavailable, never a pass. */
+  coverage?: string;
   unavailable?: boolean;
 }
 
@@ -33,6 +35,8 @@ export function linkTriageEvidence(args: {
   local: LocalAnalysis;
   intel: UrlIntel | null;
   intelError?: string | null;
+  /** How the reputation lookup failed after its controlled retry (timeout, auth_failure, …). */
+  intelFailure?: string | null;
   displayedHost?: string | null;
   actualHost?: string | null;
   credentialInteraction?: boolean;
@@ -42,9 +46,10 @@ export function linkTriageEvidence(args: {
 }): TriageEvidence {
   const { local, intel, intelError } = args;
   const signals = local.signals.map((s) => s.code);
-  const reputation = intel && !intelError && intel.verdict
+  // A failed lookup — or an answer where no source could check anything — is unavailable, never a pass.
+  const reputation = intel && !intelError && !args.intelFailure && intel.verdict && intel.coverage !== "none"
     ? { status: "ok", verdict: intel.verdict, source: "Apollo threat intelligence", threat_types: intel.threat_types ?? [] }
-    : { status: "unavailable", verdict: "unknown" };
+    : { status: "unavailable", verdict: "unknown", ...(args.intelFailure ? { failure: args.intelFailure } : {}) };
   const hops = (intel?.redirect_chain?.length ?? 0) > 1 ? (intel?.redirect_chain?.length ?? 0) - 1 : 0;
   return {
     source_type: args.sourceType ?? "link",

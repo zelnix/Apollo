@@ -19,6 +19,15 @@ _log = logging.getLogger("apollo.triage")
 Verdict = tuple[RuleResult, list[str], Optional[str]]
 NA: Verdict = (RuleResult.NOT_APPLICABLE, [], None)
 
+# Why the browser-observation rules (BITM-01..04) can't execute in a phone app's context.
+BROWSER_OBSERVATION_NA = ("Not applicable here: this rule needs live observation inside the browser session "
+                          "(page and WebSocket traffic), which this device context cannot provide.")
+
+
+def na_because(reason: str) -> Verdict:
+    """Not applicable, with the reason — so the DI shows the rule was considered and why it couldn't run here."""
+    return (RuleResult.NOT_APPLICABLE, [reason], None)
+
 
 def met(*evidence: str) -> Verdict:
     return (RuleResult.MET, [e for e in evidence if e], None)
@@ -72,7 +81,8 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
         if not rep:
             return NA
         if rep.get("status") in ("unavailable", "not_configured", "error"):
-            return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "reputation lookup did not complete")
+            failure = f" ({rep['failure']})" if rep.get("failure") else ""
+            return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", f"reputation lookup did not complete{failure}")
         if rep.get("verdict") == "malicious":
             return met(f"reputation verdict: malicious ({rep.get('source', 'threat intelligence')})")
         return unmet("reputation verdict: not listed as malicious")
@@ -190,10 +200,12 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
 
     def bitm(rule_id: str) -> Callable[[dict], Verdict]:
         def check(ev: dict) -> Verdict:
+            # Without browser/WebSocket observation the rule cannot execute in this context: NOT APPLICABLE
+            # (reason recorded) — different from a check that should have run but failed.
+            if not _b(ev, "visibility.browser") or not _b(ev, "visibility.websocket"):
+                return na_because(BROWSER_OBSERVATION_NA)
             if not ev.get("credential_interaction") and not _b(ev, "code_interaction"):
                 return unmet("no sensitive authentication interaction observed")
-            if not _b(ev, "visibility.browser") or not _b(ev, "visibility.websocket"):
-                return gap("BROWSER_VISIBILITY_UNAVAILABLE", "real-time authentication-relay evidence is not observable on this platform")
             relay = bool(ev.get("realtime_relay"))
             inconsistent = bool(ev.get("auth_origin_unrelated") or ev.get("brand_mismatch"))
             deception = bool(ev.get("deception_evidence") or ev.get("local_level") in ("suspicious", "malicious"))

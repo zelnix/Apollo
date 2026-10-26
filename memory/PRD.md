@@ -1,3 +1,29 @@
+## Failed lookups, phone-only rules, one Threat Case per input, Limited by cause (2026-10-26)
+- **Reputation lookups** (`src/domain/reputationLookup.ts`): controlled retry per the catalogue policy (3 attempts,
+  800 ms doubling backoff, 45 s budget; number lookups 30 s), in-flight dedup per (check, key). Transient = timeout,
+  offline, 5xx, 429, malformed, coverage "none" (provider_unavailable). Never retried: 401/403/4xx, not_configured.
+  All attempts failing → reputation `unavailable` with `failure` (gap evidence "reputation lookup did not complete
+  (timeout)"), RetryRecord on the Triage record (DI shows it). Coverage "none" is now unavailable, never a pass.
+  Used by checkLink (`lookupUrlIntel`, 30 s/attempt via new `apiPost(..., {timeoutMs})`), message/email links
+  (`fetchMessageUrlIntel`, dedupes repeated URLs; malformed answers no longer dropped), numbers (`lookupNumberRisk`;
+  server already retries IPQS so "unknown" answers are final).
+- **BITM-01..04**: NOT APPLICABLE with reason `BROWSER_OBSERVATION_NA` when browser/WebSocket observation is absent
+  (both engines). Catalogue v2: those rules carry `notApplicableWithout: "browser_observation"` instead of a gapCode.
+  DI lists every not-applicable rule with its reason.
+- **One input → one Threat Case**: root cause was `patrol_records._issue_key` anchoring on investigation_case_id — an
+  event filed before its case was bound got a second logical issue (two cards). `_stable_issue_key` pins the key the
+  source event was first filed under (and joins an existing case's key, same category); `current()`/`timeline()`
+  merge legacy split keys by source event (`_canonical_issue_keys`). Verified in preview: one check → 1 key, 1 card.
+- **Limited by cause**: device posts `POST /api/triage/telemetry` (egress `triage_telemetry`: codes only) after every
+  device Triage; server Triage (`store.record_triage_history`, first save only) records too. Collection
+  `triage_outcome_telemetry` (platform/adapter_mode from the device doc). Admin → Triage "Limited by cause": outcome
+  totals, Limited by cause × source type, lookup retry outcomes; real phones only by default (`?scope=all`, `?days=7`).
+  Causes: reputation_{timeout,offline,server_error,rate_limited,malformed,provider_unavailable,auth_failure,forbidden,
+  rejected,not_configured,no_data,unavailable}, insufficient_evidence, number_risk_moderate, rule_execution_error, gap_<code>.
+- Tests: frontend `tests/reputationLookup.test.ts` (10), triage BITM test updated — 1008/1008; backend
+  `tests/test_case_identity_and_limited_causes.py` (5), contract test updated — 1265 passed. Rule book updated + stamped.
+
+
 ## DI tab decision trace; Limited wording; Triage Limited investigation (report only) (2026-10-26)
 - **DI tab** (`src/components/DiReport.tsx`, both Threat Case and Investigation Report): "Decision path" card
   (Deterministic triage → TC FlyBy → Magnum DI → Higgins, pure builder `src/domain/diTrace.ts`, each step from

@@ -6,7 +6,8 @@
 
 import { apiPost } from "@/src/api/client";
 import { parseIntelResult } from "@/src/domain/intelContract";
-import type { DomainInfo } from "@/src/domain/types";
+import { lookupWithRetry, type LookupFailure, type LookupOutcome } from "@/src/domain/reputationLookup";
+import type { DomainInfo, IntelResult } from "@/src/domain/types";
 
 export interface MessageUrlResult {
   url: string;
@@ -17,10 +18,42 @@ export interface MessageUrlResult {
   redirect_chain?: string[];
   final_url?: string | null;
   domain_info?: DomainInfo | null;
+  /** Set when the lookup established nothing: how it failed, after the controlled retry. */
+  failure?: LookupFailure | null;
 }
 
 export function hostOfUrl(url: string): string {
   return url.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase();
+}
+
+/** Per-attempt budget: the server bounds its own work well inside this, and the lookup is retried. */
+const INTEL_TIMEOUT_MS = 30000;
+
+const LOOKUP_FAILURE_MESSAGE: Record<LookupFailure, string> = {
+  timeout: "The reputation service took too long to answer.",
+  offline: "ApolloSG couldn't reach the reputation service.",
+  server_error: "The reputation service is having trouble right now.",
+  rate_limited: "The reputation service is busy right now.",
+  malformed: "The reputation service sent an answer ApolloSG couldn't read.",
+  provider_unavailable: "No reputation source could check this link.",
+  auth_failure: "ApolloSG's reputation check wasn't authorised for this device.",
+  forbidden: "This device isn't allowed to use the reputation check.",
+  rejected: "The reputation service couldn't accept this link for checking.",
+  not_configured: "The reputation service isn't set up here.",
+  no_data: "The reputation service had no information about this.",
+};
+
+export function lookupFailureMessage(failure: LookupFailure, error?: unknown): string {
+  return error instanceof Error && error.message ? error.message : LOOKUP_FAILURE_MESSAGE[failure];
+}
+
+/** One reputation lookup with the controlled retry. A malformed answer, or one where no source could check
+ *  anything (coverage "none"), counts as unavailable — never as a clean result. */
+export function lookupUrlIntel(value: string, deviceId: string | null): Promise<LookupOutcome<IntelResult | null>> {
+  return lookupWithRetry("reputation_lookup", value, async () => {
+    const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value, device_id: deviceId ?? undefined, expand: true }, { timeoutMs: INTEL_TIMEOUT_MS });
+    return parseIntelResult(raw);
+  }, { unavailable: (intel) => (!intel ? "malformed" : intel.coverage === "none" ? "provider_unavailable" : null) });
 }
 
 /** Reputation for up to `limit` links. A link the service could not answer for is still returned,
@@ -31,32 +64,21 @@ export async function fetchMessageUrlIntel(
   limit = 5,
 ): Promise<MessageUrlResult[]> {
   const results: MessageUrlResult[] = [];
-  for (const rawUrl of urls.slice(0, limit)) {
-    try {
-      const raw = await apiPost<unknown>("/intel/check", "intel_check", {
-        indicator_type: "url",
-        value: rawUrl,
-        device_id: deviceId ?? undefined,
-        expand: true,
-      });
-      const parsed = parseIntelResult(raw);
-      if (parsed) {
-        results.push({
-          url: rawUrl,
-          host: hostOfUrl(rawUrl),
-          verdict: parsed.verdict === "malicious" ? "malicious" : parsed.verdict === "clean" ? "clean" : "unknown",
-          threat_types: parsed.threat_types ?? [],
-          // Real coverage from the reputation service. "none" means nothing could be checked —
-          // it must never be recorded as a completed check.
-          coverage: parsed.coverage === "none" ? "unavailable" : parsed.coverage,
-          redirect_chain: parsed.redirect_chain ?? undefined,
-          final_url: parsed.final_url ?? null,
-          domain_info: parsed.domain_info ?? null,
-        });
-      }
-    } catch {
-      results.push({ url: rawUrl, host: hostOfUrl(rawUrl), verdict: "unknown", threat_types: [], coverage: "unavailable" });
-    }
+  for (const rawUrl of [...new Set(urls)].slice(0, limit)) {
+    const { value: parsed, failure } = await lookupUrlIntel(rawUrl, deviceId);
+    results.push({
+      url: rawUrl,
+      host: hostOfUrl(rawUrl),
+      verdict: failure ? "unknown" : parsed?.verdict === "malicious" ? "malicious" : parsed?.verdict === "clean" ? "clean" : "unknown",
+      threat_types: failure ? [] : parsed?.threat_types ?? [],
+      // Real coverage from the reputation service. A failed lookup is "unavailable" — it must never be
+      // recorded as a completed check.
+      coverage: failure || !parsed ? "unavailable" : parsed.coverage,
+      redirect_chain: parsed?.redirect_chain ?? undefined,
+      final_url: parsed?.final_url ?? null,
+      domain_info: parsed?.domain_info ?? null,
+      failure,
+    });
   }
   return results;
 }

@@ -21,6 +21,7 @@ async def ensure_indexes() -> None:
     await db.patrol_records.create_index([("owner_id", 1), ("logical_issue_key", 1), ("revision", 1)], unique=True)
     await db.patrol_records.create_index([("owner_id", 1), ("source_event_id", 1), ("source_fingerprint", 1)], unique=True)
     await db.patrol_records.create_index([("owner_id", 1), ("occurred_at", -1)])
+    await db.patrol_records.create_index([("owner_id", 1), ("investigation_case_id", 1), ("category", 1)])
 
 
 def _digest(value: str) -> str:
@@ -96,8 +97,44 @@ def _wire(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _stable_issue_key(event: PatrolEventIn) -> str:
+    """One source event is one Threat Case for its whole life.
+
+    `_issue_key` anchors on the investigation case when there is one, so the same event first filed without a
+    case and then bound to one would otherwise start a second logical issue — two Threat Case cards for one
+    check. The key an event was first filed under therefore sticks; and a new event for a case that already has
+    a record (same category) joins that record's issue."""
+    prior = await db.patrol_records.find_one({"owner_id": event.device_id, "source_event_id": event.event_id},
+                                             {"_id": 0, "logical_issue_key": 1}, sort=[("created_at", 1)])
+    if not prior and event.investigation_case_id:
+        prior = await db.patrol_records.find_one(
+            {"owner_id": event.device_id, "investigation_case_id": event.investigation_case_id, "category": event.category},
+            {"_id": 0, "logical_issue_key": 1}, sort=[("created_at", 1)])
+    return prior["logical_issue_key"] if prior else _issue_key(event)
+
+
+def _canonical_issue_keys(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """Read records filed before keys were pinned as one issue: keys that share a source event are one issue,
+    named after the key that event was first filed under."""
+    parent: dict[str, str] = {}
+
+    def find(key: str) -> str:
+        while parent.setdefault(key, key) != key:
+            key = parent[key]
+        return key
+
+    first_key: dict[str, str] = {}
+    for row in sorted(rows, key=lambda r: r["created_at"]):
+        key = row["logical_issue_key"]
+        anchor = first_key.setdefault(row["source_event_id"], key)
+        root_a, root_b = find(anchor), find(key)
+        if root_a != root_b:
+            parent[root_b] = root_a
+    return {key: find(key) for key in list(parent)}
+
+
 async def append(event: PatrolEventIn, verified: bool) -> dict[str, Any]:
-    fingerprint, logical_key = _fingerprint(event, verified), _issue_key(event)
+    fingerprint, logical_key = _fingerprint(event, verified), await _stable_issue_key(event)
     replay = await db.patrol_records.find_one({"owner_id": event.device_id, "source_event_id": event.event_id, "source_fingerprint": fingerprint}, {"_id": 0})
     latest = await db.patrol_records.find_one({"owner_id": event.device_id, "logical_issue_key": logical_key}, {"_id": 0}, sort=[("revision", -1)])
     # A replay is idempotent only while it is still the latest revision; returning to an earlier
@@ -169,9 +206,10 @@ async def backfill_owner(owner: str, limit: int = 500) -> None:
 async def current(owner: str, limit: int = 200) -> list[dict[str, Any]]:
     await backfill_owner(owner)
     rows = await db.patrol_records.find({"owner_id": owner, "duplicate_of": None}, {"_id": 0}).sort([("occurred_at", -1), ("revision", -1)]).limit(1000).to_list(1000)
+    canonical = _canonical_issue_keys(rows)
     latest: dict[str, dict] = {}
     for row in rows:
-        latest.setdefault(row["logical_issue_key"], row)
+        latest.setdefault(canonical[row["logical_issue_key"]], row)
     return [_wire(row) for row in sorted(latest.values(), key=lambda value: value["occurred_at"], reverse=True)[:limit]]
 
 
@@ -179,5 +217,8 @@ async def timeline(owner: str, record_id: str) -> list[dict[str, Any]]:
     selected = await db.patrol_records.find_one({"owner_id": owner, "record_id": record_id}, {"_id": 0})
     if not selected:
         return []
-    rows = await db.patrol_records.find({"owner_id": owner, "logical_issue_key": selected["logical_issue_key"]}, {"_id": 0}).sort("revision", 1).to_list(500)
+    # Every key filed for this record's source event belongs to the same issue.
+    keys = {selected["logical_issue_key"], *await db.patrol_records.distinct(
+        "logical_issue_key", {"owner_id": owner, "source_event_id": selected["source_event_id"]})}
+    rows = await db.patrol_records.find({"owner_id": owner, "logical_issue_key": {"$in": sorted(keys)}}, {"_id": 0}).sort("created_at", 1).to_list(500)
     return [_wire(row) for row in rows]

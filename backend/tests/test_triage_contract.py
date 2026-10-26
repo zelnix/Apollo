@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.triage import Outcome, evaluate, record_triage_history  # noqa: E402
 from services.triage.catalogue import CATALOGUE, RULES  # noqa: E402
 from services.triage.contract import RuleResult, legacy_outcome  # noqa: E402
-from services.triage.engine import run_with_retries  # noqa: E402
+from services.triage.engine import BROWSER_OBSERVATION_NA, run_with_retries  # noqa: E402
 
 
 # ── Catalogue integrity ─────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ def test_concerning_but_unmatched_evidence_returns_limited_not_possible_threat()
     assert investigation.recoverable is False  # nothing a re-check could fix
 
 
-def test_platform_signals_record_a_gap_instead_of_pretending_to_check():
+def test_browser_observation_rules_are_not_applicable_without_the_platform_signal():
     investigation = evaluate({
         "source_type": "link", "credential_interaction": True, "local_level": "uncertain",
         "indicator_match": False, "credentials_in_url": False,
@@ -197,10 +197,10 @@ def test_platform_signals_record_a_gap_instead_of_pretending_to_check():
         "visibility": {"browser": False, "websocket": False},
     })
     bitm = [r for r in investigation.rules if r.rule_id.startswith("BITM-") and r.rule_id != "BITM-05"]
-    assert bitm and all(r.result is RuleResult.COVERAGE_GAP for r in bitm)
-    assert "BROWSER_VISIBILITY_UNAVAILABLE" in [g.code for g in investigation.coverage_gaps]
-    assert all(not g.recoverable for g in investigation.coverage_gaps
-               if g.code == "BROWSER_VISIBILITY_UNAVAILABLE")
+    assert len(bitm) == 4 and all(r.result is RuleResult.NOT_APPLICABLE for r in bitm)
+    assert all(r.evidence == [BROWSER_OBSERVATION_NA] for r in bitm), "the reason stays visible in the DI"
+    assert "BROWSER_VISIBILITY_UNAVAILABLE" not in [g.code for g in investigation.coverage_gaps]
+    assert investigation.outcome is not Outcome.LIMITED
 
 
 def test_never_alone_indicators_do_not_create_a_threat():
