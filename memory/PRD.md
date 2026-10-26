@@ -1,3 +1,17 @@
+## Gemini Map admin page; page readers and protection explanations removed (2026-10-26)
+- **Gemini Map** (`/api/admin/gemini-map`, nav item): the 3 features that call Gemini (Magnum DI, TC FlyBy web search,
+  Ask Higgins) with code location, model, when it calls, and this week's calls / failed / searches / est. cost / last
+  call. Week = Monday 00:00 in the admin's zone (`?tz=` added by a one-line script). `gemini_usage_by_feature()` buckets
+  records by purpose + correlation id prefix (case-/chat-/protection-/page-crawl/msg-check); anything else shows
+  under "Other calls this week" so totals reconcile. Tests: `tests/test_admin_gemini_map.py`.
+- **Removed:** `/api/page/extract` + `/api/page/crawl` (routers/analysis.py), `Purpose.PAGE_SIGNAL_EXTRACTION`,
+  egress `page_extract`/`page_crawl`; Device Protection AI explanations (`POST /protections/device/explanation`,
+  scope/caching/Gemini in services/protection_explanations.py, preview-simulator branch, egress
+  `protection_explanation`, `explanationScope` on catalogue rows). Device protections now show only the reviewed
+  explanation (`GET /protections/device/{id}`); no explanation → "ApolloSG doesn't have an explanation of this
+  protection yet." Old phone-cached Higgins copies are ignored. Apollo Protection explanations unchanged.
+- Remaining Gemini callers: coordinator.run_turn (Magnum DI), teddy/search.run (TC FlyBy), chat.reply (Ask Higgins).
+
 ## Family sharing: code-only pairing; Threats → Family alerts link (2026-10-26)
 - **Email invitations removed end to end:** `/family/guardians` (POST/GET/DELETE) and `/family/confirm/{token}` are
   gone (core/auth.py has no public prefix any more); `notify_guardians` only fans out to paired devices (in-app + push),

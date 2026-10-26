@@ -6,7 +6,7 @@ protection materially changes.
 DEVICE_SEEDS: the common device protections (Android, iOS, Windows, macOS), explained once. Each explains the
 protection in general — never the person's current setting, which only the phone's own read can tell — and never
 the settings path, which lives with the device catalogue because it differs by OS and maker. Anything not seeded
-here is a genuine gap that Higgins fills once with Gemini (see protection_explanations.py).
+here has no explanation; the app says so plainly and nothing writes one.
 """
 
 APOLLO_PROTECTIONS: dict[str, dict] = {

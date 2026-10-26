@@ -146,10 +146,6 @@ class TestBinaryAuthorisationIntegration:
         from services.higgins.llm_boundary import Purpose
         assert Purpose.INVESTIGATION in _BINARY_AUTHORISED_PURPOSES
 
-    def test_provider_allows_binary_for_page_signal_extraction(self):
-        from services.higgins.provider import _BINARY_AUTHORISED_PURPOSES
-        from services.higgins.llm_boundary import Purpose
-        assert Purpose.PAGE_SIGNAL_EXTRACTION in _BINARY_AUTHORISED_PURPOSES
 
 
 class TestSubmittedImagesAreInvestigated:

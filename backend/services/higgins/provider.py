@@ -205,7 +205,6 @@ class GeminiResult:
 # Purposes that are authorised for binary (image/audio) content transmission.
 _BINARY_AUTHORISED_PURPOSES = frozenset({
     Purpose.VISION_PREFLIGHT,
-    Purpose.PAGE_SIGNAL_EXTRACTION,
     Purpose.INVESTIGATION,
     # The Vision Gate exists to have Gemini look at the person's privacy-screened image.
     Purpose.VISION_INVESTIGATION,

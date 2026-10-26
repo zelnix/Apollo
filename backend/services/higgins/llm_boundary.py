@@ -119,7 +119,6 @@ class Purpose(str, Enum):
     RESEARCH = "research"                     # Minimal public identifiers only
     VISION_PREFLIGHT = "vision_preflight"     # Image admission check (secret detection)
     TOKEN_COUNT = "token_count"               # Same as the associated purpose
-    PAGE_SIGNAL_EXTRACTION = "page_signal_extraction"  # Screenshot → security signal extraction (multimodal)
     PUBLIC_ADVISORY_ANALYSIS = "public_advisory_analysis"  # Government scam advisory classification
     VISION_INVESTIGATION = "vision_investigation"  # Vision Gate: photograph/upload → indicator extraction + routing
     TRIAGE = "triage"                         # Minimal structured triage: SAFE/SUSPICIOUS/UNCERTAIN only

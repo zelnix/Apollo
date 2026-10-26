@@ -69,27 +69,26 @@ const HEALTH_PILL: Record<ProtectionHealth, Tone> = {
   protected: "resting", review: "growling", action: "biting", check_manually: "ears_up", unable: "unknown", not_available: "unknown",
 };
 
-type ExplanationState = { status: "loading" } | { status: "ready"; result: ExplanationResult } | { status: "failed"; message: string };
+type ExplanationState = { status: "loading" } | { status: "ready"; result: ExplanationResult } | { status: "none"; message: string } | { status: "failed"; message: string };
 
-/** Higgins' explanation of this protection — from the phone's copy, else Apollo's backend (once registered). */
+/** The reviewed explanation of this protection — from the phone's copy, else ApolloSG's backend (once registered). */
 function useExplanation(row: DeviceProtectionRow | null, deviceId: string | null): { state: ExplanationState; retry: () => void } {
   const rowId = row?.id;
-  const title = row?.title;
-  const scope = row?.explanationScope;
   const [state, setState] = useState<ExplanationState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!rowId || !title || !scope || !deviceId) return;
+    if (!rowId || !deviceId) return;
     let cancelled = false;
     setState({ status: "loading" });
-    deviceProtectionExplanation({ id: rowId, title, explanationScope: scope })
+    deviceProtectionExplanation({ id: rowId })
       .then((result) => { if (!cancelled) setState({ status: "ready", result }); })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setState({ status: "failed", message: error instanceof ExplanationPending ? error.message : "Higgins couldn’t load this explanation right now. Nothing has been made up in its place." });
+        setState(error instanceof ExplanationPending ? { status: "none", message: error.message }
+          : { status: "failed", message: "Higgins couldn’t load this explanation right now. Nothing has been made up in its place." });
       });
     return () => { cancelled = true; };
-  }, [rowId, title, scope, deviceId, attempt]);
+  }, [rowId, deviceId, attempt]);
   return { state, retry: () => setAttempt((n) => n + 1) };
 }
 
@@ -184,11 +183,7 @@ export default function CapabilityDetailScreen() {
                 <View style={s.section} testID="capability-protects-against">
                   <Text style={s.sectionTitle}>What it protects you against</Text>
                   <Text style={s.text}>{explanation.state.result.explanation.protectsAgainst}</Text>
-                  <Text style={s.attr} testID="capability-explanation-source">
-                    {explanation.state.result.source === "apollo_reviewed" ? "Explanation reviewed by Apollo."
-                      : explanation.state.result.source === "preview_simulator" ? "SIMULATED — preview build, no AI call was made. Drawn from ApolloSG’s knowledge base where it had something."
-                        : `Explained by Higgins for ${explanation.state.result.scopeLabel}.`}
-                  </Text>
+                  <Text style={s.attr} testID="capability-explanation-source">Explanation reviewed by Apollo.</Text>
                 </View>
               </>
             ) : (
@@ -199,6 +194,8 @@ export default function CapabilityDetailScreen() {
                     <ActivityIndicator size="small" color={colors.brandPrimary} />
                     <Text style={s.text}>Higgins is getting the explanation…</Text>
                   </View>
+                ) : explanation.state.status === "none" ? (
+                  <Text style={s.text} testID="capability-explanation-none">{explanation.state.message}</Text>
                 ) : (
                   <>
                     <Text style={s.text} testID="capability-explanation-failed">{explanation.state.message}</Text>

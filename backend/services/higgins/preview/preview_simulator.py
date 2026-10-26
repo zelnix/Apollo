@@ -13,7 +13,6 @@ guidance and the trusted pages Apollo maintains) — never Gemini, never the web
   that the knowledge base has nothing on it.
 - An investigation is derived from THE ACTUAL EVIDENCE that was sent (see preview_analysis), and any
   knowledge-base entry on the same subject is added as general knowledge — never as a finding.
-- A Device Protection explanation uses a matching entry where there is one.
 It is deterministic and rule-based, it quotes only what the evidence and the knowledge base contain, and
 it is labelled SIMULATED everywhere.
 
@@ -77,8 +76,7 @@ def _kb_reference(entry: dict) -> str:
 
 
 def query_text(purpose_name: str, blocks: list[EvidenceBlock]) -> str:
-    """What to look up in the knowledge base: the evidence for an investigation, otherwise the person's own
-    question, or the protection being explained."""
+    """What to look up in the knowledge base: the evidence for an investigation, otherwise the person's own question."""
     if purpose_name == "investigation":
         evidence = " ".join(b.text for b in blocks if b.evidence_id and b.text)
         if evidence:
@@ -89,9 +87,8 @@ def query_text(purpose_name: str, blocks: list[EvidenceBlock]) -> str:
     except (ValueError, TypeError):
         data = None
     if isinstance(data, dict):
-        for field in ("message", "protection"):
-            if isinstance(data.get(field), str):
-                return data[field].split("\n\n", 1)[0]
+        if isinstance(data.get("message"), str):
+            return data["message"].split("\n\n", 1)[0]
     return raw.split("\n\n", 1)[0][:4000]
 
 
@@ -188,25 +185,6 @@ def _chat_payload(blocks: list[EvidenceBlock] | None = None, kb: list[dict] | No
     }
 
 
-_EXPLANATION_FIELDS = {"what", "why", "protects_against"}
-
-
-def _explanation_payload(kb: list[dict] | None, query: str) -> dict:
-    """A Device Protection explanation in the shape `ModelExplanation` requires, labelled as simulated."""
-    if kb:
-        entry = kb[0]
-        words = knowledge.excerpt(entry.get("body") or entry.get("summary") or "", knowledge.terms(query), max_chars=260)
-        why = f"From {entry.get('publisher') or 'ApolloSG'} — “{entry['title']}”: {words}"
-    else:
-        why = "ApolloSG's knowledge base has nothing on this protection yet."
-    return {
-        "what": f"{SIMULATED_NOTE}. Preview build, so the AI tools weren't asked to explain “{query}”."[:400],
-        "why": why[:400],
-        "protects_against": "Shown in the published app, where Higgins explains it."[:300],
-        "recommended": "Open the published ApolloSG app for Higgins' explanation."[:300],
-    }
-
-
 # Word sets → Apollo destination, used only by the preview simulator. Most specific first.
 _PREVIEW_ROUTE_HINTS: list[tuple[tuple[str, ...], str]] = [
     (("call", "screen"), "/call-guard"),
@@ -234,15 +212,13 @@ def _health_payload() -> dict:
 
 
 def simulated_text(purpose: Purpose, json_output: bool, blocks: list[EvidenceBlock] | None = None,
-                   kb: list[dict] | None = None, query: str = "", response_schema: Any = None) -> str:
+                   kb: list[dict] | None = None, query: str = "") -> str:
     """The material the simulator returns at the boundary, in the form the caller asked for."""
     name = purpose.value if hasattr(purpose, "value") else str(purpose)
     if not json_output and name not in ("investigation",):
         return FIXED_PREVIEW_RESPONSE
     if name == "investigation":
         return json.dumps(_investigation_payload(blocks or [], kb), ensure_ascii=False)
-    if _EXPLANATION_FIELDS <= set(getattr(response_schema, "model_fields", None) or {}):
-        return json.dumps(_explanation_payload(kb, query), ensure_ascii=False)
     if name in ("ordinary_chat", "chat", "conversation", "assistant"):
         return json.dumps(_chat_payload(blocks, kb, query), ensure_ascii=False)
     if name in ("health", "health_check", "diagnostics"):
@@ -286,7 +262,7 @@ async def simulate_generate(
     if name == "teddy_search":
         text, grounding = await teddy_lookup(blocks)
     else:
-        text = simulated_text(purpose, json_output, blocks, kb=kb, query=query, response_schema=response_schema)
+        text = simulated_text(purpose, json_output, blocks, kb=kb, query=query)
     prompt_chars = (len(system) if system else 0) + int(payload_audit.get("total_text_chars") or 0)
     usage = {
         "prompt_token_count": _estimate_tokens(prompt_chars),

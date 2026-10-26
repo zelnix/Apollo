@@ -80,18 +80,6 @@ console.log("\n[Test 4] Egress boundary — no message_extract endpoint");
   assert(threwError, "message_extract is no longer an allowed egress endpoint");
 }
 
-// TEST 5: Egress boundary — page_extract
-console.log("\n[Test 5] Egress boundary — page_extract needs no approval metadata");
-{
-  const { enforceEgress } = await import("../src/domain/privacy.ts");
-  const payload = { device_id: "dev-456", url_hint: "https://example.com" };
-  let threwError = false;
-  let egressed;
-  try { egressed = enforceEgress("page_extract", payload); }
-  catch (e) { threwError = true; console.log("    Error: " + e.message); }
-  assert(!threwError && egressed?.url_hint === "https://example.com", "page_extract accepts a plain image submission");
-}
-
 // TEST 6: Credential handling remains strict
 console.log("\n[Test 6] Credential handling — always strict");
 {

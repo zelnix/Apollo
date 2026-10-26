@@ -173,7 +173,6 @@ class TestBinaryContentAuthorisation:
         from services.higgins.llm_boundary import Purpose
         # These purposes MUST allow binary
         assert Purpose.VISION_PREFLIGHT in _BINARY_AUTHORISED_PURPOSES
-        assert Purpose.PAGE_SIGNAL_EXTRACTION in _BINARY_AUTHORISED_PURPOSES
         assert Purpose.INVESTIGATION in _BINARY_AUTHORISED_PURPOSES
         # These purposes MUST NOT allow binary
         assert Purpose.RESEARCH not in _BINARY_AUTHORISED_PURPOSES
@@ -251,11 +250,11 @@ class TestScamAnalysisGateway:
 # ── 6. Credentials never leave for the newer purposes ──────────────────────
 
 class TestNewPurposeBoundary:
-    """Page-signal extraction and advisory analysis keep indicators and drop credentials."""
+    """Advisory analysis keeps indicators and drops credentials."""
 
     def test_credentials_stripped_indicators_kept(self):
         from services.higgins.llm_boundary import enforce_boundary, Purpose
-        for purpose in (Purpose.PAGE_SIGNAL_EXTRACTION, Purpose.PUBLIC_ADVISORY_ANALYSIS):
+        for purpose in (Purpose.PUBLIC_ADVISORY_ANALYSIS,):
             out = enforce_boundary(purpose, "Scam at evil-bank.example. Your password is hunter22")
             assert "evil-bank.example" in out
             assert "hunter22" not in out
@@ -277,5 +276,5 @@ class TestProviderConfiguration:
 
     def test_purpose_enum_includes_new_values(self):
         from services.higgins.llm_boundary import Purpose
-        assert hasattr(Purpose, "PAGE_SIGNAL_EXTRACTION")
+        assert not hasattr(Purpose, "PAGE_SIGNAL_EXTRACTION")  # the screenshot page reader was removed
         assert hasattr(Purpose, "PUBLIC_ADVISORY_ANALYSIS")

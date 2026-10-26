@@ -425,8 +425,6 @@ function nativeRow(p: ProviderRead, kind: "call" | "message", nativeReadOk: bool
     stateLabel: healthLabel(state, health),
     detail,
     attributedTo: p.provider,
-    // A maker's own app (Samsung Smart Call) is explained once per maker; a Google or carrier app once for Android.
-    explanationScope: p.packageName.startsWith("com.samsung.") ? "oem" : "os",
     classificationAccessible: p.classificationAccessible,
     evidenceLine,
     guidance: state === "installed_not_default" ? defaultHandlerGuidance(p, kind) : undefined,

@@ -106,9 +106,6 @@ export const PROTECTION_AREA_LABEL: Record<ProtectionArea, string> = {
 
 export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["access", "apps", "privacy", "calls_messages", "web", "updates", "recovery"];
 
-/** How widely one explanation of a protection is true — the broadest accurate scope is used for reuse. */
-export type ExplanationScope = "os" | "os_version" | "oem" | "oem_os_version" | "model";
-
 /**
  * Rows grouped by category, in reading order. Empty categories are dropped.
  *
@@ -155,8 +152,6 @@ export interface DeviceProtectionRow {
   attributedTo: string;
   /** Worth having for some people, not for everyone — never listed under "Needs checking". */
   optional?: boolean;
-  /** How widely Higgins' explanation of this protection is true (what it is, why it matters). */
-  explanationScope: ExplanationScope;
   /** Provider rows only: whether Apollo may use the provider's classification as evidence. */
   classificationAccessible?: boolean;
   /** Provider rows only: the plain statement about that evidence. */

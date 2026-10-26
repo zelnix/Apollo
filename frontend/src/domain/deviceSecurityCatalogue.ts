@@ -21,7 +21,7 @@
 import {
   evidenceFor, healthFor, healthLabel,
   type CapabilityAction, type CapabilityPlatform, type DeviceProtectionRow,
-  type DeviceProtectionState, type ExplanationScope, type ProtectionArea, type ProtectionGuidance, type ProtectionHealth,
+  type DeviceProtectionState, type ProtectionArea, type ProtectionGuidance, type ProtectionHealth,
 } from "./deviceProtectionTypes.ts";
 import type { PrivateDnsMode } from "./types.ts";
 
@@ -107,8 +107,6 @@ interface SecurityDef {
   minOsMajor?: number;
   /** Worth it for some people only — never listed under "Needs checking". */
   optional?: boolean;
-  /** How widely Higgins' explanation is true. Default: the whole OS. */
-  explanationScope?: ExplanationScope;
   /** Who owns this protection when no read names someone more specific. */
   owner: string | ((platform: CapabilityPlatform) => string);
   /** The configuration Higgins recommends. Never phrased as if Apollo knows the current one. */
@@ -742,7 +740,6 @@ const CATALOGUE: SecurityDef[] = [
     platforms: ["android"],
     oems: ["samsung"],
     minOsMajor: 14,
-    explanationScope: "oem",
     owner: "Samsung",
     recommended: "Higgins recommends turning Auto Blocker on. You can still install apps from the Play Store and Galaxy Store.",
     steps: () => ["Open Settings → Security and privacy", "Tap ‘Auto Blocker’", "Turn it on"],
@@ -922,7 +919,6 @@ function toRow(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPl
     detail: resolved.detail,
     attributedTo,
     optional: def.optional,
-    explanationScope: def.explanationScope ?? "os",
     guidance: guidance(def, read, platform, device, resolved.state === "not_verifiable" || resolved.state === "not_readable_here"),
   };
 }

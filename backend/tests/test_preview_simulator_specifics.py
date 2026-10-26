@@ -101,7 +101,6 @@ def test_the_brand_article_agrees_with_the_name():
 from services.higgins.chat import ModelChatReply  # noqa: E402
 from services.higgins.knowledge import related_share, terms  # noqa: E402
 from services.higgins.preview.preview_simulator import query_text  # noqa: E402
-from services.protection_explanations import ModelExplanation  # noqa: E402
 
 KB_ENTRY = {"kb_id": "kb-1", "kind": "researched", "title": "Romance scams", "publisher": "Scamwatch",
             "url": "https://www.scamwatch.gov.au/types-of-scams/romance-scams", "authority_tier": "tier_1_authoritative",
@@ -138,16 +137,6 @@ def test_an_investigation_adds_knowledge_as_general_knowledge_never_as_a_finding
     assert "Scamwatch: “Romance scams”" in result["explanationMarkdown"]
     assert all("Romance" not in f["text"] for f in result["findings"])
     assert result["sourceIds"] == []
-
-
-def test_a_protection_explanation_has_the_real_shape_and_is_labelled_simulated():
-    blocks = evidence_blocks([types.Content(role="user", parts=[types.Part(text=json.dumps({"protection": "Samsung Smart Call"}))])])
-    query = query_text("ordinary_chat", blocks)
-    assert query == "Samsung Smart Call"
-    data = json.loads(simulated_text(Purpose.ORDINARY_CHAT, True, blocks, kb=[], query=query, response_schema=ModelExplanation))
-    explanation = ModelExplanation.model_validate(data)
-    assert explanation.what.startswith("SIMULATED") and "Samsung Smart Call" in explanation.what
-    assert "nothing on this protection yet" in explanation.why
 
 
 def test_the_lookup_uses_the_evidence_for_an_investigation_and_the_question_otherwise():

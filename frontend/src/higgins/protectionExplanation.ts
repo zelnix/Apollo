@@ -1,14 +1,9 @@
-// Higgins' explanations of protections — fetched from Apollo's backend, kept on the phone once fetched.
+// Explanations of protections — reviewed text fetched from ApolloSG's backend, kept on the phone once fetched.
 //
-// The backend serves one canonical explanation per Apollo Protection, and for Device Protections a reviewed
-// explanation or one Higgins wrote once and reuses (Gemini only on a genuine miss, never per person). This
-// phone keeps its copy, so reopening a protection never asks again. Only the protection's name, the OS, the
-// maker, the OS version and the model leave the device — never its current state.
-import { Platform } from "react-native";
-
-import { ApiError, apiGet, apiPost } from "@/src/api/client";
+// Every Apollo Protection has one canonical explanation, and the common Device Protections have a reviewed one.
+// Anything else has no explanation and the app says so; no AI writes one. Only the protection's id leaves the phone.
+import { ApiError, apiGet } from "@/src/api/client";
 import type { DeviceProtectionRow } from "@/src/domain/deviceCapabilities";
-import { capabilityPlatform, deviceFacts } from "@/src/security/deviceCapabilityState";
 import { storage } from "@/src/utils/storage";
 
 export interface ProtectionExplanation {
@@ -20,9 +15,7 @@ export interface ProtectionExplanation {
 
 export interface ExplanationResult {
   explanation: ProtectionExplanation;
-  /** apollo_reviewed = written once by Apollo; higgins_cached/new = taught once by Higgins and reused;
-   * preview_simulator = the preview's stand-in for Gemini (never kept). */
-  source: "apollo_reviewed" | "higgins_cached" | "higgins_new" | "preview_simulator";
+  source: "apollo_reviewed";
   scopeLabel: string;
 }
 
@@ -36,57 +29,41 @@ async function cached(): Promise<Cached> {
   } catch { return {}; }
 }
 
+/** A copy this phone kept, if it is reviewed text (older copies written by Higgins are no longer shown). */
+async function local(key: string): Promise<ExplanationResult | undefined> {
+  const found = (await cached())[key];
+  return found?.source === "apollo_reviewed" ? found : undefined;
+}
+
 async function remember(key: string, value: ExplanationResult): Promise<void> {
-  if (value.source === "preview_simulator") return; // a stand-in answer is never kept on the phone
   const all = await cached();
-  await storage.setItem(CACHE, JSON.stringify({ ...all, [key]: { ...value, source: value.source === "higgins_new" ? "higgins_cached" : value.source } }));
+  await storage.setItem(CACHE, JSON.stringify({ ...all, [key]: value }));
 }
 
 /** The one canonical explanation of an Apollo Protection (a Gate). */
 export async function apolloProtectionExplanation(gateId: string): Promise<ExplanationResult> {
   const key = `apollo:${gateId}`;
-  const local = (await cached())[key];
-  if (local) return local;
+  const kept = await local(key);
+  if (kept) return kept;
   const result = await apiGet<ExplanationResult>(`/protections/apollo/${encodeURIComponent(gateId)}`);
   await remember(key, result);
   return result;
 }
 
-const PENDING_MESSAGE = {
-  generating: "Higgins is still writing this explanation. Try again in a moment.",
-  limited: "Higgins has written enough new explanations for this device today. Try again tomorrow.",
-  device_only: "Open ApolloSG on your device to see Higgins' explanation of this protection.",
-} as const;
-
-/** No explanation yet — said plainly, never filled in with made-up text. */
+/** No explanation of this protection — said plainly, never filled in with made-up text. */
 export class ExplanationPending extends Error {
-  constructor(readonly reason: keyof typeof PENDING_MESSAGE) { super(PENDING_MESSAGE[reason]); }
+  constructor() { super("ApolloSG doesn’t have an explanation of this protection yet."); }
 }
 
-/** Higgins' explanation of a Device Protection, for this OS / maker / version at the protection's own scope. */
-export async function deviceProtectionExplanation(row: Pick<DeviceProtectionRow, "id" | "title" | "explanationScope">): Promise<ExplanationResult> {
-  const platform = capabilityPlatform();
-  const device = deviceFacts();
-  const key = `device:${row.id}|${platform}|${row.explanationScope}|${row.explanationScope === "os" ? "" : `${device.manufacturer}|${device.osVersion}`}`;
-  const local = (await cached())[key];
-  if (local) return local;
-  if (platform === "web") {
-    // Not on a device: only the pre-written explanation can be shown — nothing is taught for a browser.
-    const reviewed = await apiGet<ExplanationResult>(`/protections/device/${encodeURIComponent(row.id)}`).catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 404) throw new ExplanationPending("device_only");
-      throw error;
-    });
-    await remember(key, reviewed);
-    return reviewed;
-  }
-  const result = await apiPost<ExplanationResult & { status?: string }>("/protections/device/explanation", "protection_explanation", {
-    protectionId: row.id, title: row.title.slice(0, 80), platform,
-    osVersion: device.osVersion ? String(device.osVersion).slice(0, 20) : null,
-    oem: device.manufacturer ? device.manufacturer.slice(0, 40) : (Platform.OS === "ios" ? "apple" : null),
-    model: device.model ? device.model.slice(0, 60) : null,
-    scope: row.explanationScope,
+/** The reviewed explanation of a Device Protection. */
+export async function deviceProtectionExplanation(row: Pick<DeviceProtectionRow, "id">): Promise<ExplanationResult> {
+  const key = `device:${row.id}`;
+  const kept = await local(key);
+  if (kept) return kept;
+  const reviewed = await apiGet<ExplanationResult>(`/protections/device/${encodeURIComponent(row.id)}`).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) throw new ExplanationPending();
+    throw error;
   });
-  if (result.status) throw new ExplanationPending(result.status === "limited" ? "limited" : "generating");
-  await remember(key, result);
-  return result;
+  await remember(key, reviewed);
+  return reviewed;
 }

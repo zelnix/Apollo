@@ -94,7 +94,6 @@ def _valid_evidence(evidence_id: str, observed_at: str, domain: str = "evil.exam
 @pytest.mark.parametrize(
     "path,payload",
     [
-        ("/page/crawl", {}),
         ("/account/breach", {}),
         ("/call/risk-check", {}),
     ],

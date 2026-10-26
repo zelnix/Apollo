@@ -60,6 +60,7 @@ NAV = [
     ("Play Store",      "/api/admin/play-console",     "&#9654;"),
     ("Family Help Test", "/api/admin/family-help-test", "&#128241;"),
     ("Devices",         "/api/admin/device-list",      "&#128242;"),
+    ("Gemini Map",      "/api/admin/gemini-map",       "&#129517;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
@@ -3404,6 +3405,102 @@ async def device_list_page(request: Request):
            " .reset-box input{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 8px;margin:0 8px;}"
            " .btn-danger{border-color:var(--red);color:var(--red);} .btn-danger:hover{background:rgba(248,81,73,0.12);color:#fff;}")
     return _shell("Devices", "/api/admin/device-list", body, admin=adm, extra_css=css)
+
+
+# ── Gemini Map: every feature that calls Gemini, and what it used this week ──
+# Each AI usage record is put under the feature that made it: by its purpose, and for a shared purpose by the
+# correlation id the feature gives its calls. Anything else is shown by its purpose, so the totals always add up.
+
+_GEMINI_FEATURES = (
+    ("magnum_di", "Magnum DI", "The full investigation of a case, with Google Search when it needs it.",
+     "services/higgins/coordinator.py → run_turn()", lambda: f"{provider.TEXT_MODEL} + Google Search",
+     "When TC FlyBy and what ApolloSG already knows can't settle an investigation."),
+    ("tc_flyby", "TC FlyBy web search", "Narrow searches about a link, number, company, ABN, ACN or licence.",
+     "services/higgins/teddy/search.py → run()", lambda: f"{provider.TEDDY_MODEL} + Google Search",
+     "During an investigation, only for what no saved answer from the last 7 days covers."),
+    ("ask_higgins", "Ask Higgins", "Answers a general scam-safety question nothing in ApolloSG already answers.",
+     "services/higgins/chat.py → reply()", lambda: provider.CHAT_MODEL,
+     "When a question is in scope and nothing saved answers it; the answer is saved and reused."),
+)
+_RETIRED_FEATURES = {
+    "page_signal_extraction": "Screenshot page reading (removed)", "page_crawl": "Web page reading (removed)",
+    "protection": "Protection explanations (removed)", "public_advisory_analysis": "Scam alert analysis (retired)",
+    "research": "Research lookups (retired)", "triage": "Triage screening (retired)", "msg_check": "Message second opinion (retired)",
+}
+
+
+def _starts(prefix: str) -> dict:
+    return {"$regexMatch": {"input": {"$ifNull": ["$correlation_id", ""]}, "regex": f"^{prefix}"}}
+
+
+_FEATURE_OF_RECORD = {"$switch": {"branches": [
+    {"case": {"$and": [{"$in": ["$purpose", ["investigation", "vision_investigation"]]}, _starts("case-")]}, "then": "magnum_di"},
+    {"case": {"$eq": ["$purpose", "teddy_search"]}, "then": "tc_flyby"},
+    {"case": {"$and": [{"$eq": ["$purpose", "ordinary_chat"]}, _starts("chat-")]}, "then": "ask_higgins"},
+    {"case": {"$and": [{"$eq": ["$purpose", "ordinary_chat"]}, _starts("protection-")]}, "then": "protection"},
+    {"case": _starts("page-crawl"), "then": "page_crawl"},
+    {"case": _starts("msg-check"), "then": "msg_check"},
+], "default": {"$ifNull": ["$purpose", "unknown"]}}}
+
+
+def _week_start(offset_minutes: int) -> datetime:
+    """Monday 00:00 this week in the admin's time zone, as UTC."""
+    zone = timezone(timedelta(minutes=offset_minutes))
+    local = now_utc().astimezone(zone)
+    monday = (local - timedelta(days=local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    return monday.astimezone(timezone.utc)
+
+
+async def gemini_usage_by_feature(start: datetime) -> dict[str, dict]:
+    rows = await db.gemini_usage.aggregate([
+        {"$match": {"timestamp": {"$gte": start}}},
+        {"$group": {"_id": _FEATURE_OF_RECORD, "calls": {"$sum": 1}, "failed": {"$sum": {"$cond": ["$success", 0, 1]}},
+                    "cost": {"$sum": {"$ifNull": ["$estimated_cost_usd", 0]}}, "searches": {"$sum": {"$ifNull": ["$search_queries", 0]}},
+                    "last": {"$max": "$timestamp"}}},
+    ]).to_list(100)
+    return {r["_id"]: r for r in rows}
+
+
+def _usage_cells(row: Optional[dict]) -> str:
+    row = row or {}
+    return (f"<td class='num'>{row.get('calls', 0):,}</td><td class='num'>{row.get('failed', 0):,}</td>"
+            f"<td class='num'>{row.get('searches', 0):,}</td><td class='num'>${row.get('cost', 0):.4f}</td><td>{_t(row.get('last'), 'short')}</td>")
+
+
+@router.get("/admin/gemini-map", response_class=HTMLResponse)
+async def gemini_map_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    tz = _tz_param(request)
+    start = _week_start(tz)
+    usage = await gemini_usage_by_feature(start)
+    esc = html_mod.escape
+    rows = "".join(
+        f"<tr data-testid='gemini-feature-{key}'><td><strong>{esc(name)}</strong><br><span class='muted'>{esc(what)}</span></td>"
+        f"<td><code>{esc(code)}</code></td><td>{esc(model())}</td><td class='muted'>{esc(when)}</td>{_usage_cells(usage.get(key))}</tr>"
+        for key, name, what, code, model, when in _GEMINI_FEATURES)
+    current = {key for key, *_ in _GEMINI_FEATURES}
+    others = sorted(((k, v) for k, v in usage.items() if k not in current), key=lambda kv: -kv[1]["calls"])
+    other_rows = "".join(f"<tr><td>{esc(_RETIRED_FEATURES.get(k, k))}</td>{_usage_cells(v)}</tr>" for k, v in others)
+    total_calls = sum(v["calls"] for v in usage.values())
+    total_cost = sum(v["cost"] for v in usage.values())
+    head = "<th>Calls</th><th>Failed</th><th>Searches</th><th>Est. cost (USD)</th><th>Last call</th>"
+    body = f"""
+    <p class="muted" data-testid="gemini-map-week">This week: since Monday 00:00 {local_time.zone_label(tz)}
+    ({_t(start)}). Each call is counted once; the free model check and token count before it are not.</p>
+    <div class="stats-grid">{_stat_card(f"{total_calls:,}", "Gemini calls this week")}{_stat_card(f"${total_cost:.4f}", "Estimated cost this week")}</div>
+    <h2>Features that call Gemini</h2>
+    <div class="table-scroll"><table data-testid="gemini-map-table"><thead><tr><th>Feature</th><th>Where in the code</th><th>Model</th>
+    <th>When it calls</th>{head}</tr></thead><tbody>{rows}</tbody></table></div>
+    <p class="muted">Every call goes through one gateway, <code>generate()</code> in <code>services/higgins/provider.py</code>,
+    which records it. Models can be changed with the GEMINI_*_MODEL settings.</p>
+    {f'<h2>Other calls this week</h2><p class="muted">From features that have been removed or no longer call Gemini.</p><table data-testid="gemini-map-other"><thead><tr><th>Feature</th>{head}</tr></thead><tbody>{other_rows}</tbody></table>' if other_rows else ""}
+    <script>(function(){{if(!/[?&]tz=/.test(location.search)){{location.replace(location.pathname+'?tz='+(-new Date().getTimezoneOffset()));}}}})();</script>"""
+    css = (".muted{color:var(--muted);font-size:0.85em;} td.num{text-align:right;white-space:nowrap;} .table-scroll{overflow-x:auto;}"
+           " .main{min-width:0;} td code{font-size:0.8em;}")
+    return _shell("Gemini Map", "/api/admin/gemini-map", body, admin=adm, extra_css=css)
+
 
 
 @router.post("/admin/reset-stats")
