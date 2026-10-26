@@ -1,3 +1,13 @@
+## Triage Limited check by cause (2026-10-26, report only — nothing changed)
+- Full report: `/app/memory/triage_limited_report.md` (simulation script /tmp/sim_limited.ts, real engine + real
+  /intel/check answers for the 120-link benchmark corpus).
+- Healthy providers → 0/60 clean links Limited; any failed reputation lookup → 60/60 clean links Limited. Benign texts
+  with "call me on <number>" go Limited when the number lookup fails (CB-03 gap that can't change the outcome). Number
+  "review" always Limited by design. No real-phone telemetry in preview; production needs the owner's admin login.
+- Measurement gap: number checks with "allow" never report telemetry. Risk: `/call/risk-check` skips the cache, so
+  IPQS credits (89/1,020 used) drain per call. Recommended: no threshold change; four fixes listed in the report.
+
+
 ## Case Briefing UI check (Stoko + other cases) and fixes found while checking (2026-10-26)
 - Checked in the web preview with three real briefings from `explain.explain_case` (injected as device-committed
   investigations): Stoko email (No scam indicators, no "Needs you"), a lookalike link (Concerning, "Needs you" with
