@@ -26,7 +26,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from services.higgins.teddy.triage import CONSEQUENTIAL, Check, Plan, digits, registrable
+from services.higgins.brand_domains import registrable
+from services.higgins.teddy.triage import CONSEQUENTIAL, Check, Plan, digits
 
 
 @dataclass
@@ -60,9 +61,11 @@ def _ambiguous(f: dict) -> bool:
 
 
 def corroborated_impersonation(plan_: Plan) -> list[dict]:
-    """The material names an organisation, a link in it isn't that organisation's domain, and an independent
-    fact about that same link backs it up (newly registered, flagged, redirected, a direct download)."""
-    mismatched = [f for c in plan_.checks if c.kind == "impersonation" for f in c.facts if f.get("topic") in ("impersonation", "lookalike")]
+    """The material names an organisation, a link in it isn't that organisation's own (not one of its published
+    domains or country sites), and an independent fact about that same link backs it up (newly registered,
+    flagged, redirected to another site, a direct download)."""
+    mismatched = [f for c in plan_.checks if c.kind == "impersonation" for f in c.facts
+                  if f.get("topic") in ("impersonation", "lookalike", "shared_service")]
     places = {registrable(f["place"]) for f in mismatched if f.get("place")}
     support = [f for c in plan_.checks if c.kind == "link" and registrable(c.subject) in places
                for f in c.facts if f["class"] == "live_evidence" and f["signal"] in ("anomaly", "concern")]

@@ -5,7 +5,7 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { OUTCOME_LABEL, gapPlainEnglish, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
+import { LIMITED_CAUTION, OUTCOME_LABEL, gapPlainEnglish, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
 import { spacing, useTheme } from "@/src/theme";
 
 const TONE: Record<string, "resting" | "growling" | "barking" | "neutral"> = {
@@ -17,7 +17,7 @@ const TONE: Record<string, "resting" | "growling" | "barking" | "neutral"> = {
 const MEANING: Record<string, string> = {
   NO_THREAT_IDENTIFIED: "Apollo found nothing threatening in the checks it completed.",
   POSSIBLE_THREAT_IDENTIFIED: "Apollo's deterministic rules matched a known threat pattern, so it investigated further.",
-  LIMITED_UNABLE_TO_DETERMINE: "ApolloSG can't currently say either that this is safe or that it is a possible threat.",
+  LIMITED_UNABLE_TO_DETERMINE: LIMITED_CAUTION,
 };
 
 export function TriageSummary({ record, onRecheck }: { record: TriageInvestigationRecord; onRecheck?: () => void }) {
@@ -40,7 +40,7 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
           {`${record.rulesChecked.length} of ${record.rulesApplicable.length} applicable rules completed.`}
         </Body>
         {met.map((rule) => (
-          <Body key={rule.ruleId} testID={`triage-rule-${rule.ruleId}`}>{`• ${rule.title} (${rule.ruleId})`}</Body>
+          <Body key={rule.ruleId} testID={`triage-rule-${rule.ruleId}`}>{`• ${rule.title}`}</Body>
         ))}
       </View>
 

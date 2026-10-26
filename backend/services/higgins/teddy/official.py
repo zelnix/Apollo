@@ -9,12 +9,12 @@ No AI is involved. A lookup that fails is recorded as unavailable — never as s
 from __future__ import annotations
 
 import asyncio
-import re
 from datetime import datetime, timezone
 
 from services import kb_sources
-from services.higgins.indicators import BRANDS
-from services.higgins.teddy.triage import FREE_MAIL, Check, Plan, abn_valid, acn_valid, registrable
+from services.higgins import brand_domains
+from services.higgins.brand_domains import registrable
+from services.higgins.teddy.triage import FREE_MAIL, Check, Plan, abn_valid, acn_valid
 
 LOOKUP_SECONDS = 8.0
 
@@ -97,9 +97,9 @@ def official_domain(host: str) -> tuple[str, str] | None:
     source = kb_sources.source_for(f"https://{host}")
     if source and source.tier == kb_sources.TIER_1:
         return source.publisher, "ApolloSG's register of official government and regulator domains"
-    for name, domain in BRANDS.values():
-        if registrable(host) == registrable(domain):
-            return name, f"{name}'s published domain ({domain}) on ApolloSG's register of organisation domains"
+    name = brand_domains.owner(host)
+    if name:
+        return name, f"{name}'s published domain ({registrable(host)}) on ApolloSG's register of organisation domains"
     return None
 
 
@@ -121,6 +121,10 @@ def _threat_words(types: list[str]) -> str:
     return " and ".join(dict.fromkeys(_THREATS.get(t, t.replace("_", " ").lower()) for t in types)) or "dangerous"
 
 
+def _host_of(url: str) -> str:
+    return url.split("//")[-1].split("/")[0].split("?")[0].split("#")[0].split("@")[-1].lower()
+
+
 async def _link(check: Check, pg: dict, plan_: Plan) -> None:
     host = check.subject
     owner = official_domain(host)
@@ -134,7 +138,10 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
         chain = (pg["redirects"].get(url) or {}).get("chain") or []
         targets = [url] + ([chain[-1]] if len(chain) > 1 and chain[-1] != url else [])
         if len(targets) > 1:
-            check.facts.append(fact(f"The link {url[:120]} redirects to {targets[-1][:120]}.", "anomaly",
+            # Moving within the same site (or between one organisation's own domains) is how sites work, not a warning sign.
+            same = brand_domains.same_organisation(_host_of(url), _host_of(targets[-1]))
+            check.facts.append(fact(f"The link {url[:120]} redirects to {targets[-1][:120]}" + (", on the same site." if same else "."),
+                                    "neutral" if same else "anomaly", topic="redirect",
                                     source=source_ref("Apollo redirect expansion", authority="independent", basis="HTTP redirect chain recorded by Apollo")))
         for target in targets:
             sb = pg["safe_browsing"].get(target)
@@ -147,7 +154,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
             if not result or result["coverage"] == "none":
                 continue
             checked_any = True
-            target_host = target.split("//")[-1].split("/")[0]
+            target_host = _host_of(target)
             if result["verdict"] == "malicious":
                 publisher = _sb_publisher(result["sources"])
                 check.facts.append(fact(f"{publisher} lists {target_host} as {_threat_words(result['threatTypes'])}.", "concern", decisive=True, topic="listing",
@@ -192,15 +199,16 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
         check.facts.append(fact(f"Google Safe Browsing could not be checked for {host}.", "missing", topic="listing"))
 
 
-def _lookalike(name: str, official: str, place: str) -> bool:
-    """The organisation's name is part of the other address itself (commbank-notice.net) — a lookalike, which is a
-    warning sign on its own, unlike a name merely mentioned beside someone else's link."""
-    host = place.lower()
-    for needle in [n for n, brand in BRANDS.items() if brand == (name, official)] + [name.lower()]:
-        for variant in {needle.replace(" ", ""), needle.replace(" ", "-")}:
-            if len(variant) >= 5 and variant in host or re.search(rf"(?<![a-z0-9]){re.escape(variant)}(?![a-z0-9])", host):
-                return True
-    return False
+def _mismatch(name: str, official: str, place: str, kind: str, detail: str) -> tuple[str, str]:
+    """(text, topic) for an address that isn't one of the organisation's own. Only a lookalike sign or a shared
+    service is a warning sign by itself; an address that doesn't carry the name needs something independent."""
+    if kind == "lookalike":
+        return (f"{place} carries {name}'s name, but it is not {name}'s domain ({official}) — "
+                f"{brand_domains.SIGN_WORDS[detail]}.", "lookalike")
+    if kind == "shared_service":
+        return (f"{place} puts {name}'s name in front of {detail}, a link or website service anyone can use, "
+                f"not on {name}'s own domain ({official}).", "shared_service")
+    return f"The material names {name}, but {place} is not {name}'s domain ({official}).", "impersonation"
 
 
 def _impersonation(check: Check, plan_: Plan) -> None:
@@ -209,20 +217,26 @@ def _impersonation(check: Check, plan_: Plan) -> None:
     if not places:
         check.status, check.open_issue = "needs_reasoning", f"Whether the material genuinely comes from {name}."
         return
-    mismatched = [p for p in places if registrable(p) != registrable(official)]
+    kinds = {place: brand_domains.classify(name, place) for place in places}
+    mismatched = [p for p in places if kinds[p][0] not in ("official", "country_site")]
+    source = source_ref("ApolloSG official-domain register", basis=f"{name}'s published domains")
     if mismatched:
         for place in mismatched[:3]:
-            if _lookalike(name, official, place):
-                text, topic = f"{place} carries {name}'s name, but it is not {name}'s domain ({official}).", "lookalike"
-            else:
-                text, topic = f"The material names {name}, but {place} is not {name}'s domain ({official}).", "impersonation"
-            check.facts.append(fact(text, "anomaly", topic=topic,
-                                    source=source_ref("ApolloSG official-domain register", basis=f"{name}'s published domain")) | {"place": place})
+            text, topic = _mismatch(name, official, place, *kinds[place])
+            check.facts.append(fact(text, "anomaly", topic=topic, source=source) | {"place": place})
         check.status, check.open_issue = "needs_reasoning", f"Impersonation: whether the material genuinely comes from {name}."
+        return
+    domains = sorted({kinds[p][1] for p in places})
+    country = sorted({kinds[p][1] for p in places if kinds[p][0] == "country_site"})
+    if domains == [registrable(official)]:
+        text = f"Every link and address in the material uses {official}, {name}'s official domain."
     else:
-        check.facts.append(fact(f"Every link and address in the material uses {official}, {name}'s official domain.", "clear",
-                                source=source_ref("ApolloSG official-domain register", basis=f"{name}'s published domain")))
-        check.status, check.route = "resolved", "official_source"
+        text = f"Every link and address in the material uses {name}'s own domains ({', '.join(domains)})."
+        if country:
+            text += (f" {', '.join(country)} {'is' if len(country) == 1 else 'are'} {name}'s name exactly on a country ending, "
+                     f"as {name}'s own country sites are; not on ApolloSG's register.")
+    check.facts.append(fact(text, "clear", topic="official_domains", source=source))
+    check.status, check.route = "resolved", "official_source"
 
 
 def _phone(check: Check, pg: dict) -> None:

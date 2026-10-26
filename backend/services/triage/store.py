@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 from core.db import db, now_utc
+from services.triage.catalogue import LIMITED_CAUTION, gap_plain
 from services.triage.contract import Outcome, TriageInvestigation
 
 COLLECTION = "triage_investigations"
@@ -47,7 +48,8 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
     why = [record.title for record in investigation.met_rules][:4] or [
         f"Checked {len(wire['rulesChecked'])} deterministic rule(s); none were met."]
     if gaps:
-        why.append("Coverage gap: " + ", ".join(gap.code for gap in gaps))
+        # Plain English here (Overview, Higgins); the codes stay in `triage_investigation` for the DI view.
+        why.append("Couldn't check: " + " ".join(gap_plain(gap.code) for gap in gaps))
     document = {
         "event_id": event_id, "device_id": device_id, "category": category, "state": state,
         "status": "resolved" if investigation.outcome is Outcome.NO_THREAT else "active",
@@ -55,8 +57,7 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
         "what_happened": investigation.reason[:600],
         "why": why,
         "what_to_do": ("Nothing to do — Apollo found no deterministic threat." if investigation.outcome is Outcome.NO_THREAT
-                       else "ApolloSG couldn't obtain enough evidence. Treat the item with normal caution."
-                       if investigation.outcome is Outcome.LIMITED
+                       else LIMITED_CAUTION if investigation.outcome is Outcome.LIMITED
                        else "Apollo is investigating this further."),
         "indicator_host": indicator_host, "indicator_digest": None, "local_indicator": None,
         "verified_block": False, "adapter_label": "Higgins Triage (deterministic)",

@@ -60,6 +60,7 @@ import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { TriageSummary } from "@/src/components/TriageSummary";
+import { LIMITED_CAUTION, LIMITED_TODO, plainTriageText } from "@/src/domain/triage/contract";
 import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
 import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
@@ -255,6 +256,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
   const record = event.patrol_record;
   const briefing = record?.higginsBriefing;
   const response = investigation?.response ?? null;
+  const limited = !response && event.triage_investigation?.outcome === "LIMITED_UNABLE_TO_DETERMINE";
 
   // Higgins' report, built exactly as Ask Higgins builds it: each fact once. A threat Apollo recorded on its
   // own (no investigation) uses what it recorded instead.
@@ -270,17 +272,18 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
       });
     }
     const headline = (event.headline || "").trim();
-    const established = (briefing?.established ?? event.what_happened ?? "").trim();
+    const established = plainTriageText((briefing?.established ?? event.what_happened ?? "").trim());
     return buildReport({
-      overview: established || (headline && !looksLikeInternalCode(headline) ? headline : ""),
-      fallbackFound: [...(event.why ?? []), ...(briefing?.evidence_points ?? [])].filter((line) => !!line && !looksLikeInternalCode(line)),
-      fallbackMeans: briefing?.meaning ?? null,
+      overview: established || (headline && !looksLikeInternalCode(headline) ? plainTriageText(headline) : ""),
+      fallbackFound: [...(event.why ?? []), ...(briefing?.evidence_points ?? [])].map(plainTriageText).filter((line) => !!line && !looksLikeInternalCode(line)),
+      // A Limited Triage result is never shown as safe or as nothing to worry about.
+      fallbackMeans: limited ? LIMITED_CAUTION : briefing?.meaning ?? null,
     });
-  }, [response, investigation, event, briefing]);
+  }, [response, investigation, event, briefing, limited]);
 
   // What to do — the investigation's own steps, or an explicit statement that nothing needs doing.
   const action = (shownWhatToDo || "").trim();
-  const noAction = !action || /^no action required\.?$/i.test(action);
+  const noAction = !action || /^no action required\.?$/i.test(action) || (limited && /^(nothing to (do|worry)|no action)/i.test(action));
   const note = event.resolved_at
     ? "Nothing to do — this case is closed."
     : status === "investigating"
@@ -288,8 +291,9 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
       : null;
   const steps = !note && response?.actions.length
     ? response.actions.map((a, i) => ({ id: a.id, title: a.label, body: stepText(response, i) }))
-    : [{ id: "todo", title: null, body: note ?? (noAction ? "Nothing to do." : action) }];
+    : [{ id: "todo", title: null, body: note ?? (noAction ? (limited ? LIMITED_TODO : "Nothing to do.") : plainTriageText(action)) }];
   const hasOutcome = !!outcomeLabel(response?.outcome);
+  const risk = limited ? { label: "Not determined", color: "#D97706" } : riskLevel(event.state);
   // "Send to family": the result, what happened, what to do and the website or number — nothing else.
   const summary: FamilySummary = {
     eventId: event.event_id, state: event.state, result: outcomeLabel(response?.outcome) ?? STATUS_LABELS[status],
@@ -332,7 +336,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
         {event.category === "call" && event.local_indicator ? (
           <FactRow icon={Phone} label="Number" value={event.local_indicator} isLast={hasOutcome} />
         ) : null}
-        {!hasOutcome ? <FactRow icon={Search} label="Risk level" value={riskLevel(event.state).label} valueColor={riskLevel(event.state).color} isLast /> : null}
+        {!hasOutcome ? <FactRow icon={Search} label="Risk level" value={risk.label} valueColor={risk.color} isLast /> : null}
       </Card>
 
       {/* Repeat checks of this device: one case, every check listed. */}
@@ -654,7 +658,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
     ...(event.triage_investigation?.rules ?? [])
       .filter((r) => r.result === "met")
       .flatMap((r) => r.evidence)
-      .map((e) => e.trim()),
+      .map((e) => plainTriageText(e.trim())),
   ].filter((line) => !!line && !looksLikeInternalCode(line))));
 
   // Load device investigation data for investigation-sourced cases
@@ -1231,7 +1235,7 @@ export default function ThreatCaseScreen() {
         ) : activeTab === "history" ? (
           <HistoryContent event={event} />
         ) : (
-          <DiReport caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null} />
+          <DiReport caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null} triage={event.triage_investigation ?? null} />
         )}
       </ScrollView>
     </View>

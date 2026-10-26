@@ -560,10 +560,10 @@ async def get_case(case_id: str, request: Request):
 
 @router.get("/investigations/{case_id}/di")
 async def get_di_transactions(case_id: str, request: Request):
-    """The Magnum DI processing record(s) for this case: what was prepared for Gemini, what the
-    provider (live or the preview simulator) returned, and the processing statistics. Evidence is
-    untouched by this view."""
-    from services.higgins.di_record import get_di_records
+    """The Magnum DI processing record(s) for this case — what was prepared for Magnum DI, what came back
+    (live or the preview simulator) and the processing statistics — plus the recorded decision path
+    (Triage → TC FlyBy → Magnum DI → Higgins). Evidence is untouched by this view."""
+    from services.higgins.di_record import decision_trace, get_di_records
     owner = owner_of(request)
     # Authorise against the case document itself: the DI record outlives the evidence retention
     # window, so an expired or cleaned-up case must still be able to show how it was processed.
@@ -573,7 +573,7 @@ async def get_di_transactions(case_id: str, request: Request):
     # own "SIMULATED — No Gemini API call was made" notice; withholding it would hide the fact that
     # Gemini never answered, which is exactly how production once ran on the simulator unnoticed.
     records = await get_di_records(owner, case_id)
-    return JSONResponse({"caseId": case_id, "transactions": records}, headers=NO_STORE)
+    return JSONResponse({"caseId": case_id, "transactions": records, "trace": await decision_trace(owner, case_id)}, headers=NO_STORE)
 
 
 @router.delete("/investigations/{case_id}")

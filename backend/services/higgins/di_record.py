@@ -150,22 +150,63 @@ async def save_di_record(*, correlation_id: str | None, owner: str | None, inves
 
 
 def wire(record: dict) -> dict:
-    """Shape one stored record for the DI tab."""
+    """Shape one stored record for the DI tab. The provider and model are never sent to the app: the
+    DI tab names Magnum DI only (the admin portal keeps the model)."""
     created = record.get("created_at")
+    request = dict(record.get("request") or {})
+    request["tools"] = [_TOOL_NAMES.get(t, t) for t in request.get("tools") or []]
     return {
         "investigationId": record.get("investigation_id") or (record.get("correlation_id") or "").removeprefix("case-"),
         "engine": record.get("engine", "Magnum DI"),
         "environment": record.get("environment", "unknown"),
-        "modelRequested": record.get("model_requested"),
         "mode": "Simulated" if record.get("simulated") else "Live",
         "simulated": bool(record.get("simulated")),
         "status": record.get("status"),
         "failureCode": record.get("failure_code"),
-        "occurredAt": created.isoformat() if hasattr(created, "isoformat") else created,
-        "request": record.get("request") or {},
+        "occurredAt": _iso(created),
+        "request": request,
         "response": record.get("response") or {},
         "processing": record.get("processing") or {},
-        "notice": "SIMULATED — No AI call was made" if record.get("simulated") else None,
+        "notice": "SIMULATED — the preview simulator answered; Magnum DI was not engaged" if record.get("simulated") else None,
+    }
+
+
+# Tool and route names as the DI tab shows them — no provider's product name.
+_TOOL_NAMES = {"google_search": "web_search"}
+_FLYBY_FIELDS = ("resolved", "answeredBy", "outcome", "basis", "messageType", "pattern", "searchCalls", "searchQueries",
+                 "cacheHits", "magnumNeeded", "magnumSearch", "reusedOnRetry", "gaps", "issues", "simulated")
+
+
+def _iso(value: Any) -> Any:
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+async def decision_trace(owner: str, case_id: str) -> dict:
+    """The recorded decision path for one case: the deterministic Triage record, what TC FlyBy checked and
+    decided, whether Magnum DI was engaged, and how Higgins presented the result. Recorded data only —
+    a stage with no record is null, never inferred."""
+    from services import rulebook
+    case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 0, "routing": 1}) or {}
+    routing = case.get("routing") or {}
+    triage = await db.triage_investigations.find_one({"device_id": owner, "investigation_case_id": case_id},
+                                                     {"_id": 0, "record": 1}, sort=[("evaluated_at", -1)])
+    teddy, magnum, fidelity = routing.get("teddy"), routing.get("magnum"), routing.get("fidelity")
+    flyby = None
+    if teddy:
+        flyby = {key: teddy.get(key) for key in _FLYBY_FIELDS}
+        flyby["ranAt"] = _iso(teddy.get("ranAt"))
+        flyby["checks"] = [{**c, "route": _TOOL_NAMES.get(c.get("route"), c.get("route"))} for c in teddy.get("checks") or []]
+    return {
+        "triage": (triage or {}).get("record"),
+        "flyby": flyby,
+        "magnum": {"webSearch": bool(magnum.get("search")), "searchQueries": magnum.get("searchQueries") or 0,
+                   "itemsSent": magnum.get("itemsSent") or 0, "simulated": bool(magnum.get("simulated")),
+                   "at": _iso(magnum.get("at"))} if magnum else None,
+        "answeredBy": routing.get("answeredBy"),
+        "outcome": routing.get("outcome"),
+        "completion": routing.get("completion"),
+        "settledReason": rulebook.settled_reason(routing),
+        "higgins": {"status": fidelity.get("status"), "mode": fidelity.get("mode"), "attempts": fidelity.get("attempts")} if fidelity else None,
     }
 
 

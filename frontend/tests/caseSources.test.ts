@@ -22,7 +22,7 @@ test("an on-device finding reports the device as the source and what it recorded
   assert.equal(sources[0].answered, true);
 });
 
-test("Triage is reported with its counts and no AI calls, and gaps name the source that didn't answer", () => {
+test("Triage is reported with its counts, says Magnum DI was not engaged, and gaps name the source in plain English", () => {
   const sources = buildCaseSources({
     event: ev({
       evidence_provenance: "local_device",
@@ -36,10 +36,28 @@ test("Triage is reported with its counts and no AI calls, and gaps name the sour
     }),
   });
   const triage = sources.find((s) => s.id === "triage")!;
-  assert.equal(triage.returned, "2 of 3 applicable checks completed, 1 matched. No AI calls.");
+  assert.equal(triage.returned, "2 of 3 applicable checks completed, 1 matched. Magnum DI was not engaged.");
   const gap = sources.find((s) => s.id.startsWith("gap:"))!;
   assert.equal(gap.name, "Threat-reputation service");
+  assert.equal(gap.returned, "A reputation service didn't answer in time.");
   assert.equal(gap.answered, false);
+  assert.ok(sources.every((s) => !/\bAI\b|[A-Z]+_[A-Z]+/.test(s.returned)));
+});
+
+test("a Triage that opened an investigation says where it went", () => {
+  const triage = {
+    investigationId: "tri-2", catalogueVersion: 1, sourceType: "call", outcome: "POSSIBLE_THREAT_IDENTIFIED" as const, reason: "x",
+    rulesApplicable: ["C01"], rulesChecked: ["C01"], rulesMet: ["C01"], rules: [], coverageGaps: [], retries: [], correlation: {},
+    recheckUseful: false, geminiCalls: 0 as const, evaluatedAt: "2026-06-10T09:01:00.000Z",
+  };
+  const escalated = buildCaseSources({ event: ev({ triage_investigation: triage, investigation_case_id: "case-9" }), investigation: null });
+  assert.match(escalated.find((s) => s.id === "triage")!.returned, /Escalated to Magnum DI\.$/);
+  const settled = buildCaseSources({
+    event: ev({ triage_investigation: triage, investigation_case_id: "case-9" }),
+    investigation: { answeredBy: "teddy_official", response: { findings: [] }, sources: [] } as never,
+  });
+  assert.match(settled.find((s) => s.id === "triage")!.returned, /TC FlyBy settled it — Magnum DI was not engaged\.$/);
+  assert.equal(settled.find((s) => s.id === "magnum")!.name, "TC FlyBy investigation");
 });
 
 test("a DNS detection names the list that matched", () => {

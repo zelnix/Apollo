@@ -83,6 +83,22 @@ export function gapPlainEnglish(code: string): string {
   return GAP_META[code]?.plain ?? "ApolloSG couldn't complete part of this check.";
 }
 
+/** What a Limited result tells the person — never "safe", never "nothing to worry about". */
+export const LIMITED_CAUTION = "Treat this with caution. ApolloSG couldn't check it fully, so it can't say it's safe. Don't act on it until you've confirmed it another way.";
+export const LIMITED_TODO = "Don't tap links, reply, call back or pay until you've confirmed it through a contact you already trust, like the official app or website.";
+
+const CODE_LIST = /\b[A-Z]+(?:_[A-Z]+)+(?:,\s*[A-Z]+(?:_[A-Z]+)+)*\b/g;
+
+/** Person-facing wording (Overview, Higgins): every Coverage Gap code — or list of them — becomes its
+ *  plain-English sentence. The codes themselves stay on the record, and the DI tab shows them. */
+export function plainTriageText(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^Coverage gap:\s*/, "Couldn't check: ")
+    .replace(CODE_LIST, (list) => list.split(",").map((c) => c.trim())
+      .map((code) => GAP_META[code]?.plain ?? code.replace(/_/g, " ").toLowerCase()).join(" "));
+}
+
 /** Historical SAFE/SUSPICIOUS/UNCERTAIN results, mapped for display only. */
 export function legacyOutcome(verdict: string): TriageOutcome {
   const value = (verdict || "").toUpperCase();

@@ -18,6 +18,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
+from services.triage.catalogue import LIMITED_CAUTION, plain_codes
+
 RecordClass = Literal[
     "security_threat",
     "threat_stopped",
@@ -194,12 +196,15 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
     Higgins speaks naturally, briefly and in plain English.
     Never invents evidence. Uses only what's in the record.
     """
-    headline = record.get("headline", "")
-    summary = record.get("summary", "")
+    # Person-facing text: Coverage Gap codes become plain English (the DI view keeps the codes).
+    headline = plain_codes(record.get("headline", ""))
+    summary = plain_codes(record.get("summary", ""))
     category = record.get("category", "unknown")
     event = record.get("event") or {}
     what_to_do = event.get("what_to_do", "")
-    why = event.get("why", [])
+    why = [plain_codes(str(w)) for w in event.get("why", [])]
+    # A Limited Triage result is never presented as nothing to worry about.
+    limited = (event.get("triage_investigation") or {}).get("outcome") == "LIMITED_UNABLE_TO_DETERMINE"
     has_investigation = bool(record.get("investigation_case_id"))
     cat_label = _category_label(category)
     scenario = (record.get("scenario_context") or {})
@@ -243,6 +248,8 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
         established = (summary or headline or "This is an older record.") + " The original details are limited, so take this as historical context."
     elif record_class == "reduced_protection":
         established = summary or headline or "Your protection is running but at a reduced level."
+    elif limited:
+        established = summary or headline or "ApolloSG couldn't check this fully."
     else:
         established = summary or headline or "Nothing needed your attention."
 
@@ -254,7 +261,9 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
         evidence_points = [summary[:200]]
 
     # 4. What it means — warm, reassuring, plain English
-    if record_class == "security_threat":
+    if limited and record_class not in ("security_threat", "threat_stopped", "resolved"):
+        meaning = LIMITED_CAUTION
+    elif record_class == "security_threat":
         meaning = "This needs your attention — have a look at the details and follow the recommended steps."
     elif record_class == "threat_stopped":
         meaning = "ApolloSG took care of this for you. Nothing more is needed on your part."

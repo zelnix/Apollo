@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from services.higgins.indicators import Indicators, _registrable, read_indicators
+from services.higgins.brand_domains import genuine
+from services.higgins.indicators import Indicators, read_indicators
 
 
 @dataclass
@@ -145,7 +146,7 @@ def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
             "observation", "medium", evidence_ids[:2]))
     if ind.emails:
         domain = ind.emails[0].split("@")[-1]
-        brand_match = any(_registrable(domain) == _registrable(official) for _, official in ind.brands)
+        brand_match = any(genuine(name, domain) for name, _ in ind.brands)
         findings.append(_finding(
             f"The sender address is {ind.emails[0]}" + ("." if brand_match else f" — the domain {domain} is not an official address for the organisation it claims to be."),
             "observation", "high" if (ind.brands and not brand_match) else "medium", evidence_ids[:2]))

@@ -4,7 +4,7 @@
 // closest to where the evidence actually lives.
 
 import {
-  CATALOGUE_VERSION, RULES_BY_CATEGORY, RULES_BY_ID, gapIsRecoverable,
+  CATALOGUE_VERSION, RULES_BY_CATEGORY, RULES_BY_ID, gapIsRecoverable, gapPlainEnglish,
   type CoverageGapRecord, type RetryRecord, type RuleRecord, type RuleResult,
   type TriageInvestigationRecord, type TriageOutcome,
 } from "./contract.ts";
@@ -616,7 +616,8 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     reason = metRules[0].title + (metRules.length > 1 ? ` (+${metRules.length - 1} more deterministic rule(s) met)` : "");
   } else if (gaps.size) {
     outcome = "LIMITED_UNABLE_TO_DETERMINE";
-    reason = `ApolloSG couldn't obtain enough evidence to decide: ${[...gaps.keys()].sort().join(", ")}`;
+    // Plain English for the person; the codes stay on the record's coverage gaps for the DI tab.
+    reason = `ApolloSG couldn't obtain enough evidence to decide. ${[...gaps.keys()].sort().map(gapPlainEnglish).join(" ")}`;
   } else if (evidence.unresolved_concern) {
     outcome = "LIMITED_UNABLE_TO_DETERMINE";
     gaps.set("INSUFFICIENT_EVIDENCE", {

@@ -5,6 +5,7 @@
 // A source that did not answer is reported as such; nothing is inferred and nothing is invented.
 
 import type { DeviceInvestigation } from "../investigation/deviceStore";
+import { investigatorName } from "./messageVoice.ts";
 import { gapPlainEnglish } from "./triage/contract.ts";
 import type { PatrolEvent } from "./types";
 
@@ -114,11 +115,15 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
 
   // 3. The deterministic Triage checks — outcome and counts, plus every source that didn't answer.
   const triage = event.triage_investigation;
+  const caseId = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;
   if (triage) {
+    const next = !caseId ? "Magnum DI was not engaged."
+      : (investigation?.answeredBy ?? "").startsWith("teddy") ? "TC FlyBy settled it — Magnum DI was not engaged."
+        : "Escalated to Magnum DI.";
     sources.push({
       id: "triage",
       name: `Apollo's Triage checks (rule catalogue v${triage.catalogueVersion})`,
-      returned: `${triage.rulesChecked.length} of ${triage.rulesApplicable.length} applicable checks completed, ${triage.rulesMet.length} matched. No AI calls.`,
+      returned: `${triage.rulesChecked.length} of ${triage.rulesApplicable.length} applicable checks completed, ${triage.rulesMet.length} matched. ${next}`,
       at: triage.evaluatedAt,
       answered: true,
     });
@@ -126,7 +131,8 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       sources.push({
         id: `gap:${gap.code}`,
         name: GAP_SOURCE[gap.code] ?? "A check Apollo could not complete",
-        returned: gap.detail?.trim() || gapPlainEnglish(gap.code),
+        // Plain English only — the code and its technical detail are on the DI tab.
+        returned: gapPlainEnglish(gap.code),
         at: triage.evaluatedAt,
         answered: false,
       });
@@ -145,13 +151,12 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
     });
   }
 
-  // 5. Magnum DI, when a case was actually investigated.
-  const caseId = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;
+  // 5. The investigation itself, credited to whichever investigator answered it.
   if (caseId) {
     const findings = investigation?.response?.findings?.length ?? 0;
     sources.push({
       id: "magnum",
-      name: "Magnum DI investigation",
+      name: investigation ? `${investigatorName(investigation.answeredBy)} investigation` : "Investigation",
       returned: investigation
         ? `${findings} finding${findings === 1 ? "" : "s"} returned, stored on this device`
         : "Result not stored on this device",

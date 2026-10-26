@@ -832,9 +832,11 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
     providers = _link_evidence_from_providers(evidence, provider_evidence)
     sender_domain = (evidence.get("sender_domain") or "").lower()
     link_domains = [str(d).lower() for d in (evidence.get("link_domains") or [])]
+    # Links on the sender's own site or on the same organisation's other domains (ebay.com → ebay.com.au) aren't a mismatch.
+    from services.higgins.brand_domains import same_organisation
     domain_mismatch = bool(sender_domain and link_domains and all(
         d != sender_domain and not d.endswith("." + sender_domain) and not sender_domain.endswith("." + d)
-        for d in link_domains))
+        and not same_organisation(d, sender_domain) for d in link_domains))
 
     credential_request = any(word in blob for word in _CREDENTIAL_WORDS) or "credential" in finding_blob
     code_request = any(word in blob for word in ("verification code", "security code", "one-time", "otp", "2fa"))

@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from services.higgins.brand_domains import registrable
 from services.higgins.indicators import BRANDS, read_indicators
 
 # ── Entity patterns ──────────────────────────────────────────────────────────
@@ -146,14 +147,6 @@ def acn_valid(acn: str) -> bool:
         return False
     remainder = sum(w * v for w, v in zip((8, 7, 6, 5, 4, 3, 2, 1), d[:8])) % 10
     return (10 - remainder) % 10 == d[8]
-
-
-def registrable(host: str) -> str:
-    """Last two labels, or three for AU-style second-level domains (commbank.com.au)."""
-    parts = (host or "").lower().removeprefix("www.").split(".")
-    if len(parts) >= 3 and parts[-2] in ("com", "net", "org", "gov", "edu", "asn", "id", "co") and len(parts[-1]) == 2:
-        return ".".join(parts[-3:])
-    return ".".join(parts[-2:]) if len(parts) >= 2 else (host or "")
 
 
 @dataclass

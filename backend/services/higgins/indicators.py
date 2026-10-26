@@ -88,13 +88,6 @@ def _host(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def _registrable(host: str) -> str:
-    """Last two labels, or three for the AU-style second-level domains."""
-    parts = host.split(".")
-    if len(parts) >= 3 and parts[-2] in ("com", "net", "org", "gov", "edu", "asn", "id") and len(parts[-1]) == 2:
-        return ".".join(parts[-3:])
-    return ".".join(parts[-2:]) if len(parts) >= 2 else host
-
 
 @dataclass
 class Indicators:
@@ -135,9 +128,12 @@ def read_indicators(text: str) -> Indicators:
     hosts += [_host(h) for h in BARE_DOMAIN_RE.findall(text)]
     ind.hosts = _dedupe([h for h in hosts if h])
 
+    # An address that isn't the organisation's main domain is a mismatch only when it isn't one of its own
+    # (published domains and country sites): pages.ebay.com.au and ebay.com.au are eBay's.
+    from services.higgins.brand_domains import genuine
     for name, official in ind.brands:
         for host in ind.hosts:
-            if _registrable(host) != _registrable(official) and (name, official, host) not in ind.mismatched:
+            if not genuine(name, host) and (name, official, host) not in ind.mismatched:
                 ind.mismatched.append((name, official, host))
 
     ind.credentials = _dedupe([plain for term, plain in CREDENTIAL_TERMS.items() if term in low])

@@ -34,7 +34,7 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 | Outcome | When |
 |---|---|
 | **Possible threat** | At least one rule is met. This opens **one** investigation case. |
-| **Limited / unable to determine** | No rule was met, but evidence was missing (a coverage gap), or concerning signs didn't meet a rule. No case is opened, and the person is told what Apollo couldn't see. |
+| **Limited / unable to determine** | No rule was met, but evidence was missing (a coverage gap), or concerning signs didn't meet a rule. No case is opened, and the person is told what Apollo couldn't see, in plain English, and to treat the item with caution. A Limited result is never shown as safe or as nothing to worry about. |
 | **No threat identified** | No rule was met and every applicable check completed. |
 
 **Rules**
@@ -413,7 +413,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 #### Stage 1: official and direct sources (no AI, 8 s per lookup)
 - **Link**
   - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **settles it as clear**.
-  - Redirects somewhere → warning sign. The final destination is checked too.
+  - Redirects to another site → warning sign. Moving within the same site, or between one organisation's own domains, isn't. The final destination is checked too.
   - Listed by Safe Browsing or Apollo's blocklist → **decisive concern**. Not listed → clear.
   - Registered less than 90 days ago, or flagged as new → warning sign.
   - Flagged by IPQualityScore (phishing, malware or suspicious) → warning sign.
@@ -421,9 +421,11 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
   - Named in an official scam advisory → **decisive concern**.
   - A lookup that fails is recorded as "couldn't be checked", never as safe.
 - **Impersonation**
-  - Every link and address uses the organisation's domain → clear.
-  - The organisation's name sits *inside* another address (a lookalike such as commbank-notice.net) → a warning sign on its own.
-  - The name is only *mentioned* beside someone else's address → needs corroboration.
+  - Not being the organisation's main domain is never, on its own, a sign of impersonation.
+  - Every link and address uses the organisation's own domains → clear. These are its published domains and sub-sites (pages.ebay.com.au), and, for a global organisation, its exact name on a country ending (ebay.com.au), as its country sites are.
+  - A real lookalike sign → a warning sign on its own: the name with words added (commbank-notice.net, signin-ebay.com.au), a look-alike spelling (paypa1.com), the name in front of someone else's address (ebay.com.secure-login.example), or the name on another ending (commbank.co).
+  - The name in front of a link-sharing or website service anyone can use (ebay.onelink.me) → a warning sign on its own.
+  - The name is only *mentioned* beside an address that doesn't carry it → can't be confirmed either way; needs corroboration.
 - **Phone:** an IPQualityScore fraud score of 85 or more, or recent abuse → warning sign.
 - **Email:** an official domain → clear. A free personal account (Gmail and similar) while an organisation is named → warning sign, but it needs corroboration.
 - **ABN/ACN:** checked with the official check-digit test. A fail is a warning sign and settles the check.
@@ -464,7 +466,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 **How the outcome is chosen (first that applies):**
 1. **Confirmed scam or threat:** a decisive concern was found.
 2. **Likely scam:** a full pattern match that nothing contradicts. A contradiction is an impersonation pattern where every link and address is the organisation's own.
-3. **Concerning:** corroborated impersonation. An organisation is named, a link isn't its domain, and an independent fact about that same link backs it up (new domain, flagged, redirect or download).
+3. **Concerning:** corroborated impersonation. An organisation is named, a link isn't one of its own domains, and an independent fact about that same link backs it up (new domain, flagged, a redirect to another site, or a download).
 4. **Concerning:** the opening of the family pattern, with no ask yet.
 5. **Concerning:** any established warning sign. A name mentioned beside another organisation's address counts only once something corroborates it.
 6. If none of these applies, check the Magnum DI triggers below.
@@ -502,7 +504,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 **Process**
 1. It runs only when TC FlyBy hands it issues. On later turns it runs only when the person answers Magnum DI's own question.
 2. **Size limit.** If the written evidence is over 10,000 words, nothing is sent, and the person is told the word count.
-3. **One AI call** to the model picked for Magnum DI on the admin Gemini Map (gemini-3.1-flash-lite until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
+3. **One AI call** to the model an admin picked for Magnum DI (the low-cost model until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
    - There is one retry after 4 seconds, only for a temporary failure or an invalid answer. Configuration errors are never retried.
    - The limit of 2 calls per job is enforced on the job record.
    - If both calls fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
@@ -968,5 +970,5 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
 - Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
 - Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.
-- Models: Magnum DI and Ask Higgins each call the model picked for them on the admin Gemini Map, gemini-3.1-flash-lite until an admin changes it. Only models that can do that feature's job can be picked, and TC FlyBy always uses Magnum DI's model. Every change is kept in the admin audit log.
+- Models: Magnum DI and Ask Higgins each call the model an admin picked for them on the admin portal, the low-cost model until an admin changes it. Only models that can do that feature's job can be picked, and TC FlyBy always uses Magnum DI's model. Every change is kept in the admin audit log.
 

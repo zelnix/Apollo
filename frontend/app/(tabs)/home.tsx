@@ -27,6 +27,7 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
+import { plainTriageText } from "@/src/domain/triage/contract";
 import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
 import { buildHeroLines, buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
@@ -45,6 +46,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { displayHost } from "@/src/domain/urlPresentation";
 
 /** Short chip for the Home protection cards. Counts only what a real read said. */
 type CardOverall = "action" | "review" | "check" | "protected" | "unread" | "checking";
@@ -103,7 +105,7 @@ function threatIdentity(e: PatrolEvent): string {
   const meta = e.source_metadata;
   if (meta?.sender) return `From: ${meta.sender}`;
   if (e.indicator_host) return e.indicator_host;
-  if (meta?.url) return meta.url;
+  if (meta?.url) return displayHost(meta.url); // never the raw address: its query can be thousands of characters
   if (e.claimed_brand) return e.claimed_brand;
   return "";
 }
@@ -581,7 +583,7 @@ export default function Home() {
               </View>
               <View style={s.activityContent}>
                 <Text style={s.activityText} numberOfLines={1}>{recentEvent.headline || "Apollo recorded activity"}</Text>
-                <Text style={s.activitySub} numberOfLines={1}>{recentEvent.what_happened || "Tap to see details."}</Text>
+                <Text style={s.activitySub} numberOfLines={1}>{plainTriageText(recentEvent.what_happened) || "Tap to see details."}</Text>
               </View>
               <Text style={s.activityTime}>{timeAgo(recentEvent.occurred_at)}</Text>
               <ChevronRight size={16} color={colors.onSurfaceSecondary} />

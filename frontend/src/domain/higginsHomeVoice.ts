@@ -15,6 +15,7 @@ import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver.ts";
 import type { StateResolution } from "./stateMachine";
 import type { Capability, PatrolEvent } from "./types";
+import { domainOnly } from "./urlPresentation.ts";
 
 export interface HomeVoice {
   /** The short Higgins paragraph the Home card shows (and reads aloud). */
@@ -36,7 +37,8 @@ export interface HomeVoice {
  *  fall back to naming the check instead of inventing detail. Local evidence only. */
 export function findingSentence(event: PatrolEvent): string | null {
   if (!hasLocalEvidence(event)) return null;
-  const text = (event.what_happened || "").trim();
+  // Web addresses read as their website before anything is split or capped.
+  const text = domainOnly((event.what_happened || "").trim());
   if (!text) return null;
   const sentences = text
     .split(/(\.|\?|!)\s+/)
@@ -63,7 +65,7 @@ export function buildHeroLines(voice: HomeVoice, attention: AttentionItem[]): { 
   for (const item of attention) {
     if (item.route && item.route === voice.ctaRoute) continue; // already the primary line
     const stated = item.event ? findingSentence(item.event) : null;
-    const text = stated ?? item.title;
+    const text = stated ?? domainOnly(item.title);
     if (!text || lines.some((l) => l.text === text)) continue;
     lines.push({ id: item.id, text, route: item.route });
   }
@@ -183,7 +185,7 @@ export function buildHomeVoice(input: {
     const verb = state === "ears_up" ? "has his ears up" : "is sniffing";
     if (drivingEvent) {
       const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
-      const rawSubject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
+      const rawSubject = domainOnly((drivingEvent.headline || drivingEvent.what_happened || "").trim());
       const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
         ? `ApolloSG ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
@@ -211,7 +213,7 @@ export function buildHomeVoice(input: {
 
   // 1) Biting — Apollo blocked something. Only when the driving event carries a verified_block flag.
   if (state === "biting" && drivingEvent?.verified_block) {
-    const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
+    const rawWhat = domainOnly((drivingEvent.what_happened || drivingEvent.headline || "").trim());
     const subject = threatSubject(drivingEvent);
     const what = hasLocalEvidence(drivingEvent) && rawWhat
       ? rawWhat
@@ -229,7 +231,7 @@ export function buildHomeVoice(input: {
   // 2) Security findings — prioritise by severity, explain specifically, never count-driven.
   if (securityFindings.length > 0) {
     const primary = securityFindings[0]; // Already priority-sorted by buildHomeAttention
-    const primaryProblem = (primary.problem || "").trim();
+    const primaryProblem = domainOnly((primary.problem || "").trim());
 
     if (securityFindings.length === 1) {
       // ONE short line: the specific thing Apollo reacted to, or the check it came from. The case
@@ -253,7 +255,7 @@ export function buildHomeVoice(input: {
     if (securityFindings.length === 2) {
       // Two specific concerns — name both, link to the most urgent.
       const second = securityFindings[1];
-      const secondBrief = (second.problem || second.title || "").trim();
+      const secondBrief = domainOnly((second.problem || second.title || "").trim());
       const text = primaryProblem
         ? `Apollo flagged ${primaryProblem}. There's also a concern about ${secondBrief || second.gate}. I'll walk you through both, starting with the most urgent.`
         : `Apollo has flagged concerns in ${primary.gate} and ${second.gate}. I'll walk you through both.`;

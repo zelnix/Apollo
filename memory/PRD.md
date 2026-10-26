@@ -1,3 +1,30 @@
+## DI tab decision trace; Limited wording; Triage Limited investigation (report only) (2026-10-26)
+- **DI tab** (`src/components/DiReport.tsx`, both Threat Case and Investigation Report): "Decision path" card
+  (Deterministic triage → TC FlyBy → Magnum DI → Higgins, pure builder `src/domain/diTrace.ts`, each step from
+  recorded data only) + three sections closed by default: "Apollo deterministic rules" (every rule with result/evidence,
+  coverage gaps with codes, retries, TC FlyBy checks/pattern/searches), "Sent to Magnum DI" (why it was escalated +
+  request), "Response from Magnum DI" (response, processing). DI keeps internal codes; never provider/model.
+  `DiReport` takes `triage` (event's record) so Triage-only cases show the trace with no case.
+- **Backend:** `GET /investigations/{id}/di` adds `trace` (`di_record.decision_trace`: triage record by
+  investigation_case_id, routing.teddy without searchModel/tokens, routing.magnum as webSearch/itemsSent, settled reason,
+  fidelity). `wire()` no longer sends `modelRequested`; tool/route `google_search` → `web_search`; simulated notice
+  "SIMULATED — the preview simulator answered; Magnum DI was not engaged". PDF simulated note reworded.
+- **Wording:** "No AI calls" → "Magnum DI was not engaged" / "Escalated to Magnum DI" / "TC FlyBy settled it — Magnum DI
+  was not engaged" (caseSources); copy texts name Magnum DI only ("Magnum DI calls").
+- **Limited language:** `LIMITED_CAUTION` (owner's choice "Treat this with caution") in contract.ts + catalogue.py;
+  TriageSummary, Overview (meaning, "Not determined" risk, `LIMITED_TODO` instead of "Nothing to do"), server briefing
+  (record_classification) and triage store `what_to_do`. Coverage-gap codes → plain English (`plainTriageText` /
+  `plain_codes`) in Overview, Home, Higgins briefing, Evidence sources; both engines' Limited reason now plain English.
+  Overview no longer shows rule IDs.
+- Tests: frontend `tests/diTrace.test.ts` (7) + caseSources updated (998/998); backend `tests/test_di_trace.py` (5),
+  full suite 1260 passed. Rule book Limited row updated + re-stamped. No testing agent (owner's rule).
+- **Triage Limited investigation (no thresholds changed):** preview server Triage has 0 Limited (251: 153 possible,
+  98 no threat). Phone-side simulation: with reputation answering, 1/23 links Limited; when `/intel/check` fails, every
+  non-threat link is Limited (LINK-01, LINK-10, BITM-05 all gap on one failure). Number checks "review"/"unknown" are
+  always Limited by design. Preview logs: `/intel/check` 131/1708 = 422; `/call/risk-check` 128/261 = 401 (mixed with
+  test traffic). BITM-01..04 can never run on a phone (browser visibility off). Production data not readable from here.
+- Found, not fixed: one link check filed two Threat cards in the web preview ("two children with the same key").
+
 ## Australian carriers' scam blocking row (2026-10-26)
 - Owner's choice: "Show all three, no picking" (carriers block inside their networks; no app/carrier read).
 - New catalogue row `au_carrier_scam_blocking` (src/domain/deviceSecurityCatalogue.ts): Android + iOS, only when

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
-from services.triage.catalogue import RETRY_ATTEMPTS, RULES, RULES_BY_CATEGORY
+from services.triage.catalogue import RETRY_ATTEMPTS, RULES, RULES_BY_CATEGORY, gap_plain
 from services.triage.contract import CoverageGap, Outcome, RetryRecord, RuleRecord, RuleResult, TriageInvestigation
 
 _log = logging.getLogger("apollo.triage")
@@ -807,7 +807,8 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
         reason = met_records[0].title + (f" (+{len(met_records) - 1} more deterministic rule(s) met)" if len(met_records) > 1 else "")
     elif gaps:
         outcome = Outcome.LIMITED
-        reason = "ApolloSG couldn't obtain enough evidence to decide: " + ", ".join(sorted(gaps))
+        # Plain English for the person; the codes stay on the record's coverage gaps for the DI view.
+        reason = "ApolloSG couldn't obtain enough evidence to decide. " + " ".join(gap_plain(code) for code in sorted(gaps))
     elif evidence.get("unresolved_concern"):
         outcome = Outcome.LIMITED
         gaps["INSUFFICIENT_EVIDENCE"] = CoverageGap("INSUFFICIENT_EVIDENCE",

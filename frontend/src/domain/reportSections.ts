@@ -4,6 +4,7 @@
 // isn't listed again; "How Apollo checked" and "What this covered" are one section; the reasons a question wasn't taken
 // further are said once there. Pure: no React, no native imports.
 import type { Finding, HigginsResponse, PlainEnglish, SourceReference } from "../investigation/types";
+import { compactUrls } from "./urlPresentation.ts";
 
 /** `explain`: Apollo's fixed explanation of a jargon word in the finding — explanatory, never evidence. */
 export interface ReportFinding { text: string; detail: string | null; explain?: string | null }
@@ -205,7 +206,21 @@ export function buildReport(input: ReportInput): Report {
   }
 
   const used = new Set(input.sourceIds ?? []);
-  return { answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) };
+  return presented({ answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) });
+}
+
+/** What people read: web addresses shortened in the prose. Sources keep their addresses whole, and nothing
+ *  stored (the evidence, redirect chains, the investigation itself) is touched. */
+function presented(report: Report): Report {
+  return {
+    ...report,
+    answer: report.answer.map(compactUrls),
+    found: report.found.map((f) => ({ ...f, text: compactUrls(f.text), ...(f.explain ? { explain: compactUrls(f.explain) } : {}) })),
+    means: report.means.map(compactUrls),
+    more: report.more.map((s) => ({ ...s, paragraphs: s.paragraphs.map(compactUrls) })),
+    uncertain: report.uncertain.map(compactUrls),
+    how: report.how.map(compactUrls),
+  };
 }
 
 /** Higgins' plain English, only when it passed its Fidelity Check. Otherwise null, and Apollo's own wording is shown. */
@@ -218,7 +233,7 @@ export function shownPlainEnglish(response: Pick<HigginsResponse, "plainEnglish"
  *  so nothing is left out here. */
 export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[]): Report {
   const used = new Set(sourceIds ?? []);
-  return {
+  return presented({
     answer: plain.result ? [plain.result] : [],
     severity: plain.severity || null,
     found: plain.established.map((item) => ({ text: item.text, detail: item.detail || null, explain: item.explain || null })),
@@ -227,7 +242,7 @@ export function plainReport(plain: PlainEnglish, sources?: SourceReference[], so
     uncertain: plain.uncertain,
     how: plain.how.length ? [plain.how.join(" ")] : [],
     sources: (sources ?? []).filter((s) => used.has(s.id)),
-  };
+  });
 }
 
 /** A step of what to do: in Higgins' plain English when it's shown, else Apollo's own wording. */

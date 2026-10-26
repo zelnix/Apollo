@@ -3,6 +3,7 @@
 // to Account Guard and links to the Web gate. Unknown sender ≠ scam; a real brand's own domain ≠ proof either.
 
 import { extractSignals, type MessageSignals } from "./messageAnalysis.ts";
+import { isCountrySite } from "./brand.ts";
 import type { ApolloState } from "./types";
 
 export interface ParsedEmail { fromName: string | null; fromAddress: string | null; replyTo: string | null; subject: string | null; body: string; attachments: string[] }
@@ -66,13 +67,13 @@ export function analyseEmail(raw: string, fields: { from?: string; subject?: str
     ?? (senderDomain && !FREEMAIL.test(senderDomain) ? OFFICIAL.find((o) => o.domains.some((d) => isSuffixOf(senderDomain, d))) : undefined);
   const senderMatchesConfiguredDomain = OFFICIAL.some((o) => !!senderDomain && o.domains.some((domain) => isSuffixOf(senderDomain, domain)));
   const brand = sig.claimedBrand ?? (official ? (parsed.fromName ?? "this organisation") : null);
-  const senderOfficial = !!(senderDomain && official && official.domains.some((d) => isSuffixOf(senderDomain, d)));
+  const senderOfficial = !!(senderDomain && official && (official.domains.some((d) => isSuffixOf(senderDomain, d)) || isCountrySite(senderDomain, official.domains)));
   const senderMismatch = !!(official && senderDomain && !senderOfficial);
   const brandInDomainOnly = !!(senderDomain && official && !senderOfficial && official.re.test(senderDomain.replace(/[.-]/g, " ")));
   const replyMismatch = !!(replyToDomain && senderDomain && replyToDomain !== senderDomain);
   const freemailBrand = !!(official && senderDomain && FREEMAIL.test(senderDomain));
   const urls = sig.urls;
-  const lookalikeUrls = urls.filter((u) => { const h = hostOf(u); return official ? !official.domains.some((d) => isSuffixOf(h, d)) : false; });
+  const lookalikeUrls = urls.filter((u) => { const h = hostOf(u); return official ? !official.domains.some((d) => isSuffixOf(h, d)) && !isCountrySite(h, official.domains) : false; });
   const riskyAttachments = parsed.attachments.filter((a) => RISKY_ATTACH.test(a));
   const invoice = /\binvoice\b|\bremittance\b|\bpayment details\b|\bbank details\b|\bbsb\b|\baccount number\b/i.test(full);
   const bankChange = invoice && /\b(new|updated|changed|different)\b.*\b(bank|account|bsb|payment) (details|account)\b/i.test(full);
