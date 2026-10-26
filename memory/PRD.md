@@ -1,3 +1,18 @@
+## Notification text: entities decoded once, short specific summaries (2026-10-26)
+- Frontend `src/push/notificationText.ts`: `decodeHtmlEntities` (one pass; named + numeric; unknown/invalid left
+  as-is; `&amp;quot;` → `&quot;`), `presentAlertText` (decode once + tidy + clip title 65 / body 178) applied ONLY in
+  `scheduleLocalAlert` (the OS boundary) and for the held-alert log row; `notificationSummary` / `completedSummary`
+  build the short body ("Higgins: The Instagram link you sent has signs that need checking. Open ApolloSG to see what
+  I found."; barking/biting/Limited variants, Limited never "safe"). `eventLocalAlert` + `completedCheckAlert` use them
+  instead of `event.headline`.
+- Backend `services/notification_text.py`: `present_push` (html.unescape once + tidy + clip) applied at the top of
+  `send_push` — every push; `owner_alert_summary` replaces "Higgins: {headline}" + the what_to_do subtext in
+  `push_owner_alert`. Events, investigations and evidence are never modified.
+- Tests: `frontend/tests/notificationText.test.ts` (5), `backend/tests/test_notification_text.py` (11). Frontend
+  1013/1013; backend 1275 passed (1 live-API test flaky under full-suite load, passes alone). Rule book Alerts
+  section updated + stamped.
+
+
 ## Failed lookups, phone-only rules, one Threat Case per input, Limited by cause (2026-10-26)
 - **Reputation lookups** (`src/domain/reputationLookup.ts`): controlled retry per the catalogue policy (3 attempts,
   800 ms doubling backoff, 45 s budget; number lookups 30 s), in-flight dedup per (check, key). Transient = timeout,

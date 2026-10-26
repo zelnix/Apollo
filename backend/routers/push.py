@@ -27,6 +27,7 @@ from core.config import logger
 from core.db import db, now_utc
 from core.models import PatrolEvent
 from routers.devices import device_quiet_until
+from services.notification_text import owner_alert_summary, present_push
 
 router = APIRouter()
 
@@ -177,6 +178,8 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
         raise ValueError("max 100 recipients per send; chunk before sending")
     if "title" not in data or "message" not in data:
         raise ValueError("data must include title and message")
+    # The one presentation boundary for every push: entities decoded once, text fitted to the OS.
+    data = present_push(data)
     if not push_configured():
         raise HTTPException(503, push_setup_detail())
     event_key = idempotency_key or f"adhoc-{uuid.uuid4()}"
@@ -307,16 +310,18 @@ async def push_owner_alert(event: PatrolEvent) -> None:
             logger.info("push suppressed by preference: device=%s category=%s", event.device_id[:8], category)
             return
 
+        # A purpose-built short summary — the full Higgins explanation stays in the Threat Case.
+        message = owner_alert_summary(event)
         if event.state in ("growling", "sniffing", "ears_up"):
             verb = "Apollo is sniffing" if event.state == "sniffing" else "Apollo is growling"
-            data = {"title": verb, "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
+            data = {"title": verb, "message": message, "action_url": f"/patrol/{event.event_id}", **PUSH_GROWL}
             quiet_until = await device_quiet_until(event.device_id)
             if quiet_until:
                 await hold_until_morning(event.device_id, data, quiet_until, f"owner-{event.event_id}")
                 return
         else:
             verb = "Apollo is barking" if event.state == "barking" else "Apollo is biting"
-            data = {"title": verb, "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
+            data = {"title": verb, "message": message, "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
         await send_push(recipients=[event.device_id], data=data, idempotency_key=f"owner-{event.event_id}", owner_id=event.device_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)

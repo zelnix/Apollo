@@ -4,6 +4,7 @@ import { stateHeadline } from "../domain/threatSubject.ts";
 import type { PatrolEvent } from "../domain/types";
 import type { ProtectionStatus } from "../security/SecurityPlatformAdapter";
 import type { LocalAlert } from "./notifications";
+import { notificationSummary } from "./notificationText.ts";
 
 export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
   if (event.status === "resolved" || event.status === "trusted") return null;
@@ -19,13 +20,14 @@ export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
 
   // Deep-link straight to this specific Patrol event (focus=alert pre-selects it so Higgins can answer
   // about exactly this finding) — never a generic tab (standing message requirement).
+  // The body is a purpose-built short summary, never the full Higgins explanation (that stays in the case).
   const actionUrl = `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`;
   if (event.state === "biting") {
     if (!event.verified_block || event.status !== "blocked" || !eventHasPacketProof(event)) return null;
-    return { title: stateHeadline("biting", event), body: event.headline, channel: "apollo_alerts", actionUrl };
+    return { title: stateHeadline("biting", event), body: notificationSummary(event), channel: "apollo_alerts", actionUrl };
   }
-  if (event.state === "barking") return { title: stateHeadline("barking", event), body: event.headline, channel: "apollo_alerts", actionUrl };
-  if (event.state === "growling" || event.state === "ears_up") return { title: stateHeadline(event.state, event), body: event.headline, channel: "apollo_alerts", actionUrl };
+  if (event.state === "barking") return { title: stateHeadline("barking", event), body: notificationSummary(event), channel: "apollo_alerts", actionUrl };
+  if (event.state === "growling" || event.state === "ears_up") return { title: stateHeadline(event.state, event), body: notificationSummary(event), channel: "apollo_alerts", actionUrl };
   return null;
 }
 

@@ -6,6 +6,7 @@ import { Platform } from "react-native";
 import { apiGet, apiPost, apiPostEmpty } from "@/src/api/client";
 
 import { recordAlert } from "./alertLog";
+import { presentAlertText } from "./notificationText";
 
 export type NotificationStatus = "granted" | "denied" | "undetermined" | "blocked" | "unsupported";
 export type LocalAlert = { title: string; body: string; channel: "apollo_alerts" | "family"; actionUrl: string };
@@ -149,7 +150,9 @@ export async function ensureNotificationChannels(): Promise<void> {
 /** Schedule locally; an OS permission or scheduling failure never masquerades as delivery.
  *  Every attempt is written to the on-device alert log, successes and failures alike, so a person can
  *  later see exactly what Apollo tried to show them. */
-export async function scheduleLocalAlert(alert: LocalAlert, logId?: string): Promise<string> {
+export async function scheduleLocalAlert(raw: LocalAlert, logId?: string): Promise<string> {
+  // The one presentation boundary: entities decoded once, text fitted to the OS — the alert as shown.
+  const alert = presentAlertText(raw);
   const id = logId ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const N = loadNotifications();
   const fail = async (message: string): Promise<never> => {

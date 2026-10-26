@@ -7,6 +7,7 @@
 import { storage } from "@/src/utils/storage";
 
 import type { LocalAlert } from "./notifications";
+import { presentAlertText } from "./notificationText";
 
 export type AlertLogState = "shown" | "held" | "failed";
 
@@ -67,11 +68,13 @@ export function markAlertOpened(id: string): Promise<void> {
   return updateAlert(id, { openedAt: new Date().toISOString() });
 }
 
-/** A gentle alert raised during quiet hours: kept, not dropped. */
+/** A gentle alert raised during quiet hours: kept, not dropped. The queue keeps the raw alert (it is
+ *  presented once, when released); the log row shows the text exactly as it will appear. */
 export async function holdAlert(id: string, alert: LocalAlert): Promise<void> {
   const held = await readJson<HeldAlert>(HELD_KEY);
   await writeJson(HELD_KEY, [...held, { id, alert, heldAt: new Date().toISOString() }].slice(-MAX_HELD));
-  await recordAlert({ id, title: alert.title, body: alert.body, at: new Date().toISOString(), state: "held" });
+  const shown = presentAlertText(alert);
+  await recordAlert({ id, title: shown.title, body: shown.body, at: new Date().toISOString(), state: "held" });
 }
 
 export function readHeldAlerts(): Promise<HeldAlert[]> {

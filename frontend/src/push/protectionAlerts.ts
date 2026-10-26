@@ -14,6 +14,7 @@ import type { PatrolEvent } from "../domain/types";
 import type { ProtectionStatus } from "../security/SecurityPlatformAdapter";
 import type { DailyActivity } from "../domain/dailyActivity";
 import type { LocalAlert } from "./notifications";
+import { completedSummary } from "./notificationText.ts";
 
 /** Notification for a completed background security check with meaningful results.
  *  Stage 12: routine resting/resolved checks are plumbing — only notify when the
@@ -25,7 +26,7 @@ export function completedCheckAlert(event: PatrolEvent): LocalAlert | null {
   if (event.investigation_case_id && event.status === "resolved" && (event.state === "ears_up" || event.state === "growling" || event.state === "barking")) {
     return {
       title: "ApolloSG completed an investigation",
-      body: event.headline || "Review the investigation result in Patrol.",
+      body: completedSummary(event),
       channel: "apollo_alerts",
       actionUrl: `/patrol/${encodeURIComponent(event.event_id)}?focus=alert`,
     };

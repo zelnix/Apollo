@@ -1,0 +1,121 @@
+// What a notification actually says. Two jobs, both at the notification boundary only:
+//  1. A purpose-built short summary of an event ("Higgins: The Instagram link you sent has signs that need
+//     checking. Open ApolloSG to see what I found.") — never the full Higgins explanation, which stays in
+//     the Threat Case untouched.
+//  2. presentAlertText(): decode HTML entities (&quot; &amp; &#39; &lt; …) exactly once, tidy whitespace and
+//     fit the OS limits, just before the text is handed to Android/iOS. The stored investigation and
+//     evidence are never altered.
+// Pure + unit-tested.
+
+import { shortDomain } from "../domain/threatSubject.ts";
+import type { PatrolEvent } from "../domain/types";
+import type { LocalAlert } from "./notifications";
+
+const NAMED: Record<string, string> = {
+  amp: "&", quot: "\"", apos: "'", lt: "<", gt: ">", nbsp: " ", ndash: "–", mdash: "—", hellip: "…",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", laquo: "«", raquo: "»", middot: "·", bull: "•",
+  copy: "©", reg: "®", trade: "™", euro: "€", pound: "£", cent: "¢", deg: "°", times: "×",
+};
+const ENTITY = /&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,15});/g;
+
+function fromCodePoint(code: number): string | null {
+  const valid = code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+  return valid ? String.fromCodePoint(code) : null;
+}
+
+/** Decode HTML entities in ONE pass: "&amp;quot;" becomes "&quot;", never '"'. Unknown or invalid
+ *  entities are left exactly as written. */
+export function decodeHtmlEntities(text: string): string {
+  return text.replace(ENTITY, (whole, body: string) => {
+    if (body.startsWith("#")) {
+      const hex = body[1] === "x" || body[1] === "X";
+      return fromCodePoint(parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10)) ?? whole;
+    }
+    return NAMED[body.toLowerCase()] ?? whole;
+  });
+}
+
+export const TITLE_MAX = 65;
+export const BODY_MAX = 178;
+
+function tidy(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:—–-]+$/, "")}…`;
+}
+
+/** The notification presentation boundary — call once, on the finished alert, right before the OS. */
+export function presentAlertText(alert: LocalAlert): LocalAlert {
+  return {
+    ...alert,
+    title: clip(tidy(decodeHtmlEntities(alert.title)), TITLE_MAX),
+    body: clip(tidy(decodeHtmlEntities(alert.body)), BODY_MAX),
+  };
+}
+
+// ── The short summary ────────────────────────────────────────────────────────
+
+const NOUN: Partial<Record<PatrolEvent["category"], string>> = {
+  link: "link", website: "website", connection: "website", known_threat: "website", message: "text",
+  email: "email", call: "call", app: "app", file: "file", account: "account alert",
+};
+const SENT_TO_CHECK = new Set<string>(["link", "message", "email", "file"]);
+const RECEIVED = new Set<string>(["message", "email"]);
+const SITES = new Set<string>(["website", "connection", "known_threat"]);
+const MAX_NAME = 42;
+
+const named = (value: string | null | undefined): string => {
+  const v = (value ?? "").trim();
+  return v.length > MAX_NAME ? `${v.slice(0, MAX_NAME - 1)}…` : v;
+};
+
+/** "The Instagram link you sent", "The email from billing@acme.co", "The paypal-secure.top link you sent",
+ *  "The call from +61 412 345 678" — from recorded identifiers only; never guessed. */
+export function notificationSubject(event: PatrolEvent): string {
+  const noun = NOUN[event.category] ?? "item";
+  const brand = named(event.claimed_brand);
+  const sender = named(event.source_metadata?.sender);
+  const yours = event.background ? (RECEIVED.has(event.category) ? " you received" : "") : (SENT_TO_CHECK.has(event.category) ? " you sent" : "");
+  if (event.category === "call") {
+    const caller = named(event.local_indicator) || sender;
+    return caller ? `The call from ${caller}` : brand ? `The ${brand} call` : "The call";
+  }
+  if (brand) return `The ${brand} ${noun}${yours}`;
+  if (RECEIVED.has(event.category) && sender) return `The ${noun} from ${sender}`;
+  if (event.category === "file") {
+    const file = named(event.source_metadata?.attachment_names?.find((n) => !!n?.trim()));
+    if (file) return `The file ${file}`;
+  }
+  const host = shortDomain(event.source_metadata?.url ?? event.local_indicator ?? event.indicator_host);
+  if (host && event.category === "link") return `The ${host} link${yours}`;
+  if (host && SITES.has(event.category)) return `The website ${host}`;
+  return `The ${noun}${yours}`;
+}
+
+const inSentence = (subject: string) => subject.replace(/^The /, "the ");
+const OPEN = "Open ApolloSG to see what I found.";
+
+/** The short, specific notification body for an event. */
+export function notificationSummary(event: PatrolEvent): string {
+  const subject = notificationSubject(event);
+  switch (event.state) {
+    case "biting": return `Higgins: Apollo blocked ${inSentence(subject)}. ${OPEN}`;
+    case "barking": return `Higgins: ${subject} looks like a scam. Don't act on it — ${OPEN.charAt(0).toLowerCase()}${OPEN.slice(1)}`;
+    case "growling": return `Higgins: ${subject} has signs that need checking. ${OPEN}`;
+    default:
+      // A Limited result is never presented as safe.
+      return event.triage_investigation?.outcome === "LIMITED_UNABLE_TO_DETERMINE"
+        ? `Higgins: I couldn't fully check ${inSentence(subject)}. Treat it with caution — ${OPEN.charAt(0).toLowerCase()}${OPEN.slice(1)}`
+        : `Higgins: ${subject} needs a closer look. ${OPEN}`;
+  }
+}
+
+/** The body for "ApolloSG completed an investigation". */
+export function completedSummary(event: PatrolEvent): string {
+  return `Higgins: I've finished checking ${inSentence(notificationSubject(event))}. ${OPEN}`;
+}
