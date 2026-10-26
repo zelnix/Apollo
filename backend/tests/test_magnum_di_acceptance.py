@@ -69,10 +69,8 @@ class TestModelConfiguration:
     """Magnum DI investigates with Gemini 3.1 Flash-Lite; other paths keep their existing model."""
 
     def test_models(self):
-        from services.higgins.provider import TEXT_MODEL, VISION_MODEL, ADVISORY_MODEL
+        from services.higgins.provider import TEXT_MODEL
         assert TEXT_MODEL == "gemini-3.1-flash-lite", f"TEXT_MODEL is {TEXT_MODEL}"
-        assert VISION_MODEL == "gemini-3.8-flash", f"VISION_MODEL is {VISION_MODEL}"
-        assert ADVISORY_MODEL == "gemini-3.8-flash", f"ADVISORY_MODEL is {ADVISORY_MODEL}"
 
     def test_capabilities_registered(self):
         from services.higgins.provider import CAPABILITIES

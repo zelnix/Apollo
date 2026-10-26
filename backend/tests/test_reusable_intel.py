@@ -240,7 +240,10 @@ def test_only_approved_lookups_write_the_reusable_cache():
     writers = {path for path, text in code.items() if re.search(r"\b(?:intel|reusable_intel)\.put\(", text)}
     assert writers == {"services/higgins/knowledge.py", "services/higgins/teddy/search.py"}
     direct = {path for path, text in code.items() if "db.reusable_intelligence" in text}
-    assert direct == {"services/reusable_intel.py"}
+    assert direct == {"services/reusable_intel.py", "services/stats_reset.py"}
+    reset = code["services/stats_reset.py"]
+    assert re.findall(r"db\.reusable_intelligence\.(\w+)\(", reset) == ["update_many"] and '{"$set": {"hits": 0}}' in reset, \
+        "Reset Stats only zeroes the hit counts; it never writes a lookup"
 
 
 def test_magnum_di_and_case_evidence_never_reach_the_cache():
@@ -301,14 +304,14 @@ def web(monkeypatch, store):
         lines = [f"Q{n} | {state.status.get(subject, 'WARNING')} | A finding about {subject}." for n, subject in QLINE.findall(text)]
         answer, grounding = _grounded(lines) if state.sourced else ("\n".join(lines), {"web_search_queries": ["q"]})
         return GeminiResult(text=answer, content=types.Content(role="model", parts=[types.Part(text=answer)]), finish_reason="STOP",
-                            usage={"prompt_token_count": 10, "candidates_token_count": 5}, grounding=grounding, model=provider.TEDDY_MODEL)
+                            usage={"prompt_token_count": 10, "candidates_token_count": 5}, grounding=grounding, model=provider.TEXT_MODEL)
 
     monkeypatch.setattr(provider, "generate", fake)
     return state
 
 
 async def lookup(*checks: Check) -> dict:
-    return await search.run(list(checks), correlation_id="test-reuse", trigger_source="test")
+    return await search.run(list(checks), model=provider.TEXT_MODEL, correlation_id="test-reuse", trigger_source="test")
 
 
 async def test_a_fresh_lookup_is_reused_and_not_paid_for_again(web, store):

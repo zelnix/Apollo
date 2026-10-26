@@ -18,7 +18,7 @@ from starlette.requests import Request
 
 from core.db import db
 from routers import admin_portal
-from services.higgins import jobs, provider
+from services.higgins import jobs, model_choice, provider
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
 from services.higgins.preview.preview_simulator import evidence_blocks, simulated_text
@@ -216,7 +216,7 @@ async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
     calls = _gateway(monkeypatch, text, grounding)
     owner, case, response, _ = await _case([("text", "Zenith Quantum Markets offers 3% daily returns. Message us on WhatsApp to start.")])
     assert [c["purpose"] for c in calls] == [Purpose.TEDDY_SEARCH], "one low-cost search call, and no Magnum DI call"
-    assert calls[0]["model"] == provider.TEDDY_MODEL and calls[0]["tools"][0].google_search is not None
+    assert calls[0]["model"] == await model_choice.model_for("magnum_di") and calls[0]["tools"][0].google_search is not None
     assert response["assessment"] == "concern_found" and "Investor Alert List" in response["overview"]
     assert response["outcome"] == "confirmed_threat", "the planned search ran before Teddy settled the outcome"
     assert response["findings"][0]["sourceIds"], "the warning keeps its source"
@@ -259,7 +259,7 @@ async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_searc
     assert purposes == [Purpose.TEDDY_SEARCH, Purpose.INVESTIGATION], "Teddy's one search, then Magnum DI's one call"
     magnum = calls[1]
     assert magnum["tools"] is None, "Teddy already has the external facts, so Magnum's Google Search is off"
-    assert magnum["model"] == provider.TEXT_MODEL, "the existing configured model — no escalation"
+    assert magnum["model"] == await model_choice.model_for("magnum_di"), "the existing configured model — no escalation"
     assert "outcome" in magnum["response_schema"].required, "Magnum DI feeds the same outcome system"
     sent = [p.text for p in captured[0] if p.text]
     assert any("TC FlyBy fly-by results" in t and "For Magnum DI to settle" in t for t in sent)

@@ -106,3 +106,88 @@ def test_the_four_weeks_are_counted_separately(monkeypatch):
 def test_signed_out_visitors_are_sent_to_login():
     r = httpx.get(f"{BASE}/admin/gemini-map", timeout=20, follow_redirects=False)
     assert r.status_code == 303
+
+
+# ── Model per feature: one tap on the Gemini Map ─────────────────────────────
+from services.higgins import model_choice, provider  # noqa: E402
+
+
+def test_only_models_that_can_do_each_job_are_offered_cheapest_first():
+    magnum, ask = model_choice.eligible("magnum_di"), model_choice.eligible("ask_higgins")
+    assert all({"search", "vision", "json"} <= provider.CAPABILITIES[m] for m in magnum)
+    assert "gemini-2.5-flash-lite" not in magnum, "no Google Search, so it can't do Magnum DI's job"
+    assert "gemini-2.5-flash-lite" in ask and set(magnum) <= set(ask)
+    assert provider.TEXT_MODEL in magnum and provider.TEXT_MODEL in ask
+    priced = [m for m in ask if m in model_choice.MODEL_PRICING]
+    assert [model_choice.MODEL_PRICING[m]["input"] for m in priced] == sorted(model_choice.MODEL_PRICING[m]["input"] for m in priced)
+    assert ask[len(priced):] == [m for m in ask if m not in model_choice.MODEL_PRICING], "unpriced models come last"
+
+
+def test_ask_higgins_uses_magnum_dis_model_and_tc_flyby_always_follows_magnum(monkeypatch):
+    async def run():
+        client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        scratch = client[f"model_choice_{uuid.uuid4().hex[:8]}"]
+        monkeypatch.setattr(model_choice, "db", scratch)
+        try:
+            assert await model_choice.current() == {"magnum_di": "gemini-3.1-flash-lite", "tc_flyby": "gemini-3.1-flash-lite",
+                                                    "ask_higgins": "gemini-3.1-flash-lite"}
+            assert await model_choice.choose("magnum_di", "gemini-2.5-flash", "a@apollo.test") == "gemini-3.1-flash-lite"
+            assert await model_choice.model_for("tc_flyby") == "gemini-2.5-flash"
+            assert await model_choice.model_for("ask_higgins") == "gemini-3.1-flash-lite", "each feature has its own choice"
+            for feature, model in (("magnum_di", "gemini-2.5-flash-lite"), ("tc_flyby", "gemini-2.5-flash"), ("ask_higgins", "gpt-4")):
+                with pytest.raises(ValueError):
+                    await model_choice.choose(feature, model, "a@apollo.test")
+            assert await model_choice.model_for("magnum_di") == "gemini-2.5-flash", "a refused change changes nothing"
+            await scratch[model_choice.COLLECTION].update_one({"feature": "ask_higgins"}, {"$set": {"model": "retired-model"}}, upsert=True)
+            assert await model_choice.model_for("ask_higgins") == provider.TEXT_MODEL, "a stored model that can't do the job is never called"
+        finally:
+            await client.drop_database(scratch.name)
+            client.close()
+
+    asyncio.run(run())
+
+
+@pytest.fixture()
+def restore_choices():
+    saved = list(DB[model_choice.COLLECTION].find({}, {"_id": 0}))
+    yield
+    DB[model_choice.COLLECTION].delete_many({})
+    if saved:
+        DB[model_choice.COLLECTION].insert_many(saved)
+
+
+def test_one_tap_changes_a_features_model_and_is_audited(admin_cookie, restore_choices):
+    page = httpx.get(f"{BASE}/admin/gemini-map?tz=600", cookies=admin_cookie, timeout=20).text
+    assert "data-testid='gemini-model-magnum_di'" in page and "data-testid='gemini-model-ask_higgins'" in page
+    assert "onchange='this.form.submit()'" in page and "Always the same as Magnum DI" in page
+    assert "GEMINI_*_MODEL" not in page
+    pick = "gemini-2.5-flash" if "<option value='gemini-2.5-flash-lite' selected>" in page.split("gemini-model-ask_higgins")[1] else "gemini-2.5-flash-lite"
+    r = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "ask_higgins", "model": pick, "tz": "600"},
+                   cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/api/admin/gemini-map?tz=600&changed=ask_higgins"
+    page = httpx.get(f"{BASE}/admin/gemini-map?tz=600&changed=ask_higgins", cookies=admin_cookie, timeout=20).text
+    assert "data-testid='gemini-model-changed'" in page and f"Ask Higgins now uses <strong>{pick}</strong>" in page
+    assert f"<option value='{pick}' selected>" in page and "Changed by gemini-map-test@apollo.test" in page
+    audit = DB.admin_audit.find_one({"email": "gemini-map-test@apollo.test", "action": "gemini_model_change"}, sort=[("timestamp", -1)])
+    assert audit and audit["detail"].startswith("Ask Higgins: ") and audit["detail"].endswith(f"→ {pick}")
+    DB.admin_audit.delete_many({"email": "gemini-map-test@apollo.test"})
+    refused = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "magnum_di", "model": "gemini-2.5-flash-lite"},
+                         cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert refused.status_code == 400
+    flyby = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "tc_flyby", "model": "gemini-2.5-flash"},
+                       cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert flyby.status_code == 400, "TC FlyBy has no choice of its own"
+
+
+def test_signed_out_visitors_cannot_change_a_model():
+    r = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "ask_higgins", "model": "gemini-2.5-flash"}, timeout=20, follow_redirects=False)
+    assert r.status_code == 303 and "login" in r.headers["location"]
+
+
+def test_admin_pages_show_only_the_models_in_use(admin_cookie):
+    system = httpx.get(f"{BASE}/admin/system", cookies=admin_cookie, timeout=30).text
+    assert "Magnum DI and TC FlyBy model" in system and "Ask Higgins model" in system and "Vision Model" not in system
+    triage = httpx.get(f"{BASE}/admin/triage", cookies=admin_cookie, timeout=30).text
+    assert "Triage Model" not in triage and "Input Price" not in triage
+    releases = httpx.get(f"{BASE}/admin/releases", cookies=admin_cookie, timeout=30).text
+    assert "Ask Higgins model" in releases

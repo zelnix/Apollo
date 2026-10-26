@@ -176,8 +176,9 @@ def parse(text: str, checks: list[Check], grounding: dict | None) -> dict[str, d
     return answers
 
 
-async def run(checks: list[Check], *, correlation_id: str, trigger_source: str | None) -> dict:
-    """One grounded lookup call for every open factual question (cache first). Never raises."""
+async def run(checks: list[Check], *, model: str, correlation_id: str, trigger_source: str | None) -> dict:
+    """One grounded lookup call for every open factual question (cache first). Never raises.
+    `model` is the investigation's Magnum DI model: TC FlyBy is never on a stronger one."""
     pending = [c for c in checks if c.question][:MAX_QUESTIONS]
     out = {"answers": {}, "calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0},
            "simulated": False, "model": None, "status": "skipped"}
@@ -205,7 +206,7 @@ async def run(checks: list[Check], *, correlation_id: str, trigger_source: str |
         await intel.count(SITE, *decisions[check.id].events(call_made=True))
     try:
         result = await provider.generate("", [types.Content(role="user", parts=[types.Part(text=prompt(to_ask))])],
-                                         model=provider.TEDDY_MODEL, tools=[types.Tool(google_search=types.GoogleSearch())],
+                                         model=model, tools=[types.Tool(google_search=types.GoogleSearch())],
                                          capability="search", purpose=Purpose.TEDDY_SEARCH, json_output=False,
                                          correlation_id=correlation_id, trigger_source=trigger_source)
     except Exception as exc:  # noqa: BLE001 — an unavailable lookup is missing evidence, handed on as such

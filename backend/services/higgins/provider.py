@@ -85,19 +85,10 @@ def register_preview_handler(handler) -> None:
         raise RuntimeError("The preview simulator can only be installed on the preview server.")
     _preview_generate = handler
     _gateway_log.info("preview handler registered")
-# Magnum DI's investigation model. Gemini 3.1 Flash-Lite (stable, May 2026) supports image/PDF
-# input, Search grounding and structured outputs, which is everything the investigation request uses.
+# The default model for every feature that calls Gemini (Magnum DI, TC FlyBy, Ask Higgins) until an admin
+# picks another on the Gemini Map (services/higgins/model_choice.py). Gemini 3.1 Flash-Lite (stable, May 2026)
+# supports image/PDF input, Search grounding and structured outputs, which is everything those calls use.
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
-# TC FlyBy's targeted Google Search lookups: the low-cost model with Search grounding. By default the same
-# model Magnum DI is configured with — never a stronger one, and never a second attempt at Magnum's task.
-TEDDY_MODEL = os.getenv("GEMINI_TEDDY_MODEL", TEXT_MODEL)
-# Vision extraction and advisory generation stay on their existing model — unchanged by the
-# Magnum DI model switch.
-VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.8-flash")
-RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
-ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", "gemini-3.8-flash")
-TRIAGE_MODEL = os.getenv("GEMINI_TRIAGE_MODEL", "gemini-2.5-flash-lite")
-CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
 _LITE_CAPS = {"text", "json"}  # Older lite models: text + JSON only, no tools/search/vision
 CAPABILITIES = {
@@ -502,14 +493,10 @@ async def generate_text(system: str, prompt: Any, **kwargs: Any) -> GeminiResult
 
 
 def configuration() -> dict:
-    models = {"investigation": TEXT_MODEL, "teddy_search": TEDDY_MODEL, "vision": VISION_MODEL,
-              "recovery": RECOVERY_MODEL or None, "chat": CHAT_MODEL,
-              "triage": TRIAGE_MODEL}
     preview_active = _preview_generate is not None
     return {"provider": "Gemini (preview)" if preview_active else "Gemini",
             "preview_active": preview_active,
             "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
-            "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
             "accountAccess": "Preview provider (no external calls)" if preview_active else "Direct Google AI Studio API key",
             "providerRetention": "Preview: no data leaves this server." if preview_active else
                                  "ApolloSG uses the Gemini API directly via the google-genai SDK under Google's published "

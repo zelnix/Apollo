@@ -26,7 +26,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from core.db import db, now_utc
 from core import local_time
 from core.brand import BANNER_ALT, BANNER_PATH
-from services.higgins import provider
+from services.gemini_usage import MODEL_PRICING
+from services.higgins import model_choice, provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
     get_dashboard_health, check_integrations, get_usage_and_costs,
@@ -2649,8 +2650,7 @@ async def triage_dashboard(request: Request):
         return _login_redirect()
 
     from services.triage_engine import get_triage_stats, COLLECTION as TRIAGE_COLLECTION
-    from services.higgins.provider import TRIAGE_MODEL, get_provider_mode
-    from services.gemini_usage import MODEL_PRICING
+    from services.higgins.provider import get_provider_mode
 
     # Get stats for different periods
     now = datetime.now(timezone.utc)
@@ -2667,9 +2667,6 @@ async def triage_dashboard(request: Request):
         {"record_type": "decision"},
         {"_id": 0},
     ).sort("decided_at", -1).limit(50).to_list(50)
-
-    # Model pricing info
-    triage_pricing = MODEL_PRICING.get(TRIAGE_MODEL, {})
 
     def _kpi_html(stats: dict, label: str) -> str:
         """Render a KPI card for a period."""
@@ -2708,13 +2705,7 @@ async def triage_dashboard(request: Request):
     <h2>Triage Configuration</h2>
     <table>
         <tbody>
-            <tr><td>Triage Model</td><td><code>{html_mod.escape(TRIAGE_MODEL)}</code></td></tr>
             <tr><td>Provider Mode</td><td><code>{html_mod.escape(mode)}</code></td></tr>
-            <tr><td>Input Price</td><td>${triage_pricing.get('input', 0):.2f} / 1M tokens</td></tr>
-            <tr><td>Output Price</td><td>${triage_pricing.get('output', 0):.2f} / 1M tokens</td></tr>
-            <tr><td>Target Input Tokens</td><td>~300-500</td></tr>
-            <tr><td>Target Output Tokens</td><td>~30-50</td></tr>
-            <tr><td>Est. Cost Per Triage Call</td><td>~$0.00005</td></tr>
             <tr><td>KPI Target</td><td>&le; $0.001 avg/item</td></tr>
         </tbody>
     </table>"""
@@ -2807,6 +2798,7 @@ async def system_page(request: Request):
 
     be = await check_backend()
     db_health = await check_database()
+    models = await model_choice.current()
 
     try:
         migration_count = await db.apollo_migrations.count_documents({})
@@ -2834,8 +2826,7 @@ async def system_page(request: Request):
 
     <h2>Environment</h2>
     <table>
-        <tr><td>Gemini Text Model</td><td><code>{html_mod.escape(provider.TEXT_MODEL)}</code></td></tr>
-        <tr><td>Gemini Vision Model</td><td><code>{html_mod.escape(provider.VISION_MODEL)}</code></td></tr>
+        {_models_rows(models)}
         <tr><td>Admin Email</td><td><code>{html_mod.escape(ADMIN_EMAIL or 'not set')}</code></td></tr>
         <tr><td>Cookie Secure</td><td><code>{os.getenv('COOKIE_SECURE','false')}</code></td></tr>
     </table>
@@ -3020,7 +3011,7 @@ async def releases(request: Request):
     <table>
         <tr><td>Frontend</td><td><code>1.0.0</code></td></tr>
         <tr><td>Backend</td><td><code>Expo + FastAPI</code></td></tr>
-        <tr><td>Gemini Model</td><td><code>{html_mod.escape(provider.TEXT_MODEL)}</code></td></tr>
+        {_models_rows(await model_choice.current())}
     </table>
 
     <h2>Recent Migrations</h2>
@@ -3413,15 +3404,16 @@ async def device_list_page(request: Request):
 
 _GEMINI_FEATURES = (
     ("magnum_di", "Magnum DI", "The full investigation of a case, with Google Search when it needs it.",
-     "services/higgins/coordinator.py → run_turn()", lambda: f"{provider.TEXT_MODEL} + Google Search",
+     "services/higgins/coordinator.py → run_turn()",
      "When TC FlyBy and what ApolloSG already knows can't settle an investigation."),
     ("tc_flyby", "TC FlyBy web search", "Narrow searches about a link, number, company, ABN, ACN or licence.",
-     "services/higgins/teddy/search.py → run()", lambda: f"{provider.TEDDY_MODEL} + Google Search",
+     "services/higgins/teddy/search.py → run()",
      "During an investigation, only for what no saved answer from the last 7 days covers."),
     ("ask_higgins", "Ask Higgins", "Answers a general scam-safety question nothing in ApolloSG already answers.",
-     "services/higgins/chat.py → reply()", lambda: provider.CHAT_MODEL,
+     "services/higgins/chat.py → reply()",
      "When a question is in scope and nothing saved answers it; the answer is saved and reused."),
 )
+_FEATURE_NAMES = {key: name for key, name, *_ in _GEMINI_FEATURES}
 _RETIRED_FEATURES = {
     "page_signal_extraction": "Screenshot page reading (removed)", "page_crawl": "Web page reading (removed)",
     "protection": "Protection explanations (removed)", "public_advisory_analysis": "Scam alert analysis (retired)",
@@ -3481,7 +3473,7 @@ def _trend_table(weeks: list[datetime], usage: list[dict[str, dict]], tz: int) -
     """The last four weeks side by side for each feature, oldest first, each cost compared with the week before."""
     zone = timezone(timedelta(minutes=tz))
     current = [key for key, *_ in _GEMINI_FEATURES]
-    names = {key: name for key, name, *_ in _GEMINI_FEATURES}
+    names = _FEATURE_NAMES
 
     def pick(week: dict[str, dict], which: str) -> tuple[int, float]:
         if which == "total":
@@ -3518,6 +3510,47 @@ def _usage_cells(row: Optional[dict]) -> str:
             f"<td class='num'>{row.get('searches', 0):,}</td><td class='num'>${row.get('cost', 0):.4f}</td><td>{_t(row.get('last'), 'short')}</td>")
 
 
+def _models_rows(models: dict[str, str]) -> str:
+    """The models in use, for the System and Releases pages."""
+    esc = html_mod.escape
+    return (f"<tr><td>Magnum DI and TC FlyBy model</td><td><code>{esc(models['magnum_di'])}</code></td></tr>"
+            f"<tr><td>Ask Higgins model</td><td><code>{esc(models['ask_higgins'])}</code> "
+            f"<a href='/api/admin/gemini-map'>Change on the Gemini Map</a></td></tr>")
+
+
+def _model_label(model: str) -> str:
+    price = MODEL_PRICING.get(model)
+    return f"{model} · ${price['input']:.2f} in / ${price['output']:.2f} out per 1M tokens" if price else f"{model} · no price on file"
+
+
+def _model_cell(key: str, models: dict[str, str], choices: dict[str, Optional[dict]], tz: int) -> str:
+    """One tap to change a feature's model: only the models that can do its job are offered."""
+    esc = html_mod.escape
+    if key in model_choice.FOLLOWS:
+        return (f"<td data-testid='gemini-model-{key}'>{esc(models[key])} + Google Search"
+                f"<br><span class='muted'>Always the same as Magnum DI</span></td>")
+    options = "".join(f"<option value='{esc(m)}'{' selected' if m == models[key] else ''}>{esc(_model_label(m))}</option>"
+                      for m in model_choice.eligible(key))
+    chosen = choices.get(key)
+    note = (f"Changed by {esc(chosen.get('changed_by') or 'an admin')}, {_t(chosen.get('changed_at'), 'short')}"
+            if chosen else "Default model")
+    search = "+ Google Search when it needs it · " if "search" in model_choice.NEEDS[key] else ""
+    return (f"<td class='model-pick'><form method='post' action='/api/admin/gemini-map/model'>"
+            f"<input type='hidden' name='feature' value='{key}'><input type='hidden' name='tz' value='{tz}'>"
+            f"<select name='model' data-testid='gemini-model-{key}' aria-label='Model for {esc(_FEATURE_NAMES[key])}' "
+            f"onchange='this.form.submit()'>{options}</select><noscript><button class='btn'>Change</button></noscript></form>"
+            f"<span class='muted'>{search}{note}</span></td>")
+
+
+def _changed_html(feature: Optional[str], models: dict[str, str]) -> str:
+    if feature not in model_choice.NEEDS:
+        return ""
+    who = "Magnum DI and TC FlyBy now use" if feature == "magnum_di" else "Ask Higgins now uses"
+    when = "the next investigation" if feature == "magnum_di" else "the next question"
+    return (f"<p class='flash' data-testid='gemini-model-changed'>{who} <strong>{html_mod.escape(models[feature])}</strong> "
+            f"from {when}. The change is in the audit log.</p>")
+
+
 @router.get("/admin/gemini-map", response_class=HTMLResponse)
 async def gemini_map_page(request: Request):
     adm = await _admin(request)
@@ -3528,11 +3561,13 @@ async def gemini_map_page(request: Request):
     weeks = [start - timedelta(weeks=n) for n in range(_TREND_WEEKS - 1, -1, -1)]
     trend = [await gemini_usage_by_feature(w, w + timedelta(weeks=1) if w != start else None) for w in weeks]
     usage = trend[-1]
+    models = await model_choice.current()
+    choices = {key: await model_choice.choice(key) for key in model_choice.NEEDS}
     esc = html_mod.escape
     rows = "".join(
         f"<tr data-testid='gemini-feature-{key}'><td><strong>{esc(name)}</strong><br><span class='muted'>{esc(what)}</span></td>"
-        f"<td><code>{esc(code)}</code></td><td>{esc(model())}</td><td class='muted'>{esc(when)}</td>{_usage_cells(usage.get(key))}</tr>"
-        for key, name, what, code, model, when in _GEMINI_FEATURES)
+        f"<td><code>{esc(code)}</code></td>{_model_cell(key, models, choices, tz)}<td class='muted'>{esc(when)}</td>{_usage_cells(usage.get(key))}</tr>"
+        for key, name, what, code, when in _GEMINI_FEATURES)
     current = {key for key, *_ in _GEMINI_FEATURES}
     others = sorted(((k, v) for k, v in usage.items() if k not in current), key=lambda kv: -kv[1]["calls"])
     other_rows = "".join(f"<tr><td>{esc(_RETIRED_FEATURES.get(k, k))}</td>{_usage_cells(v)}</tr>" for k, v in others)
@@ -3540,6 +3575,7 @@ async def gemini_map_page(request: Request):
     total_cost = sum(v["cost"] for v in usage.values())
     head = "<th>Calls</th><th>Failed</th><th>Searches</th><th>Est. cost (USD)</th><th>Last call</th>"
     body = f"""
+    {_changed_html(request.query_params.get("changed"), models)}
     <p class="muted" data-testid="gemini-map-week">This week: since Monday 00:00 {local_time.zone_label(tz)}
     ({_t(start)}). Each call is counted once; the free model check and token count before it are not.</p>
     <div class="stats-grid">{_stat_card(f"{total_calls:,}", "Gemini calls this week")}{_stat_card(f"${total_cost:.4f}", "Estimated cost this week")}</div>
@@ -3547,14 +3583,38 @@ async def gemini_map_page(request: Request):
     <div class="table-scroll"><table data-testid="gemini-map-table"><thead><tr><th>Feature</th><th>Where in the code</th><th>Model</th>
     <th>When it calls</th>{head}</tr></thead><tbody>{rows}</tbody></table></div>
     <p class="muted">Every call goes through one gateway, <code>generate()</code> in <code>services/higgins/provider.py</code>,
-    which records it. Models can be changed with the GEMINI_*_MODEL settings.</p>
+    which records it. To change a feature's model, pick another in the Model column: only the models that can do that
+    feature's job are listed, cheapest first. The change applies from the next call and is kept in the audit log.</p>
     {_trend_table(weeks, trend, tz)}
     {f'<h2>Other calls this week</h2><p class="muted">From features that have been removed or no longer call Gemini.</p><table data-testid="gemini-map-other"><thead><tr><th>Feature</th>{head}</tr></thead><tbody>{other_rows}</tbody></table>' if other_rows else ""}
     <script>(function(){{if(!/[?&]tz=/.test(location.search)){{location.replace(location.pathname+'?tz='+(-new Date().getTimezoneOffset()));}}}})();</script>"""
     css = (".muted{color:var(--muted);font-size:0.85em;} td.num,th.num{text-align:right;white-space:nowrap;} .table-scroll{overflow-x:auto;}"
            " .trend{font-size:0.8em;margin-left:4px;color:var(--muted);} .trend.up{color:var(--red);} .trend.down{color:var(--green);}"
-           " .main{min-width:0;} td code{font-size:0.8em;}")
+           " .main{min-width:0;} td code{font-size:0.8em;}"
+           " .model-pick select{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:6px 8px;"
+           "max-width:340px;margin-bottom:4px;font-size:0.85em;}"
+           " .flash{background:var(--card);border:1px solid var(--green);border-radius:8px;padding:10px 14px;margin:0 0 12px;}")
     return _shell("Gemini Map", "/api/admin/gemini-map", body, admin=adm, extra_css=css)
+
+
+@router.post("/admin/gemini-map/model")
+async def gemini_map_change_model(request: Request):
+    """One tap on the Gemini Map: store the model a feature calls from now on (services/higgins/model_choice.py)."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from urllib.parse import parse_qs
+    form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
+    feature, model = form.get("feature", ""), form.get("model", "")
+    try:
+        before = await model_choice.choose(feature, model, adm.get("email", ""))
+    except ValueError:
+        return HTMLResponse("That model can't do this feature's job, so nothing was changed.", status_code=400)
+    if before != model:
+        await _audit_log(adm.get("email", ""), "gemini_model_change", f"{_FEATURE_NAMES[feature]}: {before} → {model}")
+    tz = form.get("tz", "")
+    query = {"tz": tz, "changed": feature} if re.fullmatch(r"-?\d{1,4}", tz) else {"changed": feature}
+    return RedirectResponse(f"/api/admin/gemini-map?{urlencode(query)}", status_code=303)
 
 
 

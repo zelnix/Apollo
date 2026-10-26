@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from services.higgins import provider
+from services.higgins import model_choice, provider
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -277,7 +277,7 @@ async def check_integrations() -> dict[str, dict]:
         "name": "Gemini / Magnum DI",
         "status": CONNECTED if ai["status"] == OK else DEGRADED if ai["status"] == DEGRADED else UNABLE,
         "detail": ai["detail"],
-        "model": provider.TEXT_MODEL,
+        "model": await model_choice.model_for("magnum_di"),
     }
 
     # Google Safe Browsing / Threat Intelligence

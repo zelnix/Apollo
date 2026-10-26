@@ -212,10 +212,10 @@ class TestFamilyPairPhone:
         assert len(code) == 6
         TestFamilyPairPhone.state["code"] = code
 
-    def test_pair_invalid_phone_400(self, s):
-        r = s.post(f"{API}/family/pair", json={
-            "device_id": f"pair-bad-{uuid.uuid4().hex[:8]}", "owner_name": "X",
-            "phone": "abc"
+    def test_override_invalid_phone_400(self, s):
+        # Pairing keeps no phone number; a guardian's own call-back number is still checked.
+        r = s.post(f"{API}/family/links/phone", json={
+            "device_id": self.DEV_B, "protected_device_id": self.DEV_A, "phone": "abc"
         })
         assert r.status_code == 400, r.text
         assert r.json()["detail"] == "Enter a valid phone number"
@@ -226,7 +226,7 @@ class TestFamilyPairPhone:
         })
         assert r.status_code == 200, r.text
 
-    def test_link_and_links_includes_phone(self, s):
+    def test_link_and_links_keep_no_phone_from_pairing(self, s):
         r = s.post(f"{API}/family/link", json={
             "device_id": self.DEV_B, "code": self.state["code"]
         })
@@ -237,7 +237,7 @@ class TestFamilyPairPhone:
         i_watch = g.json()["i_watch"]
         assert len(i_watch) >= 1
         row = next(x for x in i_watch if x["protected_device_id"] == self.DEV_A)
-        assert row["phone"] == "+61 400 123 456"
+        assert row["phone"] == "", "the number sent with the pairing code is never kept"
 
     def test_override_phone_success(self, s):
         r = s.post(f"{API}/family/links/phone", json={

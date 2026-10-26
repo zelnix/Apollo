@@ -31,6 +31,7 @@ from core.db import db, now_utc
 from services import device_stats
 from services.higgins import evidence as ev
 from services.higgins import explain
+from services.higgins import model_choice
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins import teddy
@@ -174,9 +175,10 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     payload = repo.dec_json(job["payload_ciphertext"])
     device = repo.device_profile(case)
     capability_ids = set((device or {}).get("capabilityIds", []))
-    job_model = job.get("provider_model") or provider.TEXT_MODEL
+    job_model = job.get("provider_model") or await model_choice.model_for("magnum_di")
     if not job.get("provider_model"):
         await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"provider_model": job_model}})
+        job = {**job, "provider_model": job_model}  # TC FlyBy reads it from here
 
     # ── Step 1: Assemble the case evidence ──
     await progress("ingest", "Assembling the case evidence.")

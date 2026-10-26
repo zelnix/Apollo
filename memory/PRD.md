@@ -3834,3 +3834,9 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 
 ## Architecture Q&A (Jun 2026)
 - Answered: where Magnum DI (coordinator.run_turn via jobs.py), TC FlyBy (teddy/search.run, first turn only) and Ask Higgins (chat.reply via /higgins/chat, Ask tab) run, and which Gemini models each uses (TEXT/TEDDY = gemini-3.1-flash-lite default; CHAT = gemini-3.8-flash via .env). No code changes.
+
+## Gemini model per feature (Jun 2026)
+- New services/higgins/model_choice.py: per-feature model stored in `gemini_model_choices` (Magnum DI, Ask Higgins); TC FlyBy always follows Magnum DI (uses the job's provider_model). Default = provider.TEXT_MODEL (gemini-3.1-flash-lite), so Ask Higgins switched to the cheaper model (GEMINI_CHAT_MODEL env is no longer read).
+- Gemini Map: one-tap <select> per feature (only models whose capabilities fit: Magnum needs search+vision+json, Ask Higgins json), POST /api/admin/gemini-map/model, audit action gemini_model_change.
+- Removed VISION/ADVISORY/TRIAGE/RECOVERY/CHAT/TEDDY model constants + their admin rows (Triage, System, Releases pages). Parity snapshot now reports "models".
+- Fixed stale tests (iter7 pairing phone, parity keys, reusable-intel writer list); rule book updated + stamped. Full backend suite: 1229 passed.

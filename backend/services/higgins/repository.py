@@ -622,14 +622,15 @@ async def sweep_evidence_content() -> int:
 
 # ------------------------------------------------------------------ jobs / events
 async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payload_digest: str, kind: str, payload: dict, *, source: str = "user_initiated") -> dict:
-    from services.higgins import provider
+    from services.higgins import model_choice
     now = now_utc()
     deadline = min(utc(case["expires_at"]), now + timedelta(seconds=WORK_SECONDS))
     doc = {"owner_id": owner, "case_id": case["case_id"], "job_id": str(uuid.uuid4()), "turn_id": turn_id, "idempotency_key_digest": key_digest,
            "payload_digest": payload_digest, "kind": kind, "status": "queued", "attempt": 0, "created_at": now, "started_at": None, "deadline_at": deadline,
            "retry_at": None, "lease_until": None, "fence": None, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "input_revision": case["revision"], "last_sequence": 0,
            "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "checkpoint_revision": 0,
-           "provider_model": provider.TEXT_MODEL,
+           # Fixed for this investigation: Magnum DI and TC FlyBy both use it, even if an admin changes the model meanwhile.
+           "provider_model": await model_choice.model_for("magnum_di"),
            "consumed_device_request_ids": [],
            "expires_at": utc(case["expires_at"]),
            "auto_resume_count": 0,

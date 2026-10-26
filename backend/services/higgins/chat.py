@@ -30,7 +30,7 @@ from services import reusable_intel as intel
 from services import sufficiency
 from services.higgins import app_knowledge, knowledge, presenter
 from services.higgins import context as memory
-from services.higgins import context_tools, provider
+from services.higgins import context_tools, model_choice, provider
 from services.higgins.contracts import Wire
 from services.higgins.pipeline_submit import (
     detect_investigation_intent,
@@ -365,7 +365,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
 
     # ── P5: One Gemini call for a general scam-safety question nothing else covers; saved for reuse ──
     final = await provider.generate(
-        build_system_prompt(), json.dumps({"message": clean}, ensure_ascii=False), model=provider.CHAT_MODEL,
+        build_system_prompt(), json.dumps({"message": clean}, ensure_ascii=False), model=await model_choice.model_for("ask_higgins"),
         capability="json", json_output=True, response_schema=ModelChatReply,
         purpose=provider.Purpose.ORDINARY_CHAT, correlation_id=f"chat-{owner[:8]}", trigger_source="chat_general_knowledge",
     )

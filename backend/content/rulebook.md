@@ -443,7 +443,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 **Still stops only for a confirmed threat, or an answered general question.**
 
 #### Stage 3: one targeted web search
-- Only open checks with a question get here: at most 6 questions in **one** call to the low-cost model, with Google Search.
+- Only open checks with a question get here: at most 6 questions in **one** call, with Google Search, to the same model as this investigation's Magnum DI, so TC FlyBy is never on a stronger model.
 - ApolloSG's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
 - An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as clear.
@@ -502,7 +502,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 **Process**
 1. It runs only when TC FlyBy hands it issues. On later turns it runs only when the person answers Magnum DI's own question.
 2. **Size limit.** If the written evidence is over 10,000 words, nothing is sent, and the person is told the word count.
-3. **One AI call** to the configured model.
+3. **One AI call** to the model picked for Magnum DI on the admin Gemini Map (gemini-3.1-flash-lite until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
    - There is one retry after 4 seconds, only for a temporary failure or an invalid answer. Configuration errors are never retried.
    - The limit of 2 calls per job is enforced on the job record.
    - If both calls fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
@@ -968,4 +968,5 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
 - Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
 - Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.
+- Models: Magnum DI and Ask Higgins each call the model picked for them on the admin Gemini Map, gemini-3.1-flash-lite until an admin changes it. Only models that can do that feature's job can be picked, and TC FlyBy always uses Magnum DI's model. Every change is kept in the admin audit log.
 

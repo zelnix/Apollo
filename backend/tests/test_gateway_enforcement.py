@@ -240,12 +240,6 @@ class TestScamAnalysisGateway:
         assert "LlmChat" not in source, \
             "scam_analysis must not use LlmChat (use provider.py gateway)"
 
-    def test_advisory_model_registered_in_capabilities(self):
-        """The advisory model must be registered in provider.CAPABILITIES."""
-        from services.higgins.provider import ADVISORY_MODEL, CAPABILITIES
-        assert ADVISORY_MODEL in CAPABILITIES, \
-            f"Advisory model '{ADVISORY_MODEL}' not in provider.CAPABILITIES"
-
 
 # ── 6. Credentials never leave for the newer purposes ──────────────────────
 
@@ -264,15 +258,6 @@ class TestNewPurposeBoundary:
 
 class TestProviderConfiguration:
     """Verify provider.py configuration is correct for Package 3."""
-
-    def test_advisory_model_defined(self):
-        from services.higgins.provider import ADVISORY_MODEL
-        assert ADVISORY_MODEL, "ADVISORY_MODEL must be defined"
-
-    def test_advisory_model_has_text_capability(self):
-        from services.higgins.provider import ADVISORY_MODEL, CAPABILITIES
-        caps = CAPABILITIES.get(ADVISORY_MODEL, set())
-        assert "text" in caps, f"Advisory model {ADVISORY_MODEL} must have 'text' capability"
 
     def test_purpose_enum_includes_new_values(self):
         from services.higgins.llm_boundary import Purpose

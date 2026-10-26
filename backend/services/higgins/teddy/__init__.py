@@ -28,6 +28,7 @@ from core.db import db, now_utc
 from services import kb_sources
 from services.higgins import evidence as ev
 from services.higgins import knowledge
+from services.higgins import model_choice
 from services.higgins import repository as repo
 from services.higgins.contracts import Coverage, SourceReference
 from services.higgins.teddy import decide as deciding
@@ -398,7 +399,8 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         open_checks = [c for c in plan_.checks if c.question and c.status == "open"]
         if open_checks:
             await progress("research", "TC FlyBy is running a few targeted searches.")
-            searched = await search.run(open_checks, correlation_id=f"case-{case_id}", trigger_source=job.get("source"))
+            searched = await search.run(open_checks, model=job.get("provider_model") or await model_choice.model_for("tc_flyby"),
+                                        correlation_id=f"case-{case_id}", trigger_source=job.get("source"))
             for check in open_checks:
                 if check.id in searched["answers"]:
                     _apply(check, searched["answers"][check.id], plan_)

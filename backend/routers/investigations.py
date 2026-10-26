@@ -26,6 +26,7 @@ from services.storage import storage_configured
 from routers.push import push_configured
 from services.higgins import evidence as ev
 from services.higgins import jobs
+from services.higgins import model_choice
 from services.higgins import presenter
 from services.higgins import provider
 from services.higgins import repository as repo
@@ -97,6 +98,7 @@ async def _case_json(case: dict) -> dict:
 @router.get("/ai/capabilities")
 async def capabilities():
     config = provider.configuration()
+    models = await model_choice.current()
     key = config["keyConfigured"]
 
     def modality(name: str, model: str, cap: str):
@@ -113,10 +115,10 @@ async def capabilities():
               "caseBytes": {"value": ev.MAX_CASE_BYTES, "unit": "bytes", "purpose": "aggregate active-case payload", "overflow": "413"},
               "documentPages": {"value": ev.MAX_PAGES, "unit": "pages", "purpose": "supported document budget", "overflow": "later pages recorded as omitted"},
               "lifetimeSeconds": {"value": policy()["lifetimeSeconds"], "unit": "seconds", "purpose": "temporary content ceiling; never extended", "overflow": "410"}}
-    return JSONResponse({"schemaVersion": 1, "provider": "gemini", "modalities": [modality("text", provider.TEXT_MODEL, "text"), modality("vision", provider.VISION_MODEL, "vision"),
-                         modality("research", provider.TEXT_MODEL, "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
+    return JSONResponse({"schemaVersion": 1, "provider": "gemini", "modalities": [modality("text", models["magnum_di"], "text"), modality("vision", models["magnum_di"], "vision"),
+                         modality("research", models["magnum_di"], "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
                          "providerMode": provider.get_provider_mode(),
-            "models": config["models"], "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
+            "models": models, "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
 
 
 # ── Source metadata builder (Original Item Summary) ──────────────────────────

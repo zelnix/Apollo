@@ -15,11 +15,12 @@ from pathlib import Path
 
 from core.db import db
 from services import emergent_storage, feed_health
+from services.higgins import model_choice
 
 ROOT = Path(__file__).resolve().parents[1]
 _CODE_DIRS = ("core", "routers", "services", "content")
 # Settings whose VALUES are safe to compare (no credentials).
-SETTINGS = ("GEMINI_CHAT_MODEL", "GEMINI_TRIAGE_MODEL", "APOLLO_PREVIEW_SIMULATOR", "FAMILY_ASSIST_ENABLED",
+SETTINGS = ("GEMINI_TEXT_MODEL", "APOLLO_PREVIEW_SIMULATOR", "FAMILY_ASSIST_ENABLED",
             "FAMILY_ASSIST_TURN_PROVIDER")
 # Credentials: only whether each one is set is reported — never the value.
 CREDENTIALS = ("GEMINI_API_KEY", "EMERGENT_LLM_KEY", "SAFE_BROWSING_API_KEY", "VIRUSTOTAL_API_KEY", "IPQS_API_KEY",
@@ -66,6 +67,8 @@ async def snapshot() -> dict:
         },
         "feeds": {row["feedId"]: {"status": row["status"], "via": row["relay"] or "direct"} for row in feeds["feeds"]},
         "settings": {name: os.environ.get(name) or None for name in SETTINGS},
+        # The model each feature calls, as picked on the Gemini Map (stored per server, in its own database).
+        "models": await model_choice.current(),
         "credentialsSet": {name: bool(os.environ.get(name)) for name in CREDENTIALS},
         "fileStorage": "ok" if await _storage_ok() else "failing",
     }
