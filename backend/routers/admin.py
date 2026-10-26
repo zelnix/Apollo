@@ -70,7 +70,7 @@ async def admin_stats():
         "events_7d": {"total": sum(by_state.values()), "by_state": by_state},
         "blocklist": {"entries": await db.blocklist.count_documents({"deleted_at": None})},
         "feedback": {"total": await db.feedback.count_documents({}), "last_7d": await db.feedback.count_documents({"created_at": {"$gte": since}})},
-        "family": {"links": await db.family_links.count_documents({}), "guardians": await db.guardians.count_documents({"deleted_at": None})},
+        "family": {"links": await db.family_links.count_documents({})},
         "intel": await intel_status(),
         "audit": {
             "total": await db.admin_audit.count_documents({}),

@@ -139,19 +139,3 @@ class TestTokenLifecycle:
         assert d.post("/devices/token/rotate").status_code == 401  # cannot rotate back to life
         assert d.get("/family/links", params={"device_id": d.id}).status_code == 401
         assert other.get("/family/links", params={"device_id": d.id}).status_code == 403  # nor can anyone else read it
-
-    @pytest.mark.credentialed_integration
-    def test_email_confirm_link_is_single_use_and_expires(self):
-        d = Dev()
-        r = d.post("/family/guardians", json={"device_id": d.id, "name": "Aunt", "email": "delivered@resend.dev", "owner_name": "Mum"})
-        assert r.status_code in (200, 201), r.text[:200]
-        g = _db(lambda server: server.db.guardians.find_one({"device_id": d.id}, sort=[("created_at", -1)]))
-        tok = g["confirm_token"]
-        assert g["confirm_expires_at"] is not None
-        first = anon.get(f"{API}/family/confirm/{tok}"); assert first.status_code == 200 and "now receiving" in first.text
-        second = anon.get(f"{API}/family/confirm/{tok}"); assert "no longer valid" in second.text  # single use: token cleared
-        # expired token for a second guardian
-        d.post("/family/guardians", json={"device_id": d.id, "name": "Uncle", "email": "delivered@resend.dev", "owner_name": "Mum"})
-        g2 = _db(lambda server: server.db.guardians.find_one({"device_id": d.id, "name": "Uncle"}))
-        _db(lambda server: server.db.guardians.update_one({"_id": g2["_id"]}, {"$set": {"confirm_expires_at": server.now_utc() - server.timedelta(minutes=1)}}))
-        assert "no longer valid" in anon.get(f"{API}/family/confirm/{g2['confirm_token']}").text  # expired

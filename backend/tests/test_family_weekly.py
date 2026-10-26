@@ -13,8 +13,10 @@ def api():
 
 def _pair(api, protected, guardian):
     api.post(f"{BASE_URL}/api/devices/register", json={"device_id": protected, "platform": "web", "adapter_mode": "mock", "app_version": "1.0.0"})
-    code = api.post(f"{BASE_URL}/api/family/pair", json={"device_id": protected, "owner_name": "Mum", "phone": "+61 400 000 000"}).json()["code"]
+    code = api.post(f"{BASE_URL}/api/family/pair", json={"device_id": protected, "owner_name": "Mum"}).json()["code"]
     assert api.post(f"{BASE_URL}/api/family/link", json={"device_id": guardian, "code": code}).status_code == 200
+    # The family member saves Mum's number themselves (from any of her alerts); pairing never asks for it.
+    assert api.post(f"{BASE_URL}/api/family/links/phone", json={"device_id": guardian, "protected_device_id": protected, "phone": "+61 400 000 000"}).status_code == 200
 
 
 def _event(api, device, state, status, days_ago=1, category="link", evidence=None):

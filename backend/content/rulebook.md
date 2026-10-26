@@ -2,7 +2,7 @@
 
 How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
-_Last reviewed against the code: 2026-10-25._
+_Last reviewed against the code: 2026-10-26._
 
 This is the only copy. Whenever a rule or process changes, this book is updated in the same change. An automatic check stops the change until it is.
 
@@ -804,7 +804,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - **TC FlyBy's search answers:** 7 days for something found and 1 day for nothing found, filed under what was looked up (a one-way code for a phone number or email address). They are shared, never tied to the person who asked, and deleted 90 days after they expire (see Reusable intelligence).
 - **Trusted links:** until the person removes the link.
 - **Gmail:** an encrypted sign-in token, until the person disconnects. Message content is never stored (see Email Gate).
-- **Family links:** until the person unpairs. A Family Help session is deleted 30 days after it starts.
+- **Family links:** until the person unpairs. A pairing code is 6 random digits, works once, and expires after 15 minutes; only the newest code a phone made works, and 5 wrong codes in 15 minutes pause linking on that phone. There is no email invitation. A Family Help session is deleted 30 days after it starts.
 - **The phone's anonymous sign-in:** valid for 365 days.
 - **Diagnostics:** device registration, protection-health checks and alert-delivery records, with no personal content. Kept until the person deletes all their data, unless they expire sooner.
 - **Usage counts:** with the device record, how many times this phone used TC FlyBy, Magnum DI, Ask Higgins and Device Check, and how many different Learn articles and scam alerts it opened. Kept until the person deletes all their data, or ApolloSG's admin resets the counts (Reset Stats also deletes the AI usage and cost records and finished investigation records).

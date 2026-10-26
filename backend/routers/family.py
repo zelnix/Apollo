@@ -1,4 +1,4 @@
-"""Family sharing: guardians (email), device pairing, shared events, acks, incidents and text notes."""
+"""Family sharing: pairing with a code, shared events, acks, incidents and text notes."""
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +6,6 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from html import escape
 from typing import Any, Literal, Optional
 
 from bson import ObjectId
@@ -15,85 +14,17 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from core.config import EMAIL_FROM_NAME, PUBLIC_BASE, logger
-from core.db import BaseDocument, db, now_utc
+from core.config import logger
+from core.db import db, now_utc
 from core.models import ApolloState, PatrolEvent
-from services.email import send_email, _wrap
 from routers.push import PUSH_FAMILY, PUSH_THREAT, send_push
 
 router = APIRouter()
 
 
-class GuardianIn(BaseModel):
-    device_id: str = Field(min_length=8, max_length=64)
-    email: str = Field(min_length=5, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-    name: str = Field(default="", max_length=60)
-    owner_name: str = Field(default="", max_length=60)
-
-
-class Guardian(BaseDocument):
-    guardian_id: str
-    device_id: str
-    email: str
-    name: str
-    owner_name: str
-    confirmed: bool
-    confirm_token: str
-    created_at: datetime
-    deleted_at: Optional[datetime] = None
-    sent_today: int = 0
-    sent_day: str = ""
-
-
-@router.post("/family/guardians")
-async def add_guardian(body: GuardianIn):
-    count = await db.guardians.count_documents({"device_id": body.device_id, "deleted_at": None})
-    if count >= 3:
-        raise HTTPException(status_code=400, detail="Up to 3 trusted family members")
-    g = Guardian(guardian_id=uuid.uuid4().hex, device_id=body.device_id, email=body.email.lower(), name=body.name, owner_name=body.owner_name,
-                 confirmed=False, confirm_token=secrets.token_urlsafe(24), created_at=now_utc())
-    # Single-purpose, single-use, expiring confirmation link (72 h). This is the only unauthenticated write path.
-    await db.guardians.insert_one({**g.to_mongo(), "confirm_expires_at": now_utc() + timedelta(hours=72)})
-    link = f"{PUBLIC_BASE}/api/family/confirm/{g.confirm_token}" if PUBLIC_BASE.startswith("https://") else None
-    who = escape(body.owner_name) or "someone you know"
-    html = _wrap(f"<p>Hi {escape(body.name) or 'there'},</p><p>{who} uses {escape(EMAIL_FROM_NAME)} to stay safe from dangerous links and has asked to share safety alerts with you. "
-                 f"You would only receive plain-language notices when Apollo is <strong>barking</strong> (action needed) or <strong>biting</strong> (a threat was blocked).</p>"
-                 + (f'<p><a href="{link}">Yes, send me these alerts</a></p>' if link else "<p>Ask them to confirm this in the app.</p>")
-                 + "<p>If you did not expect this, simply ignore this email.</p>")
-    try:
-        await send_email(to=g.email, subject=f"{who} wants to share ApolloSG safety alerts with you", html=html, event_id=f"invite:{g.confirm_token}")
-    except HTTPException as exc:
-        await db.guardians.update_one({"guardian_id": g.guardian_id}, {"$set": {"deleted_at": now_utc()}})
-        raise exc
-    return {"guardian_id": g.guardian_id, "confirmed": False}
-
-
-@router.get("/family/confirm/{token}")
-async def confirm_guardian(token: str):
-    from fastapi.responses import HTMLResponse
-    result = await db.guardians.update_one({"confirm_token": token, "deleted_at": None, "$or": [{"confirm_expires_at": {"$gt": now_utc()}}, {"confirm_expires_at": None}]},
-                                           {"$set": {"confirmed": True, "confirm_token": None, "confirmed_at": now_utc()}})  # single-use: token cleared
-    msg = "You're now receiving ApolloSG safety alerts. You can stop any time by asking the person who added you." if result.matched_count else "This link is no longer valid."
-    return HTMLResponse(f"<html><body style='font-family:Arial;padding:32px;background:#0B1220;color:#F4F7FA'><h2>ApolloSG</h2><p>{msg}</p></body></html>")
-
-
-@router.get("/family/guardians")
-async def list_guardians(device_id: str = Query(min_length=8, max_length=64)):
-    docs = await db.guardians.find({"device_id": device_id, "deleted_at": None}).to_list(10)
-    return [{"guardian_id": d["guardian_id"], "email": d["email"], "name": d["name"], "confirmed": d["confirmed"], "created_at": d["created_at"]} for d in docs]
-
-
-@router.delete("/family/guardians/{guardian_id}")
-async def remove_guardian(guardian_id: str, device_id: str = Query(min_length=8, max_length=64)):
-    r = await db.guardians.update_one({"guardian_id": guardian_id, "device_id": device_id, "deleted_at": None}, {"$set": {"deleted_at": now_utc()}})
-    if r.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"removed": True}
-
-
 async def notify_guardians(event: PatrolEvent) -> None:
+    """A Barking or Biting alert reaches the family devices paired with a code (in-app and push). There is no email."""
     try:
-        guardians = await db.guardians.find({"device_id": event.device_id, "deleted_at": None, "confirmed": True}).to_list(10)
         links = await db.family_links.find({"protected_device_id": event.device_id, "deleted_at": None}).to_list(10)
         # fan out to paired guardian devices (in-app + push)
         for ln in links:
@@ -111,18 +42,6 @@ async def notify_guardians(event: PatrolEvent) -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("guardian push failed (non-blocking): %s", type(exc).__name__)
-        today = now_utc().strftime("%Y-%m-%d")
-        for g in guardians:
-            sent = g.get("sent_today", 0) if g.get("sent_day") == today else 0
-            if sent >= 5:
-                continue
-            who = escape(g.get("owner_name") or "Your family member")
-            verb = "needs to be careful" if event.state == "barking" else "was protected"
-            html = _wrap(f"<p>Hi {escape(g.get('name') or 'there')},</p><p>{who} {verb}: <strong>{escape(event.headline)}</strong></p>"
-                         f"<p>{escape(event.what_happened)}</p><p><strong>What to do:</strong> {escape(event.what_to_do)}</p>"
-                         f"<p>Website involved: {escape(event.indicator_host or 'n/a')}. A quick call to check in is usually the most helpful thing.</p>")
-            await send_email(to=g["email"], subject=f"Apollo alert: {who} {verb}", html=html, event_id=f"alert:{event.event_id}:{g['guardian_id']}")
-            await db.guardians.update_one({"guardian_id": g["guardian_id"]}, {"$set": {"sent_day": today, "sent_today": sent + 1}})
     except Exception as exc:  # noqa: BLE001
         logger.warning("guardian notify failed: %s", type(exc).__name__)
 
@@ -130,13 +49,18 @@ async def notify_guardians(event: PatrolEvent) -> None:
 class PairRequest(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     owner_name: str = Field(default="", max_length=60)
-    phone: str = Field(default="", max_length=24)  # optional; shared only with the family member who links
 
 
 class LinkRequest(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
-    code: str = Field(min_length=6, max_length=6)
+    code: str = Field(pattern=r"^\d{6}$")
     guardian_name: str = Field(default="", max_length=40)  # how the protected person will see this watcher
+
+
+# A pairing code is 6 random digits, works once, and expires after 15 minutes. Only a device's newest code works.
+PAIR_CODE_MINUTES = 15
+# Wrong codes a device may try in that window before linking pauses, so the codes can't be guessed.
+PAIR_LINK_MAX_MISSES = 5
 
 
 _PHONE_OK = set("+0123456789 ()-")
@@ -151,24 +75,34 @@ def _clean_phone(p: str) -> str:
 
 @router.post("/family/pair")
 async def create_pair_code(body: PairRequest):
-    phone = _clean_phone(body.phone)
-    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
-    await db.pair_codes.insert_one({"code": code, "protected_device_id": body.device_id, "owner_name": body.owner_name, "owner_phone": phone, "created_at": now_utc(), "expires_at": now_utc() + timedelta(hours=24), "used": False})
-    if phone:  # keep existing links in sync so watchers always have the latest number
-        await db.family_links.update_many({"protected_device_id": body.device_id, "deleted_at": None}, {"$set": {"owner_phone": phone}})
-    return {"code": code, "expires_in_hours": 24}
+    now = now_utc()
+    # A new code replaces this device's earlier ones.
+    await db.pair_codes.update_many({"protected_device_id": body.device_id, "used": False}, {"$set": {"used": True, "replaced_at": now}})
+    while True:  # never the same digits as another code that still works
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        if not await db.pair_codes.find_one({"code": code, "used": False, "expires_at": {"$gt": now}}, {"_id": 1}):
+            break
+    expires = now + timedelta(minutes=PAIR_CODE_MINUTES)
+    await db.pair_codes.insert_one({"code": code, "protected_device_id": body.device_id, "owner_name": body.owner_name, "created_at": now, "expires_at": expires, "used": False})
+    return {"code": code, "expires_at": expires, "expires_in_minutes": PAIR_CODE_MINUTES}
 
 
 @router.post("/family/link")
 async def link_device(body: LinkRequest):
-    pc = await db.pair_codes.find_one({"code": body.code.upper(), "used": False})
-    if not pc or pc["expires_at"].replace(tzinfo=timezone.utc) < now_utc():
-        raise HTTPException(status_code=404, detail="Code not found or expired")
+    now = now_utc()
+    window = now - timedelta(minutes=PAIR_CODE_MINUTES)
+    if await db.pair_link_misses.count_documents({"device_id": body.device_id, "at": {"$gt": window}}) >= PAIR_LINK_MAX_MISSES:
+        raise HTTPException(status_code=429, detail="Too many wrong codes. Wait 15 minutes, then ask for a new code.")
+    pc = await db.pair_codes.find_one({"code": body.code, "used": False})
+    if not pc or pc["expires_at"].replace(tzinfo=timezone.utc) < now:
+        await db.pair_link_misses.delete_many({"device_id": body.device_id, "at": {"$lte": window}})
+        await db.pair_link_misses.insert_one({"device_id": body.device_id, "at": now})
+        raise HTTPException(status_code=404, detail="That code didn't work. It may have expired — ask for a new one.")
     if pc["protected_device_id"] == body.device_id:
         raise HTTPException(status_code=400, detail="You can't link a device to itself")
     await db.pair_codes.update_one({"_id": pc["_id"]}, {"$set": {"used": True}})
     await db.family_links.update_one({"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id},
-                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "owner_phone": pc.get("owner_phone", ""), "created_at": now_utc(), "deleted_at": None,
+                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "created_at": now_utc(), "deleted_at": None,
                                                "lifecycle_generation": uuid.uuid4().hex,
                                                **({"guardian_label": body.guardian_name.strip()} if body.guardian_name.strip() else {})}}, upsert=True)
     return {"linked": True, "owner_name": pc.get("owner_name", "")}

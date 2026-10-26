@@ -24,14 +24,12 @@ from core.db import db, now_utc
 bearer_scheme = HTTPBearer(auto_error=False)
 PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register", "/api/gmail/oauth/callback"}
 # Unauthenticated exceptions, each justified:
-#  /api/family/confirm/<token> — single-purpose, single-use, 72 h-expiring random token sent by email (no device context).
 #  Investigation speech is ALWAYS bearer-authenticated and owner-scoped, including legacy URLs.
 #  /api/gmail/oauth/callback — Google's browser redirect lands here with no Authorization header at all. Trust comes
 #     from the single-use, 10-minute-expiring `state` value minted by the authenticated /gmail/connect call (see
 #     routers/gmail.py) — never from anything the caller supplies directly.
 # NOTE on naming: `user_id` in /register-push is the DEVICE identity today. Device auth proves which device is calling;
 # a person/household layer (one person, several devices) can sit above it later without changing this contract.
-PUBLIC_PREFIXES = ("/api/family/confirm/",)  # public confirm path for guardian email links
 
 
 def hash_token(raw: str) -> str:
@@ -69,7 +67,7 @@ async def enforce_device_auth(request: Request, credentials: Optional[HTTPAuthor
     """Router-wide gate: public paths pass; everything else needs a valid token AND every supplied device_id must
     match the authenticated device (path param, query string, or top-level JSON body field)."""
     path = request.url.path
-    if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
+    if path in PUBLIC_PATHS:
         return
     dev = await authed_device(credentials)
     me = dev["device_id"]

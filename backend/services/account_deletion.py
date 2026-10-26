@@ -86,6 +86,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
             ("guardians", ["device_id"]),
             ("family_links", ["protected_device_id", "guardian_device_id"]),
             ("pair_codes", ["protected_device_id"]),
+            ("pair_link_misses", ["device_id"]),
             ("family_acks", ["guardian_device_id"]),
             ("family_assist_sessions", ["owner_device_id", "helper_device_id", "device_id"]),
             ("family_assist_events", ["owner_device_id", "device_id"]),

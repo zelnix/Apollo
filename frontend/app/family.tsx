@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
 import MonitorUp from "lucide-react-native/icons/monitor-up";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
@@ -20,12 +20,12 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
 import { CloseButton } from "@/src/components/CloseButton";
 
-interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
 interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
 interface WatchLink { link_id: string; owner_name: string; protected_device_id: string; phone: string; my_label: string }
 interface Watcher { link_id: string; guardian_label: string; since: string }
 interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
 interface Checkin { guardian_device_id: string; protected_device_id: string; week_key: string; guardian_label: string; reply: string; label: string; created_at: string }
+interface PairCode { code: string; expires_at: string }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -46,13 +46,26 @@ export default function Family() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Opened from Threats → Family alerts: go straight to the alerts from people you watch, following the section down
+  // as the cards above it load, until the person scrolls themselves.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const alertsY = useRef({ section: 0, inner: 0, userScrolled: false });
+  const toAlerts = () => { if (focus === "alerts" && !alertsY.current.userScrolled) scrollRef.current?.scrollTo({ y: alertsY.current.section + alertsY.current.inner, animated: false }); };
   const qc = useQueryClient();
   const { deviceId, showToast } = useApollo();
-  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [owner, setOwner] = useState("");
-  const [code, setCode] = useState(""); const [pairCode, setPairCode] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
-  const [phone, setPhone] = useState("");
+  const [owner, setOwner] = useState("");
+  const [code, setCode] = useState(""); const [pairCode, setPairCode] = useState<PairCode | null>(null); const [codeExpired, setCodeExpired] = useState(false); const [err, setErr] = useState<string | null>(null);
+  // A pairing code works for 15 minutes: when that runs out it disappears and the button offers a new one.
+  useEffect(() => {
+    if (!pairCode) return;
+    const left = Date.parse(pairCode.expires_at) - Date.now();
+    const expire = () => { setPairCode(null); setCodeExpired(true); };
+    if (!(left > 0)) { expire(); return; }
+    const t = setTimeout(expire, left);
+    return () => clearTimeout(t);
+  }, [pairCode]);
 
-  const guardians = useQuery({ queryKey: ["guardians", deviceId], enabled: !!deviceId, queryFn: () => apiGet<GuardianRow[]>(`/family/guardians?device_id=${deviceId}`) });
   const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: WatchLink[]; watching_me: number; watchers: Watcher[] }>(`/family/links?device_id=${deviceId}`) });
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
   const incidents = useQuery({ queryKey: ["family-incidents", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ scent_id: string; from_label: string; headline: string; state: ApolloState; steps: { id: string }[]; done: string[]; resolved: boolean; updated_at: string }[]>(`/family/incidents?device_id=${deviceId}`) });
@@ -84,17 +97,11 @@ export default function Family() {
     mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); showToast(`Marked: ${r.ack_label}`, "resting"); },
   });
-  const invalidate = () => { qc.invalidateQueries({ queryKey: ["guardians", deviceId] }); qc.invalidateQueries({ queryKey: ["family-links", deviceId] }); qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); };
+  const invalidate = () => { qc.invalidateQueries({ queryKey: ["family-links", deviceId] }); qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); };
 
-  const addGuardian = useMutation({
-    mutationFn: () => apiPost("/family/guardians", "family", { device_id: deviceId, email: email.trim(), name: name.trim(), owner_name: owner.trim() }),
-    onSuccess: () => { setEmail(""); setName(""); setErr(null); invalidate(); showToast("Invitation email sent", "resting"); },
-    onError: (e) => setErr(e instanceof Error ? e.message : "Could not add"),
-  });
-  const remove = useMutation({ mutationFn: (id: string) => apiDelete(`/family/guardians/${id}?device_id=${deviceId}`), onSuccess: () => { invalidate(); showToast("Removed", "neutral"); } });
   const makeCode = useMutation({
-    mutationFn: () => apiPost<{ code: string }>("/family/pair", "family", { device_id: deviceId, owner_name: owner.trim(), phone: phone.trim() }),
-    onSuccess: (r) => { setErr(null); setPairCode(r.code); },
+    mutationFn: () => apiPost<PairCode>("/family/pair", "family", { device_id: deviceId, owner_name: owner.trim() }),
+    onSuccess: (r) => { setErr(null); setCodeExpired(false); setPairCode(r); },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not create code"),
   });
   // Unlink Device: either side can end a pairing. Soft-deleted on the server → that device stops receiving alerts, pushes and weekly rollups.
@@ -116,7 +123,7 @@ export default function Family() {
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not update your name"),
   });
   const link = useMutation({
-    mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim().toUpperCase(), guardian_name: owner.trim() }),
+    mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim(), guardian_name: owner.trim() }),
     onSuccess: (r) => { setCode(""); setErr(null); invalidate(); showToast(`Now watching ${r.owner_name || "a family member"}`, "resting"); },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not link"),
   });
@@ -127,11 +134,10 @@ export default function Family() {
         <Text style={s.title}>Family sharing</Text>
         <CloseButton testID="family-close" label="Close Family" onPress={() => goBackOrHome(router)} />
       </View>
-      <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-scroll">
-        <Body>Share only Barking and Biting alerts — headline, website and what to do — with someone you trust. Never the full link, never your browsing.</Body>
+      <KeyboardAwareScrollView ref={scrollRef} onScrollBeginDrag={() => { alertsY.current.userScrolled = true; }} contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-scroll">
         {err ? <Text style={s.err} testID="family-error">{err}</Text> : null}
         <ServiceBanner />
-        <StaleNote queries={[guardians, links, shared, incidents, acks, weekly, checkins]} testID="family-stale-note" />
+        <StaleNote queries={[links, shared, incidents, acks, weekly, checkins]} testID="family-stale-note" />
 
         <Card style={{ gap: spacing.md }} testID="family-help-entry-card">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}><MonitorUp size={24} color={colors.brandPrimary} /><SectionTitle>Family Help</SectionTitle></View>
@@ -145,28 +151,15 @@ export default function Family() {
         </View>
 
         <View>
-          <SectionTitle>Email alerts</SectionTitle>
-          <Card style={{ gap: spacing.md }} testID="family-email-card">
-            {(guardians.data ?? []).map((g) => (
-              <View key={g.guardian_id} style={s.row} testID={`family-guardian-${g.guardian_id}`}>
-                <View style={{ flex: 1 }}><Text style={s.name}>{g.name || g.email}</Text><Body>{g.email}</Body></View>
-                <Pill tone={g.confirmed ? "resting" : "growling"} label={g.confirmed ? "Confirmed" : "Awaiting confirmation"} />
-                <Button testID={`family-remove-${g.guardian_id}`} variant="ghost" label="Remove" onPress={() => remove.mutate(g.guardian_id)} />
-              </View>
-            ))}
-            <TextInput testID="family-guardian-name" style={s.input} value={name} onChangeText={setName} placeholder="Their name" placeholderTextColor={colors.muted} />
-            <TextInput testID="family-guardian-email" style={s.input} value={email} onChangeText={setEmail} placeholder="their@email.com" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
-            <Button testID="family-add-guardian" label={addGuardian.isPending ? "Sending…" : "Send invitation"} onPress={() => addGuardian.mutate()} disabled={!email.trim() || addGuardian.isPending} />
-            <Body>They must confirm by email before any alert is sent. Max 5 alerts per day per person.</Body>
-          </Card>
-        </View>
-
-        <View>
           <SectionTitle>Pair another ApolloSG device</SectionTitle>
           <Card style={{ gap: spacing.md }} testID="family-pair-card">
             <Body>Give this code to a family member who also uses ApolloSG. Your Barking/Biting alerts will appear in their app, and they get a calm weekly check-in — how many things Apollo checked and how many alerts — never what you checked.</Body>
-            <TextInput testID="family-owner-phone" style={s.input} value={phone} onChangeText={setPhone} placeholder="Your phone number (optional) — so they can call you in one tap" placeholderTextColor={colors.muted} keyboardType="phone-pad" autoCorrect={false} />
-            {pairCode ? <Text style={s.code} selectable testID="family-pair-code">{pairCode}</Text> : null}
+            {pairCode ? (
+              <View style={{ gap: spacing.xs }}>
+                <Text style={s.code} selectable testID="family-pair-code">{pairCode.code}</Text>
+                <Body testID="family-pair-code-expiry" style={{ textAlign: "center" }}>Works once. Expires in 15 minutes, at {new Date(pairCode.expires_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</Body>
+              </View>
+            ) : codeExpired ? <Body testID="family-pair-code-expired">That code has expired. Create a new one when they&apos;re ready to enter it.</Body> : null}
             <Button testID="family-make-code" variant="secondary" label={pairCode ? "New code" : "Create pairing code"} onPress={() => makeCode.mutate()} disabled={makeCode.isPending} />
             <Body>{links.data?.watching_me ? `${links.data.watching_me} device${links.data.watching_me > 1 ? "s receive" : " receives"} your alerts.` : "No devices linked yet."}</Body>
             {(links.data?.watchers ?? []).map((w) => (
@@ -175,12 +168,12 @@ export default function Family() {
                 <Button testID={`family-watcher-remove-${w.link_id}`} variant="ghost" label="Remove" onPress={() => confirmUnlink(w.link_id, w.guardian_label, true)} disabled={unlink.isPending} />
               </View>
             ))}
-            <TextInput testID="family-link-code" style={s.input} value={code} onChangeText={setCode} placeholder="Enter a code you were given" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={6} />
-            <Button testID="family-link-button" variant="secondary" label="Link" onPress={() => link.mutate()} disabled={code.trim().length !== 6 || link.isPending} />
+            <TextInput testID="family-link-code" style={s.input} value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} placeholder="Enter the 6-digit code you were given" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={6} />
+            <Button testID="family-link-button" variant="secondary" label="Link" onPress={() => link.mutate()} disabled={!/^\d{6}$/.test(code) || link.isPending} />
           </Card>
         </View>
 
-        <View>
+        <View onLayout={(e) => { alertsY.current.section = e.nativeEvent.layout.y; toAlerts(); }}>
           {(weekly.data ?? []).length ? (
             <>
               <SectionTitle>Weekly check-in</SectionTitle>
@@ -244,6 +237,7 @@ export default function Family() {
               </Card>
             </>
           ) : null}
+          <View onLayout={(e) => { alertsY.current.inner = e.nativeEvent.layout.y; toAlerts(); }} testID="family-alerts-section">
           <SectionTitle>Alerts from people you watch</SectionTitle>
           <Card testID="family-shared">
             {(links.data?.i_watch ?? []).map((l) => (
@@ -275,6 +269,7 @@ export default function Family() {
               </View>
             ))}
           </Card>
+          </View>
         </View>
 
         <View>

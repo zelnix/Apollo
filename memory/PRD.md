@@ -1,3 +1,20 @@
+## Family sharing: code-only pairing; Threats → Family alerts link (2026-10-26)
+- **Email invitations removed end to end:** `/family/guardians` (POST/GET/DELETE) and `/family/confirm/{token}` are
+  gone (core/auth.py has no public prefix any more); `notify_guardians` only fans out to paired devices (in-app + push),
+  no email. Legacy `guardians` docs are still purged by Delete My Data. Admin stats no longer count guardians.
+- **Pairing code** (`POST /family/pair`, body `{device_id, owner_name}`; an old app's `phone` is ignored, never stored):
+  `secrets.randbelow` 6 digits, unique among working codes, 15-minute expiry, returns `expires_at` +
+  `expires_in_minutes`; a new code retires the device's earlier unused ones. `POST /family/link` takes `^\d{6}$` only;
+  5 wrong codes in 15 minutes per device → 429 (`pair_link_misses`, in the family deletion group).
+- **Family screen** (`app/family.tsx`): intro line, Email alerts card and optional phone field removed; code shows
+  "Works once. Expires in 15 minutes, at h:mm" and disappears at expiry ("That code has expired…"); link field is a
+  digits-only number pad. Family members can still save a call-back number from an alert.
+- **Threats tab:** "Family alerts" link next to "Patrol history" → `/family?focus=alerts`, which scrolls to
+  "Alerts from people you watch" until the person scrolls.
+- Docs: privacyInventory family entry, privacy policy (no family email), Play declarations, rule book (Family links).
+- Tests: backend `tests/test_family_pair_code.py` (7) + updated test_family/test_family_weekly/test_device_auth;
+  frontend `tests/familyPairing.test.ts` (3); frontend 973/973, tsc clean.
+
 ## Admin: Devices list, Reset Stats, Family Help Test page; device telemetry (2026-10-25)
 **Owner's choices:** checklist + connection status first; country from the phone's region setting; Learn/scam reads
 count *different* ones opened; Reset Stats = "everything, delete the old records" = usage and cost data (incl. admin panel).

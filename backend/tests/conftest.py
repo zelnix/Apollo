@@ -98,7 +98,7 @@ def _shimmed_request(self, method, url, **kw):
     m = re.search(r"/api/devices/([^/]+)/settings", url)
     if m:
         real, tok = _real(m.group(1)); url = url.replace(m.group(1), real); caller = tok
-    if caller is None and "/api/family/confirm/" not in url:  # authenticated call with no id → any real device will do
+    if caller is None:  # authenticated call with no id → any real device will do
         caller = _real("__anonymous_caller__")[1]
     if caller:
         kw["headers"] = {**(kw.get("headers") or {}), "Authorization": f"Bearer {caller}"}

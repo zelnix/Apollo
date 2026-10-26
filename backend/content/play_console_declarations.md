@@ -47,8 +47,8 @@ Notification access isn't a Play declaration form, but Play's User Data policy r
 ## 4. Data safety form: the rest
 
 Declare: device or other IDs (ApolloSG's device credential), app activity (checks you run), photos and files
-*you choose to submit* (deleted 24 hours after the check), and contact info only if family invitation
-emails are used. Mark everything **encrypted in transit**, **not sold**, and **deletable on request**.
+*you choose to submit* (deleted 24 hours after the check), and a phone number only if a family member saves
+one to call the person back. Mark everything **encrypted in transit**, **not sold**, and **deletable on request**.
 Sharing: only to the processors listed in `docs/compliance/HWG_THIRD_PARTY_SERVICE_REGISTER.md`.
 
 ## 5. Before every Play upload

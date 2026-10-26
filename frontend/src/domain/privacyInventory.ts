@@ -116,12 +116,12 @@ export const CAPABILITY_DATA_USE = [
   },
   {
     capability: 'Family support',
-    local: 'You choose names, contacts and what to share with paired family members.',
-    backend: 'Chosen names, contact details, alerts, weekly counts and replies are stored on ApolloSG\u2019s backend and shared with paired guardians.',
-    thirdParty: 'Email delivery service sends invitations and authorised automatic security alerts to confirmed guardians. Push services deliver alerts.',
-    shared: 'Names, contact details, alert content, text messages you choose to send',
-    necessary: 'Family pairing requires sharing chosen information with paired members and using delivery services for invitations and alerts.',
-    activation: 'Manual: when you pair, invite, share an incident or send a note',
+    local: 'You choose your name, what to share with paired family members, and (as the family member) a number to call them on.',
+    backend: 'Chosen names, a call-back number if a family member adds one, alerts, weekly counts and replies are stored on ApolloSG\u2019s backend and shared with paired family members. A pairing code is 6 random digits that works once and expires after 15 minutes.',
+    thirdParty: 'Push services deliver alerts. No email is sent.',
+    shared: 'Names, a call-back number if added, alert content, text messages you choose to send',
+    necessary: 'Family pairing requires sharing chosen information with paired members and using push delivery for alerts.',
+    activation: 'Manual: when you pair with a code, share an incident or send a note',
     withheld: 'Full investigation evidence; family members receive alert summaries, not raw evidence',
   },
   {

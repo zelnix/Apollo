@@ -26,6 +26,7 @@ import Phone from "lucide-react-native/icons/phone";
 import Search from "lucide-react-native/icons/search";
 import Shield from "lucide-react-native/icons/shield";
 import Smartphone from "lucide-react-native/icons/smartphone";
+import UsersRound from "lucide-react-native/icons/users-round";
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -140,7 +141,8 @@ const useStyles = makeStyles((c) => ({
   filterOptionCount: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
   // Threat card — the Home card shape: compact meta row, full-width words, action bottom right.
   card: { marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, padding: spacing.lg, backgroundColor: c.surfaceSecondary, borderWidth: 0.25, borderColor: c.border, gap: 2 },
-  historyLink: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", minHeight: 44, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm },
+  linksRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: spacing.lg, paddingHorizontal: spacing.xl },
+  historyLink: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", minHeight: 44, paddingVertical: spacing.sm },
   historyLinkText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
   cardTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   cardIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
@@ -285,18 +287,32 @@ export default function ThreatsScreen() {
         {lastActivityAt ? `Apollo last checked ${new Date(lastActivityAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : "Apollo hasn't run a check yet"}
       </Text>
 
-      {/* Threats lists one row per case; the full record as it happened lives in patrol history. */}
-      <Pressable
-        testID="threats-history-link"
-        accessibilityRole="button"
-        accessibilityLabel="Open patrol history — everything ApolloSG has filed, newest first"
-        onPress={() => router.push("/patrol/history")}
-        style={({ pressed }) => [s.historyLink, { opacity: pressed ? 0.7 : 1 }]}
-      >
-        <Clock size={16} color={colors.brandPrimary} />
-        <Text style={s.historyLinkText}>Patrol history</Text>
-        <ChevronRight size={16} color={colors.brandPrimary} />
-      </Pressable>
+      {/* Threats lists one row per case; the full record as it happened lives in patrol history. Alerts shared by
+          family live on the Family screen. */}
+      <View style={s.linksRow}>
+        <Pressable
+          testID="threats-history-link"
+          accessibilityRole="button"
+          accessibilityLabel="Open patrol history — everything ApolloSG has filed, newest first"
+          onPress={() => router.push("/patrol/history")}
+          style={({ pressed }) => [s.historyLink, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Clock size={16} color={colors.brandPrimary} />
+          <Text style={s.historyLinkText}>Patrol history</Text>
+          <ChevronRight size={16} color={colors.brandPrimary} />
+        </Pressable>
+        <Pressable
+          testID="threats-family-alerts-link"
+          accessibilityRole="button"
+          accessibilityLabel="Open family alerts — alerts from the people you watch"
+          onPress={() => router.push("/family?focus=alerts")}
+          style={({ pressed }) => [s.historyLink, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <UsersRound size={16} color={colors.brandPrimary} />
+          <Text style={s.historyLinkText}>Family alerts</Text>
+          <ChevronRight size={16} color={colors.brandPrimary} />
+        </Pressable>
+      </View>
 
       {/* Filter + sort row */}
       <View style={s.controlsRow}>
