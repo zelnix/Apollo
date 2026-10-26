@@ -8,6 +8,7 @@
 // This turns the stored result into the case's own content: the overview, the findings, the
 // recommended action and the severity the investigation actually reached. Pure and unit-tested.
 import type { DeviceInvestigation } from "../investigation/deviceStore";
+import { eventBriefing } from "./caseBriefing.ts";
 import type { ApolloState, PatrolEvent } from "./types";
 
 /** The severity the investigation reached — never higher than what it concluded. */
@@ -53,12 +54,16 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
   if (!inv || !response || !response.overview?.trim()) return null;
   if (event.resolved_at && event.status === "trusted") return null;
 
-  const findings = (response.findings ?? []).map((f) => f.text.trim()).filter(Boolean).slice(0, 6);
+  // The case's own words come from its Higgins Case Briefing when it has one: the headline names the organisation
+  // and what was checked, the summary keeps every material subject, and each finding keeps its subject.
+  const briefing = eventBriefing(response);
+  const fromBriefing = briefing?.from === "briefing" && !!briefing.headline && !!briefing.summary;
+  const findings = (fromBriefing ? briefing!.findings : (response.findings ?? []).map((f) => f.text.trim())).filter(Boolean).slice(0, 6);
   const overview = response.overview.replace(/\s+/g, " ").trim();
   const state = investigationState(response.assessment, response.attention);
-  const whatToDo = actionFrom(inv);
-  const headline = headlineFrom(overview);
-  const whatHappened = bodyFrom(overview);
+  const whatToDo = fromBriefing && briefing!.recommendedAction?.instruction ? briefing!.recommendedAction.instruction : actionFrom(inv);
+  const headline = fromBriefing ? briefing!.headline : headlineFrom(overview);
+  const whatHappened = fromBriefing ? briefing!.summary : bodyFrom(overview);
 
   // Already applied — same findings and same conclusion, so nothing to write.
   const unchanged = event.headline === headline
@@ -67,7 +72,8 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     && event.what_to_do === whatToDo
     && event.state === state
     && event.investigation_completed_at === inv.committedAt
-    && (event.investigation_answered_by ?? null) === (inv.answeredBy ?? event.investigation_answered_by ?? null);
+    && (event.investigation_answered_by ?? null) === (inv.answeredBy ?? event.investigation_answered_by ?? null)
+    && JSON.stringify(event.case_briefing ?? null) === JSON.stringify(briefing);
   if (unchanged) return null;
 
   return {
@@ -87,5 +93,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     investigation_completed_at: inv.committedAt,
     // Who settled it (TC FlyBy or Magnum DI), when the committed result recorded it — never guessed.
     investigation_answered_by: inv.answeredBy ?? event.investigation_answered_by ?? null,
+    // The same briefing Home, Threats and notifications project (device-local, never synced).
+    case_briefing: briefing,
   };
 }

@@ -5,6 +5,7 @@
 // limitation / the event's what_to_do. Pure and unit-tested.
 import type { GatePresentation } from "./gates";
 import type { EventCategory, PatrolEvent } from "./types";
+import { needsYou } from "./caseBriefing.ts";
 import { isActive } from "./stateMachine.ts";
 
 export interface AttentionItem {
@@ -96,13 +97,21 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
     });
   for (const e of activeAttention) {
     const gate = gateForCategory(e.category);
-    const problem = (e.what_happened || e.headline || "").trim();
-    const higgins = (e.what_to_do || "").trim() || "Review this finding. I'll explain what Apollo discovered and whether you need to take action.";
+    // A case with a Higgins Case Briefing is described by it — its headline names the organisation and what was
+    // checked, its summary every material subject and what is still unresolved — never by generic Patrol text.
+    const briefing = e.case_briefing?.from === "briefing" && e.case_briefing.headline && e.case_briefing.summary ? e.case_briefing : null;
+    const problem = briefing ? briefing.summary : (e.what_happened || e.headline || "").trim();
+    const decision = needsYou(e);
+    const higgins = (decision && e.case_briefing?.actionReason
+      ? [e.case_briefing.actionReason, e.case_briefing.recommendedAction?.instruction].filter(Boolean).join(" ")
+      : (briefing?.recommendedAction?.instruction ?? e.what_to_do ?? "").trim())
+      || "Review this finding. I'll explain what Apollo discovered and whether you need to take action.";
     // Build an evidence-specific title rather than generic "Email Gate looks suspicious".
-    const specificLabel = describeEventBrief(e);
-    const title = e.state === "barking"
+    const specificLabel = briefing ? briefing.headline : describeEventBrief(e);
+    // "needs your decision" only when the case owes the person one, with its concrete reason.
+    const title = decision
       ? `${specificLabel} — needs your decision`
-      : e.state === "growling"
+      : e.state === "growling" || e.state === "barking"
         ? `${specificLabel} — flagged by Apollo`
         : `${specificLabel} — worth a look`;
     items.push({

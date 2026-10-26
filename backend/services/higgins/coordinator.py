@@ -109,13 +109,14 @@ async def _plain_english(owner: str, case: dict, response: HigginsResponse, answ
     Apollo's own wording."""
     by = explain.facts_mod.investigator(answered_by)
     try:
-        doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing": 1}) or {}
-        plain = explain.explain(response, answered_by=answered_by, routing=doc.get("routing") or {},
-                                sources=await repo.sources(owner, case["case_id"]))
+        doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing": 1, "gates": 1}) or {}
+        plain, briefing = explain.explain_case(response, answered_by=answered_by, routing=doc.get("routing") or {},
+                                               sources=await repo.sources(owner, case["case_id"]), gates=doc.get("gates") or [])
     except Exception as exc:  # noqa: BLE001 — presentation only; never logs case content
         log.warning("plain_english_renderer_error case=%s error=%s", case["case_id"], type(exc).__name__)
         return response, explain.renderer_error(by=by, revision=response.revision)
-    return response.model_copy(update={"plain_english": plain}), explain.summary(plain, by=by, revision=response.revision)
+    return (response.model_copy(update={"plain_english": plain, "briefing": briefing}),
+            explain.summary(plain, by=by, revision=response.revision, briefing=briefing))
 
 
 async def _commit(owner: str, case: dict, job: dict, payload: dict, response: HigginsResponse, provider_result: ProviderResult,

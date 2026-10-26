@@ -115,6 +115,206 @@ def entity_text(text: str) -> str:
     return text.lower().replace("’", "'")
 
 
+# ── Subject → check → result: one finding, structured ────────────────────────
+# A deterministic reading of a finding's own words. No AI and nothing looked up: which identity the finding is about
+# (its subject), which check it reports and what that check found. What the words don't say stays unknown.
+SUBJECT_KINDS = ("email", "url", "domain", "phone", "registration")
+NOUN = {"email": "email address", "url": "link", "domain": "website", "phone": "phone number", "registration": "registration number"}
+
+
+def identity_value(kind: str, value: str) -> str:
+    """The form two identifiers are compared in: lower case, no trailing punctuation, no "www."."""
+    v = _norm_entity(kind, value)
+    return re.sub(r"^(https?://)?www\.", r"\1", v) if kind in ("url", "domain") else v
+
+
+def identifiers(text: str) -> list[tuple[str, str]]:
+    """(kind, value as written) for each subject identifier in `text`, in the order they appear, each once."""
+    found = []
+    for kind in SUBJECT_KINDS:
+        for m in ENTITY_PATTERNS[kind].finditer(text):
+            value = m.group(0).strip().rstrip(".,;:!?")
+            if kind == "phone" and not 8 <= len(re.sub(r"\D", "", value)) <= 15:
+                continue
+            if kind == "domain" and re.fullmatch(r"[\d.]+", value):
+                continue
+            found.append((m.start(), -len(value), kind, value))
+    out: list[tuple[str, str]] = []
+    taken: list[tuple[int, int]] = []
+    seen: set[str] = set()
+    for start, neg_len, kind, value in sorted(found):
+        end = start - neg_len
+        if any(s <= start < e for s, e in taken):  # a number inside an ABN, a host inside a link
+            continue
+        taken.append((start, end))
+        key = f"{kind}:{identity_value(kind, value)}"
+        if key not in seen:
+            seen.add(key)
+            out.append((kind, value))
+    return out
+
+
+def _host(kind: str, value: str) -> str:
+    v = identity_value(kind, value)
+    return (v.split("//")[-1].split("/")[0] if kind == "url" else v.split("@")[-1] if kind == "email" else v)
+
+
+# Which check a finding reports, first match wins. Read on the plain-swapped words, so "is not" and "isn't" read alike.
+CHECK_RULES: tuple[tuple[str, re.Pattern], ...] = (
+    ("official_contact", re.compile(r"\b(?:published|official|listed)\b[^.]{0,80}?\b(?:contact|customer[- ]service|customer[- ]care|support|enquiries|help ?desk)\b"
+                                    r"|\b(?:contact|customer[- ]service|support) (?:address|email|number|page)\b", re.I)),
+    ("impersonation", re.compile(r"\b(?:isn't|not)\b[^.]{0,60}['’]s (?:own )?domain|\bcarries [^.]{1,60}['’]s name\b|\bputs [^.]{1,60}['’]s name\b", re.I)),
+    ("official_domain", re.compile(r"\bofficial domains?\b|\bown domains?\b|\bpublished domains?\b", re.I)),
+    ("risk_score", re.compile(r"\bfraud score\b|\brisk score\b", re.I)),
+    ("reputation", re.compile(r"\bsafe browsing\b|\bblocklist\w*\b|\bscam (?:warning|advisory|advisories|alert)s?\b|\bwarnings?\b|\badvisor(?:y|ies)\b"
+                              r"|\breputation\b|\bflag(?:s|ged)?\b|\b(?:lists|listed)\b", re.I)),
+    ("registration", re.compile(r"\bregistered (?:on|in|less than|\d)|\bregistration record\b|\bRDAP\b", re.I)),
+    ("redirect", re.compile(r"\bredirect(?:s|ed|ing)?\b", re.I)),
+    ("registration_number", re.compile(r"\bcheck-digit\b", re.I)),
+    ("free_email", re.compile(r"\bfree (?:personal )?email\b", re.I)),
+)
+_NEG = re.compile(r"\b(?:not|no|never|none|nothing|without)\b|n't\b", re.I)
+# The four "nothing established" results, which must never be mixed up.
+RESULT_KINDS: tuple[tuple[str, re.Pattern], ...] = (
+    ("unavailable", re.compile(r"\bunavailable\b|\b(?:couldn't|can't|wasn't|weren't|isn't|aren't|not)\s+(?:be\s+|been\s+)?(?:checked|reached|looked up|read|completed?)\b"
+                               r"|\bunable to (?:check|reach|look|read|complete)\b|\btimed out\b|\bdidn't answer\b", re.I)),
+    ("not_applicable", re.compile(r"\bnot applicable\b|\b(?:doesn't|didn't|don't) apply\b|\bcan't (?:run|apply) (?:on|to|here)\b", re.I)),
+    ("failed", re.compile(r"\bfail(?:s|ed)?\b", re.I)),
+    ("no_match", re.compile(r"\bno (?:record|match|result|listing|entry|scam warning|warning|advisory|advisories|trace|mention)s?\b"
+                            r"|\b(?:isn't|wasn't|aren't|weren't|not) (?:found|listed|named|flagged|mentioned)\b|\bfound no(?:thing)?\b"
+                            r"|\bnothing (?:was )?found\b|\bhas nothing on\b|\bnever (?:been )?(?:listed|flagged|named)\b", re.I)),
+)
+REASSURING = {"OFFICIAL", "NOT_LISTED", "VALID"}
+CONCERNING = {"NOT_OFFICIAL", "LISTED", "FAILED"}
+# Which way each outcome points: a finding that points the same way supports it, the other way is contrary.
+DIRECTION = {"confirmed_threat": "concern", "likely_scam": "concern", "concerning": "concern", "no_scam_indicators": "clear"}
+
+_ORG_NAME = r"([A-Z][\w&.-]*(?: (?:[A-Z][\w&.-]*|of|and|&)){0,4})"
+_ORG = (re.compile(rf"\bpublished {_ORG_NAME} (?:customer|contact|support|enquir|help|email|address)"),
+        re.compile(rf"(?<![\w.@]){_ORG_NAME}['’]s (?:official|own|published|customer|support|contact|domain)"),
+        re.compile(rf"\bnot {_ORG_NAME}['’]s\b"))
+_NOT_ORG = {"Apollo", "ApolloSG", "TC FlyBy", "Magnum DI", "Higgins", "Google", "Google Safe Browsing", "Safe Browsing", "IPQualityScore",
+            "It", "This", "The", "That", "Every", "No", "Its", "Their", "A", "An"}
+# A finding that names its subject only generically, by type.
+_GENERIC = {
+    "domain": re.compile(r"\b(?:the|this|that|its) (?:website|web ?site|site|web address|domain)\b", re.I),
+    "email": re.compile(r"\b(?:the|this|that) (?:email address|sender's address|sender address)\b", re.I),
+    "phone": re.compile(r"\b(?:the|this|that) (?:phone number|number|caller)\b", re.I),
+}
+
+
+def result_kinds(text: str) -> frozenset[str]:
+    """Which of unavailable / not applicable / failed / no match the words say."""
+    from services.higgins.explain import words as W
+    t = W.swap(text)
+    return frozenset(kind for kind, rx in RESULT_KINDS if rx.search(t))
+
+
+def classify(text: str) -> tuple[str, str]:
+    """(check, result) the words report. ("stated", ...) when they name no check Apollo has."""
+    from services.higgins.explain import words as W
+    t = W.swap(text)
+    check = next((name for name, rx in CHECK_RULES if rx.search(t)), "stated")
+    kinds = result_kinds(t)
+    if "unavailable" in kinds:
+        return check, "UNAVAILABLE"
+    if "not_applicable" in kinds:
+        return check, "NOT_APPLICABLE"
+    neg = bool(_NEG.search(t))
+    if check in ("official_contact", "official_domain"):
+        return check, "NOT_OFFICIAL" if neg else "OFFICIAL"
+    if check in ("impersonation", "free_email"):
+        return check, "NOT_OFFICIAL"
+    if check == "reputation":
+        return check, "NOT_LISTED" if neg or "no_match" in kinds else "LISTED"
+    if check == "registration":
+        return check, "NO_MATCH" if "no_match" in kinds else "REGISTERED"
+    if check == "redirect":
+        return check, "REDIRECTS"
+    if check == "risk_score":
+        return check, "SCORED"
+    if check == "registration_number":
+        return check, "FAILED" if "failed" in kinds else "VALID"
+    return check, "FAILED" if "failed" in kinds else "NO_MATCH" if "no_match" in kinds else "STATED"
+
+
+def identity(text: str) -> tuple[frozenset[str], str, str]:
+    """A finding's identity: the identifiers it is about, the check and the result. Two findings are the same only
+    when this is the same — never because their sentences look alike."""
+    return (frozenset(f"{k}:{identity_value(k, v)}" for k, v in identifiers(text)), *classify(text))
+
+
+def organisation(text: str) -> Optional[str]:
+    for rx in _ORG:
+        for m in rx.finditer(text):
+            name = m.group(1).rstrip(".")
+            if name and name not in _NOT_ORG:
+                return name
+    return None
+
+
+def case_candidates(core: str) -> dict[str, list[str]]:
+    """The identifiers of each type the result names, once each — what a generic "the website" can only mean when
+    there is exactly one."""
+    ids = identifiers(core)
+    sites = list(dict.fromkeys(_host(k, v) for k, v in ids if k in ("url", "domain")))
+    emails = list(dict.fromkeys(v for k, v in ids if k == "email"))
+    return {"domain": sites or list(dict.fromkeys(_host("email", e) for e in emails)), "email": emails,
+            "phone": list(dict.fromkeys(v for k, v in ids if k == "phone"))}
+
+
+def bind_subject(text: str, candidates: dict[str, list[str]]) -> tuple[str, bool]:
+    """The finding with its subject named. Only a finding that names no identifier of its own is bound, and only to
+    the one identifier of that type the result names; anything ambiguous is left as written."""
+    if identifiers(text):
+        return text, False
+    for kind, rx in _GENERIC.items():
+        if len(candidates.get(kind, [])) == 1 and rx.search(text):
+            return rx.sub(f'"{candidates[kind][0]}"', text, count=1), True
+    check, result = classify(text)
+    if check == "reputation" and result in ("LISTED", "NOT_LISTED") and len(candidates.get("domain", [])) == 1:
+        return f'{text.rstrip().rstrip(".")} for "{candidates["domain"][0]}".', True
+    return text, False
+
+
+def structure_finding(finding: dict, candidates: dict[str, list[str]], outcome: Optional[str]) -> dict:
+    """subject, subject type, organisation, check, result, the finding, its evidence, materiality and stance."""
+    statement, bound = bind_subject(finding["text"], candidates)
+    ids = identifiers(statement)
+    check, result = classify(statement)
+    polarity = "clear" if check != "stated" and result in REASSURING else "concern" if check != "stated" and result in CONCERNING else "neutral"
+    direction = DIRECTION.get(outcome or "")
+    subject = ids[0] if ids else None
+    org = organisation(statement)
+    # "st0ko-login.co is not Stoko's domain": Stoko is the organisation the subject is NOT — never its owner.
+    claimed = bool(org) and (check == "impersonation" or bool(re.search(rf"\bnot {re.escape(org)}['’]s\b", statement)))
+    return {**finding, "statement": statement,
+            "subject": subject[1] if subject else None, "subjectType": subject[0] if subject else None,
+            "subjectSource": ("case" if bound else "finding") if subject else None,
+            "organisation": org, "organisationClaimed": claimed, "check": check, "result": result, "polarity": polarity,
+            "materiality": "material" if subject or check != "stated" else "context",
+            "stance": "context" if polarity == "neutral" or not direction else "supporting" if polarity == direction else "contrary"}
+
+
+# The subject a case is about, by what was checked: an email check is about the address, a link check the link.
+_PREFERRED = {"email": ("email", "domain", "url"), "account": ("email",), "link": ("url", "domain"), "site": ("url", "domain"),
+              "network": ("domain", "url"), "call": ("phone",), "text": ("url", "domain", "email", "phone")}
+
+
+def case_subject(findings: list[dict], gates: tuple[str, ...] | list[str]) -> Optional[dict]:
+    with_subject = [f for f in findings if f.get("subject")]
+    if not with_subject:
+        return None
+    order = next((_PREFERRED[g] for g in gates if g in _PREFERRED), ()) + SUBJECT_KINDS
+    lead = next(f for kind in order for f in with_subject if f["subjectType"] == kind)
+    host = _host(lead["subjectType"], lead["subject"])
+    named = lead if lead["organisation"] else next((f for f in with_subject if f["organisation"]
+                                                    and _host(f["subjectType"], f["subject"]) == host), None)
+    # organisation_claimed: the organisation is only named (the subject isn't its), so it is never called its owner.
+    return {"value": lead["subject"], "type": lead["subjectType"], "organisation": named["organisation"] if named else None,
+            "organisation_claimed": bool(named and named["organisationClaimed"])}
+
+
 # ── The authoritative findings ───────────────────────────────────────────────
 CONTRAST = re.compile(r"\b(but|however|although|though|whereas|contradict\w*|inconsistent|doesn't match|does not match|don't match|differ\w*|unlike)\b", re.I)
 _FOUND = re.compile(r"^what (was|apollo|tc flyby|magnum di) found", re.I)
@@ -172,12 +372,22 @@ class Facts:
     entities: dict[str, set[str]] = field(default_factory=dict)
     allowed: dict[str, set[str]] = field(default_factory=dict)
     contradictions: list[str] = field(default_factory=list)
+    # What the case is about: {"value", "type", "organisation"}, from its findings. None when no finding names one.
+    subject: Optional[dict] = None
 
     def structure(self) -> dict[str, Any]:
-        """The authoritative findings in Apollo's conceptual schema (finding / triage / flyby / investigation / ...)."""
+        """The authoritative findings in Apollo's conceptual schema (finding / triage / flyby / investigation / ...).
+        Every finding keeps its subject, subject type, organisation, check, result, the finding itself, its evidence,
+        materiality and confidence, so Subject → Finding → Result can't come apart."""
         return {
             "finding": {"verdict": self.verdict, "classification": self.outcome, "assessment": self.assessment, "severity": self.attention,
                         "confidence": [f["confidence"] for f in self.findings]},
+            "subject": self.subject,
+            "findings": [{"id": f["id"], "subject": f["subject"], "subject_type": f["subjectType"], "organisation": f["organisation"],
+                          "organisation_claimed": f["organisationClaimed"], "check": f["check"], "result": f["result"], "finding": f["statement"],
+                          "evidence": {"evidence_ids": f["evidenceIds"], "source_ids": f["sourceIds"]},
+                          "materiality": f["materiality"], "stance": f["stance"], "confidence": f["confidence"], "basis": f["basis"]}
+                         for f in self.findings],
             "triage": {"ran": self.triaged}, "flyby": {"routes": self.flyby_routes},
             "investigation": {"by": self.by, "findings": self.findings, "meaning": [p for _, p in self.meaning], "method": self.method,
                               "contradictions": self.contradictions, "magnum": self.magnum},
@@ -190,10 +400,11 @@ class Facts:
         }
 
 
-def build(response: HigginsResponse, *, answered_by: Optional[str], routing: dict, sources: list[dict]) -> Facts:
+def build(response: HigginsResponse, *, answered_by: Optional[str], routing: dict, sources: list[dict],
+          gates: tuple[str, ...] | list[str] = ()) -> Facts:
     by = investigator(answered_by)
-    findings = [{"id": f.id, "text": strip_markdown(f.text), "basis": f.basis, "confidence": f.confidence, "sourceIds": list(f.source_ids)}
-                for f in response.findings]
+    findings = [{"id": f.id, "text": strip_markdown(f.text), "basis": f.basis, "confidence": f.confidence, "sourceIds": list(f.source_ids),
+                 "evidenceIds": list(f.evidence_ids)} for f in response.findings]
     meaning_paras: list[tuple[Optional[str], str]] = []
     method: list[str] = []
     finding_norms = [normal(f["text"]) for f in findings]
@@ -242,4 +453,7 @@ def build(response: HigginsResponse, *, answered_by: Optional[str], routing: dic
     facts.allowed = entities(facts.corpus)
     facts.contradictions = [s for text in (facts.verdict + [f["text"] for f in findings] + [p for _, p in meaning_paras] + facts.uncertainties)
                             for s in sentences(text) if CONTRAST.search(s)]
+    candidates = case_candidates(facts.core)
+    facts.findings = [structure_finding(f, candidates, facts.outcome) for f in findings]
+    facts.subject = case_subject(facts.findings, gates)
     return facts

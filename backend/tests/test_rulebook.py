@@ -304,7 +304,8 @@ def test_the_book_is_in_five_parts_with_every_gate_under_protection_gates():
     assert gates == ["gate-decisions", "site-gate", "link-gate", "text-gate", "call-gate", "email-gate", "account-gate",
                      "file-gate", "app-gate", "device-gate", "internet-gate", "linked-events"]
     placed = {group["id"]: [section["id"] for section in group["sections"]] for group in groups}
-    assert placed["investigation-process"] == ["higgins-triage", "tc-flyby", "magnum-di", "higgins-explanation", "settling-rules", "outcomes", "knowledge-base"]
+    assert placed["investigation-process"] == ["higgins-triage", "tc-flyby", "magnum-di", "higgins-explanation", "plain-english-renderer",
+                                               "fidelity-check", "settling-rules", "outcomes", "knowledge-base"]
     assert placed["privacy-and-data"] == ["privacy", "your-data", "permissions"]
     assert placed["device-protections"] == ["threats-list"]
     assert placed["general"] == ["ask-higgins", "scam-alerts", "cost-guardrails"]
@@ -341,18 +342,42 @@ def test_every_rule_book_section_opens_on_its_own_in_the_admin_portal(monkeypatc
     assert 'data-testid="rule-book-download-pdf"' in page and 'data-testid="rule-book-download-json"' in page
 
 
-def test_the_plain_english_rules_match_the_code():
+def test_the_plain_english_renderer_rules_match_the_code_word_for_word():
     from services.higgins.explain import words
-    section = re.split(r"\n#{2,3} ", BOOK.split("#### Plain English and the Fidelity Check", 1)[1], maxsplit=1)[0]
+    section = _section("plain-english-renderer")
     labels = {"none": "None", "review": "Review", "action_needed": "Action needed", "urgent": "Urgent"}
     missing = [level for level, line in words.SEVERITY.items() if f"| {labels[level]} | {line} |" not in section]
     assert not missing, f"The severity lines no longer match the code for: {missing}"
-    for formal, plain in (("in order to", "to"), ("is unable to", "can't"), ("do not", "don't")):
-        assert (formal, plain) in words.PLAIN_SWAPS and f'"{formal}" → "{plain}"' in section
-    for term in ("domain", "phishing", "redirect", "registration record", "Safe Browsing", "IPQualityScore", "ABN", "PayID", "remote access"):
-        assert any(t == term for t, _, _ in words.GLOSSARY) and term in section, term
-    assert words.BASIS["observation"].format(by="TC FlyBy") in section and words.BASIS["user_report"] in section
-    assert words.BASIS["inference"].format(by="Magnum DI") in section
+    swaps = [f'| "{formal}" | "{plain}" |' for formal, plain in words.PLAIN_SWAPS]
+    assert [row for row in swaps if row not in section] == [], "every plain swap is listed, word for word"
+    assert section.count('\n| "') == len(words.PLAIN_SWAPS), "and nothing else is listed as one"
+    glossary = [f"| {term} | {text} |" for term, _, text in words.GLOSSARY]
+    assert [row for row in glossary if row not in section] == [], "every jargon explanation is listed, word for word"
+    for by in ("TC FlyBy", "Magnum DI"):
+        assert words.BASIS["observation"].format(by=by) in section and words.BASIS["inference"].format(by=by) in section
+    assert words.BASIS["user_report"] in section
+    assert all(f"**{label}**" in section for label in words.CONFIDENCE.values())
+
+
+def test_the_fidelity_check_rules_match_the_code_word_for_word():
+    import inspect
+    from services.higgins.explain import MAX_ATTEMPTS, fidelity, words
+    section = _section("fidelity-check")
+    rows = [f"| {code} | {text} |" for code, text in fidelity.CODES.items()]
+    assert [row for row in rows if row not in section] == [], "every Fidelity Check rule is listed, word for word"
+    listed = re.findall(r"^\| ([A-Z_]+) \| ", section, re.M)
+    assert sorted(listed) == sorted(fidelity.CODES), "every rule exactly once, and nothing else listed as one"
+    for name, phrases in (("CERTAINTY_ADDED", words.CERTAINTY), ("SAFETY_CLAIM_ADDED", words.SAFETY),
+                          ("SEVERITY_SOFTENED", words.SOFTENERS), ("SEVERITY_ESCALATED", words.ESCALATORS)):
+        line = next(line for line in section.splitlines() if f"({name}):**" in line)
+        assert line.split(":**", 1)[1].strip() == ", ".join(f'"{p}"' for p in phrases), name
+    assert all(word in section for word in fidelity.NEGATIONS)
+    source = inspect.getsource(fidelity.faithful)
+    assert "< 0.85" in source and "at least 85% of Apollo's meaning-bearing words" in section
+    assert "> 0.25" in source and "no more than 25% of its own meaning-bearing words are new" in section
+    assert f"At most {MAX_ATTEMPTS} checks are run on each result." in section
+    for mode in ("plain", "repaired", "literal"):
+        assert f"\n| {mode} | " in section, mode
 
 
 def test_the_reusable_intelligence_rules_match_the_code():

@@ -9,6 +9,7 @@
  * - No fabricated investigation stages, block claims, evidence, or timeline events.
  */
 
+import { needsYou } from "./caseBriefing.ts";
 import type { CaseSource } from "./caseSources.ts";
 import { investigatorName } from "./messageVoice.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
@@ -70,9 +71,9 @@ export function threatCaseStatus(event: PatrolEvent): ThreatCaseStatus {
   // answered (its result is committed to this device) the case is reported by what it found.
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   if (hasInvestigation && !event.investigation_completed_at) return "investigating";
-  // Needs user attention
-  if (event.state === "barking" || event.state === "biting") return "attention";
-  if (event.state === "growling" || event.state === "ears_up") return "monitoring";
+  // "Needs you" only when the case owes the person a decision with a concrete reason (caseBriefing.needsYou) —
+  // never from a Barking, review or keeping-watch state on its own.
+  if (needsYou(event)) return "attention";
   return "monitoring";
 }
 

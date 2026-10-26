@@ -39,6 +39,8 @@ test("a passed plain English is shown: answer, severity, every finding with who 
   assert.ok(shown);
   const r = plainReport(shown, sources, response.sourceIds);
   assert.deepEqual(r.answer, [plain.result]);
+  assert.deepEqual(plainReport({ ...shown, subject: "What it is: the ANZ link anz-secure-login.co." }).answer,
+    [plain.result, "What it is: the ANZ link anz-secure-login.co."], "the subject line is never dropped");
   assert.equal(r.severity, plain.severity);
   assert.deepEqual(r.found, [{ text: plain.established[0].text, detail: plain.established[0].detail, explain: plain.established[0].explain }]);
   assert.deepEqual(r.means, [...plain.means, ...plain.matters]);

@@ -1,3 +1,34 @@
+## Case Briefing UI check (Stoko + other cases) and fixes found while checking (2026-10-26)
+- Checked in the web preview with three real briefings from `explain.explain_case` (injected as device-committed
+  investigations): Stoko email (No scam indicators, no "Needs you"), a lookalike link (Concerning, "Needs you" with
+  its reason), an Unable-to-determine text (Keeping watch, no "Needs you"). Home, Threats, Overview and Alerts all show
+  the briefing's subjects, findings and the "Still unresolved" reason.
+- Fixed: Overview/Ask Higgins dropped the plain English "What it is" subject line (`plainReport` now shows it); Threats
+  card titles for investigated cases were generic ("Higgins found no remaining concern") → briefing headline/summary
+  (`caseCardText` in `patrolOutcomes`); Home hero wrapped full briefing sentences in "Apollo flagged … There's also a
+  concern about …" (double periods, broken capitals) → `briefedLine()` (headline: first finding, "It needs your
+  decision." only when `needsYou`).
+- Fixed: a lookalike's subject line said "the Stoko website st0ko-login.co". Findings now carry `organisationClaimed`
+  (impersonation check or "not X's"); subject line "What it is: the website st0ko-login.co, which isn't Stoko's.",
+  headline "Link using Stoko's name checked" (`words.SUBJECT_LINE_CLAIMED`, `HEADLINE_CLAIMED_ORG`;
+  `BriefingSubject/BriefingFinding.organisation_claimed`).
+- Rule book: the 8 new Fidelity Check codes (SUBJECT_DROPPED … CAUSAL_DROPPED) were missing from `{#fidelity-check}`
+  (test_rulebook failed) → added, re-stamped.
+- Tests: `frontend/tests/caseBriefingSurfaces.test.ts` (3), tabBadges updated to the strict "Needs you" rule,
+  plainEnglish +1; backend test_case_briefing updated (lookalike). Frontend all pass, backend 1250 passed.
+  No testing agent (owner's rule).
+
+
+## Rule book: Plain-English Renderer + Fidelity Check sections (2026-10-26)
+- New `###` sections under Investigation process: `{#plain-english-renderer}` (facts → draft order, identifiers kept,
+  contradiction words, severity lines, basis/confidence labels, what may change, ALL 52 plain swaps, ALL 19 jargon
+  explanations) and `{#fidelity-check}` (all 25 failure codes word for word, the "same point" test 85%/25%/negations/
+  numbers/quotes, the 4 tone-word lists, attempts/modes plain·repaired·literal with PASS/FAIL, RENDERER_ERROR, staff view).
+  The old `####` summary in higgins-explanation is now a pointer. Fixed "From what you told ApolloSG" → code's wording.
+- Tests (`test_rulebook.py`): new word-for-word tests for both sections (every swap/glossary/code/tone list/threshold/
+  MAX_ATTEMPTS), placement list updated. 25/25 rule-book tests pass; frontend rule-book tests 12/12.
+
+
 ## Notification text: entities decoded once, short specific summaries (2026-10-26)
 - Frontend `src/push/notificationText.ts`: `decodeHtmlEntities` (one pass; named + numeric; unknown/invalid left
   as-is; `&amp;quot;` → `&quot;`), `presentAlertText` (decode once + tidy + clip title 65 / body 178) applied ONLY in

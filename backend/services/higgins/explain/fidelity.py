@@ -21,7 +21,8 @@ from collections import Counter
 from services.higgins import outcomes
 from services.higgins.contracts import FidelityFailure, FidelityResult
 from services.higgins.explain import words as W
-from services.higgins.explain.facts import CONTRAST, STOP, Facts, _stem, entities, entity_text, normal, sentences, words
+from services.higgins.explain.facts import (CONTRAST, STOP, Facts, _stem, classify, entities, entity_text, identity_value, normal,
+                                            result_kinds, sentences, words)
 from services.higgins.explain.render import QUOTE, Draft, literal_parts
 
 CODES = {
@@ -49,10 +50,19 @@ CODES = {
     "SEVERITY_SOFTENED": "The plain English plays the risk down.",
     "SEVERITY_ESCALATED": "The plain English plays the risk up.",
     "ATTRIBUTION_CHANGED": "The plain English credits the wrong investigator.",
+    "SUBJECT_DROPPED": "A finding lost what it is about: the address, website, number or company it names.",
+    "RESULT_CHANGED": "What a check found about its subject isn't what Apollo recorded.",
+    "RESULT_KIND_CHANGED": "Unavailable, failed, no match and not applicable were mixed up.",
+    "DECISION_REASON_DROPPED": "The reason for Apollo's status is missing or changed.",
+    "UNRESOLVED_DROPPED": "Something Apollo left unresolved is missing or changed.",
+    "ACTION_REASON_DROPPED": "The case asks the person to act without the reason Apollo recorded, or drops that reason.",
+    "STANCE_CHANGED": "A finding that supports or goes against Apollo's conclusion is on the wrong side.",
+    "CAUSAL_DROPPED": "A \"because\" or \"so\" link between two facts was lost.",
     "RENDERER_ERROR": "The renderer stopped with an error, so Apollo's own wording was shown.",
 }
 
 NEGATIONS = {"not", "no", "never", "nothing", "none", "nobody", "nowhere", "neither", "nor", "without"}
+CAUSAL = re.compile(r"\b(because|so|therefore|as a result|which means|that's why|that is why|hence|thus|since)\b", re.I)
 
 
 def canon(text: str) -> list[str]:
@@ -129,7 +139,7 @@ def check(f: Facts, draft: Draft) -> FidelityResult:
             continue
         i = ids.index(item.finding_id)
         finding = f.findings[i]
-        if not faithful(finding["text"], item.text):
+        if not faithful(finding["statement"], item.text):
             failures.append(_fail("FINDING_ALTERED", f"finding:{i}"))
         if W.CONFIDENCE[finding["confidence"]] not in item.detail:
             failures.append(_fail("CONFIDENCE_CHANGED", f"finding:{i}"))
@@ -137,6 +147,25 @@ def check(f: Facts, draft: Draft) -> FidelityResult:
             failures.append(_fail("BASIS_CHANGED", f"finding:{i}"))
         if item.explain and item.explain not in W.GLOSSARY_TEXTS:
             failures.append(_fail("EXPLANATION_NOT_APOLLO", f"finding:{i}"))
+        # Subject → Finding → Result: the finding still names what it is about, and still says what the check found.
+        if finding["subject"] and not has_subject(item.text, finding["subjectType"], finding["subject"]):
+            failures.append(_fail("SUBJECT_DROPPED", f"finding:{i}", finding["subjectType"]))
+        if finding["check"] != "stated" and classify(item.text) != (finding["check"], finding["result"]):
+            failures.append(_fail("RESULT_CHANGED", f"finding:{i}", finding["check"]))
+        if result_kinds(item.text) != result_kinds(finding["statement"]):
+            failures.append(_fail("RESULT_KIND_CHANGED", f"finding:{i}"))
+        if item.stance != finding["stance"]:
+            failures.append(_fail("STANCE_CHANGED", f"finding:{i}"))
+
+    # ── Why this status, and what remains unresolved: each one whole, in its own place ──
+    def kept(ref: str, shown: list) -> bool:
+        item = next((x for x in shown if x.ref == ref), None)
+        return item is not None and all(any(faithful(s, p) for p in sentences(item.text)) for s in sentences(parts[ref]))
+    if f.attention_reason and not kept("matters:0", draft.matters):
+        failures.append(_fail("DECISION_REASON_DROPPED", "matters:0"))
+    for i in range(len(f.uncertainties)):
+        if not kept(f"uncertain:{i}", draft.uncertain):
+            failures.append(_fail("UNRESOLVED_DROPPED", f"uncertain:{i}"))
 
     # ── What to do: every step, one for one ──
     todo = {item.ref: item for item in draft.todo}
@@ -149,7 +178,7 @@ def check(f: Facts, draft: Draft) -> FidelityResult:
 
     # ── Every sentence of the result is said; every plain sentence is supported ──
     units = _units(draft)
-    plain_units = [(ref, s) for ref, s in units if not (ref == "result" and s == own_label)]
+    plain_units = [(ref, s) for ref, s in units if not (ref == "result" and s == own_label) and ref != "subject"]
     for ref, text in parts.items():
         if ref.startswith(("finding:", "todo:")):
             continue  # checked one for one above
@@ -166,11 +195,22 @@ def check(f: Facts, draft: Draft) -> FidelityResult:
         if not any(faithful(s, p) for s in authoritative):
             failures.append(_fail("UNSUPPORTED_STATEMENT", ref))
 
-    # ── A contradiction stays a contradiction ──
+    # ── A contradiction stays a contradiction; a cause stays a cause; "couldn't check" never becomes "not found" ──
     for c in f.contradictions:
         matches = [p for _, p in units if faithful(c, p)]
         if matches and not any(CONTRAST.search(p) for p in matches):
             failures.append(_fail("CONTRADICTION_DROPPED", _where(parts, c)))
+    for ref, text in parts.items():
+        if ref.startswith("finding:"):
+            continue  # checked against the finding itself above
+        for s in sentences(text):
+            matches = [p for _, p in plain_units if faithful(s, p)]
+            if CAUSAL.search(s) and matches and not any(CAUSAL.search(p) for p in matches):
+                failures.append(_fail("CAUSAL_DROPPED", ref))
+            if matches and all(result_kinds(p) != result_kinds(s) for p in matches):
+                failures.append(_fail("RESULT_KIND_CHANGED", ref))
+    if draft.subject is not None and (not f.subject or not has_subject(draft.subject.text, f.subject["type"], f.subject["value"])):
+        failures.append(_fail("SUBJECT_DROPPED", "subject"))
 
     # ── Identifiers and quotes: kept word for word, none added ──
     shown_text = "\n".join(item.text for item in draft.items())
@@ -210,6 +250,58 @@ def check(f: Facts, draft: Draft) -> FidelityResult:
     for failure in failures:
         if all((failure.code, failure.ref) != (u.code, u.ref) for u in unique):
             unique.append(failure)
+    return FidelityResult(status="FAIL" if unique else "PASS", failures=unique)
+
+
+def has_subject(text: str, kind: str, value: str) -> bool:
+    """The identifier is in `text`, compared the way identifiers are (case, "www.", spacing in numbers)."""
+    low = entity_text(text)
+    if kind in ("phone", "registration"):
+        return re.sub(r"\D", "", value) in re.sub(r"\D", "", text)
+    return identity_value(kind, value) in re.sub(r"(https?://)?www\.", r"\1", low)
+
+
+def check_briefing(f: Facts, draft: Draft, briefing) -> FidelityResult:
+    """The Case Briefing against the facts: every material finding with its subject, check, result and side; the
+    status and its reason; what remains unresolved; and "needs you" only with the reason Apollo recorded."""
+    failures: list[FidelityFailure] = []
+    shown = {b.id: b for b in briefing.findings}
+    for i, sf in enumerate(f.findings):
+        b = shown.get(sf["id"])
+        if b is None:
+            failures.append(_fail("FINDING_DROPPED", f"finding:{i}"))
+            continue
+        if sf["subject"] and (b.subject != sf["subject"] or not has_subject(b.finding, sf["subjectType"], sf["subject"])):
+            failures.append(_fail("SUBJECT_DROPPED", f"finding:{i}", sf["subjectType"]))
+        if (b.check, b.result) != (sf["check"], sf["result"]):
+            failures.append(_fail("RESULT_CHANGED", f"finding:{i}", sf["check"]))
+        if b.stance != sf["stance"] or (sf["id"] in briefing.supporting) != (sf["stance"] == "supporting") \
+                or (sf["id"] in briefing.contrary) != (sf["stance"] == "contrary"):
+            failures.append(_fail("STANCE_CHANGED", f"finding:{i}"))
+    if briefing.status_code != f.outcome:
+        failures.append(_fail("OUTCOME_CHANGED", "briefing"))
+    if f.attention_reason and not faithful(W.swap(f.attention_reason), briefing.status_reason):
+        failures.append(_fail("DECISION_REASON_DROPPED", "briefing"))
+    asks = f.attention in ("action_needed", "urgent") and bool(f.attention_reason)
+    if briefing.user_action_required and not (briefing.action_reason or "").strip():
+        failures.append(_fail("ACTION_REASON_DROPPED", "briefing"))
+    if asks and not briefing.user_action_required:
+        failures.append(_fail("ACTION_REASON_DROPPED", "briefing"))
+    if len(briefing.unresolved) != len(f.uncertainties) or not all(
+            any(faithful(s, p) for p in sentences(shown_u)) for u, shown_u in zip(f.uncertainties, briefing.unresolved) for s in sentences(u)):
+        failures.append(_fail("UNRESOLVED_DROPPED", "briefing"))
+    # The short summary: each sentence is one finding said in fewer words — same subject, check and result — or the
+    # first unresolved reason in Apollo's fixed line. Nothing else.
+    material = [sf for sf in f.findings if sf["materiality"] == "material"]
+    unresolved_line = W.UNRESOLVED_LINE.format(reason=briefing.unresolved[0]) if briefing.unresolved else None
+    for s in sentences(briefing.summary.replace(unresolved_line, "") if unresolved_line else briefing.summary):
+        if not any((classify(s) == (sf["check"], sf["result"]) or faithful(sf["statement"], s))
+                   and (not sf["subject"] or has_subject(s, sf["subjectType"], sf["subject"])) for sf in f.findings):
+            failures.append(_fail("UNSUPPORTED_STATEMENT", "summary"))
+    if material and any(sf["subject"] for sf in material) and not any(
+            sf["subject"] and has_subject(briefing.summary, sf["subjectType"], sf["subject"]) for sf in material):
+        failures.append(_fail("SUBJECT_DROPPED", "summary"))
+    unique = [x for i, x in enumerate(failures) if all((x.code, x.ref) != (u.code, u.ref) for u in failures[:i])]
     return FidelityResult(status="FAIL" if unique else "PASS", failures=unique)
 
 

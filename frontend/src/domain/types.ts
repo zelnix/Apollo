@@ -209,6 +209,9 @@ export interface PatrolEvent {
    *  service returned for each. Device-local: numbers are never part of the Patrol sync payload
    *  (see patrolPayload). */
   evidence_phones?: import("./phoneNumbers").EvidencePhoneResult[] | null;
+  /** The case's Higgins Case Briefing, projected for Home, Threats and notifications (src/domain/caseBriefing.ts).
+   *  Device-local: it names the subject, so it is never part of the Patrol sync payload (see patrolPayload). */
+  case_briefing?: import("./caseBriefing").EventBriefing | null;
 }
 
 /** Recorded identifiers from the original submitted item. Every field is actual

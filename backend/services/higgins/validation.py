@@ -50,20 +50,29 @@ def _weight(finding: ModelFinding) -> tuple[int, int]:
 def deduplicate_findings(findings: list[ModelFinding]) -> list[ModelFinding]:
     """Merge findings describing the same underlying issue, keeping the most informative one.
 
-    A finding is a duplicate when its meaning-bearing words are contained in (or almost identical to)
-    one already kept. The more informative version survives in the original position, so ordering and
-    the "at least one finding" guarantee are both preserved.
+    Two findings are one only when they have the same finding identity (explain.facts.identity): the same subject,
+    and the same check and result — or one of them reports no check at all and names nothing the other doesn't.
+    Two material findings about different subjects, or with different results, are never merged however alike their
+    sentences look. Within one identity, a finding is a duplicate when its meaning-bearing words are contained in (or
+    almost identical to) one already kept. The more informative version survives in the original position, so
+    ordering and the "at least one finding" guarantee are both preserved.
     """
+    from services.higgins.explain.facts import identity
     kept: list[ModelFinding] = []
     signatures: list[frozenset[str]] = []
+    identities: list[tuple[frozenset[str], str, str]] = []
     for finding in findings:
         signature = _signature(finding.text)
+        ident = identity(finding.text)
         if not signature:
             kept.append(finding)
             signatures.append(signature)
+            identities.append(ident)
             continue
         replaced = False
         for index, existing in enumerate(signatures):
+            if not _same_identity(ident, identities[index]):
+                continue
             overlap = len(signature & existing)
             if not overlap:
                 continue
@@ -72,13 +81,26 @@ def deduplicate_findings(findings: list[ModelFinding]) -> list[ModelFinding]:
             if not same_point:
                 continue
             if _weight(finding) > _weight(kept[index]):
-                kept[index], signatures[index] = finding, signature
+                kept[index], signatures[index], identities[index] = finding, signature, ident
             replaced = True
             break
         if not replaced:
             kept.append(finding)
             signatures.append(signature)
+            identities.append(ident)
     return kept
+
+
+def _same_identity(a: tuple[frozenset[str], str, str], b: tuple[frozenset[str], str, str]) -> bool:
+    """Same identifiers, check and result; or one reports no check and names nothing the other doesn't."""
+    if a == b:
+        return True
+    (ids_a, check_a, _), (ids_b, check_b, _) = a, b
+    if check_a == "stated" and ids_a <= ids_b:
+        return bool(ids_a) or check_b == "stated"
+    if check_b == "stated" and ids_b <= ids_a:
+        return bool(ids_b) or check_a == "stated"
+    return False
 
 
 def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: set[str], capability_ids: set[str],

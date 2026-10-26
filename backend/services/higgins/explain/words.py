@@ -96,3 +96,24 @@ CERTAINTY = ("definitely", "certainly", "guaranteed", "proven", "proves", "100%"
 SAFETY = ("safe", "safely", "genuine", "legitimate", "legit", "trustworthy", "harmless", "nothing to worry", "no need to worry", "don't worry", "fine")
 SOFTENERS = ("probably", "just", "only", "minor", "slightly", "a little", "low risk", "unlikely", "maybe")
 ESCALATORS = ("urgent", "urgently", "immediately", "dangerous", "emergency", "right now", "critical", "serious", "seriously")
+
+# ── The Higgins Case Briefing: Apollo's fixed words for its short forms ─────
+# What it is, as the first line of the plain English. {who} is "Stoko " when the organisation is known.
+SUBJECT_LINE = "What it is: the {who}{noun} {subject}."
+# When the organisation is only named and the subject isn't its ("st0ko-login.co is not Stoko's domain").
+SUBJECT_LINE_CLAIMED = "What it is: the {noun} {subject}, which isn't {org}'s."
+# The briefing's headline (Home, Threats, notifications): "Stoko email checked".
+HEADLINE = {"email": "email", "url": "link", "domain": "website", "phone": "number", "registration": "business number"}
+HEADLINE_WITH_ORG = "{org} {noun} checked"
+HEADLINE_CLAIMED_ORG = "{noun} using {org}'s name checked"
+HEADLINE_NO_ORG = "{noun} checked"
+HEADLINE_NO_SUBJECT = "Check finished"
+# A finding said in fewer words, only where these fixed words keep its subject, check and result exactly. Any other
+# finding is shown in its own (plain) words.
+SUMMARY = {
+    ("official_contact", "OFFICIAL"): '"{subject}" is a published {org} contact.',
+    ("official_contact", "NOT_OFFICIAL"): '"{subject}" is not a published {org} contact.',
+    ("reputation", "NOT_LISTED"): 'No scam warning was found for "{subject}".',
+}
+# What is still open, after the findings in the short summary.
+UNRESOLVED_LINE = "Still unresolved: {reason}"

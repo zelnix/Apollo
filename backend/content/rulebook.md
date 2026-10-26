@@ -565,14 +565,33 @@ It can't override what is already established, and it isn't called to move a cas
 - Plain Australian English, no internal codes, 2–4 short paragraphs.
 
 #### Plain English and the Fidelity Check
-Every finished TC FlyBy or Magnum DI result is explained in plain English before it is shown. Higgins writes it from the result itself, in Apollo's wording only. No AI is used and it costs nothing. A general question with nothing checked has nothing to explain, so it is shown as answered.
+Every finished TC FlyBy or Magnum DI result is explained in plain English by the **Higgins Plain-English Renderer** and checked by the **Fidelity Check** before it is shown. Both have their own sections below.
+
+### Higgins Plain-English Renderer {#plain-english-renderer}
+
+**Job:** explains a finished TC FlyBy or Magnum DI result in everyday words, in Apollo's wording only. No AI is used and it costs nothing. A general question with nothing checked has nothing to explain, so it is shown as answered.
 
 **The evidence lock.** The plain English can't add, drop or change a fact, a link, address, number, date or amount, how sure ApolloSG is, how serious it is, what to do, or who established it. The result itself is never changed: the explanation sits beside it, and where the two could ever differ the result wins.
 
-**What Higgins may change**
-- Markdown is removed, and formal words are swapped for plain ones from a fixed list ("in order to" → "to", "is unable to" → "can't", "do not" → "don't" and similar). Quoted words and identifiers are never touched.
-- Each point is said once. A sentence already said isn't repeated, but every finding is always listed.
-- The outcome opens the explanation by its label, and how serious it is gets one fixed line for each attention level:
+**Step 1: the facts.** Built only from the validated result and the case's own records: what Higgins Triage and TC FlyBy did, what Magnum DI was sent, and the registered sources the result relied on. Nothing is recomputed, re-scored or reinterpreted. The facts are split into parts:
+- **The result:** the outcome's label, then the result's overview, sentence by sentence.
+- **Each finding:** its words, who established it, and how firmly.
+- **What it means:** the result's explanation. A "what was found" line that isn't one of the findings is still a fact and is kept here.
+- **Why it matters:** the result's reason for its attention level.
+- **What to do:** every step, one for one with the actions on the screen.
+- **What isn't certain**, and **how Apollo checked** (the method and what was in scope).
+
+**Identifiers that must survive word for word:** links, email addresses, domains, registration numbers (ABN, ACN, ARBN, AFSL, ACL, licence and registration numbers), phone numbers of 8 to 15 digits, amounts of money, percentages, dates and durations.
+
+**Contradictions:** any sentence of the result that says "but", "however", "although", "though", "whereas", "inconsistent", "doesn't match", "does not match", "don't match", "unlike", or a form of "contradict" or "differ".
+
+**Step 2: the draft, in this order**
+1. **The result:** the outcome by its label first, then whatever the result says that the findings don't already.
+2. **How serious:** one fixed line for the attention level, never anything else.
+3. **What was established:** every finding, in order, each labelled with who established it and how firmly. The first jargon word in a finding gets one of Apollo's fixed explanations, beside the finding, never as evidence.
+4. **What it means**, **why it matters**, **what to do** (every step), **what isn't certain** and **how Apollo checked**.
+
+**How serious**
 
 | Attention | Line shown |
 |---|---|
@@ -581,22 +600,178 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English before
 | Action needed | How serious: you need to act. See what you can do. |
 | Urgent | How serious: urgent. Act now. |
 
-- Each finding says who established it and how firmly: "Seen directly by TC FlyBy", "From what you told ApolloSG" or "Magnum DI's reading of the evidence, not seen directly", then high, medium or low confidence.
-- The first jargon word in a finding (domain, phishing, redirect, registration record, Safe Browsing, IPQualityScore, ABN, PayID, remote access and others) gets one of Apollo's fixed explanations, shown beside the finding, never as evidence.
+**Who established each finding**
 
-**The Fidelity Check** runs before anything is shown. It passes only when:
-- the outcome is stated by its label, and no other outcome is named;
-- the severity line matches the attention level word for word;
-- every finding is there, in order, with the same meaning, confidence and investigator;
-- every sentence of the result is said somewhere with the same meaning (the same yes-or-no and the same numbers), and every plain sentence says something the result says;
-- every link, address, number, date and amount is kept, none is added, and quoted words stay word for word;
-- a contradiction in the evidence ("but", "although") stays a contradiction;
-- nothing sounds more certain, safer, milder or more alarming than the result, and the right investigator gets the credit;
-- every step of what to do is kept, and every explanation is one of ApolloSG's fixed ones.
+| Basis | Label shown |
+|---|---|
+| Seen directly | Seen directly by TC FlyBy / Seen directly by Magnum DI |
+| Told by the person | From what you told Apollo |
+| The investigator's reading | TC FlyBy's reading of the evidence, not seen directly / Magnum DI's reading of the evidence, not seen directly |
 
-**On FAIL.** The parts that failed are put back in Apollo's own wording and checked once more. If it still fails, the person sees Apollo's own wording only. A renderer error never fails an investigation; Apollo's wording is shown.
+How firmly: **High confidence**, **Medium confidence**, **Low confidence**.
 
-**Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case.
+**What the renderer may change, and only this**
+- **Markdown** is removed: headings, bold, italics, code marks and bullets. A link keeps its address in brackets.
+- **Formal words** are swapped for plain ones from the fixed list below. Quoted words and identifiers are held aside and put back word for word, so they are never touched. A capital first letter stays a capital.
+- **Each point is said once.** A sentence that makes the same point as one already said isn't repeated. Findings are placed first, so every finding is always listed.
+- **Jargon** is explained once per result, with the fixed explanation from the list below and nothing else.
+
+**Plain swaps (formal → plain)**
+
+| Formal | Plain |
+|---|---|
+| "in order to" | "to" |
+| "prior to" | "before" |
+| "approximately" | "about" |
+| "utilised" | "used" |
+| "utilized" | "used" |
+| "utilising" | "using" |
+| "utilizing" | "using" |
+| "utilises" | "uses" |
+| "utilizes" | "uses" |
+| "utilise" | "use" |
+| "utilize" | "use" |
+| "commenced" | "started" |
+| "commences" | "starts" |
+| "commence" | "start" |
+| "insufficient" | "not enough" |
+| "sufficient" | "enough" |
+| "additional" | "more" |
+| "obtained" | "got" |
+| "obtain" | "get" |
+| "assistance" | "help" |
+| "regarding" | "about" |
+| "numerous" | "many" |
+| "subsequently" | "later" |
+| "furthermore" | "also" |
+| "moreover" | "also" |
+| "additionally" | "also" |
+| "nevertheless" | "still" |
+| "nonetheless" | "still" |
+| "indicates" | "shows" |
+| "indicated" | "showed" |
+| "indicating" | "showing" |
+| "indicate" | "show" |
+| "demonstrates" | "shows" |
+| "demonstrated" | "showed" |
+| "attempts to" | "tries to" |
+| "attempted to" | "tried to" |
+| "attempt to" | "try to" |
+| "is unable to" | "can't" |
+| "are unable to" | "can't" |
+| "was unable to" | "couldn't" |
+| "were unable to" | "couldn't" |
+| "cannot" | "can't" |
+| "can not" | "can't" |
+| "do not" | "don't" |
+| "does not" | "doesn't" |
+| "did not" | "didn't" |
+| "is not" | "isn't" |
+| "are not" | "aren't" |
+| "was not" | "wasn't" |
+| "were not" | "weren't" |
+| "has not" | "hasn't" |
+| "have not" | "haven't" |
+| "had not" | "hadn't" |
+| "could not" | "couldn't" |
+| "would not" | "wouldn't" |
+| "should not" | "shouldn't" |
+| "will not" | "won't" |
+
+**Jargon explanations (Apollo's fixed words)**
+
+| Term | Explanation shown |
+|---|---|
+| registration record | A web address's registration record is the public record of when it was set up and who it was registered through. |
+| domain | A domain is the name part of a web or email address, the part that says who runs it. |
+| phishing | Phishing is a fake message or website made to trick you into handing over passwords, codes or money. |
+| malware | Malware is software made to harm your phone or steal from it. |
+| redirect | A redirect sends you on from the address you tapped to a different one. |
+| Safe Browsing | Google Safe Browsing is Google's list of websites known to be harmful. |
+| IPQualityScore | IPQualityScore rates how risky a link or phone number looks. Its score is a likelihood, not proof. |
+| blocklist | A blocklist is a list of addresses already known to be harmful. |
+| VoIP | A VoIP number runs over the internet, and anyone can set one up in minutes. |
+| ABN | An ABN or ACN is the public number of a business registered in Australia. |
+| ASIC | ASIC is Australia's company regulator. Its registers list companies and licence holders. |
+| AFSL | An AFSL is the licence a business needs in Australia to sell investments or give financial advice. |
+| PayID | PayID sends a bank payment to a phone number or email address instead of account details. |
+| impersonation | Impersonation means pretending to be a real person or organisation. |
+| lookalike | A lookalike address copies a real organisation's name with small changes. |
+| one-time code | A one-time code is the short code a service sends to prove it's you. |
+| remote access | Remote access lets someone else control your phone or computer from somewhere else. |
+| spoofing | Spoofing makes a call or message look like it comes from someone it doesn't. |
+| cryptocurrency | A cryptocurrency payment is very hard to trace or get back. |
+
+### Fidelity Check {#fidelity-check}
+
+**Job:** compares Higgins' plain English with the facts before anything is shown. It passes only when nothing was lost, added or changed. It is deterministic: no AI is used and it costs nothing. A failure names only the kind of problem and the part where it happened, never anything from the case.
+
+**The rules.** The check passes only when none of these is found:
+
+| Code | Fails when |
+|---|---|
+| OUTCOME_CHANGED | The plain English doesn't open with Apollo's outcome as recorded. |
+| OUTCOME_CONFLICT | The plain English names a different outcome from Apollo's. |
+| SEVERITY_CHANGED | How serious it is doesn't match Apollo's attention level. |
+| FINDING_DROPPED | A finding is missing from the plain English. |
+| FINDING_ADDED | The plain English lists a finding Apollo didn't record. |
+| FINDING_ORDER | The findings are in a different order from Apollo's. |
+| FINDING_ALTERED | A finding's meaning changed in the plain English. |
+| CONFIDENCE_CHANGED | How sure ApolloSG is about a finding changed. |
+| BASIS_CHANGED | Who established a finding, or how, changed. |
+| EXPLANATION_NOT_APOLLO | An explanation isn't one of Apollo's fixed explanations. |
+| STATEMENT_DROPPED | Something Apollo's result says is missing from the plain English. |
+| STATEMENT_ALTERED | Something Apollo's result says changed meaning in the plain English. |
+| UNSUPPORTED_STATEMENT | The plain English says something Apollo's result doesn't. |
+| ACTION_DROPPED | A step of what to do is missing. |
+| ACTION_ALTERED | A step of what to do changed. |
+| ENTITY_DROPPED | A link, address, number, date or amount from the result is missing. |
+| ENTITY_INVENTED | A link, address, number, date or amount appears that the result doesn't have. |
+| QUOTE_ALTERED | Words quoted from what was sent weren't kept word for word. |
+| CONTRADICTION_DROPPED | A contradiction in the evidence was smoothed over. |
+| CERTAINTY_ADDED | The plain English sounds more certain than Apollo's result. |
+| SAFETY_CLAIM_ADDED | The plain English sounds safer than Apollo's result. |
+| SEVERITY_SOFTENED | The plain English plays the risk down. |
+| SEVERITY_ESCALATED | The plain English plays the risk up. |
+| ATTRIBUTION_CHANGED | The plain English credits the wrong investigator. |
+| SUBJECT_DROPPED | A finding lost what it is about: the address, website, number or company it names. |
+| RESULT_CHANGED | What a check found about its subject isn't what Apollo recorded. |
+| RESULT_KIND_CHANGED | Unavailable, failed, no match and not applicable were mixed up. |
+| DECISION_REASON_DROPPED | The reason for Apollo's status is missing or changed. |
+| UNRESOLVED_DROPPED | Something Apollo left unresolved is missing or changed. |
+| ACTION_REASON_DROPPED | The case asks the person to act without the reason Apollo recorded, or drops that reason. |
+| STANCE_CHANGED | A finding that supports or goes against Apollo's conclusion is on the wrong side. |
+| CAUSAL_DROPPED | A "because" or "so" link between two facts was lost. |
+| RENDERER_ERROR | The renderer stopped with an error, so Apollo's own wording was shown. |
+
+**"The same point."** A plain sentence makes the same point as Apollo's sentence only when all of these hold:
+- at least 85% of Apollo's meaning-bearing words are in it;
+- no more than 25% of its own meaning-bearing words are new;
+- it has the same yes-or-no: the same number of neither, never, no, nobody, none, nor, not, nothing, nowhere, without, and n't forms;
+- it has the same numbers;
+- every quote in Apollo's sentence is in it word for word.
+
+Small words such as "the", "a" and "of" are ignored, and a formal word and its plain swap, or a word and its contraction, count as the same word.
+
+**Tone words.** The plain English may use these words no more often than Apollo's own wording does:
+- **More certain (CERTAINTY_ADDED):** "definitely", "certainly", "guaranteed", "proven", "proves", "100%", "without doubt", "no doubt", "for sure", "confirmed", "always"
+- **Safer (SAFETY_CLAIM_ADDED):** "safe", "safely", "genuine", "legitimate", "legit", "trustworthy", "harmless", "nothing to worry", "no need to worry", "don't worry", "fine"
+- **Milder (SEVERITY_SOFTENED):** "probably", "just", "only", "minor", "slightly", "a little", "low risk", "unlikely", "maybe"
+- **More alarming (SEVERITY_ESCALATED):** "urgent", "urgently", "immediately", "dangerous", "emergency", "right now", "critical", "serious", "seriously"
+
+The same count applies to another outcome's label (OUTCOME_CONFLICT) and to the other investigator's name (ATTRIBUTION_CHANGED).
+
+**Attempts, and what the person sees.** At most 2 checks are run on each result.
+
+| Mode | When | What the person sees | Admin shows |
+|---|---|---|---|
+| plain | The first draft passes. | Higgins' plain English. | PASS |
+| repaired | The first draft fails. The parts that failed are put back in Apollo's own wording, and the second check passes. | Plain English, with the failed parts in Apollo's own wording. | PASS |
+| literal | The repaired draft fails too, or a failure can't be tied to one part. | Apollo's own wording only. | FAIL |
+
+A renderer error never fails an investigation. It is recorded as RENDERER_ERROR and Apollo's own wording is shown.
+
+**Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case. The DI tab shows the Fidelity Check result as the last step of the decision path.
 
 ### Settling rules: the reason shown on each result {#settling-rules}
 

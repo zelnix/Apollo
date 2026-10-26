@@ -1,3 +1,4 @@
+import { caseCardText, needsYou } from "./caseBriefing.ts";
 import { STATE_RANK } from "./stateMachine.ts";
 import { humanizeReason, resultChip } from "./messageVoice.ts";
 import type { UserAction } from "./userActions.ts";
@@ -34,7 +35,8 @@ const investigationTitle = (event: PatrolEvent, state: PatrolState): string =>
   : event.headline.trim() && !/_/.test(event.headline) ? event.headline
   : state === "barking" ? "Higgins found something that needs your attention"
   : "Higgins found something worth a look";
-const title = (event: PatrolEvent, state: PatrolState) => state === "biting" ? "Apollo stopped a threat" : event.investigation_case_id ? investigationTitle(event, state) : event.headline;
+// A case with a Higgins Case Briefing is titled by its headline ("Stoko email checked"), never a generic line.
+const title = (event: PatrolEvent, state: PatrolState) => state === "biting" ? "Apollo stopped a threat" : event.investigation_case_id ? caseCardText(event, investigationTitle(event, state)).title : event.headline;
 const incidentKey = (event: PatrolEvent, state: PatrolState) => event.patrol_record?.logicalIssueKey ?? `${category(event)}:${safeKey(event.scent_id || event.investigation_case_id || event.indicator_digest || event.indicator_host || event.claimed_brand || event.scenario || event.event_id)}:${state}`;
 const actionFor = (event: PatrolEvent, state: PatrolState): UserAction | undefined => event.investigation_case_id ? { id: "continue_case", label: "Open investigation" } : state === "growling" || state === "barking" ? { id: "start_investigation", label: "Ask Higgins to investigate" } : state === "biting" ? { id: "open_check_it", label: "Review what was stopped" } : undefined;
 
@@ -51,7 +53,7 @@ export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
     const key = incidentKey(event, state); const time = Date.parse(event.occurred_at);
     const existing = outcomes.find((outcome) => outcome.outcomeId === key && Math.abs(Date.parse(outcome.occurredAt) - time) <= WINDOW_MS);
     if (!existing) {
-      outcomes.push({ outcomeId: key, category: category(event), state, title: title(event, state), summary: event.what_happened, occurredAt: event.occurred_at, source: source(event), repeatCount: 1,
+      outcomes.push({ outcomeId: key, category: category(event), state, title: title(event, state), summary: caseCardText(event, "").summary ?? event.what_happened, occurredAt: event.occurred_at, source: source(event), repeatCount: 1,
         result: isResolved ? (event.status === "trusted" ? "Trusted" : "Handled") : result(state),
         resultBasis: isResolved ? (event.status === "trusted" ? "You trusted this exact item." : "You marked this event as handled.") : humanizeReason(event.patrol_record?.effectiveReason, state),
         whyThisRating: event.why.slice(0, 4), primaryAction: isResolved ? undefined : actionFor(event, state), secondaryActions: [], event });
@@ -65,7 +67,8 @@ export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
 
 export function matchesPatrolFilter(outcome: PatrolOutcome, filter: PatrolFilter): boolean {
   if (filter === "all_activity") return true;
-  if (filter === "needs_you") return outcome.state === "barking" && !!outcome.primaryAction;
+  // Only a case that owes the person a decision, with its concrete reason (caseBriefing.needsYou).
+  if (filter === "needs_you") return outcome.state !== "resting" && !!outcome.primaryAction && needsYou(outcome.event);
   if (filter === "warnings") return ["ears_up", "growling", "barking"].includes(outcome.state);
   if (filter === "threats_stopped") return outcome.state === "biting" && outcome.event.verified_block;
   return outcome.state === "resting" || outcome.event.status === "resolved" || outcome.event.status === "trusted";

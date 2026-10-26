@@ -234,7 +234,8 @@ export function shownPlainEnglish(response: Pick<HigginsResponse, "plainEnglish"
 export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[]): Report {
   const used = new Set(sourceIds ?? []);
   return presented({
-    answer: plain.result ? [plain.result] : [],
+    // The result, then what the case is about ("What it is: the Stoko email address hello@stoko.com.").
+    answer: [plain.result, plain.subject].filter((line): line is string => !!line),
     severity: plain.severity || null,
     found: plain.established.map((item) => ({ text: item.text, detail: item.detail || null, explain: item.explain || null })),
     means: [...plain.means, ...plain.matters],

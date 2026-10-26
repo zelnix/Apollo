@@ -1,5 +1,6 @@
 // What a notification actually says. Two jobs, both at the notification boundary only:
-//  1. A purpose-built short summary of an event ("Higgins: The Instagram link you sent has signs that need
+//  1. A purpose-built short summary of an event — from the case's Higgins Case Briefing when it has one (its first
+//     finding, subject always named), otherwise ("Higgins: The Instagram link you sent has signs that need
 //     checking. Open ApolloSG to see what I found.") — never the full Higgins explanation, which stays in
 //     the Threat Case untouched.
 //  2. presentAlertText(): decode HTML entities (&quot; &amp; &#39; &lt; …) exactly once, tidy whitespace and
@@ -100,8 +101,19 @@ export function notificationSubject(event: PatrolEvent): string {
 const inSentence = (subject: string) => subject.replace(/^The /, "the ");
 const OPEN = "Open ApolloSG to see what I found.";
 
+/** The case's own briefing, short: its first finding (which always names its subject) and, when the case owes the
+ *  person a decision, that it does. Null when the event has no Higgins Case Briefing. */
+function briefingSummary(event: PatrolEvent): string | null {
+  const b = event.case_briefing;
+  if (!b || b.from !== "briefing" || !b.summary) return null;
+  const first = b.summary.split(/(?<=[.!?])\s+/)[0] ?? b.summary;
+  return `Higgins: ${first}${b.userActionRequired && b.actionReason ? " This needs your decision." : ""} ${OPEN}`;
+}
+
 /** The short, specific notification body for an event. */
 export function notificationSummary(event: PatrolEvent): string {
+  const briefed = briefingSummary(event);
+  if (briefed) return briefed;
   const subject = notificationSubject(event);
   switch (event.state) {
     case "biting": return `Higgins: Apollo blocked ${inSentence(subject)}. ${OPEN}`;
@@ -117,5 +129,5 @@ export function notificationSummary(event: PatrolEvent): string {
 
 /** The body for "ApolloSG completed an investigation". */
 export function completedSummary(event: PatrolEvent): string {
-  return `Higgins: I've finished checking ${inSentence(notificationSubject(event))}. ${OPEN}`;
+  return briefingSummary(event) ?? `Higgins: I've finished checking ${inSentence(notificationSubject(event))}. ${OPEN}`;
 }

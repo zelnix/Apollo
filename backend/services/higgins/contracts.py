@@ -184,6 +184,8 @@ class PlainEnglish(Wire):
     mode: Literal["plain", "repaired", "literal"]
     result: str
     severity: str
+    # What it is: the case's subject in one fixed line ("What it is: the Stoko email address hello@stoko.com.").
+    subject: str = ""
     established: list[PlainItem] = Field(default_factory=list)
     means: list[str] = Field(default_factory=list)
     matters: list[str] = Field(default_factory=list)
@@ -193,6 +195,54 @@ class PlainEnglish(Wire):
     fidelity: FidelityResult
     attempts: int = 1
     attempt_failures: list[list[FidelityFailure]] = Field(default_factory=list)
+
+
+class BriefingSubject(Wire):
+    value: str
+    type: str
+    organisation: Optional[str] = None
+    # True when the organisation is only named and the subject isn't its (a lookalike), so it is never called its owner.
+    organisation_claimed: bool = False
+
+
+class BriefingFinding(Wire):
+    """One material finding: Subject → Check → Result, in the words shown (the subject always named)."""
+    id: str
+    subject: Optional[str] = None
+    subject_type: Optional[str] = None
+    organisation: Optional[str] = None
+    organisation_claimed: bool = False
+    check: str
+    result: str
+    finding: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    materiality: Literal["material", "context"]
+    confidence: str
+    basis: str
+    stance: Literal["supporting", "contrary", "context"]
+
+
+class CaseBriefing(Wire):
+    """The Higgins Case Briefing (services/higgins/explain/briefing.py): the one authoritative summary every surface
+    projects — Home, Threats, the Overview and notifications. "Needs you" only when user_action_required is true and
+    there is a concrete action_reason."""
+    version: Literal[1] = 1
+    subject: Optional[BriefingSubject] = None
+    headline: str
+    summary: str
+    findings: list[BriefingFinding] = Field(default_factory=list)
+    supporting: list[str] = Field(default_factory=list)
+    contrary: list[str] = Field(default_factory=list)
+    unresolved: list[str] = Field(default_factory=list)
+    status: str
+    status_code: Optional[str] = None
+    attention: str
+    status_reason: str
+    user_action_required: bool
+    action_reason: Optional[str] = None
+    recommended_action: Optional[dict[str, str]] = None
+    fidelity: FidelityResult
 
 
 class HigginsResponse(Wire):
@@ -213,6 +263,7 @@ class HigginsResponse(Wire):
     question: Optional[Question] = None
     completion: Completion
     plain_english: Optional[PlainEnglish] = None
+    briefing: Optional[CaseBriefing] = None
 
 
 class Inventory(Wire):
