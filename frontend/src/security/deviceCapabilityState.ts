@@ -14,6 +14,7 @@
 
 import { Platform } from "react-native";
 import * as Device from "expo-device";
+import * as Localization from "expo-localization";
 
 import { buildDeviceCapabilities, type CapabilityPlatform, type DeviceCapabilityView, type DeviceFacts, type NativeProtectionRead } from "@/src/domain/deviceCapabilities";
 import { EMPTY_SECURITY_READ, type SecurityStateRead } from "@/src/domain/deviceSecurityCatalogue";
@@ -24,6 +25,7 @@ import { getNativeModule } from "@/src/security/nativeBridge";
 import { desktopHostKind } from "@/src/security/desktopHost";
 import { readDeviceSettingsSnapshot } from "@/src/security/devicePosture";
 import { securityAdapter } from "@/src/security/securityAdapter";
+import { regionCountry } from "@/src/telemetry/deviceInfo";
 import type { DeviceSignals } from "@/src/domain/deviceAnalysis";
 import { privateDnsMode } from "@/src/domain/privateDnsAdvice";
 import type { PrivateDnsStatus } from "@/src/domain/types";
@@ -88,10 +90,13 @@ function toSecurityRead(
   };
 }
 
-/** Maker, OS version and model as the OS reports them — never guessed. */
+/** Maker, OS version, model and region-setting country as the OS reports them — never guessed. */
 export function deviceFacts(): DeviceFacts {
   const maker = Device.manufacturer ?? (Platform.OS === "ios" ? "Apple" : null);
-  return { manufacturer: maker ? maker.toLowerCase() : null, osVersion: Device.osVersion ?? null, model: Device.modelName ?? null };
+  return {
+    manufacturer: maker ? maker.toLowerCase() : null, osVersion: Device.osVersion ?? null, model: Device.modelName ?? null,
+    country: regionCountry(Localization.getLocales()[0]?.regionCode) ?? null,
+  };
 }
 
 async function read(): Promise<DeviceCapabilityReading> {

@@ -124,8 +124,9 @@ export interface ProtectionGuidance {
   recommended: string;
   /** Step-by-step instructions for checking it on this device. */
   steps: string[];
-  /** Deep link to the closest supported settings screen, plus the path to follow from there. */
-  action: CapabilityAction;
+  /** Deep link to the closest supported settings screen, plus the path to follow from there. Absent when there is
+   *  nothing on the device to change (a carrier's network blocking). */
+  action?: CapabilityAction;
   /** True when only the person can confirm this — Apollo cannot read it. */
   selfCheck: boolean;
 }

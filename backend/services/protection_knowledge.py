@@ -189,6 +189,17 @@ DEVICE_SEEDS: dict[str, dict] = {
     "disk_encryption": {"what": "Encryption of the whole drive — BitLocker on Windows, FileVault on a Mac — so files can't be read by taking the drive out.",
                         "why": "Without it, anyone with the machine can read your files. With it, a lost laptop is not a data breach.",
                         "protects_against": "Files being read from a lost or stolen computer."},
+    # ── Australia's carriers (network-level, so one row covers all three) ──
+    "au_carrier_scam_blocking": {
+        "what": "Scam blocking that Australia's mobile networks run themselves, automatically. Telstra (including Boost and Belong) "
+                "blocks millions of scam calls and texts a month, and its Scam Protect shows warnings such as ‘Warning: Potential Fraud’, "
+                "‘Unverified: Overseas Call’ or ‘Warning: Suspicious Calling Pattern’ on screen. Optus blocks scam calls and texts, and its "
+                "Call Stop plays a warning instead of connecting you when you call a number reported for scams. Vodafone blocks known "
+                "scam calls and texts across its network in the background.",
+        "why": "It stops many scam calls before your phone even rings, and a carrier warning is a strong sign to hang up. A real bank or "
+               "government agency won't mind you calling back on the number from its own website.",
+        "protects_against": "Known scam calls and texts, calls faked to look like an Australian number, and ‘call-back’ scams that get "
+                            "you to ring a scammer's number."},
 }
 
 

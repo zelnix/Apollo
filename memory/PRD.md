@@ -1,3 +1,13 @@
+## Australian carriers' scam blocking row (2026-10-26)
+- Owner's choice: "Show all three, no picking" (carriers block inside their networks; no app/carrier read).
+- New catalogue row `au_carrier_scam_blocking` (src/domain/deviceSecurityCatalogue.ts): Android + iOS, only when
+  `DeviceFacts.country` (region setting via `regionCountry`, set in `deviceCapabilityState.deviceFacts()`) is AU;
+  `optional` (never "Needs checking"), state not_verifiable, no settings action (`action` now optional on
+  SecurityDef/ProtectionGuidance). Steps: Telstra Scam Protect labels (incl. Boost/Belong), Optus Call Stop
+  warning, Vodafone background blocking, report at scamwatch.gov.au. Reviewed explanation in DEVICE_SEEDS.
+- Facts checked against telstra.com.au (Scam Protect, Mar 2025) and optus.com.au (Call Stop).
+- Test: frontend `tests/auCarrierProtection.test.ts` (4).
+
 ## Gemini Map 4-week trend; pre-written explanations for the phone's own call/message protection (2026-10-26)
 - **Last four weeks** table on `/api/admin/gemini-map`: Magnum DI, TC FlyBy, Ask Higgins, removed/retired, all calls;
   cost + calls per Monday–Sunday week (admin's zone), oldest first; finished weeks show ▲/▼ % vs the week before

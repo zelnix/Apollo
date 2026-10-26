@@ -91,6 +91,8 @@ export interface DeviceFacts {
   manufacturer: string | null;
   osVersion: string | null;
   model: string | null;
+  /** Two-letter country from the phone's region setting, e.g. "AU". Absent or null when unknown. */
+  country?: string | null;
 }
 
 export const UNKNOWN_DEVICE: DeviceFacts = { manufacturer: null, osVersion: null, model: null };
@@ -105,6 +107,8 @@ interface SecurityDef {
   oems?: string[];
   /** Only from this OS major version. Unknown version = still offered. */
   minOsMajor?: number;
+  /** Only where the phone's region setting is one of these countries. Unknown country = not offered. */
+  countries?: string[];
   /** Worth it for some people only — never listed under "Needs checking". */
   optional?: boolean;
   /** Who owns this protection when no read names someone more specific. */
@@ -112,7 +116,8 @@ interface SecurityDef {
   /** The configuration Higgins recommends. Never phrased as if Apollo knows the current one. */
   recommended: string;
   steps: (read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts) => string[];
-  action: (platform: CapabilityPlatform) => CapabilityAction;
+  /** The closest settings screen. Omitted when there is nothing on the device to change. */
+  action?: (platform: CapabilityPlatform) => CapabilityAction;
   /** Apollo's honest line when nothing could read this. */
   unverified: string;
   /** Returns a state only when a real read answered. `null` → "Check manually". */
@@ -545,6 +550,27 @@ const CATALOGUE: SecurityDef[] = [
     action: () => ({ target: "apps", path: "Settings → Apps → Messages → Unknown & Spam", label: "Check message filtering" }),
     unverified: "Apple does not let Apollo read this setting, so ApolloSG cannot tell whether it is on.",
   },
+  {
+    // Australia's carriers block inside their networks, so no app on the phone can see it — and ApolloSG doesn't
+    // know which carrier this is. One row explains all three; nothing to switch on, so it never says "Needs checking".
+    id: "au_carrier_scam_blocking",
+    title: "Your mobile carrier’s scam blocking",
+    subtitle: "Telstra, Optus and Vodafone stopping scam calls and texts on their networks",
+    area: "calls_messages",
+    platforms: ["android", "ios"],
+    countries: ["AU"],
+    optional: true,
+    owner: "your mobile carrier",
+    recommended: "There is nothing to switch on: Telstra, Optus and Vodafone apply their scam blocking automatically. Higgins recommends treating a carrier warning as a reason to hang up, and calling back only on a number you looked up yourself.",
+    steps: () => [
+      "Nothing to turn on — Telstra, Optus and Vodafone block known scam calls and texts on their networks automatically",
+      "On Telstra (including Boost and Belong): if a call shows ‘Warning: Potential Fraud’, ‘Unverified: Overseas Call’ or ‘Warning: Suspicious Calling Pattern’, let it go to voicemail",
+      "On Optus: if calling a number plays a message that it has been reported for scams, hang up and find the organisation’s real number yourself",
+      "On Vodafone: scam calls are blocked in the background, so a scam that gets through looks like any other call — be just as careful",
+      "Report scam calls and texts to your carrier and at scamwatch.gov.au",
+    ],
+    unverified: "Your carrier does this inside its network, so no app on the phone — ApolloSG included — can see it, and ApolloSG doesn’t know which carrier you’re with.",
+  },
 
   // ── If it is lost or stolen ───────────────────────────────────────
   {
@@ -901,7 +927,7 @@ function ownerOf(def: SecurityDef, platform: CapabilityPlatform): string {
 }
 
 function guidance(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts, selfCheck: boolean): ProtectionGuidance {
-  return { recommended: def.recommended, steps: def.steps(read, platform, device), action: def.action(platform), selfCheck };
+  return { recommended: def.recommended, steps: def.steps(read, platform, device), action: def.action?.(platform), selfCheck };
 }
 
 function toRow(def: SecurityDef, read: SecurityStateRead, platform: CapabilityPlatform, device: DeviceFacts, resolved: Resolved, attributedTo: string): DeviceProtectionRow {
@@ -932,6 +958,7 @@ const osMajor = (version: string | null): number | null => {
 function appliesTo(def: SecurityDef, platform: CapabilityPlatform, device: DeviceFacts): boolean {
   if (!def.platforms.includes(platform)) return false;
   if (def.oems && !(device.manufacturer && def.oems.includes(device.manufacturer.toLowerCase()))) return false;
+  if (def.countries && !(device.country && def.countries.includes(device.country.toUpperCase()))) return false;
   const major = osMajor(device.osVersion);
   return !(def.minOsMajor && major !== null && major < def.minOsMajor);
 }
