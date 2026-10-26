@@ -8,6 +8,7 @@ import { apiPost } from "@/src/api/client";
 import { parseIntelResult } from "@/src/domain/intelContract";
 import { lookupWithRetry, type LookupFailure, type LookupOutcome } from "@/src/domain/reputationLookup";
 import type { DomainInfo, IntelResult } from "@/src/domain/types";
+import { fromSources, type IncompleteCheck } from "@/src/domain/triage/completeness";
 
 export interface MessageUrlResult {
   url: string;
@@ -20,6 +21,8 @@ export interface MessageUrlResult {
   domain_info?: DomainInfo | null;
   /** Set when the lookup established nothing: how it failed, after the controlled retry. */
   failure?: LookupFailure | null;
+  /** Checks inside an answer that didn't complete (a source that didn't answer, an unverified final destination). */
+  incomplete?: IncompleteCheck[];
 }
 
 export function hostOfUrl(url: string): string {
@@ -78,6 +81,7 @@ export async function fetchMessageUrlIntel(
       final_url: parsed?.final_url ?? null,
       domain_info: parsed?.domain_info ?? null,
       failure,
+      incomplete: failure || !parsed || parsed.coverage === "none" ? [] : fromSources(parsed.sources),
     });
   }
   return results;

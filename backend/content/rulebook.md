@@ -30,19 +30,22 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule is listed under its gate below.
 4. **Retries.** A temporary failure gets up to 3 attempts. This covers a provider not answering, a network failure, content that couldn't be opened, or a check error. Permanent limits are never retried. On the phone, link and number reputation lookups follow the same policy within a time budget, and identical lookups already running are shared, never sent twice. An authorisation failure or rejected input is not retried. If every attempt fails, the lookup is recorded as unavailable, with how it failed. It is never counted as a pass, and the attempts appear in the DI.
 5. **Rules that can't run here.** A rule that needs something this context can never provide is **not applicable**, not a coverage gap. The DI still lists it, with the reason. Example: BITM-01 to BITM-04 need live observation inside the browser session, which a phone app can't see. A coverage gap means a check that should have run, but didn't.
-6. **Limited by cause.** Every Triage outcome reports its cause codes (no content): reputation timeout, authorisation failure, provider unavailable, genuine insufficient evidence, a moderate number-risk result, a rule execution error, and so on. The admin Triage page counts them for real phones separately from previews and test devices.
+6. **Limited by cause.** Every Triage outcome reports its cause codes (no content): reputation timeout, authorisation failure, lookup allowance used up, provider unavailable, genuine insufficient evidence, a moderate number-risk result, a rule execution error, and so on. Every number check reports its outcome, whether the number was allowed, risky or unknown. The admin Triage page counts them for real phones separately from previews and test devices, with the checks that didn't complete listed for every outcome.
+7. **Checks that didn't complete.** A check Apollo needed but couldn't finish is recorded with how it failed: it timed out, there was no connection, the service couldn't be reached or had an error, the lookup allowance is used up, the lookup wasn't authorised, the service had no information, the website's address doesn't exist, and so on. This covers a reputation source that didn't answer, a link whose final destination couldn't be verified, and a phone number scored only from Apollo's last check. The wording follows the kind of check and how it failed, never the provider. It is never shown as a completed check.
 
 **Gate outcomes**
 | Outcome | When |
 |---|---|
 | **Possible threat** | At least one rule is met. This opens **one** investigation case. |
 | **Limited / unable to determine** | No rule was met, but evidence was missing (a coverage gap), or concerning signs didn't meet a rule. No case is opened, and the person is told what Apollo couldn't see, in plain English, and to treat the item with caution. A Limited result is never shown as safe or as nothing to worry about. |
+| **No threat found by available checks** | No rule was met and no coverage gap stands, but a check Apollo needed didn't complete. The result names each check that didn't complete and how it failed. It is never shown as the unqualified "No threat identified". |
 | **No threat identified** | No rule was met and every applicable check completed. |
 
 **Rules**
 - Missing evidence is a coverage gap. It can block "no threat", but it never creates a threat and never weakens real threat evidence.
+- A check that didn't complete is a coverage gap only when its answer could change the result. When no reputation source answered at all, the result is Limited. When one source didn't answer but another did, or a link's final destination couldn't be verified, or a number's reputation lookup failed while nothing in the material depends on it, the result is "No threat found by available checks".
 - **Never a threat on their own:** unknown sender or caller, urgency, a brand mention, PayID/Osko use, link shorteners, a new domain, risky TLDs, public Wi-Fi, developer options, official-store apps, encryption alone, and similar weak signals.
-- **Cache:** a possible threat is kept 30 days and no threat 7 days. Limited results are never cached.
+- **Cache:** a possible threat is kept 30 days and no threat 7 days. Limited results, and results with a check that didn't complete, are never cached.
 - **Biting only for a real block.** The DNS, VPN or packet filter must have actually blocked the connection. The block must be fresh (within 60 seconds), on this device, for this event, and on a real platform (not mock). Calls can never reach Biting. Link, email and text checks go no higher than Barking.
 - **Unknown is not unsafe.** A setting Apollo couldn't read is never counted as a change. "No concern" covers only the checks that completed. Nothing is ever called safe.
 - **Privacy first.** Passwords and codes are removed on the phone, and an image showing one is not sent. Only allow-listed fields leave the device. Secrets are stripped again before every AI request. The full rules are under Privacy and redaction.
@@ -69,7 +72,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 **Job:** check a link before it is opened.
 
 **How a link is checked**
-- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. A link that redirects more than 5 times is judged as given, and the gap is recorded.
+- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. When the final destination can't be verified (more than 5 redirects, an address that doesn't exist, a website that can't be reached, a timeout), the link is judged as given and the final-destination check is recorded as not completed, with how it failed.
 - The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
 - Every link Apollo checks, in a message, an email or on its own, gets the same check.
 - **QR codes:** the address inside is checked as a link. The QR code itself is never a threat.
@@ -107,6 +110,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - Store builds of ApolloSG never ask to read text messages or the call log.
 - **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to ApolloSG where the app offers Share.
 - Every message goes through the same checks as a pasted one: the Text Gate rules below, plus the Link Gate check for each link.
+- **Numbers in a message** get a reputation lookup. A lookup that fails is recorded as a check that didn't complete. On its own it never makes an ordinary message Limited: only a callback lure (a supplied number with a claimed charge or a claimed organisation) depends on that number's reputation.
+- **Callback scams:** a supplied number (including 1800, 1300 and 13 numbers written without a leading 0) with call or contact wording, together with an unexpected charge or payment, meets CB-01. An unexpected charge is an explicit "unauthorised charge", "unrecognised transaction" or "suspicious transaction", or a claim that the person was charged, debited or billed (or a payment of a dollar amount) with dispute wording ("if this wasn't you") or urgency.
 - **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, and a job, investment or romance discussion without scam mechanics.
 
 **Text Gate rules (30)**
@@ -153,6 +158,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - Every other call rings normally. ApolloSG never delays or silences a call on a guess, and if screening fails the call rings.
 - A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
+- **Number reputation lookups:** a current saved score (24 hours) is used before a new lookup is paid for, for automatic and requested checks alike. If the live lookup fails, Apollo uses the number's last known score, says it is the result of its last check, and records the live lookup as not completed with how it failed. With no earlier score the number is unknown, never allowed.
 - **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
 
 **Call Gate (iPhone)**

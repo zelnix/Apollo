@@ -11,7 +11,7 @@ import { RETRY_ATTEMPTS } from "./triage/contract.ts";
 
 export type LookupFailure =
   | "timeout" | "offline" | "server_error" | "rate_limited" | "malformed" | "provider_unavailable"
-  | "auth_failure" | "forbidden" | "rejected" | "not_configured" | "no_data";
+  | "auth_failure" | "forbidden" | "rejected" | "not_configured" | "no_data" | "quota_exhausted";
 
 /** Worth asking again: the service may answer next time. */
 export const TRANSIENT_LOOKUP_FAILURES: ReadonlySet<LookupFailure> = new Set<LookupFailure>(

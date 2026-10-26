@@ -69,6 +69,10 @@ class IntelSource(BaseModel):
     status: Literal["match", "clear", "unavailable", "not_configured"]
     detail: str
     threat_types: list[str] = []
+    # What kind of check this source is — the person-facing wording follows completeness by check, never the provider.
+    check: Literal["reputation", "final_destination"] = "reputation"
+    # Why it didn't complete, when it didn't (timeout, quota_exhausted, nonexistent_domain, …).
+    failure: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- RDAP domain lookup
@@ -434,5 +438,11 @@ class CallRiskResponse(BaseModel):
     cached: bool
     checked_at: datetime
     source: Literal["ipqualityscore", "not_configured", "unavailable"]
+    # "fresh" = looked up now; "cached" = a current saved score (no lookup credit spent); "stale" = the live
+    # lookup failed and this is the last known score from `checked_at` — never presented as a fresh lookup.
+    freshness: Literal["fresh", "cached", "stale"] = "fresh"
+    # How the live lookup failed, when it did: timeout, provider_unavailable, server_error, rate_limited,
+    # quota_exhausted, auth_failure, rejected, malformed, not_configured.
+    failure: Optional[str] = None
     higgins: dict[str, Any]
     assessment: Optional[dict[str, Any]] = None

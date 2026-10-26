@@ -6,6 +6,7 @@ import type { MessageAnalysis } from "@/src/domain/messageAnalysis.ts";
 import type { CallAnalysis, CallInput } from "@/src/domain/callAnalysis.ts";
 import type { TriageEvidence } from "./engine.ts";
 import type { TriageOutcome } from "./contract.ts";
+import { fromSources, incompleteCheck, type IncompleteCheck, type SourceLike } from "./completeness.ts";
 
 export interface CorrelationInput {
   related?: { category: string; event_id: string; occurred_at?: string }[];
@@ -23,6 +24,8 @@ export interface UrlIntel {
   /** "none" = no reputation source could check anything — unavailable, never a pass. */
   coverage?: string;
   unavailable?: boolean;
+  /** Each source's answer; one that didn't answer is recorded as an incomplete check, never as completed. */
+  sources?: SourceLike[];
 }
 
 const CREDENTIAL_SIGNALS = new Set(["credential_lure", "credentials_in_url", "brand_lookalike", "brand_in_path"]);
@@ -51,6 +54,10 @@ export function linkTriageEvidence(args: {
     ? { status: "ok", verdict: intel.verdict, source: "Apollo threat intelligence", threat_types: intel.threat_types ?? [] }
     : { status: "unavailable", verdict: "unknown", ...(args.intelFailure ? { failure: args.intelFailure } : {}) };
   const hops = (intel?.redirect_chain?.length ?? 0) > 1 ? (intel?.redirect_chain?.length ?? 0) - 1 : 0;
+  // Checks that didn't complete inside an answer that did (a source that didn't answer, an unverified final
+  // destination). When nothing answered at all, the reputation gap above already says so.
+  const incomplete = reputation.status === "ok" ? fromSources(intel?.sources) : [];
+  const destination = incomplete.find((c) => c.check === "final_destination");
   return {
     source_type: args.sourceType ?? "link",
     host: local.host,
@@ -63,7 +70,12 @@ export function linkTriageEvidence(args: {
     displayed_host: args.displayedHost ?? null,
     actual_host: args.actualHost ?? null,
     reputation,
-    redirect: hops ? { status: "ok", hops, final_url: intel?.final_url ?? null, final_verdict: intel?.verdict ?? "unknown" } : {},
+    redirect: hops
+      ? destination
+        ? { status: "incomplete", hops, final_url: null, final_verdict: "unknown", failure: destination.failure ?? "redirect_failure" }
+        : { status: "ok", hops, final_url: intel?.final_url ?? null, final_verdict: intel?.verdict ?? "unknown" }
+      : {},
+    incomplete_checks: incomplete,
     domain_age: intel?.domain_info
       ? { status: "ok", newly_registered: !!intel.domain_info.newly_registered }
       : (intelError ? { status: "unavailable" } : {}),
@@ -83,7 +95,9 @@ export function messageTriageEvidence(args: {
   // both gates feed the one message adapter.
   analysis: Pick<MessageAnalysis, "signals" | "verdict" | "why">;
   linkOutcome?: TriageOutcome | null;
-  phoneReputation?: { status: string; verdict?: string; fraud_score?: number } | null;
+  phoneReputation?: { status: string; verdict?: string; fraud_score?: number; failure?: string | null } | null;
+  /** Checks the message needed that didn't complete: its numbers' and links' reputation lookups. */
+  incompleteChecks?: IncompleteCheck[];
   correlation?: CorrelationInput;
 }): TriageEvidence {
   const s = args.analysis.signals;
@@ -124,6 +138,7 @@ export function messageTriageEvidence(args: {
     brand_mismatch: !!s.claimedBrand && args.linkOutcome === "POSSIBLE_THREAT_IDENTIFIED",
     link_outcome: args.linkOutcome ?? null,
     phone_reputation: args.phoneReputation ?? {},
+    incomplete_checks: args.incompleteChecks ?? [],
     visibility: DEVICE_VISIBILITY,
     correlation: args.correlation ?? {},
   };
@@ -156,16 +171,28 @@ export function numberRiskTriageEvidence(args: {
   recentAbuse?: boolean | null;
   voip?: boolean | null;
   unavailable?: boolean;
+  /** How the live lookup failed, when it did (timeout, quota_exhausted, …). */
+  failure?: string | null;
+  /** "stale" = the live lookup failed and this is the last known score from `checkedAt`. */
+  freshness?: "fresh" | "cached" | "stale" | null;
+  checkedAt?: string | null;
   correlation?: CorrelationInput;
 }): TriageEvidence {
-  const reputation = args.unavailable || args.decision === "unknown"
-    ? { status: "unavailable", verdict: "unknown" }
+  const unavailable = args.unavailable || args.decision === "unknown";
+  const reputation = unavailable
+    ? { status: "unavailable", verdict: "unknown", ...(args.failure ? { failure: args.failure } : {}) }
     : { status: "ok", verdict: args.decision === "avoid" ? "malicious" : "clean", fraud_score: args.fraudScore ?? null };
+  const incomplete = unavailable
+    ? [incompleteCheck("number_reputation", args.failure, { source: "ipqs" })]
+    : args.freshness === "stale"
+      ? [incompleteCheck("number_reputation", args.failure, { status: "stale", source: "ipqs", at: args.checkedAt ?? null })]
+      : [];
   return {
     source_type: "call",
     asks: args.decision === "avoid" ? ["callback"] : [],
     claim: "unknown",
     phone_reputation: reputation,
+    incomplete_checks: incomplete,
     visibility: DEVICE_VISIBILITY,
     correlation: args.correlation ?? {},
     // A reputation signal with no observed scam behaviour is explicitly not a threat on its own.

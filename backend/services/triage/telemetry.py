@@ -37,6 +37,7 @@ CAUSE_LABELS: dict[str, str] = {
     "reputation_rejected": "Lookup input rejected (4xx)",
     "reputation_not_configured": "Reputation provider not configured",
     "reputation_no_data": "Reputation provider had no data",
+    "reputation_quota_exhausted": "Lookup allowance used up (quota)",
     "reputation_unavailable": "Reputation unavailable (cause not reported)",
     "insufficient_evidence": "Genuine insufficient evidence",
     "number_risk_moderate": "Moderate number-risk result",
@@ -45,13 +46,14 @@ CAUSE_LABELS: dict[str, str] = {
 
 
 def causes_for(record: dict, reputation_failure: Optional[str] = None) -> list[str]:
-    """Mirror of frontend src/domain/triage/limitedCause.ts limitedCauses() for server-side Triage."""
+    """Mirror of frontend src/domain/triage/limitedCause.ts limitedCauses() for server-side Triage. The failure
+    kind recorded on the gap itself wins; `reputation_failure` is the caller's fallback."""
     if record.get("outcome") != "LIMITED_UNABLE_TO_DETERMINE":
         return []
     causes: list[str] = []
     for gap in record.get("coverageGaps") or []:
         code = gap.get("code", "")
-        cause = (f"reputation_{reputation_failure or 'unavailable'}" if code == "INTELLIGENCE_PROVIDER_UNAVAILABLE"
+        cause = (f"reputation_{gap.get('failure') or reputation_failure or 'unavailable'}" if code == "INTELLIGENCE_PROVIDER_UNAVAILABLE"
                  else "insufficient_evidence" if code == "INSUFFICIENT_EVIDENCE"
                  else "rule_execution_error" if code == "DETERMINISTIC_CHECK_ERROR"
                  else f"gap_{code.lower()}")
@@ -60,8 +62,20 @@ def causes_for(record: dict, reputation_failure: Optional[str] = None) -> list[s
     return causes
 
 
+def incomplete_codes(record: dict) -> list[str]:
+    """Which checks didn't complete and how, for any outcome: "final_destination_nonexistent_domain",
+    "reputation_timeout", "number_reputation_stale". Mirror of limitedCause.ts incompleteCodes()."""
+    codes: list[str] = []
+    for check in record.get("incompleteChecks") or []:
+        code = f"{check.get('check')}_{'stale' if check.get('status') == 'stale' else check.get('failure') or 'unknown'}"
+        if code not in codes:
+            codes.append(code)
+    return codes
+
+
 async def record(device: Optional[dict], *, origin: str, source_type: str, outcome: str, causes: list[str],
-                 gap_codes: list[str], catalogue_version: Optional[int] = None, lookup: Optional[dict] = None) -> None:
+                 gap_codes: list[str], catalogue_version: Optional[int] = None, lookup: Optional[dict] = None,
+                 incomplete: Optional[list[str]] = None) -> None:
     """Store one outcome. Inputs are validated to codes; anything else is dropped, never stored."""
     if outcome not in OUTCOMES:
         return
@@ -75,6 +89,7 @@ async def record(device: Optional[dict], *, origin: str, source_type: str, outco
         "outcome": outcome,
         "causes": [c for c in causes if _CODE.match(c)][:10],
         "gap_codes": [g for g in gap_codes if _GAP.match(g)][:10],
+        "incomplete": [c for c in (incomplete or []) if _CODE.match(c)][:10],
         "catalogue_version": catalogue_version,
         "lookup": lookup,
         "at": now_utc(),
@@ -99,5 +114,9 @@ async def limited_by_cause(start: Optional[datetime] = None, phones_only: bool =
         {"$sort": {"n": -1}}])]
     retries = {row["_id"] or "none": row["n"] async for row in coll.aggregate([
         {"$match": {**match, "lookup.check": {"$ne": None}}}, {"$group": {"_id": "$lookup.outcome", "n": {"$sum": 1}}}])}
+    # "No threat found by available checks": what didn't complete, for any outcome.
+    incomplete = [(row["_id"]["code"], row["_id"]["outcome"], row["n"]) async for row in coll.aggregate([
+        {"$match": {**match, "incomplete.0": {"$exists": True}}}, {"$unwind": "$incomplete"},
+        {"$group": {"_id": {"code": "$incomplete", "outcome": "$outcome"}, "n": {"$sum": 1}}}, {"$sort": {"n": -1}}])]
     return {"outcomes": {o: outcomes.get(o, 0) for o in OUTCOMES}, "total": sum(outcomes.values()),
-            "by_cause": by_cause, "lookup_retries": retries}
+            "by_cause": by_cause, "lookup_retries": retries, "incomplete": incomplete}

@@ -117,7 +117,7 @@ test("the telemetry payload carries codes only and passes the egress allow-list"
   const local = analyseUrlLocally("https://www.commbank.com.au/");
   const record = evaluateTriage(linkTriageEvidence({ local, intel: null, intelError: "x", intelFailure: "auth_failure" }));
   const payload = triageTelemetry(record, { reputationFailure: "auth_failure" }, { check: "reputation_lookup", attempts: 1, outcome: "not_retried_permanent" });
-  assert.deepEqual(Object.keys(payload).sort(), ["catalogue_version", "causes", "gap_codes", "lookup_attempts", "lookup_check", "lookup_outcome", "outcome", "source_type"]);
+  assert.deepEqual(Object.keys(payload).sort(), ["catalogue_version", "causes", "gap_codes", "incomplete", "lookup_attempts", "lookup_check", "lookup_outcome", "outcome", "source_type"]);
   assert.deepEqual(payload.causes, ["reputation_auth_failure"]);
   assert.doesNotMatch(JSON.stringify(payload), /commbank/);
   assert.deepEqual(enforceEgress("triage_telemetry", { ...payload }), { ...payload });

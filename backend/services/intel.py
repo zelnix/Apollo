@@ -20,7 +20,7 @@ from core.config import SAFE_BROWSING_API_KEY, SB_ENDPOINT, SB_THREAT_TYPES, URL
 from core.db import db, now_utc
 from core.models import BlocklistEntry, IntelCheckResponse, IntelSource, ReputationCache, Verdict
 from services.rdap import lookup_domain_cached
-from services.outbound import public_stream, REDIRECTS
+from services.outbound import OutboundBlocked, public_stream, REDIRECTS
 
 def digest(value: str) -> str:
     return hmac.new(URL_HMAC_SECRET.encode(), value.encode(), sha256).hexdigest()
@@ -88,12 +88,16 @@ async def blocklist_check(host: str) -> IntelSource:
 _sb_probe: dict[str, Any] = {"status": None, "checked_at": None, "detail": ""}
 
 
+def _sb_unavailable(detail: str, failure: str) -> tuple[IntelSource, None]:
+    return IntelSource(name="google_safe_browsing", status="unavailable", detail=detail, failure=failure), None
+
+
 async def safe_browsing_lookup(url: str) -> tuple[IntelSource, Optional[datetime]]:
     if not SAFE_BROWSING_API_KEY:
-        return IntelSource(name="google_safe_browsing", status="not_configured", detail="No Safe Browsing key configured."), None
+        return IntelSource(name="google_safe_browsing", status="not_configured", detail="No Safe Browsing key configured.", failure="not_configured"), None
     # Short-circuit while the key is known-bad (re-probed every 10 minutes) to avoid hammering Google.
     if _sb_probe["status"] == "auth_error" and _sb_probe["checked_at"] and now_utc() - _sb_probe["checked_at"] < timedelta(minutes=10):
-        return IntelSource(name="google_safe_browsing", status="unavailable", detail="Safe Browsing key was rejected; reputation check unavailable."), None
+        return _sb_unavailable("Safe Browsing key was rejected; reputation check unavailable.", "auth_failure")
     payload = {
         "client": {"clientId": "apollo-v1", "clientVersion": "1.0"},
         "threatInfo": {
@@ -108,16 +112,28 @@ async def safe_browsing_lookup(url: str) -> tuple[IntelSource, Optional[datetime
             resp = await http.post(SB_ENDPOINT, params={"key": SAFE_BROWSING_API_KEY}, json=payload)
         if resp.status_code in (401, 403):
             _sb_probe.update(status="auth_error", checked_at=now_utc(), detail="Key rejected by Google Safe Browsing.")
-            return IntelSource(name="google_safe_browsing", status="unavailable", detail="Safe Browsing key was rejected; reputation check unavailable."), None
+            return _sb_unavailable("Safe Browsing key was rejected; reputation check unavailable.", "auth_failure")
+        if resp.status_code == 429:
+            _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing quota used up.")
+            return _sb_unavailable("Safe Browsing's lookup quota is used up for now.", "quota_exhausted")
         resp.raise_for_status()
         data = resp.json()
-    except (httpx.HTTPError, ValueError):
+    except httpx.TimeoutException:
         _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing did not respond.")
-        return IntelSource(name="google_safe_browsing", status="unavailable", detail="Safe Browsing did not respond in time."), None
+        return _sb_unavailable("Safe Browsing did not respond in time.", "timeout")
+    except httpx.HTTPStatusError as exc:
+        _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing returned an error.")
+        return _sb_unavailable("Safe Browsing returned an error.", "server_error" if exc.response.status_code >= 500 else "rejected")
+    except httpx.HTTPError:
+        _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing could not be reached.")
+        return _sb_unavailable("Safe Browsing could not be reached.", "provider_unavailable")
+    except ValueError:
+        _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing answer was malformed.")
+        return _sb_unavailable("Safe Browsing sent an unreadable answer.", "malformed")
     if not isinstance(data, dict) or not isinstance(data.get("matches", []), list):
         # Malformed answer (wrong shape) is rejected — degrade to "unavailable", never read it as "clear".
         _sb_probe.update(status="unreachable", checked_at=now_utc(), detail="Safe Browsing answer was malformed.")
-        return IntelSource(name="google_safe_browsing", status="unavailable", detail="Safe Browsing sent an unreadable answer."), None
+        return _sb_unavailable("Safe Browsing sent an unreadable answer.", "malformed")
     _sb_probe.update(status="ok", checked_at=now_utc(), detail="Safe Browsing reachable.")
     matches = [m for m in data.get("matches", []) if isinstance(m, dict)]
     if matches:
@@ -146,12 +162,28 @@ def combine(sources: list[IntelSource]) -> tuple[Verdict, list[str], str]:
     return "unknown", [], "none"
 
 
-async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[str], bool, Optional[str]]:
+def _expansion_failure(exc: BaseException) -> str:
+    """Why the final destination couldn't be verified — a technically accurate code, never a guess."""
+    if isinstance(exc, OutboundBlocked):
+        code = str(exc)
+        if code == "dns_failed":
+            return "timeout" if isinstance(exc.__cause__, asyncio.TimeoutError) else "nonexistent_domain"
+        return {"private_target": "unsafe_destination", "invalid_target": "unparseable_link",
+                "too_many_redirects": "redirect_limit", "fetch_failed": "connection_failure"}.get(code, "redirect_failure")
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
+        return "timeout"
+    if isinstance(exc, httpx.ConnectError):
+        return "connection_failure"
+    return "redirect_failure"
+
+
+async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[str], bool, Optional[str], Optional[str]]:
     """Follow HTTP redirects without downloading bodies.
 
-    Returns (chain, complete, reason). `complete` is False when the chain was cut short by an error,
+    Returns (chain, complete, reason, failure). `complete` is False when the chain was cut short by an error,
     a timeout, an unsafe hop or the hop limit — in that case the last element is NOT known to be the
-    real destination, and callers must not treat it as one.
+    real destination, and callers must not treat it as one. `failure` is the code for why: nonexistent_domain,
+    connection_failure, timeout, unsafe_destination, redirect_limit, unparseable_link or redirect_failure.
 
     Privacy: every URL (initial and each redirect destination) is sanitised before any
     outbound request is made, preventing PII or credentials embedded in URLs from leaking
@@ -160,9 +192,9 @@ async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[s
     try:
         sanitised_initial, _ = sanitize_url(url)
     except HTTPException:
-        return [url], False, "the link could not be parsed, so no redirects were followed"
+        return [url], False, "the link could not be parsed, so no redirects were followed", "unparseable_link"
     chain = [sanitised_initial]
-    complete, reason = True, None
+    complete, reason, failure = True, None, None
     try:
         async with asyncio.timeout(12):
             cur = sanitised_initial
@@ -180,7 +212,7 @@ async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[s
                 try:
                     nxt, _ = sanitize_url(raw_nxt)
                 except HTTPException:
-                    complete, reason = False, "the chain pointed at a destination ApolloSG could not safely follow"
+                    complete, reason, failure = False, "the chain pointed at a destination ApolloSG could not safely follow", "unsafe_destination"
                     break
                 if nxt in chain:
                     break
@@ -188,16 +220,17 @@ async def expand_redirects_detailed(url: str, max_hops: int = 5) -> tuple[list[s
                 cur = nxt
             else:
                 # The loop ran out of hops rather than reaching a final destination.
-                complete, reason = False, f"the link redirected more than {min(max_hops, 5)} times"
+                complete, reason, failure = False, f"the link redirected more than {min(max_hops, 5)} times", "redirect_limit"
     except Exception as exc:  # noqa: BLE001
         logger.info("redirect expansion stopped: %s", type(exc).__name__)
-        complete, reason = False, f"the redirect chain could not be followed to the end ({type(exc).__name__})"
-    return chain, complete, reason
+        failure = _expansion_failure(exc)
+        complete, reason = False, f"the redirect chain could not be followed to the end ({failure.replace('_', ' ')})"
+    return chain, complete, reason, failure
 
 
 async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
     """Chain only. Prefer expand_redirects_detailed when the caller reports coverage to a person."""
-    chain, _complete, _reason = await expand_redirects_detailed(url, max_hops)
+    chain, _complete, _reason, _failure = await expand_redirects_detailed(url, max_hops)
     return chain
 
 
@@ -258,12 +291,12 @@ async def assess_indicator(indicator_type: str, value: str, expand: bool) -> Int
         result = await run_intel_check(indicator_type, value)
         return result.model_copy(update={"domain_info": await _await_domain()})
     # Bounded as a whole: a slow redirect chain must never hold the check hostage — judge the link as given instead.
-    expansion_complete, expansion_reason = True, None
+    expansion_complete, expansion_reason, expansion_failure = True, None, None
     try:
-        chain, expansion_complete, expansion_reason = await asyncio.wait_for(expand_redirects_detailed(value), timeout=12)
+        chain, expansion_complete, expansion_reason, expansion_failure = await asyncio.wait_for(expand_redirects_detailed(value), timeout=12)
     except asyncio.TimeoutError:
         chain = [value]
-        expansion_complete, expansion_reason = False, "the redirect check did not finish in time"
+        expansion_complete, expansion_reason, expansion_failure = False, "the redirect check did not finish in time", "timeout"
     final = chain[-1]
     # Judge the final destination; any confirmed-malicious hop along the way also counts.
     result = await run_intel_check("url", final)
@@ -285,7 +318,8 @@ async def assess_indicator(indicator_type: str, value: str, expand: bool) -> Int
     if not expansion_complete:
         # The destination Apollo judged is not known to be the real one. Say so, and never report
         # this as full coverage.
-        sources = [*sources, IntelSource(name="redirect_expansion", status="unavailable",
+        sources = [*sources, IntelSource(name="redirect_expansion", status="unavailable", check="final_destination",
+                                         failure=expansion_failure or "redirect_failure",
                                          detail=f"Apollo couldn't confirm where this link ends up: {expansion_reason}.")]
         coverage = "partial" if coverage == "full" else coverage
     return IntelCheckResponse(verdict=verdict, threat_types=threat_types, sources=sources, indicator_digest=result.indicator_digest, checked_at=result.checked_at, cached=result.cached,

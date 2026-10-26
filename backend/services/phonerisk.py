@@ -106,81 +106,105 @@ def _decision(data: dict) -> str:
     return "allow"
 
 
+class PhoneLookupFailed(HTTPException):
+    """IPQS gave no usable answer. `failure` says how (the same codes the phone uses): timeout,
+    provider_unavailable, server_error, rate_limited, quota_exhausted, auth_failure, rejected, malformed."""
+
+    def __init__(self, failure: str, detail: str):
+        super().__init__(status_code=503, detail=detail)
+        self.failure = failure
+
+
+def _answer_failure(message: str) -> str:
+    """IPQS answered success=false: why, from its message ("You have insufficient credits…", "Invalid key…")."""
+    text = (message or "").lower()
+    if any(word in text for word in ("credit", "quota", "exceeded", "insufficient")):
+        return "quota_exhausted"
+    if any(word in text for word in ("invalid key", "invalid or unauthorized", "unauthorized", "api key")):
+        return "auth_failure"
+    return "rejected"
+
+
 async def _query_ipqs(phone_e164: str) -> dict:
-    """Query IPQS with automatic retry on transient failures (timeout, network error)."""
+    """Query IPQS with automatic retry on transient failures (timeout, network error, 5xx).
+    Raises PhoneLookupFailed with the failure kind; quota, authorisation and rejected input are never retried."""
     number = phone_e164.lstrip("+")
-    last_exc: Exception | None = None
+    last: PhoneLookupFailed | None = None
     for attempt in range(1 + MAX_RETRIES):
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=5.0)) as http:
                 resp = await http.get(f"{IPQS_ENDPOINT}/{IPQS_API_KEY}/{number}", params={"strictness": 0})
             resp.raise_for_status()
             data = resp.json()
-            if not isinstance(data, dict) or data.get("success") is not True:
-                raise HTTPException(status_code=422, detail=str(data.get("message", "Phone risk lookup failed.")) if isinstance(data, dict) else "Phone risk lookup failed.")
-            return data
-        except (httpx.TimeoutException, httpx.RequestError) as exc:
-            last_exc = exc
-            if attempt < MAX_RETRIES:
-                wait = RETRY_BACKOFF * (2 ** attempt)
-                logger.warning("IPQS attempt %d/%d failed (%s), retrying in %.1fs", attempt + 1, 1 + MAX_RETRIES, exc, wait)
-                await asyncio.sleep(wait)
-            else:
-                logger.error("IPQS all %d attempts failed for %s: %s", 1 + MAX_RETRIES, _mask_phone(phone_e164), type(exc).__name__)
+        except httpx.TimeoutException:
+            last = PhoneLookupFailed("timeout", "Phone risk provider did not answer in time.")
         except httpx.HTTPStatusError as exc:
-            last_exc = exc
-            if resp.status_code >= 500 and attempt < MAX_RETRIES:
-                wait = RETRY_BACKOFF * (2 ** attempt)
-                logger.warning("IPQS returned %d, retrying in %.1fs", resp.status_code, wait)
-                await asyncio.sleep(wait)
-            else:
-                raise HTTPException(status_code=502, detail="Phone risk provider returned an error.") from exc
-    # All retries exhausted — raise with context
-    raise HTTPException(status_code=503, detail="Phone risk provider is temporarily unavailable after multiple retries.") from last_exc
+            code = exc.response.status_code
+            if code < 500:
+                kind = "rate_limited" if code == 429 else "auth_failure" if code in (401, 403) else "rejected"
+                raise PhoneLookupFailed(kind, "Phone risk provider refused the lookup.") from exc
+            last = PhoneLookupFailed("server_error", "Phone risk provider returned an error.")
+        except httpx.RequestError:
+            last = PhoneLookupFailed("provider_unavailable", "Phone risk provider could not be reached.")
+        except ValueError as exc:
+            raise PhoneLookupFailed("malformed", "Phone risk provider sent an unreadable answer.") from exc
+        else:
+            if not isinstance(data, dict):
+                raise PhoneLookupFailed("malformed", "Phone risk provider sent an unreadable answer.")
+            if data.get("success") is not True:
+                raise PhoneLookupFailed(_answer_failure(str(data.get("message", ""))), "Phone risk lookup failed.")
+            return data
+        if attempt < MAX_RETRIES:
+            wait = RETRY_BACKOFF * (2 ** attempt)
+            logger.warning("IPQS attempt %d/%d failed (%s), retrying in %.1fs", attempt + 1, 1 + MAX_RETRIES, last.failure, wait)
+            await asyncio.sleep(wait)
+    logger.error("IPQS all %d attempts failed for %s: %s", 1 + MAX_RETRIES, _mask_phone(phone_e164), last.failure if last else "?")
+    raise last or PhoneLookupFailed("provider_unavailable", "Phone risk provider is temporarily unavailable.")
+
+
+def _from_cache(phone: str, rc: PhoneRiskCache, *, freshness: str, failure: Optional[str] = None) -> CallRiskResponse:
+    return CallRiskResponse(
+        number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
+        risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
+        decision=_decision(rc.model_dump()), cached=True, checked_at=rc.checked_at, source="ipqualityscore",  # type: ignore[arg-type]
+        freshness=freshness, failure=failure,  # type: ignore[arg-type]
+        higgins=_higgins(_decision(rc.model_dump()), rc.model_dump()),
+    )
 
 
 async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_cache: bool = True) -> CallRiskResponse:
+    """A current cached score is used before any lookup credit is spent. If the live lookup fails, the last
+    known score is returned marked `freshness="stale"` with the failure kind — never as a fresh lookup.
+    `persist_cache=False` reads the cache but doesn't write this lookup to it."""
     phone = normalize_phone(raw_number, country)
     ts = now_utc()
     if not IPQS_API_KEY:
         data = {"fraud_score": None}
-        return CallRiskResponse(number=phone, decision="unknown", cached=False, checked_at=ts, source="not_configured", higgins=_higgins("unknown", data))
+        return CallRiskResponse(number=phone, decision="unknown", cached=False, checked_at=ts, source="not_configured",
+                                failure="not_configured", higgins=_higgins("unknown", data))
 
-    cached = await db.phone_risk_cache.find_one({"phone_e164": phone}) if persist_cache else None
+    cached = await db.phone_risk_cache.find_one({"phone_e164": phone})
     if cached:
         rc = PhoneRiskCache.from_mongo(cached)
         if rc.expires_at.replace(tzinfo=timezone.utc) > ts:
             await reusable_intel.count(SITE, "cache_hit", "sufficiency_known", "external_call_avoided")
-            return CallRiskResponse(
-                number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
-                risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
-                decision=_decision(rc.model_dump()), cached=True, checked_at=rc.checked_at, source="ipqualityscore",  # type: ignore[arg-type]
-                higgins=_higgins(_decision(rc.model_dump()), rc.model_dump()),
-            )
+            return _from_cache(phone, rc, freshness="cached")
 
     await reusable_intel.count(SITE, *(("cache_expired", "sufficiency_partial") if cached else ("sufficiency_unknown",)), "external_call_required")
     try:
         data = await _query_ipqs(phone)
-    except HTTPException:
-        # Live query failed after retries. Try stale cache as a fallback — a slightly old score is
-        # better than no information at all. Mark it clearly so the UI can show "stale" if desired.
-        stale = await db.phone_risk_cache.find_one({"phone_e164": phone}) if persist_cache else None
-        if stale:
-            rc = PhoneRiskCache.from_mongo(stale)
-            logger.warning("IPQS failed for %s — returning stale cache (checked_at=%s)", _mask_phone(phone), rc.checked_at)
-            return CallRiskResponse(
-                number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
-                risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
-                decision=_decision(rc.model_dump()), cached=True, checked_at=rc.checked_at, source="ipqualityscore",  # type: ignore[arg-type]
-                higgins=_higgins(_decision(rc.model_dump()), rc.model_dump()),
-            )
-        # No cache at all — return an honest "unknown" result rather than crashing with 503.
-        # This lets the UI show "couldn't check" with a retry option instead of a hard error.
-        # RELIABILITY FIX: Previously returned decision="allow" here which misleadingly implied safety.
-        logger.error("IPQS failed for %s — no cache available, returning unknown", _mask_phone(phone))
+    except HTTPException as exc:
+        failure = getattr(exc, "failure", "provider_unavailable")
+        # Last known good: the earlier score, marked stale with why the live lookup failed.
+        if cached:
+            rc = PhoneRiskCache.from_mongo(cached)
+            logger.warning("IPQS failed for %s (%s) — returning stale cache (checked_at=%s)", _mask_phone(phone), failure, rc.checked_at)
+            return _from_cache(phone, rc, freshness="stale", failure=failure)
+        # No earlier score — an honest "unknown" with the failure kind, never "allow".
+        logger.error("IPQS failed for %s (%s) — no cache available, returning unknown", _mask_phone(phone), failure)
         data_unknown: dict = {"fraud_score": None}
         return CallRiskResponse(
-            number=phone, decision="unknown", cached=False, checked_at=ts, source="unavailable",
+            number=phone, decision="unknown", cached=False, checked_at=ts, source="unavailable", failure=failure,
             higgins=_higgins("unknown", data_unknown),
         )
 

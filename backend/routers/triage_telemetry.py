@@ -16,6 +16,7 @@ class TriageTelemetryIn(BaseModel):
     outcome: str = Field(min_length=1, max_length=40)
     causes: list[str] = Field(default_factory=list, max_length=10)
     gap_codes: list[str] = Field(default_factory=list, max_length=10)
+    incomplete: list[str] = Field(default_factory=list, max_length=10)
     catalogue_version: Optional[int] = None
     lookup_check: Optional[str] = Field(default=None, max_length=40)
     lookup_attempts: Optional[int] = Field(default=None, ge=0, le=10)
@@ -27,5 +28,6 @@ async def report_triage_outcome(body: TriageTelemetryIn, request: Request) -> Re
     lookup = ({"check": body.lookup_check, "attempts": body.lookup_attempts, "outcome": body.lookup_outcome}
               if body.lookup_check else None)
     await telemetry.record(request.state.device, origin="device", source_type=body.source_type, outcome=body.outcome,
-                           causes=body.causes, gap_codes=body.gap_codes, catalogue_version=body.catalogue_version, lookup=lookup)
+                           causes=body.causes, gap_codes=body.gap_codes, catalogue_version=body.catalogue_version, lookup=lookup,
+                           incomplete=body.incomplete)
     return Response(status_code=204)

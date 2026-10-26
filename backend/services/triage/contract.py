@@ -61,6 +61,8 @@ class CoverageGap:
     code: str
     detail: str
     rule_ids: list[str] = field(default_factory=list)
+    #: How the lookup behind this gap failed, when known (timeout, quota_exhausted, auth_failure, …).
+    failure: Optional[str] = None
 
     @property
     def recoverable(self) -> bool:
@@ -68,7 +70,7 @@ class CoverageGap:
 
     def wire(self) -> dict:
         return {"code": self.code, "detail": self.detail or gap_plain(self.code),
-                "recoverable": self.recoverable, "ruleIds": self.rule_ids}
+                "recoverable": self.recoverable, "ruleIds": self.rule_ids, "failure": self.failure}
 
 
 @dataclass
@@ -89,6 +91,8 @@ class TriageInvestigation:
     reason: str
     rules: list[RuleRecord] = field(default_factory=list)
     coverage_gaps: list[CoverageGap] = field(default_factory=list)
+    #: Checks Apollo needed but couldn't finish ({check, status, failure, detail, source, at}) — see completeness.py.
+    incomplete_checks: list[dict] = field(default_factory=list)
     retries: list[RetryRecord] = field(default_factory=list)
     correlation: dict = field(default_factory=dict)
     evaluated_at: Optional[datetime] = None
@@ -121,6 +125,9 @@ class TriageInvestigation:
             "rulesMet": [r.rule_id for r in self.met_rules],
             "rules": [r.wire() for r in self.rules],
             "coverageGaps": [g.wire() for g in self.coverage_gaps],
+            "incompleteChecks": self.incomplete_checks,
+            # "incomplete" whenever any check Apollo needed didn't finish — never shown as a complete examination.
+            "coverage": "incomplete" if (self.incomplete_checks or self.coverage_gaps) else "complete",
             "retries": [r.wire() for r in self.retries],
             "correlation": self.correlation,
             "recheckUseful": self.recoverable,

@@ -8,6 +8,7 @@ import {
   type CoverageGapRecord, type RetryRecord, type RuleRecord, type RuleResult,
   type TriageInvestigationRecord, type TriageOutcome,
 } from "./contract.ts";
+import { AVAILABLE_CHECKS, incompletePlain, type IncompleteCheck } from "./completeness.ts";
 
 export type TriageEvidence = Record<string, any>;
 type Verdict = { result: RuleResult; evidence: string[]; gap?: string };
@@ -50,7 +51,11 @@ const LINK: Record<string, (ev: TriageEvidence) => Verdict> = {
   "LINK-02": (ev) => {
     const red = prov(ev, "redirect");
     if (!red.hops) return na;
-    if (["unavailable", "error"].includes(red.status)) return gap("NETWORK_CHECK_FAILED", "redirect chain could not be expanded");
+    if (["unavailable", "error", "incomplete"].includes(red.status)) {
+      // The final destination couldn't be verified. That check is recorded as incomplete (incomplete_checks),
+      // never as a completed one — and on its own it is not a coverage gap.
+      return unmet(`final destination could not be verified (${red.failure ?? "redirect_failure"})`);
+    }
     return red.final_verdict === "malicious"
       ? met(`redirect destination confirmed malicious: ${red.final_url ?? "unknown"}`)
       : unmet(`redirect chain of ${red.hops} hop(s) contains no confirmed malicious destination`);
@@ -249,9 +254,12 @@ const MESSAGE: Record<string, (ev: TriageEvidence) => Verdict> = {
     : sig(ev, "urgency") || sig(ev, "threat") ? met("urgent cancellation, refund or security lure", "suspicious callback number") : unmet("callback lure conditions not met")),
   "CB-03": (ev) => {
     if (!sig(ev, "callback_request")) return unmet("no supplied callback number");
+    // Without a claimed charge or brand this rule can't be met whatever the number's reputation says,
+    // so a failed lookup can't change it — it is not a coverage gap.
+    if (!sig(ev, "alleged_charge") && !ev.signals?.claimed_brand) return unmet("callback number without a claimed charge or brand impersonation");
     const rep = prov(ev, "phone_reputation");
     if (["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "callback number reputation unavailable");
-    return rep.verdict === "clean" && (sig(ev, "alleged_charge") || ev.signals?.claimed_brand)
+    return rep.verdict === "clean"
       ? met("clean callback reputation does not override impersonation evidence")
       : unmet("callback lure conditions not met");
   },
@@ -609,9 +617,14 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
       const existing = gaps.get(record.coverageGap) ?? { code: record.coverageGap, detail: record.evidence[0] ?? "", recoverable: gapIsRecoverable(record.coverageGap), ruleIds: [] };
       existing.ruleIds.push(record.ruleId);
       if (!existing.detail && record.evidence[0]) existing.detail = record.evidence[0];
+      // How the lookup this rule needed failed (timeout, quota_exhausted, …) — from the rule's own evidence.
+      existing.failure = existing.failure ?? failureFor(record.ruleId, evidence);
       gaps.set(record.coverageGap, existing);
     }
   }
+  const incomplete: IncompleteCheck[] = (Array.isArray(evidence.incomplete_checks) ? evidence.incomplete_checks : [])
+    .filter((c: unknown): c is IncompleteCheck => !!c && typeof c === "object" && !!(c as IncompleteCheck).check)
+    .map((c: IncompleteCheck) => ({ ...c }));
 
   const metRules = records.filter((r) => r.result === "met");
   let outcome: TriageOutcome;
@@ -631,6 +644,10 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
       recoverable: false, ruleIds: [],
     });
     reason = "Concerning indicators did not satisfy a deterministic Possible Threat rule.";
+  } else if (incomplete.length) {
+    // Never present an incomplete examination as a complete one.
+    outcome = "NO_THREAT_IDENTIFIED";
+    reason = `${AVAILABLE_CHECKS}. Not completed: ${incomplete.map(incompletePlain).join(" ")}`;
   } else {
     outcome = "NO_THREAT_IDENTIFIED";
     reason = "No deterministic threat rule was met and every applicable check completed.";
@@ -648,12 +665,23 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     rulesMet: metRules.map((r) => r.ruleId),
     rules: records,
     coverageGaps,
+    incompleteChecks: incomplete,
+    coverage: incomplete.length || coverageGaps.length ? "incomplete" : "complete",
     retries: options.retries ?? [],
     correlation: prov(evidence, "correlation"),
     recheckUseful: coverageGaps.some((g) => g.recoverable),
     geminiCalls: 0,
     evaluatedAt: new Date().toISOString(),
   };
+}
+
+/** The failure kind recorded on the first evidence item this rule reads (catalogue `evidence`), if any. */
+function failureFor(ruleId: string, evidence: TriageEvidence): string | null {
+  for (const name of RULES_BY_ID[ruleId]?.evidence ?? []) {
+    const value = evidence[name];
+    if (value && typeof value === "object" && value.failure) return String(value.failure);
+  }
+  return null;
 }
 
 /** Bounded deterministic retry for TRANSIENT non-AI failures only (initial + 2 retries).

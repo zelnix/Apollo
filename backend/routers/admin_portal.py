@@ -2661,6 +2661,9 @@ async def _limited_by_cause_html(request: Request) -> str:
         for cause, source, n in stats["by_cause"])
     retry_rows = "".join(f"<tr><td><code>{html_mod.escape(k)}</code></td><td style='text-align:right;'>{v:,}</td></tr>"
                          for k, v in sorted(stats["lookup_retries"].items()))
+    incomplete_rows = "".join(
+        f"<tr><td><code>{html_mod.escape(code)}</code></td><td>{html_mod.escape(outcome)}</td><td style='text-align:right;'>{n:,}</td></tr>"
+        for code, outcome, n in stats.get("incomplete", []))
 
     def link(label: str, d: int, scope: str) -> str:
         active = d == days and (scope == "phones") == phones_only
@@ -2692,6 +2695,12 @@ async def _limited_by_cause_html(request: Request) -> str:
     <table data-testid="triage-lookup-retries">
         <thead><tr><th>Lookup outcome</th><th>Count</th></tr></thead>
         <tbody>{retry_rows or '<tr><td colspan="2" style="color:var(--muted);">No lookups reported in this period</td></tr>'}</tbody>
+    </table>
+    <h3 style="margin-top:12px;">Checks that didn't complete</h3>
+    <p style="font-size:0.78em;color:var(--muted);">Any outcome. A No Threat result with one of these is shown as "No threat found by available checks".</p>
+    <table data-testid="triage-incomplete-checks">
+        <thead><tr><th>Check and how it failed</th><th>Outcome</th><th>Count</th></tr></thead>
+        <tbody>{incomplete_rows or '<tr><td colspan="3" style="color:var(--muted);">Every check completed in this period</td></tr>'}</tbody>
     </table>"""
 
 @router.get("/admin/triage", response_class=HTMLResponse)

@@ -11,6 +11,8 @@ interface CallRiskResult {
   line_type: string | null; carrier: string | null; country: string | null;
   decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string;
   source: "ipqualityscore" | "not_configured" | "unavailable";
+  /** "stale" = the live lookup failed and this is the last known score, from `checked_at`. */
+  freshness?: "fresh" | "cached" | "stale";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
 }
 
@@ -67,6 +69,16 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
       name: "Fraud score",
       status: r.fraud_score >= 75 ? "concern" : r.fraud_score >= 40 ? "incomplete" : "clear",
       finding: `Reputation score: ${r.fraud_score}/100.${r.fraud_score >= 75 ? " This is high — numbers above 75 are frequently associated with fraud." : r.fraud_score >= 40 ? " Moderate — exercise caution." : " Low risk from reputation data."}`,
+    });
+  }
+
+  // A live lookup that didn't complete: the score above is Apollo's last known result, never a fresh one.
+  if (r.freshness === "stale") {
+    items.push({
+      id: "risk:freshness",
+      name: "Live lookup",
+      status: "incomplete",
+      finding: `The live reputation lookup didn't complete, so this is the result of Apollo's last check (${displayTime}).`,
     });
   }
 

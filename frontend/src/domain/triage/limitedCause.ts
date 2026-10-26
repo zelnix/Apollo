@@ -16,7 +16,8 @@ export function limitedCauses(record: TriageInvestigationRecord, ctx: CauseConte
   if (record.outcome !== "LIMITED_UNABLE_TO_DETERMINE") return [];
   const causes = new Set<string>();
   for (const gap of record.coverageGaps) {
-    if (gap.code === "INTELLIGENCE_PROVIDER_UNAVAILABLE") causes.add(`reputation_${ctx.reputationFailure ?? "unavailable"}`);
+    // The failure kind recorded on the gap itself wins; the caller's context is the fallback.
+    if (gap.code === "INTELLIGENCE_PROVIDER_UNAVAILABLE") causes.add(`reputation_${gap.failure ?? ctx.reputationFailure ?? "unavailable"}`);
     else if (gap.code === "INSUFFICIENT_EVIDENCE") causes.add(ctx.numberDecision === "review" ? "number_risk_moderate" : "insufficient_evidence");
     else if (gap.code === "DETERMINISTIC_CHECK_ERROR") causes.add("rule_execution_error");
     else causes.add(`gap_${gap.code.toLowerCase()}`);
@@ -24,9 +25,21 @@ export function limitedCauses(record: TriageInvestigationRecord, ctx: CauseConte
   return [...causes];
 }
 
-/** The failure kind for a caller-number reputation answer that established nothing. */
-export function numberLookupFailure(result: { decision: string; source?: string | null }): LookupFailure | null {
+/** Which checks didn't complete and how, for any outcome: "final_destination_nonexistent_domain",
+ *  "reputation_timeout", "number_reputation_stale". Mirror of backend telemetry.incomplete_codes(). */
+export function incompleteCodes(record: Pick<TriageInvestigationRecord, "incompleteChecks">): string[] {
+  const codes = new Set<string>();
+  for (const check of record.incompleteChecks ?? []) {
+    codes.add(`${check.check}_${check.status === "stale" ? "stale" : check.failure ?? "unknown"}`);
+  }
+  return [...codes];
+}
+
+/** The failure kind for a caller-number reputation answer that established nothing. The server says how its
+ *  lookup failed (`failure`); older servers only say which source answered. */
+export function numberLookupFailure(result: { decision: string; source?: string | null; failure?: string | null }): LookupFailure | null {
   if (result.decision !== "unknown") return null;
+  if (result.failure) return result.failure as LookupFailure;
   if (result.source === "not_configured") return "not_configured";
   if (result.source === "unavailable") return "provider_unavailable";
   return "no_data";
@@ -37,6 +50,7 @@ export interface TriageTelemetry {
   outcome: string;
   causes: string[];
   gap_codes: string[];
+  incomplete: string[];
   catalogue_version: number;
   lookup_check: string | null;
   lookup_attempts: number | null;
@@ -50,6 +64,7 @@ export function triageTelemetry(record: TriageInvestigationRecord, ctx: CauseCon
     outcome: record.outcome,
     causes: limitedCauses(record, ctx),
     gap_codes: record.coverageGaps.map((g) => g.code),
+    incomplete: incompleteCodes(record),
     catalogue_version: record.catalogueVersion,
     lookup_check: lookup?.check ?? null,
     lookup_attempts: lookup?.attempts ?? null,

@@ -24,10 +24,11 @@ import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/do
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { fetchMessageUrlIntel, linkTriageOutcome, lookupFailureMessage, lookupUrlIntel, type MessageUrlResult } from "@/src/domain/urlIntel";
+import { urlIncompleteChecks } from "@/src/domain/triage/completeness";
 import { fetchEvidencePhoneIntel, lookupNumberRisk } from "@/src/domain/phoneIntel";
 import { reportTriageOutcome } from "@/src/api/triageTelemetry";
 import { numberLookupFailure } from "@/src/domain/triage/limitedCause";
-import { extractPhoneCandidates, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
+import { extractPhoneCandidates, phoneIncompleteChecks, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { nativeClassificationAttribution, nativeClassificationProvenance, nativeClassificationWhyLine, triggersInvestigation, type NativeClassificationFact } from "@/src/domain/nativeClassification";
 import { analyseUrlLocally } from "@/src/domain/risk";
@@ -145,6 +146,10 @@ export interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null; recent_abuse: boolean | null;
   risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
   decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured" | "unavailable";
+  /** "stale" = the live lookup failed and this is the last known score, from `checked_at` (`failure` says why). */
+  freshness?: "fresh" | "cached" | "stale";
+  /** How the live lookup failed, when it did (timeout, quota_exhausted, auth_failure, …). */
+  failure?: string | null;
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
   assessment?: InvestigationResult | null;
   /** Set by checkNumberRisk when it already created a Magnum DI case for this number.
@@ -1015,7 +1020,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones) }));
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
+      incompleteChecks: [...urlIncompleteChecks(urls), ...phoneIncompleteChecks(phones)] }));
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
@@ -1098,7 +1104,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones) }));
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
+      incompleteChecks: [...urlIncompleteChecks(urls), ...phoneIncompleteChecks(phones)] }));
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 
     let investigationCaseId: string | null = null;
@@ -1330,6 +1337,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!lookup.value) throw lookup.error ?? new Error(lookupFailureMessage(lookup.failure ?? "offline"));
     const result = lookup.value;
     const numberCtx = { numberDecision: result.decision, reputationFailure: numberLookupFailure(result) };
+    // Every number check reports its Triage outcome — allowed, risky and unknown alike — so the admin
+    // "Limited by cause" share is measured over all of them, not only the ones that raised something.
+    const numberTriage = (correlation?: CorrelationInput) => evaluateTriage(numberRiskTriageEvidence({
+      decision: result.decision, fraudScore: result.fraud_score ?? null,
+      recentAbuse: result.recent_abuse ?? null, voip: result.voip ?? null,
+      failure: result.failure ?? null, freshness: result.freshness ?? null, checkedAt: result.checked_at, correlation,
+    }), { retries: [lookup.retry] });
+    let telemetrySent = false;
     // What the person says their carrier showed on this call. Whatever the reputation says, it goes to Magnum DI.
     const reported = options?.carrierWarning ? carrierWarningFinding(options.carrierWarning) : null;
     if (result.decision !== "allow" && result.decision !== "unknown") {
@@ -1359,11 +1374,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       // number Triage could not settle because a source it needed didn't answer, and reuses the
       // correlated case when one already exists.
       const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
-      const triage = evaluateTriage(numberRiskTriageEvidence({
-        decision: result.decision, fraudScore: result.fraud_score ?? null,
-        recentAbuse: result.recent_abuse ?? null, voip: result.voip ?? null, correlation,
-      }), { retries: [lookup.retry] });
+      const triage = numberTriage(correlation);
       reportTriageOutcome(triage, numberCtx, lookup.retry);
+      telemetrySent = true;
       let investigationCaseId: string | null = existingCaseId;
       if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || reported) && !investigationCaseId) try {
         const investigationResult = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
@@ -1422,8 +1435,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       // deliberately asked for goes to Magnum DI instead of stopping at "couldn't check". No Patrol
       // finding is filed: there is no finding, only an investigation.
       const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
-      const triage = evaluateTriage(numberRiskTriageEvidence({ decision: result.decision, unavailable: true, correlation }), { retries: [lookup.retry] });
+      const triage = numberTriage(correlation);
       reportTriageOutcome(triage, numberCtx, lookup.retry);
+      telemetrySent = true;
       let investigationCaseId: string | null = existingCaseId;
       if ((triage.outcome !== "NO_THREAT_IDENTIFIED" || reported) && !investigationCaseId) {
         const unreachable = result.source === "not_configured"
@@ -1463,6 +1477,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       }
       result.investigation_case_id = investigationCaseId;
     }
+    // Allowed numbers, and unknown ones nobody asked about, still count in the outcome telemetry.
+    if (!telemetrySent) reportTriageOutcome(numberTriage(), numberCtx, lookup.retry);
     return result;
   }, [correlationFor, deviceId, showToast]);
 

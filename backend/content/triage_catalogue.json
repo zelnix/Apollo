@@ -1,7 +1,36 @@
 {
-  "version": 2,
+  "version": 3,
   "updated": "2026-06",
   "outcomes": ["NO_THREAT_IDENTIFIED", "POSSIBLE_THREAT_IDENTIFIED", "LIMITED_UNABLE_TO_DETERMINE"],
+  "completeness": {
+    "availableChecksLabel": "No threat found by available checks",
+    "checks": {
+      "reputation": "A reputation check didn't complete",
+      "final_destination": "Apollo couldn't verify where this link finally leads",
+      "number_reputation": "The phone number's reputation check didn't complete"
+    },
+    "failures": {
+      "timeout": "it timed out",
+      "offline": "there was no connection",
+      "provider_unavailable": "the service couldn't be reached",
+      "server_error": "the service had an error",
+      "rate_limited": "the service was busy",
+      "quota_exhausted": "its lookup allowance is used up for now",
+      "auth_failure": "the lookup wasn't authorised",
+      "forbidden": "the lookup wasn't allowed",
+      "rejected": "the service couldn't accept it",
+      "malformed": "the answer couldn't be read",
+      "not_configured": "it isn't set up here",
+      "no_data": "the service had no information",
+      "nonexistent_domain": "the website's address doesn't exist",
+      "connection_failure": "the website couldn't be reached",
+      "unsafe_destination": "it pointed somewhere Apollo won't connect to",
+      "redirect_limit": "it redirected too many times",
+      "unparseable_link": "the link couldn't be read",
+      "redirect_failure": "the redirect couldn't be followed"
+    },
+    "stale": "the live lookup failed ({failure}), so Apollo used the result of its last check"
+  },
   "coverageGapCodes": [
     {"code": "PLATFORM_CAPABILITY_UNAVAILABLE", "recoverable": false, "plain": "This device doesn't make that information available to ApolloSG."},
     {"code": "PERMISSION_UNAVAILABLE", "recoverable": true, "plain": "ApolloSG needs a permission before it can complete this check."},

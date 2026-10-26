@@ -44,7 +44,9 @@ export function parseIntelResult(raw: unknown): IntelResult | null {
     const o = s as Record<string, unknown>;
     const st = strList(o.threat_types) ?? [];
     if (!isStr(o.name) || !SOURCE_STATUS.includes(o.status as IntelSource["status"])) return null;
-    sources.push({ name: o.name, status: o.status as IntelSource["status"], detail: isStr(o.detail) ? o.detail : "", threat_types: st });
+    sources.push({ name: o.name, status: o.status as IntelSource["status"], detail: isStr(o.detail) ? o.detail : "", threat_types: st,
+      ...(o.check === "reputation" || o.check === "final_destination" ? { check: o.check } : {}),
+      ...(isStr(o.failure) ? { failure: o.failure } : {}) });
   }
   // A "malicious" verdict must be backed by at least one matching source; "clean" must not carry unavailable sources as full coverage.
   if (r.verdict === "malicious" && !sources.some((s) => s.status === "match")) return null;

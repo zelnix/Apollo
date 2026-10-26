@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from services.triage.catalogue import RETRY_ATTEMPTS, RULES, RULES_BY_CATEGORY, gap_plain
+from services.triage.completeness import AVAILABLE_CHECKS, incomplete_plain
 from services.triage.contract import CoverageGap, Outcome, RetryRecord, RuleRecord, RuleResult, TriageInvestigation
 
 _log = logging.getLogger("apollo.triage")
@@ -92,7 +93,9 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
         if not red or not red.get("hops"):
             return NA
         if red.get("status") in ("unavailable", "error", "incomplete"):
-            return gap("NETWORK_CHECK_FAILED", red.get("detail") or "redirect chain could not be followed to its destination")
+            # The final destination couldn't be verified. That check is recorded as incomplete (incomplete_checks),
+            # never as a completed one — and on its own it is not a coverage gap.
+            return unmet(f"final destination could not be verified ({red.get('failure') or 'redirect_failure'})")
         if red.get("final_verdict") == "malicious":
             return met(f"redirect destination confirmed malicious: {red.get('final_url', 'unknown')}")
         return unmet(f"redirect chain of {red.get('hops')} hop(s) contains no confirmed malicious destination")
@@ -335,10 +338,14 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
             if kind == "urgent" and (_sig(ev, "urgency") or _sig(ev, "threat")):
                 return met("urgent cancellation, refund or security lure", "suspicious callback number")
             if kind == "clean_reputation":
+                # Without a claimed charge or brand this rule can't be met whatever the number's reputation says,
+                # so a failed lookup can't change it — it is not a coverage gap.
+                if not (_sig(ev, "alleged_charge") or _b(ev, "signals.claimed_brand")):
+                    return unmet("callback number without a claimed charge or brand impersonation")
                 rep = _provider(ev, "phone_reputation")
                 if rep.get("status") in ("unavailable", "not_configured", "error"):
                     return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "callback number reputation unavailable")
-                if rep.get("verdict") == "clean" and (_sig(ev, "alleged_charge") or _b(ev, "signals.claimed_brand")):
+                if rep.get("verdict") == "clean":
                     return met("clean callback reputation does not override impersonation evidence")
             return unmet("callback lure conditions not met")
         return check
@@ -812,6 +819,9 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
             entry.rule_ids.append(record.rule_id)
             if not entry.detail and record.evidence:
                 entry.detail = record.evidence[0]
+            # How the lookup this rule needed failed (timeout, quota_exhausted, …) — from the rule's own evidence.
+            entry.failure = entry.failure or _failure_for(record.rule_id, evidence)
+    incomplete = [dict(c) for c in (evidence.get("incomplete_checks") or []) if isinstance(c, dict) and c.get("check")]
 
     met_records = [r for r in records if r.result is RuleResult.MET]
     if met_records:
@@ -827,6 +837,10 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
                                                     str(evidence.get("unresolved_concern_detail") or
                                                         "Concerning indicators did not satisfy any deterministic threat rule."), [])
         reason = "Concerning indicators did not satisfy a deterministic Possible Threat rule."
+    elif incomplete:
+        # Never present an incomplete examination as a complete one.
+        outcome = Outcome.NO_THREAT
+        reason = f"{AVAILABLE_CHECKS}. Not completed: " + " ".join(incomplete_plain(c) for c in incomplete)
     else:
         outcome = Outcome.NO_THREAT
         reason = "No deterministic threat rule was met and every applicable check completed."
@@ -838,8 +852,18 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
         reason=reason,
         rules=records,
         coverage_gaps=list(gaps.values()),
+        incomplete_checks=incomplete,
         retries=list(retries or []),
         correlation=_provider(evidence, "correlation"),
         evaluated_at=datetime.now(timezone.utc),
         gemini_calls=0,
     )
+
+
+def _failure_for(rule_id: str, evidence: dict) -> Optional[str]:
+    """The failure kind recorded on the first provider this rule reads (catalogue `evidence`), if any."""
+    for name in RULES.get(rule_id, {}).get("evidence") or []:
+        value = evidence.get(name)
+        if isinstance(value, dict) and value.get("failure"):
+            return str(value["failure"])
+    return None

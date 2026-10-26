@@ -10,7 +10,7 @@ import type { EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { lookupWithRetry, type LookupOutcome } from "@/src/domain/reputationLookup";
 import { numberLookupFailure } from "@/src/domain/triage/limitedCause";
 
-export type CallRiskAnswer = Omit<EvidencePhoneResult, "raw" | "lookupFailure">;
+export type CallRiskAnswer = Omit<EvidencePhoneResult, "raw" | "lookupFailure"> & { failure?: string | null };
 
 /** One caller-number reputation lookup with the controlled retry. The server already retries the provider,
  *  so an answer of "unknown" is final; only transport failures (timeout, no connection, 5xx) are retried. */
@@ -37,7 +37,9 @@ export async function fetchEvidencePhoneIntel(
         raw, number: r.number ?? raw, decision: r.decision, fraud_score: r.fraud_score ?? null,
         recent_abuse: r.recent_abuse ?? null, voip: r.voip ?? null, line_type: r.line_type ?? null,
         carrier: r.carrier ?? null, country: r.country ?? null, source: r.source, checked_at: r.checked_at,
-        lookupFailure: numberLookupFailure(r),
+        // A stale answer keeps how the live lookup failed; a fresh or cached one has nothing to report.
+        lookupFailure: r.freshness === "stale" ? ((r.failure ?? null) as EvidencePhoneResult["lookupFailure"]) : numberLookupFailure(r),
+        freshness: r.freshness ?? null,
       });
       continue;
     }

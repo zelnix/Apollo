@@ -11,6 +11,7 @@ import uuid
 from core.db import db, now_utc
 from services.triage import telemetry
 from services.triage.catalogue import LIMITED_CAUTION, gap_plain
+from services.triage.completeness import AVAILABLE_CHECKS, incomplete_plain
 from services.triage.contract import Outcome, TriageInvestigation
 
 COLLECTION = "triage_investigations"
@@ -21,6 +22,7 @@ _HEADLINE = {
     Outcome.LIMITED: "Triage: limited — ApolloSG couldn't reach a reliable decision",
     Outcome.POSSIBLE_THREAT: "Triage: possible threat identified",
 }
+_HEADLINE_INCOMPLETE = f"Triage: {AVAILABLE_CHECKS[0].lower()}{AVAILABLE_CHECKS[1:]}"
 
 
 async def ensure_indexes() -> None:
@@ -35,6 +37,7 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
                                 indicator_host: str | None = None) -> str:
     """Save the Triage Investigation and project it into Patrol History (idempotent)."""
     wire = investigation.wire()
+    incomplete = investigation.incomplete_checks
     saved = await db[COLLECTION].update_one(
         {"device_id": device_id, "investigation_id": investigation.investigation_id},
         {"$set": {"device_id": device_id, "investigation_id": investigation.investigation_id,
@@ -47,7 +50,8 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
         device = await db.devices.find_one({"device_id": device_id}, {"_id": 0, "device_id": 1, "platform": 1, "adapter_mode": 1})
         await telemetry.record(device or {"device_id": device_id}, origin="server", source_type=wire["sourceType"],
                                outcome=wire["outcome"], causes=telemetry.causes_for(wire),
-                               gap_codes=[g["code"] for g in wire["coverageGaps"]], catalogue_version=wire["catalogueVersion"])
+                               gap_codes=[g["code"] for g in wire["coverageGaps"]], catalogue_version=wire["catalogueVersion"],
+                               incomplete=telemetry.incomplete_codes(wire))
 
     event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-triage:{device_id}:{investigation.investigation_id}"))
     state = _STATE[investigation.outcome]
@@ -57,13 +61,17 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
     if gaps:
         # Plain English here (Overview, Higgins); the codes stay in `triage_investigation` for the DI view.
         why.append("Couldn't check: " + " ".join(gap_plain(gap.code) for gap in gaps))
+    if incomplete:
+        why.append("Not completed: " + " ".join(incomplete_plain(c) for c in incomplete))
+    no_threat = investigation.outcome is Outcome.NO_THREAT
     document = {
         "event_id": event_id, "device_id": device_id, "category": category, "state": state,
-        "status": "resolved" if investigation.outcome is Outcome.NO_THREAT else "active",
-        "headline": _HEADLINE[investigation.outcome],
+        "status": "resolved" if no_threat else "active",
+        "headline": _HEADLINE_INCOMPLETE if no_threat and incomplete else _HEADLINE[investigation.outcome],
         "what_happened": investigation.reason[:600],
         "why": why,
-        "what_to_do": ("Nothing to do — Apollo found no deterministic threat." if investigation.outcome is Outcome.NO_THREAT
+        "what_to_do": (("Proceed with normal care — not every check Apollo needed completed." if incomplete
+                        else "Nothing to do — Apollo found no deterministic threat.") if no_threat
                        else LIMITED_CAUTION if investigation.outcome is Outcome.LIMITED
                        else "Apollo is investigating this further."),
         "indicator_host": indicator_host, "indicator_digest": None, "local_indicator": None,

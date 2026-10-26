@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 from core.db import db, now_utc
 from services.triage import Outcome, TriageInvestigation, evaluate, legacy_outcome, run_with_retries
+from services.triage.completeness import from_sources, incomplete_check
 
 _log = logging.getLogger("apollo.triage")
 
@@ -341,8 +342,8 @@ async def _cache_store(
 ) -> None:
     """Store a triage result in the cache with risk-aware TTL."""
     ttl = _cache_ttl(result.outcome)
-    if ttl is None:
-        # Don't cache (LIMITED — the gap may clear on the next check)
+    if ttl is None or (result.investigation and result.investigation.incomplete_checks):
+        # Don't cache LIMITED, or a result with a check that didn't complete — the gap may clear on the next check
         return
 
     now = now_utc()
@@ -558,7 +559,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
         for url in unique_urls:
             try:
                 from services.intel import expand_redirects_detailed, run_intel_check
-                chain, expansion_complete, expansion_reason = await asyncio.wait_for(expand_redirects_detailed(url), timeout=12)
+                chain, expansion_complete, expansion_reason, expansion_failure = await asyncio.wait_for(expand_redirects_detailed(url), timeout=12)
                 if len(chain) > 1:
                     redirect_results[url] = {
                         "chain": chain,
@@ -567,7 +568,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
                         "last_seen_url": chain[-1],
                         "hops": len(chain) - 1,
                         "status": "ok" if expansion_complete else "incomplete",
-                        **({} if expansion_complete else {"detail": expansion_reason}),
+                        **({} if expansion_complete else {"detail": expansion_reason, "failure": expansion_failure}),
                         "queried_at": ts,
                     }
                     providers_used.append("redirect_expansion")
@@ -581,6 +582,8 @@ async def gather_provider_evidence(evidence: dict) -> dict:
                             "threat_types": list(final_result.threat_types),
                             "coverage": final_result.coverage,
                             "status": "ok",
+                            # Sources that didn't answer — recorded as incomplete checks, never as completed ones.
+                            "sources": [s.model_dump() for s in final_result.sources],
                             "queried_at": ts,
                             "via_redirect_from": url,
                         }
@@ -588,6 +591,7 @@ async def gather_provider_evidence(evidence: dict) -> dict:
                     except Exception as sb_exc:  # noqa: BLE001
                         # An unchecked destination is recorded as unchecked, never left blank.
                         sb_results[chain[-1]] = {"status": "unavailable", "detail": type(sb_exc).__name__,
+                                                 "failure": "timeout" if isinstance(sb_exc, asyncio.TimeoutError) else "provider_unavailable",
                                                  "queried_at": ts, "via_redirect_from": url}
                 else:
                     redirect_results[url] = {
@@ -596,11 +600,12 @@ async def gather_provider_evidence(evidence: dict) -> dict:
                         "last_seen_url": url,
                         "hops": 0,
                         "status": "ok" if expansion_complete else "incomplete",
-                        **({} if expansion_complete else {"detail": expansion_reason}),
+                        **({} if expansion_complete else {"detail": expansion_reason, "failure": expansion_failure}),
                         "queried_at": ts,
                     }
             except Exception as exc:
-                redirect_results[url] = {"status": "unavailable", "detail": type(exc).__name__, "queried_at": ts}
+                redirect_results[url] = {"status": "unavailable", "detail": type(exc).__name__,
+                                         "failure": "timeout" if isinstance(exc, asyncio.TimeoutError) else "redirect_failure", "queried_at": ts}
                 _log.debug("redirect_expansion_failed url=%s error=%s", url[:60], type(exc).__name__)
         if redirect_results:
             pe["redirects"] = {"urls": redirect_results}
@@ -611,28 +616,30 @@ async def gather_provider_evidence(evidence: dict) -> dict:
     if sender_phone:
         try:
             from services.phonerisk import check_phone_risk
-            from core.config import IPQS_API_KEY
-            if IPQS_API_KEY:
-                ipqs_result = await asyncio.wait_for(check_phone_risk(sender_phone), timeout=8.0)
-                if ipqs_result and ipqs_result.get("decision") != "error":
-                    pe["ipqs"] = {"phones": {sender_phone: {
-                        "fraud_score": ipqs_result.get("fraud_score"),
-                        "recent_abuse": ipqs_result.get("recent_abuse", False),
-                        "voip": ipqs_result.get("voip", False),
-                        "carrier": ipqs_result.get("carrier", "unknown"),
-                        "line_type": ipqs_result.get("line_type", "unknown"),
-                        "country": ipqs_result.get("country", "unknown"),
-                        "decision": ipqs_result.get("decision", "unknown"),
-                        "status": "ok",
-                        "queried_at": ts,
-                    }}}
-                    providers_used.append("ipqs")
-                else:
-                    pe["ipqs"] = {"phones": {sender_phone: {"status": "unavailable", "detail": "IPQS returned error", "queried_at": ts}}}
+            risk = await asyncio.wait_for(check_phone_risk(sender_phone, None), timeout=8.0)
+            if risk.decision != "unknown":
+                pe["ipqs"] = {"phones": {sender_phone: {
+                    "fraud_score": risk.fraud_score,
+                    "recent_abuse": bool(risk.recent_abuse),
+                    "voip": bool(risk.voip),
+                    "carrier": risk.carrier or "unknown",
+                    "line_type": risk.line_type or "unknown",
+                    "country": risk.country or "unknown",
+                    "decision": risk.decision,
+                    "status": "ok",
+                    # "stale" = the live lookup failed and this is the last known score (failure says why).
+                    "freshness": risk.freshness, "failure": risk.failure,
+                    "checked_at": risk.checked_at.isoformat(),
+                    "queried_at": ts,
+                }}}
+                providers_used.append("ipqs")
             else:
-                pe["ipqs"] = {"phones": {sender_phone: {"status": "not_configured", "queried_at": ts}}}
+                pe["ipqs"] = {"phones": {sender_phone: {"status": "not_configured" if risk.source == "not_configured" else "unavailable",
+                                                        "failure": risk.failure, "queried_at": ts}}}
         except Exception as exc:
-            pe["ipqs"] = {"phones": {sender_phone: {"status": "unavailable", "detail": type(exc).__name__, "queried_at": ts}}}
+            pe["ipqs"] = {"phones": {sender_phone: {"status": "unavailable", "detail": type(exc).__name__,
+                                                    "failure": "timeout" if isinstance(exc, asyncio.TimeoutError) else getattr(exc, "failure", "provider_unavailable"),
+                                                    "queried_at": ts}}}
             _log.debug("ipqs_lookup_failed phone=%s error=%s", sender_phone[:6], type(exc).__name__)
 
     # ── 3b. IPQS URL reputation scoring ──
@@ -776,21 +783,35 @@ async def _match_scam_intel(evidence: dict) -> list[dict]:
 
 
 def _link_evidence_from_providers(evidence: dict, provider_evidence: dict) -> dict:
-    """Normalise specialist provider output into the shared link-evidence shape."""
+    """Normalise specialist provider output into the shared link-evidence shape. Every check that didn't complete
+    (a source that didn't answer, a final destination that couldn't be verified) goes into `incomplete_checks`."""
     sb = provider_evidence.get("safe_browsing", {}).get("urls", {})
     redirects = provider_evidence.get("redirects", {}).get("urls", {})
     rdap = provider_evidence.get("rdap", {}).get("domains", {})
 
     malicious = [url for url, info in sb.items() if info.get("verdict") == "malicious"]
-    unavailable = [url for url, info in sb.items() if info.get("status") in ("unavailable", "not_configured", "error")]
+    # An answer in which no source could check anything (coverage "none") is unavailable, never clean.
+    unavailable = [url for url, info in sb.items() if info.get("status") in ("unavailable", "not_configured", "error")
+                   or info.get("coverage") == "none"]
     reputation: dict = {}
     if malicious:
         reputation = {"status": "ok", "verdict": "malicious", "source": "Google Safe Browsing",
                       "threat_types": sb[malicious[0]].get("threat_types", [])}
     elif unavailable:
-        reputation = {"status": "unavailable", "verdict": "unknown"}
+        info = sb[unavailable[0]]
+        failure = info.get("failure") or next((s.get("failure") for s in info.get("sources") or [] if s.get("failure")), None)
+        reputation = {"status": "unavailable", "verdict": "unknown", **({"failure": failure} if failure else {})}
     elif sb:
         reputation = {"status": "ok", "verdict": "clean"}
+
+    incomplete: list[dict] = []
+    for info in sb.values():
+        if info.get("status") == "ok" and info.get("coverage") != "none":
+            incomplete += from_sources(info.get("sources") or [])
+    for url, info in redirects.items():
+        if info.get("status") in ("incomplete", "unavailable"):
+            incomplete.append(incomplete_check("final_destination", info.get("failure") or "redirect_failure", status="unresolved",
+                                               detail=info.get("detail") or "", source="redirect_expansion"))
 
     redirect: dict = {}
     for url, info in redirects.items():
@@ -798,7 +819,7 @@ def _link_evidence_from_providers(evidence: dict, provider_evidence: dict) -> di
         if hops:
             final = info.get("final_url") or ""
             redirect = {"status": info.get("status", "ok"), "hops": hops, "final_url": final,
-                        "detail": info.get("detail"),
+                        "detail": info.get("detail"), "failure": info.get("failure"),
                         "final_verdict": sb.get(final, {}).get("verdict", "unknown") if final else "unknown"}
             break
 
@@ -811,13 +832,32 @@ def _link_evidence_from_providers(evidence: dict, provider_evidence: dict) -> di
         elif info.get("status") in ("unavailable", "error", "not_configured") and not domain_age:
             domain_age = {"status": "unavailable"}
 
-    return {"reputation": reputation, "redirect": redirect, "domain_age": domain_age}
+    return {"reputation": reputation, "redirect": redirect, "domain_age": domain_age, "incomplete_checks": incomplete}
 
 
 _CREDENTIAL_WORDS = ("password", "verify", "verification code", "security code", "one-time", "otp",
                      "log in", "login", "sign in", "card number", "cvv", "bank details", "account details")
 _PAYMENT_WORDS = ("payid", "osko", "pay id", "transfer now", "immediate payment", "instant transfer")
 _FORWARD_CODES = ("*21", "*67", "**21", "*72", "21#", "##21", "*#21")
+
+# Callback-scam signals — mirror of frontend src/domain/messageAnalysis.ts (CALLBACK_RE, CHARGE_*).
+_CALLBACK_RE = re.compile(r"(?:\+?61[\s().-]*|\b0)(?:1800|1300|[2-478])(?:[\s().-]*\d){6,8}|\b1[38]00(?:[\s.-]*\d){6}\b|\b13[\s-]?\d{2}[\s-]?\d{2}\b")
+_CALLBACK_WORDS = re.compile(r"\b(?:call|contact|phone|ring|fraud response|support line|helpline)\b")
+_CHARGE_STRONG = re.compile(r"\bunauthori[sz]ed charge\b|\bunrecogni[sz]ed (?:charge|transaction)\b|\bsuspicious transaction\b|\bmerchant\s*:|\bamount\s*:|\bfunds (?:are|will be) released\b")
+_CHARGE_CLAIM = re.compile(r"\b(?:been|was|were|being) (?:charged|debited|billed)\b|\b(?:charge|payment|transaction|purchase|debit|withdrawal|order) of (?:aud\s?)?\$\s?\d")
+_CHARGE_DISPUTE = re.compile(r"\bif (?:you|this) (?:did ?n[o']?t|was ?n[o']?t)\b|\bnot you\b|\bdid ?n[o']?t (?:make|authori[sz]e|recogni[sz]e)\b|\bto (?:cancel|dispute|stop|reverse) (?:this|the) (?:charge|payment|transaction|order|purchase)\b")
+_URGENCY = re.compile(r"\bimmediately\b|\burgent(?:ly)?\b|\bright now\b|\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\btoday\b|\bexpires?\b|\bfinal notice\b|\blast chance\b|\bact now\b|\bnow\b")
+
+
+def callback_request(blob: str) -> bool:
+    """A supplied callback number with call/contact wording. Lower-case text."""
+    return bool(_CALLBACK_RE.search(blob)) and bool(_CALLBACK_WORDS.search(blob))
+
+
+def alleged_charge(blob: str) -> bool:
+    """An unexpected charge/payment claim: the explicit forms, or a charge claim with dispute or urgency wording."""
+    return bool(_CHARGE_STRONG.search(blob)) or (bool(_CHARGE_CLAIM.search(blob))
+                                                  and bool(_CHARGE_DISPUTE.search(blob) or _URGENCY.search(blob)))
 
 
 def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
@@ -897,8 +937,10 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
             "payment_change": shared["payment_change"],
             "forwarding_code": any(code in blob for code in _FORWARD_CODES),
             "forwarding_intent": "divert" in blob or "forward your calls" in blob or "redirect your messages" in blob,
-            "callback_request": any(word in blob for word in ("call us", "call this number", "contact us on", "fraud response")),
-            "alleged_charge": any(word in blob for word in ("unauthorised charge", "unauthorized charge", "suspicious transaction", "merchant:")),
+            # Mirror of frontend messageAnalysis.ts: a supplied number + call/contact wording; a charge claim only
+            # with dispute or urgency wording. A phone number on its own is never suspicious.
+            "callback_request": callback_request(blob),
+            "alleged_charge": alleged_charge(blob),
         }
         phones = provider_evidence.get("ipqs", {}).get("phones", {})
         for phone, info in phones.items():
@@ -906,8 +948,15 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
                 score = info.get("fraud_score") or 0
                 shared["phone_reputation"] = {"status": "ok", "verdict": "malicious" if score >= 85 else "clean",
                                               "fraud_score": score, "number": phone}
+                if info.get("freshness") == "stale":
+                    shared["incomplete_checks"] = [*shared.get("incomplete_checks", []), incomplete_check(
+                        "number_reputation", info.get("failure"), status="stale", source="ipqs", at=info.get("checked_at"))]
             else:
-                shared.setdefault("phone_reputation", {"status": "unavailable", "verdict": "unknown"})
+                failure = info.get("failure") or ("not_configured" if info.get("status") == "not_configured" else None)
+                shared.setdefault("phone_reputation", {"status": "unavailable", "verdict": "unknown",
+                                                       **({"failure": failure} if failure else {})})
+                shared["incomplete_checks"] = [*shared.get("incomplete_checks", []), incomplete_check(
+                    "number_reputation", failure, source="ipqs", detail=info.get("detail") or "")]
             break
 
     if source_type == "email" and not evidence.get("auth_results"):

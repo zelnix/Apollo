@@ -65,7 +65,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // no local block/allow/risk signal — see backend/services/phonerisk.py (IPQualityScore, proxied).
   call_risk_check: new Set(["device_id", "number", "country"]),
   // Triage outcome telemetry ("Limited by cause"): outcome and cause codes only — never a link, number or content.
-  triage_telemetry: new Set(["source_type", "outcome", "causes", "gap_codes", "catalogue_version", "lookup_check", "lookup_attempts", "lookup_outcome"]),
+  triage_telemetry: new Set(["source_type", "outcome", "causes", "gap_codes", "incomplete", "catalogue_version", "lookup_check", "lookup_attempts", "lookup_outcome"]),
   call_investigate: new Set(["device_id", "number", "country", "caller_asks", "caller_claim", "transcript"]),
   // Vision Gate: privacy-screened image + OCR text → visual investigation routing.
   // Only device_id, extracted_text from on-device OCR, and sanitisation receipt metadata leave the device.

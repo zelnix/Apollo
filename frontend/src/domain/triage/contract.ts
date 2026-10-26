@@ -3,6 +3,7 @@
 // and never downgrades threat evidence Apollo actually has. Triage makes ZERO Gemini calls.
 
 import catalogue from "./catalogue.ts";
+import { AVAILABLE_CHECKS, type IncompleteCheck } from "./completeness.ts";
 
 export type TriageOutcome = "NO_THREAT_IDENTIFIED" | "POSSIBLE_THREAT_IDENTIFIED" | "LIMITED_UNABLE_TO_DETERMINE";
 export type RuleResult = "met" | "not_met" | "not_applicable" | "coverage_gap";
@@ -36,6 +37,8 @@ export interface CoverageGapRecord {
   detail: string;
   recoverable: boolean;
   ruleIds: string[];
+  /** How the lookup behind this gap failed, when known (timeout, quota_exhausted, auth_failure, …). */
+  failure?: string | null;
 }
 
 export interface RetryRecord {
@@ -55,6 +58,10 @@ export interface TriageInvestigationRecord {
   rulesMet: string[];
   rules: RuleRecord[];
   coverageGaps: CoverageGapRecord[];
+  /** Checks Apollo needed but couldn't finish (see completeness.ts). Absent on records from before this existed. */
+  incompleteChecks?: IncompleteCheck[];
+  /** "incomplete" whenever any check Apollo needed didn't finish — never shown as a complete examination. */
+  coverage?: "complete" | "incomplete";
   retries: RetryRecord[];
   correlation: Record<string, unknown>;
   recheckUseful: boolean;
@@ -115,6 +122,13 @@ export const OUTCOME_LABEL: Record<TriageOutcome, string> = {
   POSSIBLE_THREAT_IDENTIFIED: "Possible threat identified",
   LIMITED_UNABLE_TO_DETERMINE: "Limited — unable to determine",
 };
+
+/** The outcome as the person sees it: a No Threat whose checks didn't all complete is
+ *  "No threat found by available checks", never the unqualified "No threat identified". */
+export function outcomeLabel(record: Pick<TriageInvestigationRecord, "outcome" | "incompleteChecks">): string {
+  if (record.outcome === "NO_THREAT_IDENTIFIED" && record.incompleteChecks?.length) return AVAILABLE_CHECKS;
+  return OUTCOME_LABEL[record.outcome] ?? record.outcome;
+}
 
 /** Whether a "Check again" affordance can actually achieve something. */
 export function recheckCanHelp(record: TriageInvestigationRecord | null | undefined): boolean {

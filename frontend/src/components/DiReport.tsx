@@ -17,7 +17,8 @@ import { Card } from "@/src/components/ui";
 import { formatBytes, provenanceLabel, type DiTrace, type DiTransaction } from "@/src/domain/diTransaction";
 import { diRequestText, diResponseText, toolList } from "@/src/domain/diTransactionText";
 import { buildDecisionTrace, TRACE_ORDER, type TraceStatus, type TraceStep } from "@/src/domain/diTrace";
-import { OUTCOME_LABEL, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
+import { outcomeLabel as triageOutcomeLabel, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
+import { incompletePlain } from "@/src/domain/triage/completeness";
 import { useApollo } from "@/src/store/ApolloContext";
 import { formatDateTime } from "@/src/domain/threatCase";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -241,8 +242,11 @@ function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null
       <Text style={s.subTitle}>Triage rule catalogue</Text>
       {triage ? (
         <View testID="tc-di-rules-triage">
-          <DiRow label="Outcome:" value={`${triage.outcome} — ${OUTCOME_LABEL[triage.outcome] ?? ""}`} />
+          <DiRow label="Outcome:" value={`${triage.outcome} — ${triageOutcomeLabel(triage)}`} />
           <DiRow label="Reason:" value={triage.reason || "not recorded"} />
+          {(triage.incompleteChecks ?? []).map((c, i) => (
+            <DiRow key={`incomplete-${i}`} label="Not completed:" value={`${c.check} · ${c.status}${c.failure ? ` (${c.failure})` : ""}`} note={incompletePlain(c)} />
+          ))}
           <DiRow label="Rules:" value={`${triage.rulesChecked.length} of ${triage.rulesApplicable.length} applicable checked, ${triage.rulesMet.length} met`} />
           <DiRow label="Catalogue:" value={`v${triage.catalogueVersion} · source ${triage.sourceType}`} />
           <DiRow label="Investigation ID:" value={triage.investigationId} />

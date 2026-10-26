@@ -78,7 +78,8 @@ test("timeout/unavailable coverage=none behaves exactly like no intel", () => {
 });
 test("stale/unknown intel never upgrades to medium confidence", () => {
   const d = decide(analyseUrlLocally("https://www.abc.net.au"), parseIntelResult({ ...good, verdict: "unknown", coverage: "partial", sources: [{ name: "b", status: "clear", detail: "", threat_types: [] }, { name: "gsb", status: "unavailable", detail: "", threat_types: [] }] }), false);
-  assert.equal(d.confidence, "low"); assert.ok(d.why.some((w) => /Only part/.test(w)));
+  // Partial coverage names the check that didn't complete (by kind of check, never by provider).
+  assert.equal(d.confidence, "low"); assert.ok(d.why.some((w) => /A reputation check didn't complete/.test(w)));
 });
 
 // --- Mixed states -----------------------------------------------------------------------------------------------

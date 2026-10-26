@@ -69,8 +69,9 @@ def _reputation_observation(result: Any) -> dict[str, Any]:
 
 @router.post("/call/risk-check", response_model=CallRiskResponse)
 async def call_risk_check(body: CallRiskRequest):
-    """Automatic protection: quick reputation check. No Gemini. No investigation."""
-    result = await check_phone_risk(body.number, body.country, persist_cache=False)
+    """Automatic protection: quick reputation check. No Gemini. No investigation. A current saved score is used
+    before a lookup credit is spent; a failed lookup falls back to the last known score, marked stale."""
+    result = await check_phone_risk(body.number, body.country)
     observation = _reputation_observation(result)
     response = result.model_copy(update={"assessment": observation})
     # Ingest flagged numbers into the Live Caller ID reputation database.

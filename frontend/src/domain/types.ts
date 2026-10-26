@@ -58,6 +58,10 @@ export interface IntelSource {
   status: "match" | "clear" | "unavailable" | "not_configured";
   detail: string;
   threat_types: string[];
+  /** What kind of check this source is — the person-facing wording follows completeness by check, never the provider. */
+  check?: "reputation" | "final_destination";
+  /** Why it didn't complete, when it didn't (timeout, quota_exhausted, nonexistent_domain, …). */
+  failure?: string | null;
 }
 
 /** RDAP domain lookup — best-effort, keyless registrar/registration-date context. Never gates the

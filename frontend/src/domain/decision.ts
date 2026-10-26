@@ -2,6 +2,7 @@
 // Apollo decision. Uncertainty lowers confidence and drama, never raises it.
 
 import { assessBrand } from "./brand.ts";
+import { AVAILABLE_CHECKS, fromSources, incompletePlain } from "./triage/completeness.ts";
 import type { Decision, IntelResult, LocalAnalysis } from "./types";
 
 const THREAT_PLAIN: Record<string, string> = {
@@ -24,10 +25,12 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
   const base = { claimed_brand };
   const intelUnavailable = !intel || intel.coverage === "none";
   const intelPartial = intel?.coverage === "partial";
+  // Which checks didn't complete, in words driven by the kind of check and how it failed — never the provider.
+  const incomplete = intelPartial ? fromSources(intel?.sources).map(incompletePlain) : [];
   const gapNote = intelUnavailable
     ? "Reputation intelligence was unavailable, so this result is based on on-device checks only."
     : intelPartial
-      ? "Only part of Apollo's reputation intelligence responded."
+      ? (incomplete.length ? incomplete.join(" ") : "Only part of Apollo's reputation intelligence responded.")
       : null;
 
   // 1. Confirmed by intelligence → Barking (act). Trust never overrides this.
@@ -130,16 +133,22 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
   // 5. Clean locally; intelligence clear or unavailable → Patrolling within supported checks.
   const why = [
     localWhy.length ? "Minor observations only, none concerning." : "No warning signs found in the address itself.",
-    intel?.verdict === "clean" ? "No listing found in Apollo's reputation intelligence." : gapNote ?? "",
+    intel?.verdict === "clean" ? "No listing found in Apollo's reputation intelligence." : "",
+    // Partial coverage still names what didn't complete, even when the sources that answered found nothing.
+    gapNote ?? "",
     ...(localWhy.length ? localWhy : []),
   ].filter(Boolean);
   return {
     ...base,
     state: "resting",
     headline: `Nothing found for ${host}`,
-    what_happened: `You checked a link to ${host}. Nothing concerning was found within the checks Apollo can run.`,
+    what_happened: intelPartial
+      ? `You checked a link to ${host}. ${AVAILABLE_CHECKS} — not every check Apollo needed completed.`
+      : `You checked a link to ${host}. Nothing concerning was found within the checks Apollo can run.`,
     why,
-    what_to_do: intelUnavailable ? "Proceed with normal care. Apollo could not confirm reputation this time." : "You can proceed with normal care. Apollo cannot see the page content itself.",
+    what_to_do: intelUnavailable ? "Proceed with normal care. Apollo could not confirm reputation this time."
+      : intelPartial ? "Proceed with normal care — not every check Apollo needed completed."
+        : "You can proceed with normal care. Apollo cannot see the page content itself.",
     action_required: false,
     trust_allowed: false,
     block_offered: false,

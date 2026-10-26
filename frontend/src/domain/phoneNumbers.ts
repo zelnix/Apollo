@@ -5,6 +5,7 @@
 // is rejected there and dropped, rather than being reported as a number Apollo couldn't check.
 
 import type { LookupFailure } from "./reputationLookup.ts";
+import { incompleteCheck, type IncompleteCheck } from "./triage/completeness.ts";
 
 export interface EvidencePhoneResult {
   /** Exactly as the number appeared in the material. */
@@ -22,8 +23,11 @@ export interface EvidencePhoneResult {
   /** Which source answered. Anything other than a named service means nothing was established. */
   source: "ipqualityscore" | "not_configured" | "unavailable";
   checked_at: string;
-  /** Set when the lookup established nothing: how it failed (after the controlled retry), or why the answer was empty. */
+  /** Set when the lookup established nothing: how it failed (after the controlled retry), or why the answer was empty.
+   *  For a "stale" answer: how the live lookup failed before the last known score was used. */
   lookupFailure?: LookupFailure | null;
+  /** "stale" = the live lookup failed and this is the last known score, from `checked_at`. */
+  freshness?: "fresh" | "cached" | "stale" | null;
 }
 
 const URL_RE = /(?:https?:\/\/|www\.)\S+/gi;
@@ -69,8 +73,24 @@ export function phoneTriageReputation(results: EvidencePhoneResult[]): { status:
       ...(worst.fraud_score === null ? {} : { fraud_score: worst.fraud_score }),
     };
   }
-  if (results.every((r) => r.decision === "unknown")) return { status: "unavailable", verdict: "unknown" };
+  if (results.every((r) => r.decision === "unknown")) {
+    const failure = results.find((r) => r.lookupFailure)?.lookupFailure;
+    return { status: "unavailable", verdict: "unknown", ...(failure ? { failure } : {}) };
+  }
   return { status: "ok", verdict: "clean" };
+}
+
+/** The number lookups that didn't complete, as incomplete checks: no answer at all, or only the last known score. */
+export function phoneIncompleteChecks(results: EvidencePhoneResult[]): IncompleteCheck[] {
+  const checks: IncompleteCheck[] = [];
+  for (const r of results) {
+    const stale = r.decision !== "unknown" && r.freshness === "stale";
+    if (r.decision !== "unknown" && !stale) continue;
+    const status = stale ? "stale" : "unavailable";
+    if (checks.some((c) => c.status === status && c.failure === (r.lookupFailure ?? null))) continue;
+    checks.push(incompleteCheck("number_reputation", r.lookupFailure, { status, source: "ipqs", ...(stale ? { at: r.checked_at } : {}) }));
+  }
+  return checks;
 }
 
 /** One plain sentence per number: what Apollo asked about and what came back. */
@@ -85,7 +105,7 @@ export function phoneFindingLine(r: EvidencePhoneResult): string {
   const verdict = r.decision === "avoid" ? "strong signs of fraud or spam abuse"
     : r.decision === "review" ? "some risk signals — not enough to be certain"
       : "no fraud or abuse signals";
-  return `${r.raw} — ${verdict}${facts.length ? ` (${facts.join(", ")})` : ""}.`;
+  return `${r.raw} — ${verdict}${facts.length ? ` (${facts.join(", ")})` : ""}${r.freshness === "stale" ? " — the live lookup didn't complete, so this is the result of Apollo's last check" : ""}.`;
 }
 
 /** The deterministic findings the case records for flagged numbers in its material. */

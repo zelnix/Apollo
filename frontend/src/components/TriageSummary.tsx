@@ -5,7 +5,8 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { LIMITED_CAUTION, OUTCOME_LABEL, gapPlainEnglish, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
+import { LIMITED_CAUTION, gapPlainEnglish, outcomeLabel, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
+import { incompletePlain } from "@/src/domain/triage/completeness";
 import { spacing, useTheme } from "@/src/theme";
 
 const TONE: Record<string, "resting" | "growling" | "barking" | "neutral"> = {
@@ -24,15 +25,19 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
   const { colors } = useTheme();
   const met = record.rules.filter((rule) => rule.result === "met");
   const canRecheck = recheckCanHelp(record);
+  const incomplete = record.incompleteChecks ?? [];
+  const meaning = record.outcome === "NO_THREAT_IDENTIFIED" && incomplete.length
+    ? "Apollo found nothing threatening in the checks that completed, but not every check it needed finished."
+    : MEANING[record.outcome];
 
   return (
     <Card style={{ gap: spacing.sm }} testID="triage-summary">
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
         <Text style={{ color: colors.onSurface, fontSize: 16, fontWeight: "700" }}>Triage investigation</Text>
-        <Pill label={OUTCOME_LABEL[record.outcome]} tone={TONE[record.outcome] ?? "neutral"} testID="triage-outcome" />
+        <Pill label={outcomeLabel(record)} tone={TONE[record.outcome] ?? "neutral"} testID="triage-outcome" />
       </View>
 
-      <Body>{MEANING[record.outcome]}</Body>
+      <Body>{meaning}</Body>
 
       <View style={{ gap: spacing.xs }}>
         <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What Apollo checked</Text>
@@ -49,6 +54,15 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
           <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What couldn&apos;t be checked</Text>
           {record.coverageGaps.map((gap) => (
             <Body key={gap.code}>{`• ${gapPlainEnglish(gap.code)}`}</Body>
+          ))}
+        </View>
+      )}
+
+      {incomplete.length > 0 && (
+        <View style={{ gap: spacing.xs }} testID="triage-incomplete-checks">
+          <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What didn&apos;t complete</Text>
+          {incomplete.map((check, i) => (
+            <Body key={`${check.check}-${i}`}>{`• ${incompletePlain(check)}`}</Body>
           ))}
         </View>
       )}

@@ -74,7 +74,12 @@ const BRANDS: { re: RegExp; name: string; kind: MessageSignals["brandKind"] }[] 
 ];
 
 const has = (t: string, re: RegExp) => re.test(t);
-const CALLBACK_RE = /(?:\+?61[\s().-]*|0)(?:1800|1300|[2-478])(?:[\s().-]*\d){6,8}/i;
+// Mirror of backend services/triage_engine.py (_CALLBACK_RE, _CHARGE_*): a supplied Australian number — including
+// 1800/1300 and 13 numbers written without a leading 0 — and an unexpected charge or payment claim.
+const CALLBACK_RE = /(?:\+?61[\s().-]*|\b0)(?:1800|1300|[2-478])(?:[\s().-]*\d){6,8}|\b1[38]00(?:[\s.-]*\d){6}\b|\b13[\s-]?\d{2}[\s-]?\d{2}\b/i;
+const CHARGE_STRONG = /\bunauthori[sz]ed charge\b|\bunrecogni[sz]ed (?:charge|transaction)\b|\bsuspicious transaction\b|\bmerchant\s*:|\bamount\s*:|\bfunds (?:are|will be) released\b/;
+const CHARGE_CLAIM = /\b(?:been|was|were|being) (?:charged|debited|billed)\b|\b(?:charge|payment|transaction|purchase|debit|withdrawal|order) of (?:aud\s?)?\$\s?\d/;
+const CHARGE_DISPUTE = /\bif (?:you|this) (?:did ?n[o']?t|was ?n[o']?t)\b|\bnot you\b|\bdid ?n[o']?t (?:make|authori[sz]e|recogni[sz]e)\b|\bto (?:cancel|dispute|stop|reverse) (?:this|the) (?:charge|payment|transaction|order|purchase)\b/;
 
 export function extractSignals(sender: string, text: string): MessageSignals {
   const t = text.toLowerCase();
@@ -102,7 +107,8 @@ export function extractSignals(sender: string, text: string): MessageSignals {
   const loginRequest = has(t, /\blog ?in\b|\bsign ?in\b|\bverify (your )?account\b|\bsecure your account\b|\bupdate your (details|account|password)\b|\bconfirm your account\b|\breactivate\b|\bunlock your account\b/);
   const callbackNumber = text.match(CALLBACK_RE)?.[0] ?? null;
   const callbackRequest = !!callbackNumber && has(t, /\b(call|contact|phone|ring|fraud response|support line|helpline)\b/);
-  const allegedCharge = has(t, /\bunauthori[sz]ed charge\b|\bunrecogni[sz]ed (?:charge|transaction)\b|\bsuspicious transaction\b|\bmerchant\s*:|\bamount\s*:|\bfunds (?:are|will be) released\b/);
+  // An unexpected charge or payment: the explicit forms, or a charge claim with dispute or urgency wording.
+  const allegedCharge = has(t, CHARGE_STRONG) || (has(t, CHARGE_CLAIM) && (has(t, CHARGE_DISPUTE) || urgency));
   const deadlineThreat = has(t, /\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\baccounts? .{0,30}\blocked\b|\bfunds .{0,25}released\b/);
   const namedEntities = Array.from(new Set(Array.from(text.matchAll(/\b(?:Merchant|from|to)\s*:\s*([A-Z][A-Za-z0-9&'’.-]+(?:\s+[A-Z][A-Za-z0-9&'’.-]+){0,4})/g), (match) => match[1].replace(/\s+(?:Pty|Ltd).*$/i, " $&").trim()))).slice(0, 6);
   const unknownSender = !sender.trim() || /unknown|private|no caller id/i.test(sender) || /^\+?\d[\d\s()-]{6,}$/.test(sender.trim());
@@ -158,13 +164,20 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     try { const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.toLowerCase(); return host.endsWith(".gov.au") || host === "gov.au"; }
     catch { return false; }
   });
-  if (s.callbackRequest && s.allegedCharge) return { scenario: "M16", title: "Alleged-charge callback trap", state: "barking",
-    verdict: "This message tries to make you call a supplied number about an alleged charge.",
-    why: [s.claimedBrand ? `It claims to be ${s.claimedBrand} and names a charge or transaction.` : "It alleges a charge or transaction.",
-      s.callbackNumber ? `It directs you to call ${s.callbackNumber}, a number supplied by the message itself.` : "It directs you to a callback number supplied by the message.",
-      s.deadlineThreat ? "It combines a short deadline with a threat that funds will be released or the account locked." : "It pressures you to resolve the alleged charge by phone."],
-    rec: "Do not call the supplied number. Open your existing PayPal app independently and check Activity. If the charge appears there, report it from inside PayPal.",
-    verify: "Open the PayPal app you already use or type paypal.com yourself. Do not use the number in this message." };
+  if (s.callbackRequest && s.allegedCharge) {
+    const paypal = s.claimedBrand === "PayPal";
+    return { scenario: "M16", title: "Alleged-charge callback trap", state: "barking",
+      verdict: "This message tries to make you call a supplied number about an alleged charge.",
+      why: [s.claimedBrand ? `It claims to be ${s.claimedBrand} and names a charge or transaction.` : "It alleges a charge or transaction.",
+        s.callbackNumber ? `It directs you to call ${s.callbackNumber}, a number supplied by the message itself.` : "It directs you to a callback number supplied by the message.",
+        s.deadlineThreat ? "It combines a short deadline with a threat that funds will be released or the account locked." : "It pressures you to resolve the alleged charge by phone."],
+      rec: paypal
+        ? "Do not call the supplied number. Open your existing PayPal app independently and check Activity. If the charge appears there, report it from inside PayPal."
+        : `Do not call the supplied number. Open ${s.claimedBrand ? `${s.claimedBrand}'s` : "your bank or card provider's"} official app yourself and check your recent activity. If the charge appears there, report it from inside the app.`,
+      verify: paypal
+        ? "Open the PayPal app you already use or type paypal.com yourself. Do not use the number in this message."
+        : VERIFY[s.brandKind ?? "bank"] };
+  }
   if (s.codeRequest) return { scenario: "M06", title: "Verification code request", state: "barking", verdict: "Someone is asking for a code that is meant only for you.",
     why: ["It asks you to share a verification or security code.", "Codes like this are used to take over accounts.", s.urgency ? "It pushes you to act quickly." : "No legitimate service asks you to read a code back to them."],
     rec: "Don't share that code. Verification codes are meant for you, not for someone contacting you.", verify: VERIFY[s.brandKind ?? "person"] };

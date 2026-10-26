@@ -3949,3 +3949,12 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Gemini Map: one-tap <select> per feature (only models whose capabilities fit: Magnum needs search+vision+json, Ask Higgins json), POST /api/admin/gemini-map/model, audit action gemini_model_change.
 - Removed VISION/ADVISORY/TRIAGE/RECOVERY/CHAT/TEDDY model constants + their admin rows (Triage, System, Releases pages). Parity snapshot now reports "models".
 - Fixed stale tests (iter7 pairing phone, parity keys, reusable-intel writer list); rule book updated + stamped. Full backend suite: 1229 passed.
+
+## Triage "Limited" fixes + incomplete-check policy (Oct 2026) — DONE (awaiting owner review)
+- New completeness module (backend services/triage/completeness.py, mirror frontend src/domain/triage/completeness.ts; words in triage_catalogue.json v3 "completeness"). A check Apollo needed but couldn't finish is recorded in `incomplete_checks` {check, status, failure, detail, source, at}; a No Threat with one is labelled "No threat found by available checks" (contract.outcomeLabel), never the unqualified label; wording by kind of check + failure, never provider. Not cached on the server.
+- No reputation source answering → still Limited (gap carries `failure`). Safe Browsing alone down, unverified final destination (LINK-02 now not_met, not a gap), failed/stale number lookup → incomplete check.
+- CB-03 no longer a gap without a claimed charge/brand (ordinary messages with a number aren't Limited).
+- /call/risk-check reads the phone_risk_cache (24h) before spending an IPQS credit; live failure → last known score `freshness="stale"` + `failure`; no cache → unknown + failure. IPQS/Safe Browsing/redirect failures classified (timeout, quota_exhausted, auth_failure, rate_limited, server_error, provider_unavailable, malformed, nonexistent_domain, redirect_limit, …).
+- Every number check (allow/risky/unknown) now sends telemetry; telemetry carries `incomplete` codes (egress allow-list updated); admin Triage page lists "Checks that didn't complete".
+- Callback scams: 1800/1300/13 numbers without leading 0, charge claim + dispute/urgency → CB-01 (backend + messageAnalysis mirror); M16 advice no longer PayPal-only.
+- Tests: backend tests/test_incomplete_checks.py, frontend tests/incompleteChecks.test.ts. Backend 1305 passed (3 pre-existing teardown errors in test_case_identity_and_limited_causes.py, same before change); frontend 1043/1043. Rule book updated + stamped. Testing agent NOT yet run (owner asked to review first).

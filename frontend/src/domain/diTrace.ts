@@ -5,7 +5,7 @@
 
 import type { DiTrace, DiTransaction } from "./diTransaction.ts";
 import { outcomeLabel } from "./messageVoice.ts";
-import { OUTCOME_LABEL, type TriageInvestigationRecord } from "./triage/contract.ts";
+import { outcomeLabel as triageOutcomeLabel, type TriageInvestigationRecord } from "./triage/contract.ts";
 
 export type TraceStatus = "ran" | "settled" | "escalated" | "not_engaged" | "failed" | "simulated" | "pending" | "not_recorded";
 
@@ -33,9 +33,10 @@ function triageStep(triage: TriageInvestigationRecord | null, hasCase: boolean):
   if (!triage) return { id: "triage", name, status: "not_recorded", label: "No record", summary: "No deterministic Triage record is stored for this case.", details: [] };
   const gaps = triage.coverageGaps.map((g) => g.code);
   return {
-    id: "triage", name, status: "ran", label: OUTCOME_LABEL[triage.outcome] ?? triage.outcome,
+    id: "triage", name, status: "ran", label: triageOutcomeLabel(triage),
     summary: `${triage.rulesChecked.length} of ${triage.rulesApplicable.length} applicable rules checked, ${triage.rulesMet.length} met`
-      + `${gaps.length ? `, ${plural(gaps.length, "coverage gap")}` : ""}. `
+      + `${gaps.length ? `, ${plural(gaps.length, "coverage gap")}` : ""}`
+      + `${triage.incompleteChecks?.length ? `, ${plural(triage.incompleteChecks.length, "incomplete check")}` : ""}. `
       + (hasCase ? "An investigation was opened." : "Stopped here — Magnum DI was not engaged."),
     details: [
       `Outcome: ${triage.outcome}`,
@@ -141,7 +142,7 @@ function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | 
       id: "higgins", name, status: "ran", label: "Presented", details: [],
       summary: triage.outcome === "LIMITED_UNABLE_TO_DETERMINE"
         ? "Higgins explained the Triage result and advised treating it with caution — it is never shown as safe."
-        : `Higgins explained the Triage result: ${OUTCOME_LABEL[triage.outcome] ?? triage.outcome}.`,
+        : `Higgins explained the Triage result: ${triageOutcomeLabel(triage)}.`,
     };
   }
   return { id: "higgins", name, status: "pending", label: "Not yet", summary: "There's no result for Higgins to present yet.", details: [] };
