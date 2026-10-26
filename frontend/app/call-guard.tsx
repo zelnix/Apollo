@@ -5,11 +5,13 @@
 // One number → one reputation check → at most ONE Magnum DI investigation. Apollo's own Triage
 // decides whether to open one (see checkNumberRisk); this screen FOLLOWS that case through the
 // shared InvestigationFlow instead of starting a second investigation of its own.
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Localization from "expo-localization";
 import CircleX from "lucide-react-native/icons/circle-x";
 import PhoneIcon from "lucide-react-native/icons/phone";
 import Search from "lucide-react-native/icons/search";
-import React, { useRef, useState } from "react";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -36,6 +38,8 @@ import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
+import { CARRIER_WARNING_LABEL, carrierWarningFinding, isCarrierWarning, type CarrierWarning } from "@/src/domain/carrierWarning";
+import { regionCountry } from "@/src/telemetry/deviceInfo";
 
 // ── Magnum DI investigation ──────────────────────────────────────────────────
 // The investigation itself is owned by `InvestigationFlow`, which attaches to the case Apollo's
@@ -91,6 +95,12 @@ const useStyles = makeStyles((c) => ({
   errorCard: { backgroundColor: "rgba(217,83,79,0.08)", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: "rgba(217,83,79,0.2)" },
   errorText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
 
+  // ── Carrier warning ──
+  warnCard: { backgroundColor: c.growlingTint, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: c.growling },
+  warnRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  warnTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
+  warnText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
+
   // ── Progress ──
   progressWrap: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
   progressLabel: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
@@ -104,9 +114,13 @@ export default function CheckNumber() {
   const router = useRouter();
   const { checkNumberRisk, showToast } = useApollo();
   const inputRef = useRef<TextInput>(null);
+  // Opened from "I got a ‘Potential Fraud’ warning" (with the number when it's known), or that button tapped here.
+  const params = useLocalSearchParams<{ carrierWarning?: string; number?: string }>();
+  const [carrierWarning, setCarrierWarning] = useState<CarrierWarning | null>(isCarrierWarning(params.carrierWarning) ? params.carrierWarning : null);
+  const inAustralia = regionCountry(Localization.getLocales()[0]?.regionCode) === "AU";
 
   // ── State ──
-  const [numberState, setNumber] = useState("");
+  const [numberState, setNumber] = useState(params.number ? String(params.number) : "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CallRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +148,7 @@ export default function CheckNumber() {
       // escalate a number Apollo cannot settle from its own sources to a Magnum DI investigation.
       // Where it does, the case id comes back on the result and the shared InvestigationFlow below
       // FOLLOWS that case — this screen never opens a second investigation of the same number.
-      const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true });
+      const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true, carrierWarning: carrierWarning ?? undefined });
       setResult(riskResult);
       void recordCheck("call", {
         at: new Date().toISOString(),
@@ -153,16 +167,32 @@ export default function CheckNumber() {
     setNumber("");
     setSaved(false);
     setError(null);
+    setCarrierWarning(null);
   };
+
+  // A carrier warning with the number already known is checked straight away; without one, the number box waits.
+  const startedFromWarning = useRef(false);
+  useEffect(() => {
+    if (startedFromWarning.current || !carrierWarning) return;
+    startedFromWarning.current = true;
+    if (params.number) void runInvestigation(String(params.number));
+    else setTimeout(() => inputRef.current?.focus(), 300);
+    // Runs once, for how the screen was opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const reportWarning = () => { setCarrierWarning("potential_fraud"); inputRef.current?.focus(); };
 
 
   // ── RESULT VIEW ──
   if (result) {
     const allReportLinks = [...REPORT_LINKS.AU, ...REPORT_LINKS.UK, ...REPORT_LINKS.US];
     const model = buildCallRiskCheckResult({ result });
+    const warningEvidence = carrierWarning ? [{ label: "Your carrier’s warning", value: `You said your carrier showed “${CARRIER_WARNING_LABEL[carrierWarning]}” on this call.` }] : [];
     const enhancedModel = {
       ...model,
-      whatToDoLinks: (result.decision === "avoid" || result.decision === "review") ? allReportLinks : model.whatToDoLinks,
+      evidence: [...warningEvidence, ...model.evidence],
+      whatToDoLinks: (result.decision === "avoid" || result.decision === "review" || carrierWarning) ? allReportLinks : model.whatToDoLinks,
     };
 
     const askPrompt = `About the number I just checked: ${result.number}. ${enhancedModel.headline} Can you walk me through what Apollo found and what I should do?`;
@@ -191,6 +221,7 @@ export default function CheckNumber() {
       issue_summary: `Phone number check: ${result.number}. ${enhancedModel.headline}`,
       assessment_state: result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting",
       findings: [
+        ...(carrierWarning ? [{ summary: carrierWarningFinding(carrierWarning), provenance: "user_reported" as const, status: "warning" as const }] : []),
         { summary: enhancedModel.higginsSays, provenance: "observed", status: result.decision === "avoid" ? "warning" : "uncertain" },
         ...(result.fraud_score != null ? [{ summary: `Fraud score: ${result.fraud_score}`, provenance: "observed" as const, status: "uncertain" as const }] : []),
         ...(result.line_type ? [{ summary: `Line type: ${result.line_type}`, provenance: "observed" as const, status: "confirmed" as const }] : []),
@@ -247,6 +278,20 @@ export default function CheckNumber() {
         contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
+        {/* ── The carrier warned them about a call (Telstra Scam Protect) ── */}
+        {carrierWarning ? (
+          <View style={s.warnCard} testID="callguard-carrier-warning">
+            <View style={s.warnRow}>
+              <TriangleAlert size={20} color={colors.growlingText} />
+              <Text style={s.warnTitle}>Your carrier showed “{CARRIER_WARNING_LABEL[carrierWarning]}”</Text>
+            </View>
+            <Text style={s.warnText}>Enter or pick that number below. Higgins checks it straight away and treats your carrier’s warning as part of the evidence. Don’t call it back in the meantime.</Text>
+            <Button testID="callguard-carrier-warning-remove" variant="ghost" label="I didn’t get a warning" onPress={() => setCarrierWarning(null)} />
+          </View>
+        ) : inAustralia ? (
+          <Button testID="callguard-carrier-warning-button" variant="secondary" label="I got a ‘Potential Fraud’ warning" onPress={reportWarning} />
+        ) : null}
+
         {/* ── Phone Number Card ── */}
         <View style={s.phoneCard} testID="callguard-number-card">
           <View style={s.phoneCardHeader}>

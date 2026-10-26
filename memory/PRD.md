@@ -3831,3 +3831,6 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Setup welcome (onboarding) and About now show the new logo through `BrandBanner` (white rounded panel, padding md). Old `apollo_sg_banner.jpg` removed.
 - App icon change was tried and then reverted at the user's request. `icon.png`, `adaptive-icon.png` and `favicon.png` are back to the originals.
 - App display name changed to "ApolloSG" (app.config.js name). Slug, bundle IDs and scheme unchanged.
+
+## Architecture Q&A (Jun 2026)
+- Answered: where Magnum DI (coordinator.run_turn via jobs.py), TC FlyBy (teddy/search.run, first turn only) and Ask Higgins (chat.reply via /higgins/chat, Ask tab) run, and which Gemini models each uses (TEXT/TEDDY = gemini-3.1-flash-lite default; CHAT = gemini-3.8-flash via .env). No code changes.

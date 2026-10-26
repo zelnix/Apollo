@@ -16,6 +16,7 @@ import { PENDING_DELETE_KEY, wipeLocalApolloData, type DeleteDataResult } from "
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { isTrustedCaller } from "@/src/domain/trustedCallers";
+import { carrierWarningFinding, type CarrierWarning } from "@/src/domain/carrierWarning";
 import { decide } from "@/src/domain/decision";
 import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
@@ -191,8 +192,9 @@ interface ApolloContextValue {
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
   /** `deliberate` marks a check the person asked for (Check a Number, a re-check) as opposed to the
    *  background screening of an incoming call. A deliberate check that Apollo cannot settle from its
-   *  own sources is escalated to a Magnum DI investigation; background screening never is. */
-  checkNumberRisk(number: string, country?: string, options?: { deliberate?: boolean }): Promise<CallRiskResult>;
+   *  own sources is escalated to a Magnum DI investigation; background screening never is.
+   *  `carrierWarning` is a warning the person says their carrier showed on this call: it always goes to Magnum DI. */
+  checkNumberRisk(number: string, country?: string, options?: { deliberate?: boolean; carrierWarning?: CarrierWarning }): Promise<CallRiskResult>;
   /** `original` = the exact source investigated; saved unaltered on this device for the Evidence tab. */
   upsertEvent(event: PatrolEvent, original?: OriginalSourceInput): Promise<PatrolEvent>;
   reopenEvent(event: PatrolEvent): Promise<void>;
@@ -1315,12 +1317,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // native mechanism can act on it next time, and files a growling/barking (never biting) Patrol
   // event — matching Check This Call's existing choice to keep the number itself local-only
   // (`local_indicator`, never synced — see syncEvent's strip above).
-  const checkNumberRisk = useCallback(async (number: string, country?: string, options?: { deliberate?: boolean }): Promise<CallRiskResult> => {
+  const checkNumberRisk = useCallback(async (number: string, country?: string, options?: { deliberate?: boolean; carrierWarning?: CarrierWarning }): Promise<CallRiskResult> => {
     const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
     // Auto-detect device region for local numbers without country code
     const region = country || Localization.getLocales()[0]?.regionCode;
     if (region) body.country = region;
     const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
+    // What the person says their carrier showed on this call. Whatever the reputation says, it goes to Magnum DI.
+    const reported = options?.carrierWarning ? carrierWarningFinding(options.carrierWarning) : null;
     if (result.decision !== "allow" && result.decision !== "unknown") {
       // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the
       // autoRisky list. "review" (moderate signals, uncertain) should only warn — the person decides.
@@ -1342,6 +1346,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const isAvoid = result.decision === "avoid";
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
       const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
+      if (reported) why.unshift(reported);
 
       // Triage first (deterministic, 0 Gemini calls). Magnum DI runs for a Possible Threat and for a
       // number Triage could not settle because a source it needed didn't answer, and reuses the
@@ -1352,10 +1357,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         recentAbuse: result.recent_abuse ?? null, voip: result.voip ?? null, correlation,
       }));
       let investigationCaseId: string | null = existingCaseId;
-      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE") && !investigationCaseId) try {
+      if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || reported) && !investigationCaseId) try {
         const investigationResult = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
           gate: "call",
-          question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.`,
+          question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.${reported ? ` ${reported}` : ""}`,
           submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
           initial_findings: why,
         });
@@ -1403,7 +1408,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       // Expose the case ID on the result so callers (e.g. call-guard manual flow) know an
       // investigation is already in flight and MUST NOT launch a second one.
       result.investigation_case_id = investigationCaseId;
-    } else if (options?.deliberate && result.decision === "unknown") {
+    } else if ((options?.deliberate || reported) && result.decision === "unknown") {
       // Nobody answered about this number — the reputation service is either not configured here or
       // could not resolve it. Apollo has no other source to settle it with, so a check the person
       // deliberately asked for goes to Magnum DI instead of stopping at "couldn't check". No Patrol
@@ -1411,16 +1416,36 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const { correlation, existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
       const triage = evaluateTriage(numberRiskTriageEvidence({ decision: result.decision, unavailable: true, correlation }));
       let investigationCaseId: string | null = existingCaseId;
-      if (triage.outcome !== "NO_THREAT_IDENTIFIED" && !investigationCaseId) {
+      if ((triage.outcome !== "NO_THREAT_IDENTIFIED" || reported) && !investigationCaseId) {
         const unreachable = result.source === "not_configured"
           ? "the reputation service is not configured in this environment"
           : "the reputation service could not be reached or could not resolve the number";
         try {
           const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
             gate: "call",
-            question: `Investigate caller ${result.number}. ApolloSG's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.`,
+            question: `Investigate caller ${result.number}. ApolloSG's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.${reported ? ` ${reported}` : ""}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nReputation: no data returned (source: ${result.source})`, label: "Number with no reputation data" }],
-            initial_findings: [`ApolloSG's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
+            initial_findings: [...(reported ? [reported] : []), `ApolloSG's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
+          });
+          investigationCaseId = typeof created.case?.id === "string" ? created.case.id : null;
+        } catch {
+          investigationCaseId = null;
+        }
+      }
+      result.investigation_case_id = investigationCaseId;
+    } else if (reported) {
+      // The reputation source found no strong signal, but the person's carrier warned them about this call, so it
+      // still gets a deeper look. No Patrol finding is filed: the warning is the person's report, not something
+      // ApolloSG observed.
+      const { existingCaseId } = correlationFor({ indicator: result.number, mechanics: ["scam_call", "callback"] });
+      let investigationCaseId: string | null = existingCaseId;
+      if (!investigationCaseId) {
+        try {
+          const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
+            gate: "call",
+            question: `Investigate caller ${result.number}. ${reported} ApolloSG's caller-reputation source found no strong risk signal (fraud score ${result.fraud_score ?? "unknown"}/100).`,
+            submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\nCarrier warning reported by the person: yes`, label: "Number with a carrier warning" }],
+            initial_findings: [reported],
           });
           investigationCaseId = typeof created.case?.id === "string" ? created.case.id : null;
         } catch {

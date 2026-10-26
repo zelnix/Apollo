@@ -273,6 +273,13 @@ export default function CapabilityDetailScreen() {
 
         {row ? (
           <View style={s.actions}>
+            {row.id === "au_carrier_scam_blocking" ? (
+              <Button
+                testID="capability-carrier-warning"
+                label="I got a ‘Potential Fraud’ warning"
+                onPress={() => router.push({ pathname: "/call-guard", params: { carrierWarning: "potential_fraud" } })}
+              />
+            ) : null}
             {action ? (
               <Button
                 testID="capability-open-settings"
