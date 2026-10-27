@@ -62,11 +62,16 @@ SIGN_WORDS = {"added_words": "the name has other words added to it",
               "inside": "the name sits in front of someone else's address",
               "other_ending": "the name is on a different web ending"}
 
+# The Official Organisation Directory's counted domains per organisation (filled by services/org_directory.load()).
+DIRECTORY: dict[str, tuple[str, ...]] = {}
+
 
 def official_domains(name: str) -> tuple[str, ...]:
-    """The organisation's published domains, main one first."""
+    """The organisation's published domains, main one first: ApolloSG's own register, then the Official Organisation
+    Directory's (services/org_directory.py keeps DIRECTORY current)."""
     main = tuple(dict.fromkeys(domain for brand, domain in BRANDS.values() if brand == name))
-    return main + tuple(d for d in _MORE_OFFICIAL.get(name, ()) if d not in main)
+    more = (*_MORE_OFFICIAL.get(name, ()), *DIRECTORY.get(name, ()))
+    return main + tuple(dict.fromkeys(d for d in more if d not in main))
 
 
 def owner(host: str) -> str | None:

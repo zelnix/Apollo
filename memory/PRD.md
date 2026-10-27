@@ -4165,3 +4165,14 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Every number check (allow/risky/unknown) now sends telemetry; telemetry carries `incomplete` codes (egress allow-list updated); admin Triage page lists "Checks that didn't complete".
 - Callback scams: 1800/1300/13 numbers without leading 0, charge claim + dispute/urgency → CB-01 (backend + messageAnalysis mirror); M16 advice no longer PayPal-only.
 - Tests: backend tests/test_incomplete_checks.py, frontend tests/incompleteChecks.test.ts. Backend 1305 passed (3 pre-existing teardown errors in test_case_identity_and_limited_causes.py, same before change); frontend 1043/1043. Rule book updated + stamped. Testing agent NOT yet run (owner asked to review first).
+
+## Unexpected device investigation (2026-10-27): read-only, nothing changed
+- Full report: `memory/DEVICE_INVESTIGATION_2026-10-27.md`.
+- OnePlus8Pro = production device `db0ac8b8…` (app 1.1.23, one session at 2026-10-26 22:41:58 UTC). Most likely
+  Google Play pre-launch testing (Robo). No AI cost, no cases. PRESERVE the record until the owner releases it.
+- About 13,440 of the ~13,485 production device records were copied from the preview DB (snapshot about
+  2026-09-22 01:05 UTC). They are test and mock registrations. Production-native: 25 records, of which 6 are real
+  app installs.
+- Pending owner decisions: confirm in Play Console that 1.1.23 had a pre-launch run on a OnePlus 8 Pro. Approve, or
+  decline, cleaning up the copied records and changing the counter or filters. No counting logic has been changed.
+

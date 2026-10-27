@@ -610,37 +610,54 @@ def _when(value) -> str:
     return value.strftime("on %-d %b %Y") if isinstance(value, datetime) else "recently"
 
 
-async def listing_sources(host: str, url: str | None = None) -> list[IntelSource]:
-    """One IntelSource per free list for a link (url) or a website (host): match, clear, or unavailable when the list
-    isn't current — never clear by default."""
-    now, fresh = now_utc(), await fresh_feeds()
+_MATCH_FIELDS = {"_id": 0, "source": 1, "original_evidence": 1, "threat_type": 1, "last_verified_at": 1, "first_seen_at": 1,
+                 "source_reference": 1, "detail_url": 1, "evidence_expiry_deadline": 1, "publisher": 1}
+
+# Each list's own page, for a person to see the list (and, where the list has one, the entry itself).
+LIST_PAGES = {"phishtank": "https://phishtank.org/", "openphish": "https://openphish.com/", "spamhaus_drop": "https://www.spamhaus.org/drop/",
+              "asic_investor_alerts": ASIC_LIST_PAGE, "acma_blocked_gambling": "https://www.acma.gov.au/blocked-gambling-websites"}
+
+
+async def matches(host: str, url: str | None = None, *, ips: list | None = None) -> list[dict]:
+    """The current free-list entries for a link or website, with their provenance. `ips`: the website's addresses, for
+    Spamhaus DROP (none given: networks aren't compared)."""
+    now = now_utc()
     host = norm_host(host)
     parts = url_parts(url) if url else None
     keys = list(dict.fromkeys([host, *([parts[1]] if parts else [])]))
-    matches = await db.threat_indicators.find(
+    rows = await db.threat_indicators.find(
         {"scope": "url", **_active(now), "$or": [{"key": {"$in": keys}}, {"key": {"$in": parent_domains(host)}, "whole_site": True}]},
-        {"_id": 0, "source": 1, "original_evidence": 1, "threat_type": 1, "last_verified_at": 1}).to_list(20)
-    ips = await _addresses(host)
+        _MATCH_FIELDS).to_list(20)
     for ip in ips or []:
-        matches += await db.threat_indicators.find(
+        rows += await db.threat_indicators.find(
             {"scope": "netblock", "ip_version": ip.version, "net_start": {"$lte": _hex(ip)}, "net_end": {"$gte": _hex(ip)}, **_active(now)},
-            {"_id": 0, "source": 1, "original_evidence": 1, "threat_type": 1, "last_verified_at": 1}).to_list(5)
+            _MATCH_FIELDS).to_list(5)
+    return [row for row in rows if row["source"] in BY_ID]
+
+
+async def listing_sources(host: str, url: str | None = None) -> list[IntelSource]:
+    """One IntelSource per free list for a link (url) or a website (host): match, clear, or unavailable when the list
+    isn't current — never clear by default. `url` is the list's own page (the entry's page when the list has one)."""
+    fresh = await fresh_feeds()
+    ips = await _addresses(norm_host(host))
+    found = await matches(host, url, ips=ips)
     out = []
     for name, (label, feed_ids) in LISTINGS.items():
-        hits = [m for m in matches if m["source"] in feed_ids]
+        hits = [m for m in found if m["source"] in feed_ids]
         if hits:
             evidence = hits[0]["original_evidence"]
             by = "" if label in evidence else f" by {label}"
             out.append(IntelSource(name=name, status="match", threat_types=sorted({h["threat_type"] for h in hits}),
-                                   detail=f"{evidence} — confirmed{by} {_when(hits[0]['last_verified_at'])}."))
+                                   detail=f"{evidence} — confirmed{by} {_when(hits[0]['last_verified_at'])}.",
+                                   url=hits[0].get("detail_url") or LIST_PAGES[name]))
         elif not any(f in fresh for f in feed_ids):
-            out.append(IntelSource(name=name, status="unavailable", failure="list_out_of_date",
+            out.append(IntelSource(name=name, status="unavailable", failure="list_out_of_date", url=LIST_PAGES[name],
                                    detail=f"{label} hasn't been refreshed recently, so it wasn't checked."))
         elif name == "spamhaus_drop" and ips is None:
-            out.append(IntelSource(name=name, status="unavailable", failure="dns_failed",
+            out.append(IntelSource(name=name, status="unavailable", failure="dns_failed", url=LIST_PAGES[name],
                                    detail=f"ApolloSG couldn't find this website's IP address to compare with {label}."))
         else:
-            out.append(IntelSource(name=name, status="clear", detail=f"Not on {label}."))
+            out.append(IntelSource(name=name, status="clear", detail=f"Not on {label}.", url=LIST_PAGES[name]))
     return out
 
 

@@ -145,10 +145,18 @@ async def safe_browsing_lookup(url: str) -> tuple[IntelSource, Optional[datetime
         except ValueError:
             pass
         return (
-            IntelSource(name="google_safe_browsing", status="match", detail="Listed as unsafe by Google Safe Browsing.", threat_types=threats),
+            IntelSource(name="google_safe_browsing", status="match", detail="Listed as unsafe by Google Safe Browsing.", threat_types=threats,
+                        url=transparency_page(url)),
             now_utc() + timedelta(seconds=seconds),
         )
-    return IntelSource(name="google_safe_browsing", status="clear", detail="No current Safe Browsing listing."), None
+    return IntelSource(name="google_safe_browsing", status="clear", detail="No current Safe Browsing listing.", url=transparency_page(url)), None
+
+
+def transparency_page(url: str) -> str:
+    """Google's own public page for a Safe Browsing listing (its Transparency Report site status)."""
+    from urllib.parse import quote
+    host = (urlparse(url).hostname or url).lower()
+    return f"https://transparencyreport.google.com/safe-browsing/search?url={quote(host, safe='')}"
 
 
 # How each list is named to a person.

@@ -202,7 +202,8 @@ async def _weights(coll) -> tuple[int, dict[str, int]]:
 
 # Technical knowledge is answered only when asked for by its exact id; it takes no part in matching everyday questions.
 TECHNICAL_KINDS = ("exploited_vulnerability", "attack_technique")
-_NOT_GENERAL = {"$nin": ["gemini_answer", *TECHNICAL_KINDS]}
+# The Official Organisation Directory is reference data the checks read (services/org_directory.py), never quoted as an answer.
+_NOT_GENERAL = {"$nin": ["gemini_answer", *TECHNICAL_KINDS, "official_organisation"]}
 _TECHNICAL_ID = re.compile(r"\b(CVE-\d{4}-\d{4,}|T\d{4}(?:\.\d{3})?)\b", re.I)
 
 

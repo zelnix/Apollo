@@ -75,6 +75,8 @@ class IntelSource(BaseModel):
     check: Literal["reputation", "final_destination"] = "reputation"
     # Why it didn't complete, when it didn't (timeout, quota_exhausted, nonexistent_domain, …).
     failure: Optional[str] = None
+    # The list's own page, so a person can see who flagged it (the entry's own page when the list has one).
+    url: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- RDAP domain lookup
