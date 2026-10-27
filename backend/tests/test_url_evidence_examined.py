@@ -16,7 +16,7 @@ from services.higgins import coordinator
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
 from services.higgins.preview.preview_simulator import simulated_text
-from services.higgins.provider import GeminiResult, Purpose
+from services.higgins.provider import AIResult, Purpose
 
 pytestmark = pytest.mark.anyio
 
@@ -62,11 +62,9 @@ async def test_investigation_with_a_url_item_can_complete():
     original = coordinator.provider.generate
 
     async def answer(system, contents, **kwargs):
-        from google.genai import types
         from services.higgins.preview.preview_simulator import evidence_blocks
         text = simulated_text(Purpose.INVESTIGATION, True, evidence_blocks(contents))
-        return GeminiResult(text=text, content=types.Content(role="model", parts=[types.Part(text=text)]),
-                            finish_reason="STOP", usage={"prompt_token_count": 1, "candidates_token_count": 1,
+        return AIResult(text=text, finish_reason="STOP", usage={"prompt_token_count": 1, "candidates_token_count": 1,
                                                          "total_token_count": 2}, grounding=None,
                             model=kwargs.get("model") or "gemini-3.1-flash-lite")
 

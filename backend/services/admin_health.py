@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from services.higgins import model_choice, provider
+from services.higgins import ai_settings, provider
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -75,8 +75,8 @@ async def check_ai_provider() -> dict:
             # No calls in the last hour — check if there are ANY records
             any_record = await db.gemini_usage.find_one({}, {"_id": 1})
             if any_record:
-                return _status(UNKNOWN, "No Gemini calls in the last hour")
-            return _status(UNKNOWN, "No Gemini usage records found")
+                return _status(UNKNOWN, "No AI calls in the last hour")
+            return _status(UNKNOWN, "No AI usage records found")
 
         r = results[0]
         success_rate = r["ok"] / r["total"] if r["total"] > 0 else 0
@@ -271,13 +271,14 @@ async def check_platforms() -> dict:
 async def check_integrations() -> dict[str, dict]:
     integrations = {}
 
-    # Gemini / Magnum DI
+    # The AI provider selected in ApolloSG Settings / Magnum DI
     ai = await check_ai_provider()
+    sel = await ai_settings.selection()
     integrations["gemini_magnum_di"] = {
-        "name": "Gemini / Magnum DI",
+        "name": f"{ai_settings.label(sel['provider'])} / Magnum DI",
         "status": CONNECTED if ai["status"] == OK else DEGRADED if ai["status"] == DEGRADED else UNABLE,
         "detail": ai["detail"],
-        "model": await model_choice.model_for("magnum_di"),
+        "model": sel["model"],
     }
 
     # Google Safe Browsing / Threat Intelligence
@@ -466,9 +467,9 @@ async def get_usage_and_costs() -> dict:
     # Alerts
     alerts = []
     if gemini_cost_today > 1.0:
-        alerts.append({"level": "warning", "message": f"Daily Gemini cost spike: ${gemini_cost_today:.4f}"})
+        alerts.append({"level": "warning", "message": f"Daily AI cost spike: ${gemini_cost_today:.4f}"})
     if gemini_cost_month > 10.0:
-        alerts.append({"level": "warning", "message": f"Monthly Gemini cost elevated: ${gemini_cost_month:.4f}"})
+        alerts.append({"level": "warning", "message": f"Monthly AI cost elevated: ${gemini_cost_month:.4f}"})
 
     # Check for recent billing failures
     try:

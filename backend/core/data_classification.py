@@ -127,6 +127,9 @@ FIELD_CATEGORIES: dict[str, frozenset[DataCategory]] = {
     "certificates":            frozenset({DataCategory.SECURITY_INDICATOR}),
     "enforcement_evidence":    frozenset({DataCategory.DEVICE_OBSERVATION}),
     "evidence_provenance":     frozenset({DataCategory.INVESTIGATION_METADATA}),
+    "processing_source":       frozenset({DataCategory.INVESTIGATION_METADATA}),
+    "evidence_completeness":   frozenset({DataCategory.INVESTIGATION_METADATA}),
+    "evidence_representation": frozenset({DataCategory.INVESTIGATION_METADATA}),
 
     # ── Dual-classified fields (security indicator AND personal data) ──
     "sender":                  frozenset({DataCategory.SECURITY_INDICATOR, DataCategory.PII}),

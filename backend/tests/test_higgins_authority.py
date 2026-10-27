@@ -326,17 +326,10 @@ class TestSystemPromptStandard:
         from services.higgins import coordinator
         assert not hasattr(coordinator, "SYSTEM")
 
-    def test_chat_system_prompt(self):
-        from services.higgins.chat import SYSTEM
-        # Chat must have clear role boundaries
-        assert "APOLLO DETECTS" in SYSTEM
-        assert "COMMUNICATES" in SYSTEM or "EXPLAINS" in SYSTEM
-        assert "SCOPE" in SYSTEM
-
-    def test_chat_read_only_restrictions(self):
-        from services.higgins.chat import SYSTEM
-        # Chat should have scope restrictions
-        assert "SCOPE" in SYSTEM or "cannot" in SYSTEM
+    def test_chat_has_no_prompt_and_no_ai_call(self):
+        """Ask Higgins answers only from ApolloSG's own knowledge and the phone's state: no prompt, no AI gateway."""
+        from services.higgins import chat
+        assert not hasattr(chat, "SYSTEM") and not hasattr(chat, "provider")
 
 
 # ── 8. Response Structure Verification ──────────────────────────────────────

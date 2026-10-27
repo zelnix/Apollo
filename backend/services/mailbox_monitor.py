@@ -308,6 +308,7 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
             from services.triage import record_triage_history
             try:
                 await record_triage_history(device_id, triage_result.investigation, category="email",
+                                            evidence_source="connected_mailbox",
                                             subject=str(message.get("subject", ""))[:200])
             except Exception as exc:
                 logger.warning("triage_history_write_failed device=%s error=%s", device_id, type(exc).__name__)
@@ -406,6 +407,7 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
         from services.triage import record_triage_history
         try:
             await record_triage_history(device_id, triage_result.investigation, category="email",
+                                        evidence_source="connected_mailbox",
                                         subject=str(message.get("subject", ""))[:200],
                                         investigation_case_id=case["case_id"])
         except Exception as exc:

@@ -12,7 +12,8 @@
       "reputation": "A reputation check didn't complete",
       "final_destination": "Apollo couldn't verify where this link finally leads",
       "number_reputation": "The phone number's reputation check didn't complete",
-      "sender_authentication": "ApolloSG couldn't read the email's sender authentication (SPF, DKIM and DMARC)"
+      "sender_authentication": "ApolloSG couldn't read the email's sender authentication (SPF, DKIM and DMARC)",
+      "block_proof": "Apollo couldn't verify an earlier block"
     },
     "failures": {
       "timeout": "it timed out",
@@ -34,14 +35,16 @@
       "unparseable_link": "the link couldn't be read",
       "redirect_failure": "the redirect couldn't be followed",
       "original_not_provided": "ApolloSG received a copy of the email without its full headers",
-      "not_recorded": "the receiving mail server didn't record those results in the email"
+      "not_recorded": "the receiving mail server didn't record those results in the email",
+      "no_packet_evidence": "the record has no packet drop Apollo observed and matched to it"
     },
     "stale": "the live lookup failed ({failure}), so Apollo used the result of its last check",
     "checkNames": {
       "reputation": "Reputation check",
       "final_destination": "Final destination",
       "number_reputation": "Phone number reputation",
-      "sender_authentication": "Sender authentication"
+      "sender_authentication": "Sender authentication",
+      "block_proof": "Proof of the block"
     },
     "failureSentences": {
       "timeout": "The service timed out.",
@@ -63,7 +66,8 @@
       "unparseable_link": "The link couldn't be read.",
       "redirect_failure": "A redirect couldn't be followed.",
       "original_not_provided": "ApolloSG didn't receive the full email headers.",
-      "not_recorded": "The receiving mail server didn't record those results in the email."
+      "not_recorded": "The receiving mail server didn't record those results in the email.",
+      "no_packet_evidence": "The record doesn't contain a packet drop Apollo observed and matched to this event."
     },
     "noReasonRecorded": "No reason was recorded.",
     "statusLabels": {
@@ -95,6 +99,57 @@
       "tls_identity": "Connection certificate",
       "certificate_change": "Connection certificate",
       "qr_payload": "QR code contents"
+    },
+    "unverifiedLabel": "Couldn't verify",
+    "unverified": {
+      "reputation": "whether it's listed as a known threat",
+      "final_destination": "where the link finally leads",
+      "number_reputation": "whether the number has been reported for scams",
+      "sender_authentication": "whether the email really came from the sender it shows",
+      "block_proof": "that the connection was actually blocked"
+    },
+    "unverifiedEvidence": {
+      "domain_age": "how long the website's address has existed",
+      "phone_reputation": "whether the number has been reported for scams",
+      "breach": "whether the account appears in known data breaches",
+      "destinations": "whether the places it connects to are known threats",
+      "reputation": "whether it's listed as a known threat",
+      "redirect": "where each redirect leads",
+      "auth_results": "whether the email really came from the sender it shows",
+      "scheme": "what the page contains",
+      "pwa_origin": "which website the installed web app came from",
+      "push_origin": "which website sent the notification",
+      "calendar": "what the calendar invitation contains",
+      "pdf_features": "what the PDF contains",
+      "office_features": "what the Office document contains",
+      "archive_entries": "what the archive contains",
+      "archive_encrypted": "what the archive contains",
+      "os_threat": "whether the phone's own threat scan found anything",
+      "dns_change": "whether the DNS settings were changed",
+      "dns_server": "whether the DNS settings were changed",
+      "tls_validation": "whether the connection's certificate is genuine",
+      "tls_identity": "whether the connection's certificate is genuine",
+      "certificate_change": "whether the connection's certificate is genuine",
+      "qr_payload": "what the QR code contains"
+    },
+    "unverifiedGaps": {
+      "INTELLIGENCE_PROVIDER_UNAVAILABLE": "whether it's listed as a known threat",
+      "EMAIL_HEADERS_UNAVAILABLE": "whether the email really came from the sender it shows",
+      "BROWSER_VISIBILITY_UNAVAILABLE": "what the page showed and which website it came from",
+      "UNSUPPORTED_FILE_TYPE": "what the file contains",
+      "ENCRYPTED_CONTENT": "what the encrypted contents are",
+      "CONTENT_NOT_ACCESSIBLE": "what the content contains",
+      "PLATFORM_CAPABILITY_UNAVAILABLE": "information this device doesn't share",
+      "PERMISSION_UNAVAILABLE": "what the check needing that permission would have shown",
+      "NETWORK_CHECK_FAILED": "what the network check would have shown",
+      "INSUFFICIENT_EVIDENCE": "anything beyond the evidence available",
+      "DETERMINISTIC_CHECK_ERROR": "what that Triage check would have shown"
+    },
+    "unrecorded": {
+      "name": "Original evidence",
+      "status": "not recorded with this case",
+      "reason": "No reason was recorded.",
+      "unverified": "the content that was checked"
     }
   },
   "evidenceProfiles": {

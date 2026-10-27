@@ -66,16 +66,16 @@ def sub(kind: str, value: str, label: str = "") -> dict:
 # ------------------------------------------------------------------ model configuration
 
 class TestModelConfiguration:
-    """Magnum DI investigates with Gemini 3.1 Flash-Lite; other paths keep their existing model."""
+    """Until an admin changes it in ApolloSG Settings, Magnum DI investigates with Gemini 3.1 Flash-Lite."""
 
     def test_models(self):
-        from services.higgins.provider import TEXT_MODEL
-        assert TEXT_MODEL == "gemini-3.1-flash-lite", f"TEXT_MODEL is {TEXT_MODEL}"
+        from services.higgins.ai_settings import DEFAULT
+        assert DEFAULT == {"provider": "gemini", "model": "gemini-3.1-flash-lite"}, f"default is {DEFAULT}"
 
     def test_capabilities_registered(self):
-        from services.higgins.provider import CAPABILITIES
-        caps = CAPABILITIES.get("gemini-3.1-flash-lite")
-        assert caps is not None, "gemini-3.1-flash-lite not in CAPABILITIES"
+        from services.higgins.ai_settings import capabilities
+        caps = capabilities("gemini-3.1-flash-lite")
+        assert caps, "gemini-3.1-flash-lite is not an approved model"
         for req in ("functions", "vision", "search", "json", "text"):
             assert req in caps, f"Missing capability: {req}"
 
@@ -118,12 +118,13 @@ class TestGeminiRequestContract:
         source = inspect.getsource(coordinator.run_turn)
         assert 'provider.generate("", contents' in source, "the system argument must be empty"
         assert "response_schema=response_schema(evidence_ids=" in source, "the response shape must come from the schema"
-        assert "google_search" in inspect.getsource(coordinator), "Google Search stays attached as a tool"
+        assert "web_search=search_on" in inspect.getsource(coordinator), "web search stays attached when needed"
+        assert "google" not in inspect.getsource(coordinator).lower().replace("google search", ""), "no provider SDK in feature code"
 
     def test_request_is_question_then_evidence(self):
         from services.higgins import coordinator
         source = inspect.getsource(coordinator.run_turn)
-        assert 'types.Part(text=payload["message"]), *evidence_parts' in source, \
+        assert 'Message("user", [Part(text=payload["message"]), *evidence_parts])' in source, \
             "the request must be the question followed by the evidence parts"
         assert "INVESTIGATION BRIEF" not in source, "the investigation brief must be gone"
         assert "evidenceInventory" not in inspect.getsource(coordinator), "no second representation of evidence"
@@ -131,12 +132,12 @@ class TestGeminiRequestContract:
     def test_schema_matches_the_validator_contract(self):
         from services.higgins.contracts import ModelResponse
         from services.higgins.response_schema import RESPONSE_SCHEMA
-        schema_fields = set(RESPONSE_SCHEMA.properties.keys())
+        schema_fields = set(RESPONSE_SCHEMA["properties"].keys())
         wire_fields = {field.alias or name for name, field in ModelResponse.model_fields.items()}
         assert schema_fields == wire_fields, f"schema drift: {schema_fields ^ wire_fields}"
         # extra="forbid" on the contract: the schema must not invite unknown fields
         for name in ("overview", "explanationMarkdown", "assessment", "attention", "completion"):
-            assert name in (RESPONSE_SCHEMA.required or []), f"{name} must be required"
+            assert name in (RESPONSE_SCHEMA.get("required") or []), f"{name} must be required"
 
     def test_evidence_is_complete_and_labelled_once(self):
         from services.higgins import evidence as ev

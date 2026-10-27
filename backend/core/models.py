@@ -4,9 +4,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.db import BaseDocument
+from core.evidence_model import (LEGACY_PROVENANCE, EvidenceCompleteness, EvidenceRepresentation, EvidenceSource,
+                                 ProcessingSource, evidence_model)
 
 Verdict = Literal["clean", "malicious", "unknown"]
 ApolloState = Literal["sniffing", "resting", "ears_up", "growling", "barking", "biting"]
@@ -306,6 +308,21 @@ class PatrolEventIn(BaseModel):
     # written only by the investigation projector when a response is committed. Until it is set the
     # case is genuinely still being investigated, so the app never reports a finished case as running.
     investigation_completed_at: Optional[datetime] = None
+    # The evidence model (core/evidence_model.py), kept apart: what supplied the evidence (never a server), where
+    # Apollo's checks ran, whether evidence is missing, and the privacy state of what the record holds. A device may
+    # send only its own evidence source; patrol_policy.minimal_patrol sets the rest for a synced summary.
+    evidence_provenance: Optional[EvidenceSource] = None
+    processing_source: Optional[ProcessingSource] = None
+    evidence_completeness: Optional[EvidenceCompleteness] = None
+    evidence_representation: Optional[EvidenceRepresentation] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_legacy_evidence(cls, data: Any) -> Any:
+        """A record stored before the separated model ("server_projected" / "incomplete") is read into it."""
+        if isinstance(data, dict) and data.get("evidence_provenance") in LEGACY_PROVENANCE:
+            return {**data, **evidence_model(data)}
+        return data
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):

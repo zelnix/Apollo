@@ -13,16 +13,16 @@ import uuid
 from datetime import datetime
 
 import pytest
-from google.genai import types
+from services.higgins.ai_request import Message, Part
 from starlette.requests import Request
 
 from core.db import db
 from routers import admin_portal
-from services.higgins import jobs, model_choice, provider
+from services.higgins import ai_settings, jobs, provider
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
 from services.higgins.preview.preview_simulator import evidence_blocks, simulated_text
-from services.higgins.provider import GeminiResult, Purpose
+from services.higgins.provider import AIResult, Purpose
 from services.higgins.teddy import official, search, triage
 
 pytestmark = pytest.mark.anyio
@@ -70,9 +70,9 @@ def _gateway(monkeypatch, teddy_text=None, teddy_grounding=None):
             text, grounding = teddy_text or "", teddy_grounding
         else:
             text, grounding = simulated_text(Purpose.INVESTIGATION, True, evidence_blocks(contents)), None
-        return GeminiResult(text=text, content=types.Content(role="model", parts=[types.Part(text=text)]), finish_reason="STOP",
+        return AIResult(text=text, finish_reason="STOP",
                             usage={"prompt_token_count": 10, "candidates_token_count": 5, "total_token_count": 15}, grounding=grounding,
-                            model=kwargs.get("model") or provider.TEXT_MODEL)
+                            model=kwargs.get("model") or "gemini-3.1-flash-lite")
 
     monkeypatch.setattr(provider, "generate", fake)
     return calls
@@ -217,7 +217,7 @@ async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
     calls = _gateway(monkeypatch, text, grounding)
     owner, case, response, _ = await _case([("text", "Zenith Quantum Markets offers 3% daily returns. Message us on WhatsApp to start.")])
     assert [c["purpose"] for c in calls] == [Purpose.TEDDY_SEARCH], "one low-cost search call, and no Magnum DI call"
-    assert calls[0]["model"] == await model_choice.model_for("magnum_di") and calls[0]["tools"][0].google_search is not None
+    assert calls[0]["model"] == await ai_settings.investigation_model() and calls[0]["web_search"] is True
     assert response["assessment"] == "concern_found" and "Investor Alert List" in response["overview"]
     assert response["outcome"] == "confirmed_threat", "the planned search ran before Teddy settled the outcome"
     assert response["findings"][0]["sourceIds"], "the warning keeps its source"
@@ -259,9 +259,9 @@ async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_searc
     purposes = [c["purpose"] for c in calls]
     assert purposes == [Purpose.TEDDY_SEARCH, Purpose.INVESTIGATION], "Teddy's one search, then Magnum DI's one call"
     magnum = calls[1]
-    assert magnum["tools"] is None, "Teddy already has the external facts, so Magnum's Google Search is off"
-    assert magnum["model"] == await model_choice.model_for("magnum_di"), "the existing configured model — no escalation"
-    assert "outcome" in magnum["response_schema"].required, "Magnum DI feeds the same outcome system"
+    assert magnum["web_search"] is False, "Teddy already has the external facts, so Magnum's Google Search is off"
+    assert magnum["model"] == await ai_settings.investigation_model(), "the existing configured model — no escalation"
+    assert "outcome" in magnum["response_schema"]["required"], "Magnum DI feeds the same outcome system"
     sent = [p.text for p in captured[0] if p.text]
     assert any("TC FlyBy fly-by results" in t and "For Magnum DI to settle" in t for t in sent)
     assert any("(reasoning) Message and deception analysis" in t and "payment details change" in t for t in sent), "only the unresolved issue"
@@ -340,10 +340,10 @@ async def test_an_image_teddy_cannot_read_goes_to_magnum_with_search_on(monkeypa
     captured = _spy(monkeypatch)
     _owner, case, _response = await _files_case([({"clientItemId": "shot", "filename": "shot.png", "mediaType": "image/png", "kind": "image"}, PNG)])
     assert [c["purpose"] for c in calls] == [Purpose.INVESTIGATION]
-    assert calls[0]["tools"], "Magnum DI reads the image for the first time, so external facts may be missing: Search on"
+    assert calls[0]["web_search"], "Magnum DI reads the image for the first time, so external facts may be missing: Search on"
     teddy = case["routing"]["teddy"]
     assert teddy["magnumSearch"] is True and [i["capability"] for i in teddy["issues"]] == ["reading"]
-    assert any(p.inline_data for p in captured[0]), "the image itself is what Magnum DI receives"
+    assert any(p.data is not None for p in captured[0]), "the image itself is what Magnum DI receives"
 
 
 async def test_a_magnum_retry_reuses_teddys_record(monkeypatch):

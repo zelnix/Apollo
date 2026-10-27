@@ -10,6 +10,7 @@ from typing import Any
 
 from core.config import URL_HMAC_SECRET
 from core.db import db, now_utc
+from core.evidence_model import FIELDS as EVIDENCE_FIELDS, with_evidence_model
 from core.models import PatrolEventIn
 from services.patrol_policy import SUMMARY_ADAPTER, refresh_summary
 from services.record_classification import classify_record, generate_higgins_briefing
@@ -52,7 +53,9 @@ def _issue_key(event: PatrolEventIn) -> str:
 
 
 def _fingerprint(event: PatrolEventIn, verified: bool) -> str:
-    payload = event.model_dump(mode="json", exclude={"verified_block"})
+    # The evidence model fields are metadata about the record, not a change to it: left out, so records written before
+    # the model keep their fingerprint and are never re-appended as a new revision.
+    payload = event.model_dump(mode="json", exclude={"verified_block", *EVIDENCE_FIELDS})
     payload["verified_block"] = verified
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -72,14 +75,10 @@ def _effective(event: PatrolEventIn, verified: bool) -> tuple[str, str]:
 
 
 def _wire(row: dict[str, Any]) -> dict[str, Any]:
-    # Derive evidence_provenance from the stored event data: if the event has local evidence
-    # (non-empty summary and not a server projection), mark it as full. Otherwise, limited.
-    event_data = row.get("event") or {}
-    stored_provenance = event_data.get("evidence_provenance")
-    has_substantive_summary = bool(row.get("summary") and row["summary"].strip())
-    evidence_provenance = stored_provenance if stored_provenance else (
-        "local_device" if has_substantive_summary and row.get("source_type") != "server_projected" else "server_projected"
-    )
+    # The event carries the separated evidence model (core/evidence_model.py); records written before it are read in
+    # here. The record's own source type (device assessment, investigation) is never offered as evidence provenance.
+    event_data = with_evidence_model(row.get("event") or {})
+    row = {**row, "event": event_data}
     # A stored privacy summary is shown in its current wording — never the older location wording it was written with.
     if event_data.get("adapter_label") == SUMMARY_ADAPTER:
         event_data = refresh_summary(event_data)
@@ -94,7 +93,6 @@ def _wire(row: dict[str, Any]) -> dict[str, Any]:
         "freshness": row["freshness"], "outageContext": row.get("outage_context"), "resolution": row.get("resolution"),
         "duplicateOf": row.get("duplicate_of"), "duplicateReason": row.get("duplicate_reason"),
         "occurredAt": row["occurred_at"], "updatedAt": row["created_at"], "event": row["event"],
-        "evidence_provenance": evidence_provenance,
         # Retrofit fields — classification, Higgins briefing, reassessment metadata
         "recordClass": row.get("record_class"),
         "higginsBriefing": row.get("higgins_briefing"),

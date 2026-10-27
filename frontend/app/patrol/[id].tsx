@@ -52,7 +52,7 @@ import {
 } from "@/src/domain/threatCase";
 import type { PatrolEvent, PatrolRecord, SourceMetadata, HigginsBriefing } from "@/src/domain/types";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
-import { caseOrigin, completenessLabel, evidenceSourceLabel, hasRecordedFindings, privacyNote, processingLabels } from "@/src/domain/caseFacts";
+import { caseOrigin, completenessLabel, evidenceSourceLabel, hasRecordedFindings, privacyNote, processingLabels, unverifiedSentence } from "@/src/domain/caseFacts";
 import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, sourceHeading, type CaseSource } from "@/src/domain/caseSources";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
@@ -624,6 +624,12 @@ function SourcesSection({ sources }: { sources: CaseSource[] }) {
               {sourceHeading(src)}
             </Text>
             <Text style={s.evidenceOriginalText} selectable>{src.returned}</Text>
+            {/* A check that didn't finish: what that left unverified, after what was checked, what happened and why. */}
+            {src.unverified ? (
+              <Text style={s.evidenceOriginalText} selectable testID={`tc-evidence-source-${i}-unverified`}>
+                {unverifiedSentence({ unverified: src.unverified })}
+              </Text>
+            ) : null}
             {src.url ? (
               <Pressable onPress={() => void Linking.openURL(src.url!)} accessibilityRole="link">
                 <Text style={s.evidenceLink}>{src.url}</Text>

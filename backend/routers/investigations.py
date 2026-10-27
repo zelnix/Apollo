@@ -26,7 +26,7 @@ from services.storage import storage_configured
 from routers.push import push_configured
 from services.higgins import evidence as ev
 from services.higgins import jobs
-from services.higgins import model_choice
+from services.higgins import ai_settings
 from services.higgins import presenter
 from services.higgins import provider
 from services.higgins import repository as repo
@@ -97,14 +97,16 @@ async def _case_json(case: dict) -> dict:
 # ------------------------------------------------------------------ capabilities
 @router.get("/ai/capabilities")
 async def capabilities():
-    config = provider.configuration()
-    models = await model_choice.current()
+    sel = await ai_settings.selection()
+    config = provider.configuration(sel["provider"])
+    model = sel["model"]
     key = config["keyConfigured"]
 
     def modality(name: str, model: str, cap: str):
-        supported = cap in provider.CAPABILITIES.get(model, set())
+        supported = cap in ai_settings.capabilities(model) and config["connected"]
         status = "available" if key and supported else ("unconfigured" if not key else "unsupported")
-        return {"name": name, "status": status, "model": model, "reason": None if status == "available" else ("GEMINI_API_KEY missing" if not key else f"model lacks {cap}")}
+        return {"name": name, "status": status, "model": model,
+                "reason": None if status == "available" else (f"{config['provider']} API key missing" if not key else f"model lacks {cap}")}
     integrations = [{"name": "safe_browsing", "status": "available" if SAFE_BROWSING_API_KEY else "unconfigured", "reason": None if SAFE_BROWSING_API_KEY else "SAFE_BROWSING_API_KEY"},
                     {"name": "phone_reputation", "status": "available" if IPQS_API_KEY else "unconfigured", "reason": None if IPQS_API_KEY else "IPQS_API_KEY"},
                     {"name": "breach_lookup", "status": "available" if HIBP_API_KEY else "unconfigured", "reason": None if HIBP_API_KEY else "HIBP_API_KEY"},
@@ -115,10 +117,10 @@ async def capabilities():
               "caseBytes": {"value": ev.MAX_CASE_BYTES, "unit": "bytes", "purpose": "aggregate active-case payload", "overflow": "413"},
               "documentPages": {"value": ev.MAX_PAGES, "unit": "pages", "purpose": "supported document budget", "overflow": "later pages recorded as omitted"},
               "lifetimeSeconds": {"value": policy()["lifetimeSeconds"], "unit": "seconds", "purpose": "temporary content ceiling; never extended", "overflow": "410"}}
-    return JSONResponse({"schemaVersion": 1, "provider": "gemini", "modalities": [modality("text", models["magnum_di"], "text"), modality("vision", models["magnum_di"], "vision"),
-                         modality("research", models["magnum_di"], "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
+    return JSONResponse({"schemaVersion": 1, "provider": sel["provider"], "modalities": [modality("text", model, "text"), modality("vision", model, "vision"),
+                         modality("research", model, "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
                          "providerMode": provider.get_provider_mode(),
-            "models": models, "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
+            "models": {"magnum_di": model, "tc_flyby": model}, "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
 
 
 # ── Source metadata builder (Original Item Summary) ──────────────────────────
@@ -412,6 +414,7 @@ async def _record_triage_history(owner: str, triage_result, *, category: str, su
         return  # cache replay of an already-recorded investigation
     try:
         await record_triage_history(owner, triage_result.investigation, category=category, subject=subject,
+                                    evidence_source="device_submission",  # the captured notification this device sent
                                     client_submission_id=client_submission_id,
                                     investigation_case_id=investigation_case_id)
     except Exception as exc:

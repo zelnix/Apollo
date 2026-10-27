@@ -164,6 +164,10 @@ async def upsert_event(body: PatrolEventIn):
                 # Stale or replayed evidence: preserve the existing resolution
                 payload["status"] = existing["status"]
                 payload["resolved_at"] = existing["resolved_at"]
+        # Where the evidence came from and where it was processed are recorded once: a later sync never changes them.
+        for key in ("evidence_provenance", "processing_source"):
+            if existing.get(key):
+                payload.pop(key, None)
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
         await _append_authoritative_record(doc)

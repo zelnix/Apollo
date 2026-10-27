@@ -148,8 +148,8 @@ async def test_when_the_archive_also_fails_the_direct_refusal_is_reported(monkey
 async def test_parity_fingerprint_reports_presence_of_credentials_never_values(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "secret-value-123")
     value = await parity.snapshot()
-    assert set(value) == {"code", "learn", "feeds", "settings", "models", "credentialsSet", "fileStorage"}
-    assert set(value["models"]) == {"magnum_di", "tc_flyby", "ask_higgins"} and value["models"]["tc_flyby"] == value["models"]["magnum_di"]
+    assert set(value) == {"code", "learn", "feeds", "settings", "aiModel", "credentialsSet", "fileStorage"}
+    assert set(value["aiModel"]) == {"provider", "model"}
     assert value["credentialsSet"]["GEMINI_API_KEY"] is True
     assert "secret-value-123" not in json.dumps(value, default=str)
     assert value["learn"]["curatedCount"] >= 43 and len(value["code"]) == 16

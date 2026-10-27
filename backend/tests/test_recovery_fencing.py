@@ -1021,8 +1021,8 @@ async def _document_continuation_replay_delivers_images():
             await coordinator.run_turn(owner, await repo.get_case(owner, case["case_id"]), await repo.get_job(owner, case["case_id"], job["job_id"]), progress)
     finally:
         coordinator.provider.generate = original_generate
-    delivered = [part for content in captured["contents"] for part in (content.parts or []) if part.inline_data]
-    assert delivered and delivered[0].inline_data.data
+    delivered = [part for content in captured["contents"] for part in (content.parts or []) if part.data is not None]
+    assert delivered and delivered[0].data and delivered[0].mime_type
 
 
 async def _publication_manifest_is_attempt_isolated():
@@ -1120,14 +1120,16 @@ async def _ordinary_chat_has_no_case_side_effect(_inv):
     owner = f"chat-{uuid.uuid4().hex}"
     await context.ensure_indexes()
     before = {name: await db[name].count_documents({"owner_id": owner}) for name in ("investigation_cases", "investigation_jobs", "investigation_events", "investigation_evidence")}
-    original = chat.provider.generate
-    async def fake_generate(*_args, **_kwargs):
-        return SimpleNamespace(text=json.dumps({"answer": "A general explanation.", "intent": "answer", "clarification": None, "action": None}))
-    chat.provider.generate = fake_generate
+    from services.higgins import provider
+    assert not hasattr(chat, "provider"), "Ask Higgins makes no AI call"
+    original = provider.generate
+    async def must_not_call(*_args, **_kwargs):
+        raise AssertionError("Ask Higgins must never call an AI model")
+    provider.generate = must_not_call
     try:
         response = await ask_router.higgins_chat(ask_router.ChatRequest(message="What does growling mean?", conversationId="conversation-1234"), _request(owner))
     finally:
-        chat.provider.generate = original
+        provider.generate = original
     payload = json.loads(response.body)
     assert payload["investigativeWorkStarted"] is False
     assert {name: await db[name].count_documents({"owner_id": owner}) for name in before} == before

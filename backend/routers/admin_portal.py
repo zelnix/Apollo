@@ -8,6 +8,7 @@ Truthfulness: every status from a real source; 'Unknown' when unverifiable.
 from __future__ import annotations
 
 import html as html_mod
+import json
 import re
 import io
 import os
@@ -27,7 +28,7 @@ from core.db import db, now_utc
 from core import local_time
 from core.brand import BANNER_ALT, BANNER_PATH
 from services.gemini_usage import MODEL_PRICING
-from services.higgins import model_choice, provider
+from services.higgins import ai_settings, provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
     get_dashboard_health, check_integrations, get_usage_and_costs,
@@ -61,13 +62,14 @@ NAV = [
     ("Play Store",      "/api/admin/play-console",     "&#9654;"),
     ("Family Help Test", "/api/admin/family-help-test", "&#128241;"),
     ("Devices",         "/api/admin/device-list",      "&#128242;"),
-    ("Gemini Map",      "/api/admin/gemini-map",       "&#129517;"),
+    ("AI Map",          "/api/admin/gemini-map",       "&#129517;"),
     ("Reconciliation",  "/api/admin/reconciliation",   "&#128209;"),
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
     ("Releases",        "/api/admin/releases",         "&#128230;"),
     ("Diagnostics",     "/api/admin/diagnostics",      "&#128295;"),
     ("Audit",           "/api/admin/audit-log",        "&#128220;"),
+    ("ApolloSG Settings", "/api/admin/apollosg-settings", "&#9881;"),
     ("Admin",           "/api/admin/settings",         "&#128100;"),
 ]
 
@@ -2860,7 +2862,7 @@ async def system_page(request: Request):
 
     be = await check_backend()
     db_health = await check_database()
-    models = await model_choice.current()
+    models = await ai_settings.selection()
 
     try:
         migration_count = await db.apollo_migrations.count_documents({})
@@ -2962,7 +2964,7 @@ _KB_TASKS: set = set()  # keeps a manual refresh alive until it finishes
 
 
 # ── Intelligence Reuse: what Apollo reused instead of paying to ask again ─────
-_REUSE_SITES = {"higgins_general_question": "Higgins general question (Gemini)", "tc_flyby_search": "TC FlyBy targeted search (Gemini + Google Search)",
+_REUSE_SITES = {"higgins_general_question": "Ask Higgins general question (ApolloSG's KB; no AI call)", "tc_flyby_search": "TC FlyBy targeted search (AI web search)",
                 "ipqs_phone": "Phone reputation (IPQualityScore)", "ipqs_url": "Link reputation (IPQualityScore)", "rdap": "Domain registration (RDAP)"}
 
 
@@ -3073,7 +3075,7 @@ async def releases(request: Request):
     <table>
         <tr><td>Frontend</td><td><code>1.0.0</code></td></tr>
         <tr><td>Backend</td><td><code>Expo + FastAPI</code></td></tr>
-        {_models_rows(await model_choice.current())}
+        {_models_rows(await ai_settings.selection())}
     </table>
 
     <h2>Recent Migrations</h2>
@@ -3460,23 +3462,22 @@ async def device_list_page(request: Request):
     return _shell("Devices", "/api/admin/device-list", body, admin=adm, extra_css=css)
 
 
-# ── Gemini Map: every feature that calls Gemini, and what it used this week ──
+# ── AI Map: every feature that calls the AI provider, and what it used this week ──
 # Each AI usage record is put under the feature that made it: by its purpose, and for a shared purpose by the
 # correlation id the feature gives its calls. Anything else is shown by its purpose, so the totals always add up.
+# The provider and model are chosen in one place only: ApolloSG Settings → AI Provider & Model.
 
 _GEMINI_FEATURES = (
-    ("magnum_di", "Magnum DI", "The full investigation of a case, with Google Search when it needs it.",
+    ("magnum_di", "Magnum DI", "The full investigation of a case, with web search when it needs it.",
      "services/higgins/coordinator.py → run_turn()",
      "When TC FlyBy and what ApolloSG already knows can't settle an investigation."),
     ("tc_flyby", "TC FlyBy web search", "Narrow searches about a link, number, company, ABN, ACN or licence.",
      "services/higgins/teddy/search.py → run()",
      "During an investigation, only for what no saved answer from the last 7 days covers."),
-    ("ask_higgins", "Ask Higgins", "Answers a general scam-safety question nothing in ApolloSG already answers.",
-     "services/higgins/chat.py → reply()",
-     "When a question is in scope and nothing saved answers it; the answer is saved and reused."),
 )
 _FEATURE_NAMES = {key: name for key, name, *_ in _GEMINI_FEATURES}
 _RETIRED_FEATURES = {
+    "ask_higgins": "Ask Higgins general answers (removed: Ask Higgins makes no AI call)",
     "page_signal_extraction": "Screenshot page reading (removed)", "page_crawl": "Web page reading (removed)",
     "protection": "Protection explanations (removed)", "public_advisory_analysis": "Scam alert analysis (retired)",
     "research": "Research lookups (retired)", "triage": "Triage screening (retired)", "msg_check": "Message second opinion (retired)",
@@ -3559,7 +3560,7 @@ def _trend_table(weeks: list[datetime], usage: list[dict[str, dict]], tz: int) -
 
     heads = "".join(f"<th class='num'>{'This week so far' if i == len(weeks) - 1 else 'Week of'}<br>"
                     f"{w.astimezone(zone).strftime('%a %-d %b')}</th>" for i, w in enumerate(weeks))
-    body = "".join(row(names[k], k) for k in current) + row("Removed or retired features", "other") + row("All Gemini calls", "total", strong=True)
+    body = "".join(row(names[k], k) for k in current) + row("Removed or retired features", "other") + row("All AI calls", "total", strong=True)
     return (f'<h2>Last four weeks</h2><p class="muted">Estimated cost and calls per week (Monday to Sunday), oldest first. '
             f'Each finished week is compared with the week before it; this week isn\'t finished, so it has no comparison yet.</p>'
             f'<div class="table-scroll"><table data-testid="gemini-trend-table"><thead><tr><th>Feature</th>{heads}</tr></thead>'
@@ -3572,12 +3573,14 @@ def _usage_cells(row: Optional[dict]) -> str:
             f"<td class='num'>{row.get('searches', 0):,}</td><td class='num'>${row.get('cost', 0):.4f}</td><td>{_t(row.get('last'), 'short')}</td>")
 
 
-def _models_rows(models: dict[str, str]) -> str:
-    """The models in use, for the System and Releases pages."""
-    esc = html_mod.escape
-    return (f"<tr><td>Magnum DI and TC FlyBy model</td><td><code>{esc(models['magnum_di'])}</code></td></tr>"
-            f"<tr><td>Ask Higgins model</td><td><code>{esc(models['ask_higgins'])}</code> "
-            f"<a href='/api/admin/gemini-map'>Change on the Gemini Map</a></td></tr>")
+def _selection_text(sel: dict) -> str:
+    return f"{ai_settings.label(sel['provider'])} · {sel['model']}"
+
+
+def _models_rows(sel: dict) -> str:
+    """The AI investigation provider and model in use, for the System and Releases pages."""
+    return (f"<tr><td>AI investigation provider &amp; model (Magnum DI and TC FlyBy)</td><td><code>{html_mod.escape(_selection_text(sel))}</code> "
+            f"<a href='/api/admin/apollosg-settings'>Change in ApolloSG Settings</a></td></tr>")
 
 
 def _model_label(model: str) -> str:
@@ -3585,32 +3588,11 @@ def _model_label(model: str) -> str:
     return f"{model} · ${price['input']:.2f} in / ${price['output']:.2f} out per 1M tokens" if price else f"{model} · no price on file"
 
 
-def _model_cell(key: str, models: dict[str, str], choices: dict[str, Optional[dict]], tz: int) -> str:
-    """One tap to change a feature's model: only the models that can do its job are offered."""
-    esc = html_mod.escape
-    if key in model_choice.FOLLOWS:
-        return (f"<td data-testid='gemini-model-{key}'>{esc(models[key])} + Google Search"
-                f"<br><span class='muted'>Always the same as Magnum DI</span></td>")
-    options = "".join(f"<option value='{esc(m)}'{' selected' if m == models[key] else ''}>{esc(_model_label(m))}</option>"
-                      for m in model_choice.eligible(key))
-    chosen = choices.get(key)
-    note = (f"Changed by {esc(chosen.get('changed_by') or 'an admin')}, {_t(chosen.get('changed_at'), 'short')}"
-            if chosen else "Default model")
-    search = "+ Google Search when it needs it · " if "search" in model_choice.NEEDS[key] else ""
-    return (f"<td class='model-pick'><form method='post' action='/api/admin/gemini-map/model'>"
-            f"<input type='hidden' name='feature' value='{key}'><input type='hidden' name='tz' value='{tz}'>"
-            f"<select name='model' data-testid='gemini-model-{key}' aria-label='Model for {esc(_FEATURE_NAMES[key])}' "
-            f"onchange='this.form.submit()'>{options}</select><noscript><button class='btn'>Change</button></noscript></form>"
-            f"<span class='muted'>{search}{note}</span></td>")
-
-
-def _changed_html(feature: Optional[str], models: dict[str, str]) -> str:
-    if feature not in model_choice.NEEDS:
-        return ""
-    who = "Magnum DI and TC FlyBy now use" if feature == "magnum_di" else "Ask Higgins now uses"
-    when = "the next investigation" if feature == "magnum_di" else "the next question"
-    return (f"<p class='flash' data-testid='gemini-model-changed'>{who} <strong>{html_mod.escape(models[feature])}</strong> "
-            f"from {when}. The change is in the audit log.</p>")
+def _model_cell(key: str, sel: dict) -> str:
+    """The model a feature calls: always the one ApolloSG Settings selected. Read-only here."""
+    note = "Always the same as Magnum DI" if key == "tc_flyby" else "+ web search when it needs it"
+    return (f"<td data-testid='gemini-model-{key}'>{html_mod.escape(_selection_text(sel))}"
+            f"<br><span class='muted'>{note} · <a href='/api/admin/apollosg-settings'>Change in ApolloSG Settings</a></span></td>")
 
 
 @router.get("/admin/gemini-map", response_class=HTMLResponse)
@@ -3623,12 +3605,11 @@ async def gemini_map_page(request: Request):
     weeks = [start - timedelta(weeks=n) for n in range(_TREND_WEEKS - 1, -1, -1)]
     trend = [await gemini_usage_by_feature(w, w + timedelta(weeks=1) if w != start else None) for w in weeks]
     usage = trend[-1]
-    models = await model_choice.current()
-    choices = {key: await model_choice.choice(key) for key in model_choice.NEEDS}
+    sel = await ai_settings.selection()
     esc = html_mod.escape
     rows = "".join(
         f"<tr data-testid='gemini-feature-{key}'><td><strong>{esc(name)}</strong><br><span class='muted'>{esc(what)}</span></td>"
-        f"<td><code>{esc(code)}</code></td>{_model_cell(key, models, choices, tz)}<td class='muted'>{esc(when)}</td>{_usage_cells(usage.get(key))}</tr>"
+        f"<td><code>{esc(code)}</code></td>{_model_cell(key, sel)}<td class='muted'>{esc(when)}</td>{_usage_cells(usage.get(key))}</tr>"
         for key, name, what, code, when in _GEMINI_FEATURES)
     current = {key for key, *_ in _GEMINI_FEATURES}
     others = sorted(((k, v) for k, v in usage.items() if k not in current), key=lambda kv: -kv[1]["calls"])
@@ -3637,47 +3618,121 @@ async def gemini_map_page(request: Request):
     total_cost = sum(v["cost"] for v in usage.values())
     head = "<th>Calls</th><th>Failed</th><th>Searches</th><th>Est. cost (USD)</th><th>Last call</th>"
     body = f"""
-    {_changed_html(request.query_params.get("changed"), models)}
     <p class="muted" data-testid="gemini-map-week">This week: since Monday 00:00 {local_time.zone_label(tz)}
     ({_t(start)}). Each call is counted once; the free model check and token count before it are not.</p>
-    <div class="stats-grid">{_stat_card(f"{total_calls:,}", "Gemini calls this week")}{_stat_card(f"${total_cost:.4f}", "Estimated cost this week")}</div>
-    <h2>Features that call Gemini</h2>
+    <div class="stats-grid">{_stat_card(f"{total_calls:,}", "AI calls this week")}{_stat_card(f"${total_cost:.4f}", "Estimated cost this week")}</div>
+    <p data-testid="gemini-map-selection">Provider and model: <strong>{esc(_selection_text(sel))}</strong> ·
+    <a href="/api/admin/apollosg-settings">Change in ApolloSG Settings → AI Provider &amp; Model</a></p>
+    <h2>Features that call the AI provider</h2>
     <div class="table-scroll"><table data-testid="gemini-map-table"><thead><tr><th>Feature</th><th>Where in the code</th><th>Model</th>
     <th>When it calls</th>{head}</tr></thead><tbody>{rows}</tbody></table></div>
     <p class="muted">Every call goes through one gateway, <code>generate()</code> in <code>services/higgins/provider.py</code>,
-    which records it. To change a feature's model, pick another in the Model column: only the models that can do that
-    feature's job are listed, cheapest first. The change applies from the next call and is kept in the audit log.</p>
+    which records it and hands it to the selected provider's adapter. Magnum DI and TC FlyBy use the one provider and
+    model selected in ApolloSG Settings; Ask Higgins makes no AI call.</p>
     {_trend_table(weeks, trend, tz)}
-    {f'<h2>Other calls this week</h2><p class="muted">From features that have been removed or no longer call Gemini.</p><table data-testid="gemini-map-other"><thead><tr><th>Feature</th>{head}</tr></thead><tbody>{other_rows}</tbody></table>' if other_rows else ""}
+    {f'<h2>Other calls this week</h2><p class="muted">From features that have been removed or no longer call the AI provider.</p><table data-testid="gemini-map-other"><thead><tr><th>Feature</th>{head}</tr></thead><tbody>{other_rows}</tbody></table>' if other_rows else ""}
     <script>(function(){{if(!/[?&]tz=/.test(location.search)){{location.replace(location.pathname+'?tz='+(-new Date().getTimezoneOffset()));}}}})();</script>"""
     css = (".muted{color:var(--muted);font-size:0.85em;} td.num,th.num{text-align:right;white-space:nowrap;} .table-scroll{overflow-x:auto;}"
            " .trend{font-size:0.8em;margin-left:4px;color:var(--muted);} .trend.up{color:var(--red);} .trend.down{color:var(--green);}"
            " .main{min-width:0;} td code{font-size:0.8em;}"
-           " .model-pick select{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:6px 8px;"
-           "max-width:340px;margin-bottom:4px;font-size:0.85em;}"
-           " .flash{background:var(--card);border:1px solid var(--green);border-radius:8px;padding:10px 14px;margin:0 0 12px;}")
-    return _shell("Gemini Map", "/api/admin/gemini-map", body, admin=adm, extra_css=css)
+           " td a{color:var(--accent);}")
+    return _shell("AI Map", "/api/admin/gemini-map", body, admin=adm, extra_css=css)
 
 
-@router.post("/admin/gemini-map/model")
-async def gemini_map_change_model(request: Request):
-    """One tap on the Gemini Map: store the model a feature calls from now on (services/higgins/model_choice.py)."""
+# ── ApolloSG Settings → AI Provider & Model: the one place the investigation provider and model are chosen ──
+
+def _ai_model_section(sel: dict, flash: str = "", error: str = "") -> str:
+    esc = html_mod.escape
+    opts = ai_settings.options()
+    available = {p["id"]: [{"id": m["id"], "label": _model_label(m["id"])} for m in p["models"] if not m["reasons"]] for p in opts}
+    providers = "".join(f"<option value='{p['id']}'{' selected' if p['id'] == sel['provider'] else ''}>{esc(p['label'])}</option>" for p in opts)
+    current = available.get(sel["provider"], [])
+    models = ("".join(f"<option value='{esc(m['id'])}'{' selected' if m['id'] == sel['model'] else ''}>{esc(m['label'])}</option>" for m in current)
+              or "<option value='' disabled selected>No models available for this provider</option>")
+    who = ("Default — nobody has changed it yet" if sel.get("default")
+           else f"Changed by {esc(sel.get('changed_by') or 'an admin')}, {_t(sel.get('changed_at'), 'short')}")
+    blocked = ai_settings.unavailable(sel["provider"], sel["model"])
+    blocked_html = (f"<p class='warn' data-testid='ai-current-unavailable'>This model can't be used right now: it {esc('; '.join(blocked))}. "
+                    f"Investigations fail and say so until it's fixed or another model is saved. ApolloSG never switches model by itself.</p>"
+                    if blocked else "")
+    not_listed = []
+    for p in opts:
+        if not p["models"]:
+            not_listed.append(f"<li><strong>{esc(p['label'])}</strong>: no approved models yet"
+                              + ("" if p["keyConfigured"] else "; no API key is set on the server") + "</li>")
+        for m in (m for m in p["models"] if m["reasons"]):
+            not_listed.append(f"<li><code>{esc(m['id'])}</code> ({esc(p['label'])}): {esc('; '.join(m['reasons']))}</li>")
+    unavailable_html = (f"<details data-testid='ai-not-available'><summary>Not available for investigations ({len(not_listed)})</summary>"
+                        f"<ul>{''.join(not_listed)}</ul></details>" if not_listed else "")
+    return f"""
+    <h2>AI Provider &amp; Model</h2>
+    <p class="muted">The one provider and model Apollo's AI investigations use. Magnum DI uses it, and TC FlyBy always follows
+    Magnum DI. Ask Higgins makes no AI call. API keys stay in the server's secure settings and are never shown here.</p>
+    {f"<p class='flash' data-testid='ai-model-saved'>{flash}</p>" if flash else ""}
+    {f"<p class='error' data-testid='ai-model-error'>{esc(error)}</p>" if error else ""}
+    <div class="current" data-testid="ai-current">Active now: <strong data-testid="ai-current-value">{esc(_selection_text(sel))}</strong>
+    <br><span class="muted" data-testid="ai-current-changed">{who}</span>{blocked_html}</div>
+    <form method="post" action="/api/admin/apollosg-settings/ai-model" data-testid="ai-model-form" class="ai-form">
+      <label>Provider<select name="provider" id="ai-provider" data-testid="ai-provider-select">{providers}</select></label>
+      <label>Model<select name="model" id="ai-model" data-testid="ai-model-select">{models}</select></label>
+      <p class="warn" data-testid="ai-model-warning">Changing this affects future investigations only. Existing results, and
+      investigations already running, keep the model they used.</p>
+      <button class="btn" id="ai-save" data-testid="ai-model-save"{'' if current else ' disabled'}>Save</button>
+    </form>
+    <p class="muted">Only approved models that can return ApolloSG's fixed answer shape, read images sent as evidence and
+    search the web with sources are listed, cheapest first.</p>
+    {unavailable_html}
+    <script>(function(){{var models={json.dumps(available)};var p=document.getElementById('ai-provider'),m=document.getElementById('ai-model'),b=document.getElementById('ai-save');
+    p.addEventListener('change',function(){{var list=models[p.value]||[];m.innerHTML='';
+    if(!list.length){{var o=document.createElement('option');o.value='';o.disabled=true;o.selected=true;o.textContent='No models available for this provider';m.appendChild(o);}}
+    list.forEach(function(x){{var o=document.createElement('option');o.value=x.id;o.textContent=x.label;m.appendChild(o);}});b.disabled=!list.length;}});}})();</script>"""
+
+
+_SETTINGS_CSS = (".muted{color:var(--muted);font-size:0.85em;} .current{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:12px 0;}"
+                 " .ai-form{display:flex;flex-direction:column;gap:12px;max-width:520px;margin:12px 0;}"
+                 " .ai-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;}"
+                 " .ai-form select{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:8px;font-weight:400;}"
+                 " .ai-form .btn{align-self:flex-start;} .ai-form .btn[disabled]{opacity:0.5;cursor:not-allowed;}"
+                 " .warn{border-left:3px solid #d29922;padding:6px 10px;margin:6px 0;font-size:0.9em;}"
+                 " .error{border:1px solid var(--red);border-radius:8px;padding:10px 14px;}"
+                 " .flash{background:var(--card);border:1px solid var(--green);border-radius:8px;padding:10px 14px;}"
+                 " details ul{margin:6px 0 0 20px;} details{margin:8px 0;}")
+
+
+async def _apollosg_settings(adm: dict, *, flash: str = "", error: str = "", status_code: int = 200) -> HTMLResponse:
+    body = _ai_model_section(await ai_settings.selection(), flash, error)
+    return HTMLResponse(_shell("ApolloSG Settings", "/api/admin/apollosg-settings", body, admin=adm, extra_css=_SETTINGS_CSS),
+                        status_code=status_code)
+
+
+@router.get("/admin/apollosg-settings", response_class=HTMLResponse)
+async def apollosg_settings_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    sel = await ai_settings.selection()
+    flash = (f"Saved. Magnum DI and TC FlyBy use <strong>{html_mod.escape(_selection_text(sel))}</strong> from the next "
+             f"investigation. The change is in the audit log.") if request.query_params.get("saved") else ""
+    return await _apollosg_settings(adm, flash=flash)
+
+
+@router.post("/admin/apollosg-settings/ai-model")
+async def apollosg_settings_save_model(request: Request):
+    """Save the AI investigation provider and model (services/higgins/ai_settings.py). A model that can't be used is refused."""
     adm = await _admin(request)
     if not adm:
         return _login_redirect()
     from urllib.parse import parse_qs
     form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
-    feature, model = form.get("feature", ""), form.get("model", "")
+    chosen_provider, chosen_model = form.get("provider", ""), form.get("model", "")
     try:
-        before = await model_choice.choose(feature, model, adm.get("email", ""))
-    except ValueError:
-        return HTMLResponse("That model can't do this feature's job, so nothing was changed.", status_code=400)
-    if before != model:
-        await _audit_log(adm.get("email", ""), "gemini_model_change", f"{_FEATURE_NAMES[feature]}: {before} → {model}")
-    tz = form.get("tz", "")
-    query = {"tz": tz, "changed": feature} if re.fullmatch(r"-?\d{1,4}", tz) else {"changed": feature}
-    return RedirectResponse(f"/api/admin/gemini-map?{urlencode(query)}", status_code=303)
-
+        before = await ai_settings.choose(chosen_provider, chosen_model, adm.get("email", ""))
+    except ValueError as exc:
+        return await _apollosg_settings(adm, error=f"Nothing was changed: {exc}.", status_code=400)
+    if (before["provider"], before["model"]) != (chosen_provider, chosen_model):
+        await _audit_log(adm.get("email", ""), "ai_model_change",
+                         f"AI investigation model: {_selection_text(before)} → {ai_settings.label(chosen_provider)} · {chosen_model}")
+    return RedirectResponse("/api/admin/apollosg-settings?saved=1", status_code=303)
 
 
 @router.post("/admin/reset-stats")
@@ -3718,6 +3773,8 @@ async def admin_settings(request: Request):
         <tr><td>Session expires</td><td>{_t(adm.get('expires_at'))}</td></tr>
         <tr><td>Active sessions</td><td>{session_count}</td></tr>
     </table>
+    <p style="margin-top:16px;"><a class="btn" href="/api/admin/apollosg-settings" data-testid="admin-apollosg-settings-link">ApolloSG Settings →</a>
+    <span style="color:var(--muted);font-size:0.85em;">AI Provider &amp; Model for investigations</span></p>
     <form method="post" action="/api/admin/logout" style="margin-top:16px;">
         <button class="btn">Sign out</button>
     </form>
@@ -3894,17 +3951,19 @@ def _read_logs(count: int = 200) -> str:
 
 
 def _ai_mode_badge() -> str:
-    """This server's AI mode, at the top of every page: Live AI (real, billed Gemini) or Simulated (the preview
-    server — no Gemini calls). Read from the provider gateway itself, so it can't disagree with what runs."""
+    """This server's AI mode, at the top of every page: Live AI (the selected provider, billed) or Simulated (the preview
+    server — no provider calls). Read from the provider gateway itself, so it can't disagree with what runs."""
+    sel = ai_settings.last_known()
+    name = ai_settings.label(sel["provider"])
     if provider.get_provider_mode() == "preview":
         cls, label = "mode-sim", "Simulated"
-        detail = "Preview server — no Gemini calls are made. AI answers come from the simulator and ApolloSG's knowledge base."
-    elif provider.GEMINI_API_KEY:
+        detail = "Preview server — no AI provider calls are made. AI answers come from the simulator and ApolloSG's knowledge base."
+    elif ai_settings.key_configured(sel["provider"]):
         cls, label = "mode-live", "Live AI"
-        detail = "Every AI request on this server goes to Gemini and is billed."
+        detail = f"Every AI request on this server goes to {name} ({sel['model']}) and is billed."
     else:
         cls, label = "mode-off", "Live AI — no key"
-        detail = "This server would call Gemini, but no Gemini key is set, so AI requests fail."
+        detail = f"This server would call {name}, but no {name} key is set, so AI requests fail."
     return (f'<div class="mode-bar {cls}" id="ai-mode-badge" data-mode="{provider.get_provider_mode()}">'
             f'<span class="mode-pill"><span class="dot"></span>{label}</span>'
             f'<span class="mode-detail">{detail}</span></div>')

@@ -23,7 +23,7 @@ from services.higgins import coordinator, jobs, provider
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
 from services.higgins.preview.preview_simulator import evidence_blocks, simulated_text
-from services.higgins.provider import GeminiResult, ProviderFailure, Purpose
+from services.higgins.provider import AIResult, ProviderFailure, Purpose
 
 
 @pytest.fixture(autouse=True)
@@ -37,15 +37,14 @@ def _gateway(monkeypatch, *script):
     calls: list[dict] = []
 
     async def fake(system, contents, **kwargs):
-        from google.genai import types
         calls.append({"system": system, "kwargs": kwargs})
         step = script[min(len(calls), len(script)) - 1]
         if isinstance(step, ProviderFailure):
             raise step
         text = "not json at all" if step == "invalid" else simulated_text(Purpose.INVESTIGATION, True, evidence_blocks(contents))
-        return GeminiResult(text=text, content=types.Content(role="model", parts=[types.Part(text=text)]), finish_reason="STOP",
+        return AIResult(text=text, finish_reason="STOP",
                             usage={"prompt_token_count": 1, "candidates_token_count": 1, "total_token_count": 2}, grounding=None,
-                            model=kwargs.get("model") or provider.TEXT_MODEL)
+                            model=kwargs.get("model") or "gemini-3.1-flash-lite")
 
     monkeypatch.setattr(provider, "generate", fake)
     return calls

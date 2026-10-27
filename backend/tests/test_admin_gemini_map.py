@@ -1,4 +1,5 @@
-"""Gemini Map admin page: each feature that calls Gemini, with its calls and cost this week."""
+"""AI Map and ApolloSG Settings: each feature that calls the AI provider, its calls and cost this week, and the one
+place the AI investigation provider and model are chosen."""
 import asyncio
 import os
 import uuid
@@ -63,14 +64,18 @@ def test_the_page_lists_every_feature_with_this_weeks_numbers(admin_cookie):
     assert r.status_code == 200
     page = r.text
     assert 'href="/api/admin/gemini-map"' in page and "since Monday 00:00 UTC+10:00" in page
-    for key in ("magnum_di", "tc_flyby", "ask_higgins"):
+    for key in ("magnum_di", "tc_flyby"):
         assert f"data-testid='gemini-feature-{key}'" in page
         assert f"data-testid='gemini-trend-{key}'" in page
+    assert "data-testid='gemini-feature-ask_higgins'" not in page, "Ask Higgins makes no AI call"
     assert "data-testid='gemini-trend-other'" in page and "data-testid='gemini-trend-total'" in page
     assert page.count("Week of<br>") == 3 and "This week so far<br>" in page
     for gone in ("page_extract", "page_crawl()", "protection_explanations.py"):
         assert gone not in page
-    assert "Gemini calls this week" in page and "Estimated cost this week" in page
+    assert "AI calls this week" in page and "Estimated cost this week" in page
+    # The map shows the selection, read-only, and sends the admin to the one place it is changed.
+    assert 'data-testid="gemini-map-selection"' in page and "/api/admin/apollosg-settings" in page
+    assert "<select" not in page and "gemini-map/model" not in page
 
 
 def test_each_weeks_cost_is_compared_with_the_week_before():
@@ -108,38 +113,68 @@ def test_signed_out_visitors_are_sent_to_login():
     assert r.status_code == 303
 
 
-# ── Model per feature: one tap on the Gemini Map ─────────────────────────────
-from services.higgins import model_choice, provider  # noqa: E402
+# ── ApolloSG Settings → AI Provider & Model ───────────────────────────────────
+from services.higgins import ai_settings  # noqa: E402
 
 
-def test_only_models_that_can_do_each_job_are_offered_cheapest_first():
-    magnum, ask = model_choice.eligible("magnum_di"), model_choice.eligible("ask_higgins")
-    assert all({"search", "vision", "json"} <= provider.CAPABILITIES[m] for m in magnum)
-    assert "gemini-2.5-flash-lite" not in magnum, "no Google Search, so it can't do Magnum DI's job"
-    assert "gemini-2.5-flash-lite" in ask and set(magnum) <= set(ask)
-    assert provider.TEXT_MODEL in magnum and provider.TEXT_MODEL in ask
-    priced = [m for m in ask if m in model_choice.MODEL_PRICING]
-    assert [model_choice.MODEL_PRICING[m]["input"] for m in priced] == sorted(model_choice.MODEL_PRICING[m]["input"] for m in priced)
-    assert ask[len(priced):] == [m for m in ask if m not in model_choice.MODEL_PRICING], "unpriced models come last"
+def test_only_approved_models_that_can_investigate_are_available():
+    opts = {p["id"]: p for p in ai_settings.options()}
+    assert [opts[k]["label"] for k in ("gemini", "anthropic", "openai")] == ["Google Gemini", "Anthropic Claude", "OpenAI"]
+    gemini = {m["id"]: m for m in opts["gemini"]["models"]}
+    assert not gemini["gemini-3.1-flash-lite"]["reasons"]
+    assert "can't search the web with sources" in gemini["gemini-2.5-flash-lite"]["reasons"], "no web search, so it can't investigate"
+    assert "can't read images sent as evidence" in gemini["gemini-2.5-flash-lite"]["reasons"]
+    available = [m["id"] for m in opts["gemini"]["models"] if not m["reasons"]]
+    assert all(ai_settings.capabilities(m) >= {"json", "vision", "search"} for m in available)
+    priced = [m for m in available if m in admin_portal.MODEL_PRICING]
+    assert [admin_portal.MODEL_PRICING[m]["input"] for m in priced] == sorted(admin_portal.MODEL_PRICING[m]["input"] for m in priced)
+    # Claude and OpenAI are connected; each of their approved models can investigate once its provider's key is set.
+    for pid in ("anthropic", "openai"):
+        assert opts[pid]["connected"] and opts[pid]["models"]
+        for m in opts[pid]["models"]:
+            assert ai_settings.capabilities(m["id"]) >= {"json", "vision", "search"}
+            assert m["reasons"] == ([] if ai_settings.key_configured(pid) else [f"no {ai_settings.label(pid)} API key is set on the server"])
+    assert ai_settings.unavailable("anthropic", "claude-anything") == ["isn't an ApolloSG-approved model"]
 
 
-def test_ask_higgins_uses_magnum_dis_model_and_tc_flyby_always_follows_magnum(monkeypatch):
+def test_one_selection_for_magnum_di_and_tc_flyby_saved_with_who_and_when(monkeypatch):
     async def run():
         client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-        scratch = client[f"model_choice_{uuid.uuid4().hex[:8]}"]
-        monkeypatch.setattr(model_choice, "db", scratch)
+        scratch = client[f"ai_settings_{uuid.uuid4().hex[:8]}"]
+        monkeypatch.setattr(ai_settings, "db", scratch)
         try:
-            assert await model_choice.current() == {"magnum_di": "gemini-3.1-flash-lite", "tc_flyby": "gemini-3.1-flash-lite",
-                                                    "ask_higgins": "gemini-3.1-flash-lite"}
-            assert await model_choice.choose("magnum_di", "gemini-2.5-flash", "a@apollo.test") == "gemini-3.1-flash-lite"
-            assert await model_choice.model_for("tc_flyby") == "gemini-2.5-flash"
-            assert await model_choice.model_for("ask_higgins") == "gemini-3.1-flash-lite", "each feature has its own choice"
-            for feature, model in (("magnum_di", "gemini-2.5-flash-lite"), ("tc_flyby", "gemini-2.5-flash"), ("ask_higgins", "gpt-4")):
+            first = await ai_settings.selection()
+            assert (first["provider"], first["model"], first["default"]) == ("gemini", "gemini-3.1-flash-lite", True)
+            before = await ai_settings.choose("gemini", "gemini-2.5-flash", "a@apollo.test")
+            assert before["model"] == "gemini-3.1-flash-lite"
+            assert await ai_settings.investigation_model() == "gemini-2.5-flash"
+            saved = await ai_settings.selection()
+            assert saved["changed_by"] == "a@apollo.test" and saved["changed_at"] and saved["default"] is False
+            for chosen_provider, model in (("gemini", "gemini-2.5-flash-lite"), ("anthropic", "gemini-2.5-flash"), ("openai", "gpt-4"), ("gemini", "")):
                 with pytest.raises(ValueError):
-                    await model_choice.choose(feature, model, "a@apollo.test")
-            assert await model_choice.model_for("magnum_di") == "gemini-2.5-flash", "a refused change changes nothing"
-            await scratch[model_choice.COLLECTION].update_one({"feature": "ask_higgins"}, {"$set": {"model": "retired-model"}}, upsert=True)
-            assert await model_choice.model_for("ask_higgins") == provider.TEXT_MODEL, "a stored model that can't do the job is never called"
+                    await ai_settings.choose(chosen_provider, model, "a@apollo.test")
+            assert await ai_settings.investigation_model() == "gemini-2.5-flash", "a refused change changes nothing"
+            # A stored model that can no longer be used is still the one called: the call fails and says so, never switched.
+            await scratch[ai_settings.COLLECTION].update_one({"setting": ai_settings.SETTING}, {"$set": {"model": "retired-model"}})
+            assert await ai_settings.investigation_model() == "retired-model"
+        finally:
+            await client.drop_database(scratch.name)
+            client.close()
+
+    asyncio.run(run())
+
+
+def test_the_old_gemini_map_choice_for_magnum_di_stays_in_force_until_changed(monkeypatch):
+    async def run():
+        client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        scratch = client[f"ai_settings_{uuid.uuid4().hex[:8]}"]
+        monkeypatch.setattr(ai_settings, "db", scratch)
+        try:
+            await scratch[ai_settings.LEGACY_COLLECTION].insert_many([
+                {"feature": "magnum_di", "model": "gemini-2.5-flash", "changed_by": "old@apollo.test", "changed_at": now_utc()},
+                {"feature": "ask_higgins", "model": "gemini-2.5-flash-lite"}])
+            sel = await ai_settings.selection()
+            assert (sel["provider"], sel["model"], sel["changed_by"], sel["default"]) == ("gemini", "gemini-2.5-flash", "old@apollo.test", False)
         finally:
             await client.drop_database(scratch.name)
             client.close()
@@ -148,46 +183,56 @@ def test_ask_higgins_uses_magnum_dis_model_and_tc_flyby_always_follows_magnum(mo
 
 
 @pytest.fixture()
-def restore_choices():
-    saved = list(DB[model_choice.COLLECTION].find({}, {"_id": 0}))
+def restore_selection():
+    saved = list(DB[ai_settings.COLLECTION].find({}, {"_id": 0}))
     yield
-    DB[model_choice.COLLECTION].delete_many({})
+    DB[ai_settings.COLLECTION].delete_many({})
     if saved:
-        DB[model_choice.COLLECTION].insert_many(saved)
+        DB[ai_settings.COLLECTION].insert_many(saved)
 
 
-def test_one_tap_changes_a_features_model_and_is_audited(admin_cookie, restore_choices):
-    page = httpx.get(f"{BASE}/admin/gemini-map?tz=600", cookies=admin_cookie, timeout=20).text
-    assert "data-testid='gemini-model-magnum_di'" in page and "data-testid='gemini-model-ask_higgins'" in page
-    assert "onchange='this.form.submit()'" in page and "Always the same as Magnum DI" in page
-    assert "GEMINI_*_MODEL" not in page
-    pick = "gemini-2.5-flash" if "<option value='gemini-2.5-flash-lite' selected>" in page.split("gemini-model-ask_higgins")[1] else "gemini-2.5-flash-lite"
-    r = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "ask_higgins", "model": pick, "tz": "600"},
+def test_the_settings_page_saves_the_selection_and_audits_it(admin_cookie, restore_selection):
+    page = httpx.get(f"{BASE}/admin/apollosg-settings", cookies=admin_cookie, timeout=20).text
+    for testid in ("ai-current-value", "ai-provider-select", "ai-model-select", "ai-model-save", "ai-model-warning"):
+        assert f'data-testid="{testid}"' in page
+    assert "affects future investigations only" in page and "ApolloSG Settings" in page
+    assert "<option value='anthropic'>Anthropic Claude</option>" in page and "<option value='openai'>OpenAI</option>" in page
+    assert "AIza" not in page and "GEMINI_API_KEY" not in page, "keys are never shown"
+    current = DB[ai_settings.COLLECTION].find_one({"setting": ai_settings.SETTING}) or {}
+    pick = "gemini-2.5-flash" if current.get("model") != "gemini-2.5-flash" else "gemini-3.1-flash-lite"
+    r = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "gemini", "model": pick},
                    cookies=admin_cookie, timeout=20, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/api/admin/gemini-map?tz=600&changed=ask_higgins"
-    page = httpx.get(f"{BASE}/admin/gemini-map?tz=600&changed=ask_higgins", cookies=admin_cookie, timeout=20).text
-    assert "data-testid='gemini-model-changed'" in page and f"Ask Higgins now uses <strong>{pick}</strong>" in page
-    assert f"<option value='{pick}' selected>" in page and "Changed by gemini-map-test@apollo.test" in page
-    audit = DB.admin_audit.find_one({"email": "gemini-map-test@apollo.test", "action": "gemini_model_change"}, sort=[("timestamp", -1)])
-    assert audit and audit["detail"].startswith("Ask Higgins: ") and audit["detail"].endswith(f"→ {pick}")
+    assert r.status_code == 303 and r.headers["location"] == "/api/admin/apollosg-settings?saved=1"
+    page = httpx.get(f"{BASE}/admin/apollosg-settings?saved=1", cookies=admin_cookie, timeout=20).text
+    assert "data-testid='ai-model-saved'" in page and f"Google Gemini · {pick}" in page
+    assert "Changed by gemini-map-test@apollo.test" in page and f"<option value='{pick}' selected>" in page
+    audit = DB.admin_audit.find_one({"email": "gemini-map-test@apollo.test", "action": "ai_model_change"}, sort=[("timestamp", -1)])
+    assert audit and audit["detail"].endswith(f"→ Google Gemini · {pick}")
     DB.admin_audit.delete_many({"email": "gemini-map-test@apollo.test"})
-    refused = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "magnum_di", "model": "gemini-2.5-flash-lite"},
+    refused = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "gemini", "model": "gemini-2.5-flash-lite"},
                          cookies=admin_cookie, timeout=20, follow_redirects=False)
-    assert refused.status_code == 400
-    flyby = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "tc_flyby", "model": "gemini-2.5-flash"},
-                       cookies=admin_cookie, timeout=20, follow_redirects=False)
-    assert flyby.status_code == 400, "TC FlyBy has no choice of its own"
+    assert refused.status_code == 400 and "Nothing was changed" in refused.text
+    claude = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "anthropic", "model": "claude-sonnet"},
+                        cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert claude.status_code == 400
+    assert (DB[ai_settings.COLLECTION].find_one({"setting": ai_settings.SETTING}) or {}).get("model") == pick
 
 
-def test_signed_out_visitors_cannot_change_a_model():
-    r = httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "ask_higgins", "model": "gemini-2.5-flash"}, timeout=20, follow_redirects=False)
+def test_signed_out_visitors_cannot_see_or_change_the_selection():
+    assert httpx.get(f"{BASE}/admin/apollosg-settings", timeout=20, follow_redirects=False).status_code == 303
+    r = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "gemini", "model": "gemini-2.5-flash"}, timeout=20, follow_redirects=False)
     assert r.status_code == 303 and "login" in r.headers["location"]
+    assert httpx.post(f"{BASE}/admin/gemini-map/model", data={"feature": "magnum_di", "model": "gemini-2.5-flash"},
+                      timeout=20, follow_redirects=False).status_code in (404, 405), "the Gemini Map no longer changes models"
 
 
-def test_admin_pages_show_only_the_models_in_use(admin_cookie):
+def test_admin_pages_show_the_one_selection(admin_cookie):
     system = httpx.get(f"{BASE}/admin/system", cookies=admin_cookie, timeout=30).text
-    assert "Magnum DI and TC FlyBy model" in system and "Ask Higgins model" in system and "Vision Model" not in system
+    assert "AI investigation provider &amp; model (Magnum DI and TC FlyBy)" in system and "Ask Higgins model" not in system
+    assert "Vision Model" not in system
     triage = httpx.get(f"{BASE}/admin/triage", cookies=admin_cookie, timeout=30).text
     assert "Triage Model" not in triage and "Input Price" not in triage
     releases = httpx.get(f"{BASE}/admin/releases", cookies=admin_cookie, timeout=30).text
-    assert "Ask Higgins model" in releases
+    assert "AI investigation provider &amp; model" in releases
+    nav = [label for label, *_ in admin_portal.NAV]
+    assert "ApolloSG Settings" in nav and "AI Map" in nav and "Gemini Map" not in nav

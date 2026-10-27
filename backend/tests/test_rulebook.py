@@ -45,11 +45,13 @@ def test_the_ask_higgins_rules_match_the_server():
         f"A message can be up to {ChatRequest.model_json_schema()['properties']['message']['maxLength']:,} characters",
         f"the question and answer for {int(chat_memory.CHAT_CONTENT_TTL.total_seconds() // 60)} minutes",
         f"a receipt with no content for {chat_memory.CHAT_RECEIPT_TTL.days} days",
-        f"A general-knowledge answer is up to {chat.ModelChatReply.model_json_schema()['properties']['answer']['maxLength']:,} characters",
+        "No AI-written answer is ever shown.",
     ]
     missing = [phrase for phrase in expected if phrase not in section]
     assert not missing, f"The Ask Higgins rules no longer match the code on: {missing}"
     assert presenter.OUT_OF_SCOPE in BOOK, "the off-topic reply must be in the book word for word"
+    assert presenter.NOT_IN_TRUSTED_KNOWLEDGE in BOOK, "the 'not in trusted knowledge' reply must be in the book word for word"
+    assert "Higgins and Ask Higgins: 0 AI calls." in BOOK
 
 
 def test_a_typed_message_starts_a_check_only_as_the_book_says():
@@ -424,7 +426,7 @@ def test_the_reusable_intelligence_rules_match_the_code():
     section = _section("knowledge-base").split("### Reusable intelligence (not KB knowledge)", 1)[1]
     days = lambda td: f"{td.days} day{'' if td.days == 1 else 's'}"  # noqa: E731
     hours = lambda td: f"{int(td.total_seconds() // 3600)} hours"  # noqa: E731
-    rows = [("General question answered by AI", days(intel.TTL["general_answer"])),
+    rows = [("Old AI answer to a general question (never shown)", days(intel.TTL["general_answer"])),
             ("TC FlyBy search that found something", days(intel.TTL["web_lookup"])),
             ("TC FlyBy search that found nothing", days(intel.TTL["web_lookup_negative"])),
             ("Phone reputation (IPQualityScore)", hours(intel.TTL["phone_reputation"])),
@@ -434,13 +436,9 @@ def test_the_reusable_intelligence_rules_match_the_code():
     assert not missing, f"The freshness table no longer matches services/reusable_intel.py TTL: {missing}"
     assert len(rows) == len(intel.TTL)
     assert f"It is deleted {intel.STALE_KEPT_FOR.days} days after it expires" in section
-    # The saved-answer matching rule (knowledge.answers_question): all words for 1-2, else at least 80%.
-    assert "every content word, or at least 80% of them for longer questions" in section
-    assert knowledge.answers_question("why do scammers ask for gift cards", ["scammer", "gift", "card"]) == 1.0
-    assert knowledge.answers_question("why do scammers ask for crypto", ["scammer", "ask", "gift", "card"]) == 0.0
     # What the person is shown is the app's own sentence.
     app = (Path(rulebook.ROOT) / "frontend/src/domain/checkedAgo.ts").read_text()
     assert "From Apollo's check ${when}, still current, so it wasn't looked up again" in app
     assert "\"From Apollo's check 2 hours ago, still current, so it wasn't looked up again\"" in section
-    assert knowledge.SAVED_ANSWER_NOTE.startswith("(ApolloSG saved this answer earlier. An AI tool wrote it")
+    assert not hasattr(knowledge, "SAVED_ANSWER_NOTE"), "old AI answers are never shown again"
     assert "Intelligence Reuse" in section and ("Intelligence Reuse", "/api/admin/intel-reuse", "&#9851;") in admin_portal.NAV

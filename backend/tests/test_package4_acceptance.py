@@ -109,9 +109,9 @@ class TestGeminiPayloadEnforcement:
 
     def test_binary_contains_detection(self):
         from services.higgins.provider import _contains_binary
-        from google.genai import types
+        from services.higgins.ai_request import Part
         assert not _contains_binary("text")
-        assert _contains_binary(types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
+        assert _contains_binary(Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
 
     def test_purpose_required_no_default(self):
         import ast
@@ -125,9 +125,9 @@ class TestGeminiPayloadEnforcement:
         pytest.fail("purpose parameter not found")
 
     def test_text_parts_get_enforce_boundary(self):
-        """Provider applies enforce_boundary to SDK Content text parts."""
+        """The gateway applies enforce_boundary to every text part, whatever the provider."""
         source = (BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text()
-        assert "enforce_boundary(purpose, part.text)" in source
+        assert "enforce_boundary(purpose, p.text)" in source
 
 
 # ── 4. MIME Type Enforcement ────────────────────────────────────────────────

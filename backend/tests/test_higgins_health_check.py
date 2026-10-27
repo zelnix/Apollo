@@ -17,7 +17,7 @@ from services.higgins import health_check, provider
 @pytest.mark.asyncio
 async def test_missing_owner_key_never_calls_provider(monkeypatch):
     mock = AsyncMock(side_effect=AssertionError("provider must not be called"))
-    monkeypatch.setattr(health_check, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(health_check.ai_settings, "key_configured", lambda _provider: False)
     monkeypatch.setattr(provider, "generate", mock)
     with pytest.raises(health_check.HealthFailure) as exc:
         await health_check.investigate()

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from core.db import db, now_utc
+from core.evidence_model import DEVICE_EVIDENCE_SOURCES, SUMMARY_ADAPTER
 from core.models import PatrolEventIn
 
 
@@ -63,7 +64,6 @@ _CATEGORY_LABEL = {
 }
 
 
-SUMMARY_ADAPTER = 'ApolloSG on-device assessment'
 SUMMARY_WHY = "ApolloSG's servers keep only this privacy-protected summary, not the content that was checked."
 
 
@@ -117,6 +117,10 @@ def minimal_patrol(body, verified):
         claimed_brand=None, scenario=body.scenario if body.scenario and re.fullmatch(r'[A-Z]{1,3}\d{1,3}[a-z]?', body.scenario) else None,
         adapter_label=SUMMARY_ADAPTER, verified_block=verified,
         supporting_references=safe_refs,
+        # The evidence model: the device's own evidence source is kept exactly (anything else is dropped — the server
+        # never records itself as a source); Apollo's check ran on the device; the server holds only the summary.
+        evidence_provenance=body.evidence_provenance if body.evidence_provenance in DEVICE_EVIDENCE_SOURCES else None,
+        processing_source="this_device", evidence_representation="privacy_summary", evidence_completeness=None,
     )
     return payload
 

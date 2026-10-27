@@ -134,6 +134,21 @@ export interface Reassessment {
   version: string;
 }
 
+/** What supplied a case's evidence. Never a server: processing is not an evidence source.
+ *  - "local_device": Apollo's own check on this device.
+ *  - "dns_observation": Apollo's DNS filter on this device.
+ *  - "native_protection": the device's built-in protection (named in `source_metadata.provider`).
+ *  - "device_submission": this device sent the item for checking (a check, a captured notification, Ask Higgins).
+ *  - "connected_mailbox": the mailbox this device connected (named in `source_metadata.provider`). */
+export type EvidenceSource = "local_device" | "dns_observation" | "native_protection" | "device_submission" | "connected_mailbox";
+/** Where Apollo's checks on a record ran. */
+export type ProcessingSource = "this_device" | "apollosg_servers";
+/** "partial": part of the evidence the checks needed is missing. Missing evidence is never evidence of a threat. */
+export type EvidenceCompleteness = "complete" | "partial";
+/** The privacy state of what a record holds: this device's full record, the privacy-protected copy ApolloSG's servers
+ *  worked from, or only the privacy-protected summary (the kind of check and its result). */
+export type EvidenceRepresentation = "full_record" | "privacy_protected_copy" | "privacy_summary";
+
 export interface PatrolEvent {
   event_id: string;
   /** The case's origin: the device that detected it. Server processing, Magnum DI, syncing, privacy projection and
@@ -153,15 +168,21 @@ export interface PatrolEvent {
   /** Safe public references supporting the local assessment. Raw submitted links are excluded. */
   supporting_references?: { label: string; url: string }[];
   verified_block: boolean;
-  /** The evidence SOURCE only — what supplied the case's evidence. Set at creation time; never derived from text.
-   *  It is NOT the case's origin (every Threat Case begins on the device that detected it: `device_id`), NOT where any
-   *  copy is kept, and NOT how complete the record is — see src/domain/caseFacts.ts, which keeps those apart.
-   *  - "local_device": Apollo's own check on this device.
-   *  - "server_projected": ApolloSG's servers worked from, or keep, a privacy-protected representation of this case.
-   *    It never changes the case's origin; server analysis stays attached to this same case.
-   *  - "dns_observation" / "native_protection": Apollo's DNS filter / the device's built-in protection supplied it.
-   *  - "incomplete": part of the evidence wasn't recorded, or a claim was downgraded by an enforcement truth gate. */
-  evidence_provenance?: "local_device" | "server_projected" | "incomplete" | "dns_observation" | "native_protection";
+  /** Where the evidence came from — the answer to "Where did this evidence come from?" and nothing else. Set when the
+   *  evidence is recorded and never changed by processing, syncing, privacy transformation or storage. It is not the
+   *  case's origin (`device_id`), not what processed it (`processing_source`), not how complete it is
+   *  (`evidence_completeness`) and not its privacy state (`evidence_representation`). Server processing is never an
+   *  evidence source. Records stored before this model may hold "server_projected" or "incomplete";
+   *  src/domain/evidenceModel.ts reads those into the separated fields. */
+  evidence_provenance?: EvidenceSource;
+  /** Where Apollo's checks on this record ran. Never moves the case's origin. */
+  processing_source?: ProcessingSource;
+  /** Whether part of the evidence its checks needed is missing; each gap carries its recorded reason. */
+  evidence_completeness?: EvidenceCompleteness;
+  /** Recorded gaps outside the Triage record (e.g. a block claim the packet truth gate couldn't verify). */
+  evidence_gaps?: import("./triage/completeness").IncompleteCheck[] | null;
+  /** The privacy state of what this record holds. */
+  evidence_representation?: EvidenceRepresentation;
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;

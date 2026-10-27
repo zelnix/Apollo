@@ -27,6 +27,15 @@ SEVERITY_TEXT = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "
 OUT_OF_SCOPE = ("I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general "
                 "assistant would be a better fit. Is there anything security-related I can help with?")
 
+NOT_IN_TRUSTED_KNOWLEDGE = ("ApolloSG's trusted knowledge doesn't cover that question yet, so I won't guess at an answer. "
+                            "If it's about something you've received — a message, link, email, call, app or file — tap + and add it, "
+                            "and Apollo's investigators will check it. Learn with Higgins has guides on the common scams.")
+
+
+def not_in_trusted_knowledge() -> dict:
+    """Nothing Apollo holds answers the question: said plainly, with no AI-written answer in its place."""
+    return {"answer": NOT_IN_TRUSTED_KNOWLEDGE, "navigate": ["/higgins/learning"], "limitation": True}
+
 _FOLLOW_UP_INTENTS: list[tuple[str, re.Pattern]] = [(name, re.compile(pattern, re.I)) for name, pattern in [
     ("recheck", r"\bre-?check|\bfresh (?:observation|reading)|\bre-?assess|\bcheck (?:it |this |that )?again\b"),
     ("not_established", r"\b(?:wasn'?t|not|never|couldn'?t|didn'?t)\s+(?:established|found|checked|confirmed|able|cover(?:ed)?|look(?:ed)?)\b|\bunknown\b|\buncertain"
@@ -93,7 +102,7 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
     """Answer a follow-up from a completed investigation result (camelCase wire shape), credited to whichever
     investigator settled it (`answered_by`). Never infers.
 
-    A follow-up never reaches Gemini, even when it brings something new: the new item is named as
+    A follow-up never reaches an AI model, even when it brings something new: the new item is named as
     not covered, and the answer comes only from what the finished investigation recorded.
     """
     name = investigator(answered_by)

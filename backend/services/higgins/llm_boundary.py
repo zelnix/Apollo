@@ -122,7 +122,7 @@ class Purpose(str, Enum):
     PUBLIC_ADVISORY_ANALYSIS = "public_advisory_analysis"  # Government scam advisory classification
     VISION_INVESTIGATION = "vision_investigation"  # Vision Gate: photograph/upload → indicator extraction + routing
     TRIAGE = "triage"                         # Minimal structured triage: SAFE/SUSPICIOUS/UNCERTAIN only
-    TEDDY_SEARCH = "teddy_search"             # TC FlyBy: narrow factual Google Search lookups about public identifiers
+    TEDDY_SEARCH = "teddy_search"             # TC FlyBy: narrow factual web search lookups about public identifiers
 
 
 # ── One outbound privacy decision per field ────────────────────────────────

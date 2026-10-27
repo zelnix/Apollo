@@ -45,7 +45,8 @@ function makeServerEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
   const voice = projectedEventVoice("website", "barking", false);
   return makeEvent({
     headline: voice.headline, what_happened: voice.whatHappened, why: [voice.why], what_to_do: voice.whatToDo,
-    evidence_provenance: "server_projected",
+    // The privacy-protected summary the server keeps of this device's check: its source stays this device's own.
+    evidence_provenance: "local_device", processing_source: "this_device", evidence_representation: "privacy_summary",
     ...overrides,
   });
 }
@@ -76,12 +77,13 @@ describe("1. Original findings survive local/server synchronisation (production 
     assert.equal(merged.evidence_provenance, "local_device", "Provenance stays local_device");
   });
 
-  it("server-only events are taken as-is with server_projected provenance", () => {
+  it("server-only events are taken as-is: their evidence source and privacy state unchanged", () => {
     const serverOnly = makeServerEvent({ event_id: "e-other" });
     const { events } = mergeLocalAndRemoteEvents([], [serverOnly]);
     const merged = events.find((e) => e.event_id === "e-other")!;
     assert.ok(merged);
-    assert.equal(merged.evidence_provenance, "server_projected");
+    assert.equal(merged.evidence_provenance, "local_device");
+    assert.equal(merged.evidence_representation, "privacy_summary");
   });
 
   it("local-only events (not yet on server) survive merge", () => {
@@ -93,8 +95,8 @@ describe("1. Original findings survive local/server synchronisation (production 
 
   it("hasRecordedFindings uses what the record holds, not text matching", () => {
     const localEvt = makeEvent({ evidence_provenance: "local_device" });
-    const serverEvt = makeServerEvent({ evidence_provenance: "server_projected" });
-    const incompleteEvt = makeEvent({ evidence_provenance: "incomplete" });
+    const serverEvt = makeServerEvent();
+    const incompleteEvt = makeEvent({ evidence_completeness: "partial" });
     assert.ok(hasRecordedFindings(localEvt));
     assert.ok(!hasRecordedFindings(serverEvt), "the server's privacy summary alone carries no findings");
     // An incomplete record still carries what Apollo recorded — it isn't somewhere else.
@@ -189,11 +191,13 @@ describe("3. Repeated blocks retain enforcement evidence without duplicate threa
     assert.ok(normalized.verified_block);
   });
 
-  it("normalizeHistoricalEvent downgrades unproven block claim and marks incomplete", () => {
+  it("normalizeHistoricalEvent downgrades unproven block claim and records why it is incomplete", () => {
     const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
     const normalized = normalizeHistoricalEvent(fake);
     assert.equal(normalized.state, "barking", "Unproven block downgraded");
-    assert.equal(normalized.evidence_provenance, "incomplete", "Marked incomplete");
+    assert.equal(normalized.evidence_completeness, "partial", "Marked incomplete");
+    assert.equal(normalized.evidence_provenance, "local_device", "the evidence source is left as recorded");
+    assert.deepEqual(normalized.evidence_gaps?.map((g) => [g.check, g.failure]), [["block_proof", "no_packet_evidence"]]);
   });
 });
 
@@ -206,8 +210,8 @@ describe("4. Higgins explanations are specific, evidence-backed, no generic fall
     assert.match(whatChunk!.text, /impersonating a bank/, "Real evidence used");
   });
 
-  it("narrateEvent with server_projected provenance narrates honestly (no fabrication)", () => {
-    const projected = makeServerEvent({ evidence_provenance: "server_projected" });
+  it("narrateEvent with only the privacy summary narrates honestly (no fabrication)", () => {
+    const projected = makeServerEvent();
     const chunks = narrateEvent(projected);
     const whatChunk = chunks.find((c) => c.id === "what");
     assert.match(whatChunk!.text, /privacy-protected summary/, "Honest about what the record holds");
@@ -219,7 +223,7 @@ describe("4. Higgins explanations are specific, evidence-backed, no generic fall
       headline: "Connected incident", state: "barking" as ApolloState,
       timeline: [
         makeEvent({ event_id: "e1", evidence_provenance: "local_device" }),
-        makeServerEvent({ event_id: "e2", evidence_provenance: "server_projected" }),
+        makeServerEvent({ event_id: "e2" }),
       ],
       exposure: [], steps: [], allResolved: false,
     } as any;
@@ -240,7 +244,7 @@ describe("5. Missing, stale or contradictory evidence cannot create false threat
     const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
     const n = normalizeHistoricalEvent(fake);
     assert.equal(n.state, "barking");
-    assert.equal(n.evidence_provenance, "incomplete");
+    assert.equal(n.evidence_completeness, "partial");
   });
 
   it("mergeLocalAndRemoteEvents clears resolved_at when genuinely reopening", () => {
@@ -320,10 +324,10 @@ describe("6. Privacy restrictions and native enforcement truth gates remain inta
     assert.ok(STATE_RANK.ears_up > STATE_RANK.resting);
   });
 
-  it("evidence_provenance field controls Higgins narration, not text content", () => {
-    // Even if text LOOKS like real evidence, if provenance says server_projected, Higgins won't use it.
+  it("evidence_representation field controls Higgins narration, not text content", () => {
+    // Even if text LOOKS like real evidence, if the record holds only the privacy summary, Higgins won't use it.
     const serverWithRealishText = makeEvent({
-      evidence_provenance: "server_projected",
+      evidence_representation: "privacy_summary",
       what_happened: "This page impersonates a bank (but came from server).",
     });
     assert.ok(!hasRecordedFindings(serverWithRealishText), "Provenance field overrides text content");

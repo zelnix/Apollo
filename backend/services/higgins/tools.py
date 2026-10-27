@@ -1,6 +1,6 @@
 """Typed read-only observation tools kept for the investigation case (spec §9).
 
-None of these calls Gemini: a Magnum DI investigation makes exactly one Gemini call (coordinator.py),
+None of these calls an AI model: a Magnum DI investigation makes exactly one AI call (coordinator.py),
 so there is no function-calling dispatcher, no nested research call and no tool round.
 Ownership and case identity come from the coordinator context, never from model arguments.
 """
@@ -23,7 +23,7 @@ OFFICIAL_HINT_DOMAINS = ("support.google.com", "support.apple.com", "support.mic
 
 
 def grounding_sources(grounding: Optional[dict]) -> list[SourceReference]:
-    """The web pages Google Search grounded a Gemini answer on, as case sources. Search results are
+    """The web pages a web search grounded an answer on, as case sources. Search results are
     leads, not verification; the authority label is only a hint from the publisher domain."""
     sources = []
     for chunk in (grounding or {}).get("grounding_chunks", []) or (grounding or {}).get("groundingChunks", []):

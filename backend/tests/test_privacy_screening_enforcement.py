@@ -173,7 +173,7 @@ class TestGeminiApiClaims:
         """Live mode (data reaches Google): the claim must be limited to Google's published terms."""
         from services.higgins import provider
         monkeypatch.setattr(provider, "_preview_generate", None)
-        retention = provider.configuration().get("providerRetention", "")
+        retention = provider.configuration("gemini").get("providerRetention", "")
         assert "does not control or independently verify" in retention
         assert "published" in retention.lower()
 
@@ -185,7 +185,7 @@ class TestGeminiApiClaims:
             raise AssertionError("not exercised")
 
         monkeypatch.setattr(provider, "_preview_generate", handler)
-        assert "no data leaves" in provider.configuration().get("providerRetention", "").lower()
+        assert "no data leaves" in provider.configuration("gemini").get("providerRetention", "").lower()
 
     def test_frontend_privacy_disclosure_is_factual(self):
         import pathlib

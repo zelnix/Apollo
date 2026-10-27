@@ -21,25 +21,26 @@ async def _preview_generate(
     contents: Any,
     *,
     model: str,
+    provider: str,
     capability: str,
     json_output: bool,
-    tools: Any | None,
+    web_search: bool,
     timeout: float,
     response_schema: Any | None,
     purpose: Any,
     correlation_id: str | None,
     trigger_source: str | None,
 ) -> Any:
-    """Run the preview simulator — real workflow, simulated Gemini response."""
+    """Run the preview simulator — real workflow, simulated provider response."""
     from services.higgins.provider import _audit_payload, _owner_for
     from services.higgins import di_record as _di
     from services.higgins.preview.preview_simulator import simulate_generate
 
-    audit = _audit_payload(system, contents, tools)
+    audit = _audit_payload(system, contents, web_search)
     t0 = time.monotonic()
     result = await simulate_generate(
-        system, contents, model=model, capability=capability,
-        json_output=json_output, tools=tools, timeout=timeout,
+        system, contents, model=model, provider=provider, capability=capability,
+        json_output=json_output, web_search=web_search, timeout=timeout,
         response_schema=response_schema, purpose=purpose,
         correlation_id=correlation_id, trigger_source=trigger_source,
         payload_audit=audit,
@@ -49,9 +50,10 @@ async def _preview_generate(
         owner=_owner_for(correlation_id),
         investigation_id=(correlation_id or "").removeprefix("case-") or None,
         model=model,
+        provider=provider,
         purpose=purpose.value if hasattr(purpose, "value") else str(purpose),
         simulated=True, environment="Preview", status="success",
-        request=_di.describe_request(system, contents, tools),
+        request=_di.describe_request(system, contents, web_search),
         response_text=result.text, finish_reason=result.finish_reason,
         usage=result.usage, duration_ms=int((time.monotonic() - t0) * 1000),
         retries=0, calls=0,

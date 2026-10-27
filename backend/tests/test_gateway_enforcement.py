@@ -38,8 +38,9 @@ class TestArchitecturalEnforcement:
                 if name.endswith(".py"):
                     full = Path(root) / name
                     rel = full.relative_to(BACKEND_ROOT)
-                    # Exclude test files and provider.py itself
-                    if "tests/" not in str(rel) and "test_" not in name and str(rel) != "services/higgins/provider.py":
+                    # Exclude test files, the gateway and the provider adapters (the only code that may use an SDK)
+                    if ("tests/" not in str(rel) and "test_" not in name and str(rel) != "services/higgins/provider.py"
+                            and not str(rel).startswith("services/higgins/adapters/")):
                         files.append(full)
         return files
 
@@ -86,6 +87,13 @@ class TestArchitecturalEnforcement:
                 if pattern.search(content):
                     violations.append(f"{path.relative_to(BACKEND_ROOT)}: {pattern.pattern}")
         assert violations == [], f"Alternate LLM provider imports found: {violations}"
+
+    def test_feature_code_never_imports_a_provider_sdk(self):
+        """Feature code builds a neutral request (ai_request.py); only services/higgins/adapters/ imports an SDK."""
+        sdk = re.compile(r"^\s*(from\s+google\.genai|from\s+google\s+import\s+genai|import\s+google\.genai|from\s+anthropic|import\s+anthropic|from\s+openai|import\s+openai)\b", re.M)
+        violations = [str(path.relative_to(BACKEND_ROOT)) for path in self._python_files()
+                      if "/poc/" not in str(path) and sdk.search(path.read_text(errors="replace"))]
+        assert violations == [], f"Provider SDK imported outside the adapters: {violations}"
 
     def test_all_generate_calls_have_purpose(self):
         """Every call to provider.generate() or generate_json() must include purpose=.
@@ -158,15 +166,15 @@ class TestBinaryContentAuthorisation:
 
     def test_contains_binary_detects_inline_data(self):
         from services.higgins.provider import _contains_binary
-        from google.genai import types
+        from services.higgins.ai_request import Message, Part
         # Text-only: no binary
         assert not _contains_binary("just text")
-        assert not _contains_binary(types.Part(text="hello"))
-        assert not _contains_binary([types.Part(text="hello")])
+        assert not _contains_binary(Part(text="hello"))
+        assert not _contains_binary([Part(text="hello")])
         # Binary: detected
-        assert _contains_binary(types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
-        assert _contains_binary([types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg")])
-        assert _contains_binary(types.Content(role="user", parts=[types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg")]))
+        assert _contains_binary(Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
+        assert _contains_binary([Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg")])
+        assert _contains_binary(Message("user", [Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg")]))
 
     def test_binary_authorised_purposes_are_correct(self):
         from services.higgins.provider import _BINARY_AUTHORISED_PURPOSES

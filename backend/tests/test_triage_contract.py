@@ -231,10 +231,16 @@ async def test_every_triage_outcome_is_saved_to_patrol_history(evidence, expecte
     device_id = f"test-triage-{uuid.uuid4().hex[:10]}"
     investigation = evaluate(evidence)
     assert investigation.outcome is expected
-    event_id = await record_triage_history(device_id, investigation, category="link", subject="example.com")
+    event_id = await record_triage_history(device_id, investigation, category="link", subject="example.com",
+                                           evidence_source="device_submission")
     try:
         event = await db.patrol_events.find_one({"device_id": device_id, "event_id": event_id}, {"_id": 0})
         assert event is not None
+        # The separated evidence model: the source is what supplied the evidence, never the server that checked it.
+        assert event["evidence_provenance"] == "device_submission"
+        assert event["processing_source"] == "apollosg_servers"
+        assert event["evidence_representation"] == "privacy_protected_copy"
+        assert event["evidence_completeness"] in ("complete", "partial")
         record = event["triage_investigation"]
         assert record["outcome"] == expected.value
         assert record["geminiCalls"] == 0

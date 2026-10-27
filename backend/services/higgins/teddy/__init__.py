@@ -3,13 +3,13 @@
     Input → Higgins Triage → only the relevant checks → for each check:
         1. direct / authoritative source (official.py)
         2. Apollo Knowledge Base — including the established scam patterns (patterns.py)
-        3. targeted Google Search — one call, low-cost model (search.py)
+        3. targeted web search — one call, the investigation model selected in ApolloSG Settings (search.py)
     → an Apollo case outcome (outcomes.py) when further investigation couldn't change the finding or what
       Higgins tells the person, or hand Magnum DI only what TC FlyBy could not settle.
 
-TC FlyBy never pays Gemini to confirm what a reliable source has already established, and Magnum DI never
+TC FlyBy never pays the AI provider to confirm what a reliable source has already established, and Magnum DI never
 rediscovers what TC FlyBy found: it receives a short brief of the unresolved issues and the facts that bear on
-them, with Google Search left off unless a specific external fact is still missing.
+them, with web search left off unless a specific external fact is still missing.
 
 Evidence integrity: live evidence (facts about this case, each with its source), Apollo knowledge (general
 context, never a finding) and AI reasoning (Magnum DI's inferences) are kept apart throughout. Anything a
@@ -28,7 +28,7 @@ from core.db import db, now_utc
 from services import kb_sources
 from services.higgins import evidence as ev
 from services.higgins import knowledge
-from services.higgins import model_choice
+from services.higgins import ai_settings
 from services.higgins import repository as repo
 from services.higgins.contracts import Coverage, SourceReference
 from services.higgins.teddy import decide as deciding
@@ -404,7 +404,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         open_checks = [c for c in plan_.checks if c.question and c.status == "open"]
         if open_checks:
             await progress("research", "TC FlyBy is running a few targeted searches.")
-            searched = await search.run(open_checks, model=job.get("provider_model") or await model_choice.model_for("tc_flyby"),
+            searched = await search.run(open_checks, model=job.get("provider_model") or await ai_settings.investigation_model(),
                                         correlation_id=f"case-{case_id}", trigger_source=job.get("source"))
             for check in open_checks:
                 if check.id in searched["answers"]:
@@ -454,7 +454,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
 
 async def discard_response(owner: str, case: dict) -> None:
     """Teddy's composed result failed Apollo's validation: Magnum DI takes the case instead, with Teddy's
-    brief and with Google Search on, since Teddy's conclusion can't be relied on."""
+    brief and with web search on, since Teddy's conclusion can't be relied on."""
     case_id = case["case_id"]
     stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 0, "teddy_ciphertext": 1})
     if not stored or not stored.get("teddy_ciphertext"):

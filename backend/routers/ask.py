@@ -42,12 +42,8 @@ class ChatRequest(Wire):
 @router.post("/higgins/chat", response_model=chat.ChatReply)
 async def higgins_chat(body: ChatRequest, request: Request):
     owner = request.state.device["device_id"]
-    try:
-        result = await chat.reply(owner, body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
-                                  body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
-    except chat.provider.ProviderFailure as exc:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Higgins is temporarily unavailable. No investigation was started.") from exc
+    result = await chat.reply(owner, body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
+                              body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
     return JSONResponse(result.wire(), headers=NO_STORE)
 
 

@@ -8,6 +8,7 @@ the admin portal) and the KB retrieval benchmark baseline. Every external call i
 
 Run: cd /app/backend && python -m pytest tests/test_reusable_intel.py -q
 """
+import html
 import json
 import logging
 import re
@@ -19,7 +20,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from google.genai import types
+from services.higgins.ai_request import Message, Part
 from starlette.requests import Request
 
 from core.db import db, now_utc
@@ -27,9 +28,9 @@ from core.models import DomainInfo
 from routers import admin_portal
 from services import kb_benchmark, phonerisk, rdap, sufficiency, urlrisk
 from services import reusable_intel as intel
-from services.higgins import chat, knowledge, provider
+from services.higgins import chat, presenter, knowledge, provider
 from services.higgins import teddy
-from services.higgins.provider import GeminiResult, Purpose
+from services.higgins.provider import AIResult, Purpose
 from services.higgins.teddy import report, search
 from services.higgins.teddy.triage import Check
 
@@ -135,10 +136,10 @@ def test_organisations_and_registrations_are_keyed_on_their_identity():
     assert intel.subject_key("question", QUESTION) == intel.subject_key("question", "why do scammers ask you for gift cards")
 
 
-# ── Higgins' general question (Gemini): reuse before the one call ────────────
+# ── Ask Higgins makes no AI call, and never shows an old AI-written answer ────
 @pytest.fixture
-def gemini(monkeypatch, store):
-    calls = AsyncMock(return_value=SimpleNamespace(text=json.dumps({"answer": ANSWER}), simulated=False))
+def no_ai(monkeypatch, store):
+    calls = AsyncMock(side_effect=AssertionError("Ask Higgins makes no AI call"))
     monkeypatch.setattr(provider, "generate", calls)
     monkeypatch.setattr(chat.memory, "add_chat_exchange", AsyncMock(return_value=now_utc() + timedelta(minutes=5)))
     monkeypatch.setattr(chat.knowledge, "search", AsyncMock(return_value=[]))
@@ -150,87 +151,28 @@ async def ask(message: str):
     return await chat.reply("owner-reuse", "conversation-1", "turn-00000001", message, [])
 
 
-async def test_a_question_asked_again_reuses_geminis_answer_without_a_call(gemini, store):
-    first = await ask(QUESTION)
-    assert first.answered_by == "gemini" and first.reused is None and gemini.await_count == 1
-    assert await counts(store, chat.GENERAL_SITE) == {"sufficiency_unknown": 1, "external_call_required": 1, "cache_write": 1}
-
-    again = await ask(QUESTION)
-    assert gemini.await_count == 1, "KNOWN: the external call is not made"
-    saved = await store.reusable_intelligence.find_one({}, {"_id": 0})
-    assert ANSWER in again.answer and knowledge.SAVED_ANSWER_NOTE in again.answer, "always labelled as Gemini's"
-    assert again.answered_by == "gemini" and again.reused.provider == "gemini" and again.reused.ai_generated is True
-    assert again.reused.last_checked_at == saved["last_verified_at"] and again.reused.expires_at == saved["expires_at"]
-    wire = again.model_dump(by_alias=True, mode="json")["reused"]
-    assert wire["lastCheckedAt"].endswith(("Z", "+00:00")), "sent with its offset, so the app's 'Checked … ago' is right"
-
-    reworded = await ask("Why would a scammer want gift cards?")
-    assert gemini.await_count == 1 and reworded.reused is not None, "the same question in other words"
-    assert (await store.reusable_intelligence.find_one({}))["hits"] == 2
-    assert (await counts(store, chat.GENERAL_SITE))["external_call_avoided"] == 2
-
-
-async def test_a_different_question_is_never_answered_from_a_saved_answer(gemini, store):
-    await ask(QUESTION)
-    other = await ask("Why do scammers ask for crypto?")
-    assert gemini.await_count == 2 and other.reused is None
-
-
-async def test_an_expired_answer_is_asked_again_and_refreshed(gemini, store):
-    old = second(now_utc() - timedelta(days=100))
-    await intel.put(intel.subject_key("question", QUESTION), intel.GEMINI, intel.GENERAL_ANSWER, "general_answer", {"answer": "old words"},
-                    knowledge_class="ai_generated_answer", ai_generated=True, question=QUESTION, verified_at=old)
+async def test_an_old_saved_ai_answer_is_never_shown_and_no_call_is_made(no_ai, store):
+    await intel.put(intel.subject_key("question", QUESTION), intel.GEMINI, intel.GENERAL_ANSWER, "general_answer", {"answer": ANSWER},
+                    knowledge_class="ai_generated_answer", ai_generated=True, question=QUESTION)
     reply = await ask(QUESTION)
-    assert gemini.await_count == 1 and reply.reused is None, "PARTIAL (expired): asked as before"
-    rows = await store.reusable_intelligence.find({}).to_list(5)
-    assert len(rows) == 1 and rows[0]["created_at"] == old and rows[0]["last_verified_at"] > old
-    assert rows[0]["payload"]["answer"] == ANSWER and intel.fresh(rows[0])
-    assert await counts(store, chat.GENERAL_SITE) == {"sufficiency_partial": 1, "cache_expired": 1, "external_call_required": 1, "cache_write": 1}
+    assert ANSWER not in reply.answer and reply.answer == presenter.NOT_IN_TRUSTED_KNOWLEDGE
+    assert reply.answered_by == "apollo" and no_ai.await_count == 0
+    assert (await store.reusable_intelligence.find_one({}))["hits"] == 0
+    assert await counts(store, chat.GENERAL_SITE) == {"sufficiency_unknown": 1, "external_call_avoided": 1}
 
 
-async def test_kb_knowledge_answers_before_any_saved_answer_or_call(gemini, store, monkeypatch):
-    await knowledge.remember_gemini_answer(QUESTION, ANSWER)
+async def test_kb_knowledge_answers_with_no_call(no_ai, store, monkeypatch):
     entry = {"kb_id": "learn_article:gift-cards", "kind": "learn_article", "status": "current", "title": "Gift card scams", "body": "..."}
     monkeypatch.setattr(chat.knowledge, "search", AsyncMock(return_value=[entry]))
     monkeypatch.setattr(chat.knowledge, "present", lambda entries, question: ("From the Learn with Higgins article “Gift card scams”", []))
     reply = await ask(QUESTION)
-    assert reply.answered_by == "knowledge_base" and reply.reused is None and gemini.await_count == 0
-    assert (await store.reusable_intelligence.find_one({}))["hits"] == 0, "the saved answer is not used when the KB answers"
-    assert await counts(store, chat.GENERAL_SITE) == {"cache_write": 1, "sufficiency_known": 1, "kb_hit": 1, "external_call_avoided": 1}
+    assert reply.answered_by == "knowledge_base" and no_ai.await_count == 0
+    assert await counts(store, chat.GENERAL_SITE) == {"sufficiency_known": 1, "kb_hit": 1, "external_call_avoided": 1}
 
 
-async def test_a_simulated_answer_is_saved_tagged_and_reused_only_by_the_preview(gemini, store, monkeypatch):
-    """Preview processes a simulated answer exactly as production processes a live one: saved, then reused
-    with no new call. The tag keeps it to the preview — a live server never reuses it."""
-    gemini.return_value = SimpleNamespace(text=json.dumps({"answer": ANSWER}), simulated=True)
-    monkeypatch.setattr(provider, "get_provider_mode", lambda: "preview")
-    first = await ask(QUESTION)
-    assert first.answered_by == "gemini" and first.simulated is True and first.reused is None
-    assert (await store.reusable_intelligence.find_one({}, {"_id": 0}))["simulated"] is True
-    again = await ask(QUESTION)
-    assert gemini.await_count == 1 and again.reused is not None and again.simulated is True
-    monkeypatch.setattr(provider, "get_provider_mode", lambda: "live")
-    gemini.return_value = SimpleNamespace(text=json.dumps({"answer": ANSWER}), simulated=False)
-    live = await ask(QUESTION)
-    assert gemini.await_count == 2 and live.reused is None and live.simulated is False
-
-
-async def test_a_question_with_personal_detail_is_answered_but_never_saved(gemini, store):
-    reply = await ask("My name is Jane Citizen. Why do scammers ask for gift cards?")
-    assert reply.answered_by == "gemini" and gemini.await_count == 1
-    assert await store.reusable_intelligence.count_documents({}) == 0
-
-
-# ── The KB boundary: AI output is never promoted ─────────────────────────────
-async def test_geminis_answers_are_stored_as_ai_derived_and_never_as_kb_knowledge(store):
-    marker = f"Unique saved answer {uuid.uuid4().hex}"
-    assert await knowledge.remember_gemini_answer(QUESTION, marker)
-    row = await store.reusable_intelligence.find_one({}, {"_id": 0})
-    assert (row["provider"], row["source_type"], row["knowledge_class"]) == ("gemini", "higgins_general_answer", "ai_generated_answer")
-    assert row["ai_generated"] is True and row["authoritative"] is False and row["provenance"]["publisher"] == knowledge.GEMINI_PUBLISHER
-    assert await db.higgins_knowledge.count_documents({"body": marker}) == 0
-    assert await db.higgins_knowledge.count_documents({"kind": "gemini_answer"}) == 0
-    assert all(e.get("body") != marker for e in await knowledge.search(QUESTION))
+async def test_an_off_topic_question_still_gets_the_fixed_reply(no_ai, store):
+    reply = await ask("What's a good recipe for pavlova?")
+    assert reply.answer == presenter.OUT_OF_SCOPE and no_ai.await_count == 0
 
 
 def test_no_code_path_writes_ai_output_into_the_kb():
@@ -247,7 +189,7 @@ def _code() -> dict[str, str]:
 def test_only_approved_lookups_write_the_reusable_cache():
     code = _code()
     writers = {path for path, text in code.items() if re.search(r"\b(?:intel|reusable_intel)\.put\(", text)}
-    assert writers == {"services/higgins/knowledge.py", "services/higgins/teddy/search.py"}
+    assert writers == {"services/higgins/teddy/search.py"}, "only TC FlyBy's public-identifier lookups are cached; Ask Higgins writes nothing"
     direct = {path for path, text in code.items() if "db.reusable_intelligence" in text}
     assert direct == {"services/reusable_intel.py", "services/stats_reset.py"}
     reset = code["services/stats_reset.py"]
@@ -312,15 +254,15 @@ def web(monkeypatch, store):
         state.prompts.append(text)
         lines = [f"Q{n} | {state.status.get(subject, 'WARNING')} | A finding about {subject}." for n, subject in QLINE.findall(text)]
         answer, grounding = _grounded(lines) if state.sourced else ("\n".join(lines), {"web_search_queries": ["q"]})
-        return GeminiResult(text=answer, content=types.Content(role="model", parts=[types.Part(text=answer)]), finish_reason="STOP",
-                            usage={"prompt_token_count": 10, "candidates_token_count": 5}, grounding=grounding, model=provider.TEXT_MODEL)
+        return AIResult(text=answer, finish_reason="STOP",
+                            usage={"prompt_token_count": 10, "candidates_token_count": 5}, grounding=grounding, model="gemini-3.1-flash-lite")
 
     monkeypatch.setattr(provider, "generate", fake)
     return state
 
 
 async def lookup(*checks: Check) -> dict:
-    return await search.run(list(checks), model=provider.TEXT_MODEL, correlation_id="test-reuse", trigger_source="test")
+    return await search.run(list(checks), model="gemini-3.1-flash-lite", correlation_id="test-reuse", trigger_source="test")
 
 
 async def test_a_fresh_lookup_is_reused_and_not_paid_for_again(web, store):
@@ -566,7 +508,7 @@ async def test_admin_portal_shows_reuse_and_savings(store, monkeypatch):
     for testid in ("intel-reuse-heading", "intel-reuse-sites", "intel-reuse-days", "intel-reuse-inventory", "intel-reuse-ttl"):
         assert f'data-testid="{testid}"' in page, testid
     assert "Calls avoided (14 days)" in page and "75%" in page, "3 avoided of 4"
-    assert "Phone reputation (IPQualityScore)" in page and "Higgins general question (Gemini)" in page
+    assert "Phone reputation (IPQualityScore)" in page and html.escape("Ask Higgins general question (ApolloSG's KB; no AI call)") in page
     assert "AI-derived" in page and "higgins_general_answer" in page and "90 days" in page and "12 hours" in page
     assert ANSWER not in page and QUESTION not in page, "counts and kinds only, never content"
     assert ("Intelligence Reuse", "/api/admin/intel-reuse", "&#9851;") in admin_portal.NAV

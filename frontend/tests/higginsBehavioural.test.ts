@@ -43,7 +43,7 @@ function makeServerEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
   const voice = projectedEventVoice("website", "barking", false);
   return makeEvent({
     headline: voice.headline, what_happened: voice.whatHappened, why: [voice.why], what_to_do: voice.whatToDo,
-    evidence_provenance: "server_projected",
+    evidence_provenance: "local_device", processing_source: "this_device", evidence_representation: "privacy_summary",
     ...overrides,
   });
 }
@@ -205,7 +205,8 @@ describe("5. Unverified outcomes are never reported as completed", () => {
     const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
     const n = normalizeHistoricalEvent(fake);
     assert.equal(n.state, "barking", "Cannot claim biting without enforcement evidence");
-    assert.equal(n.evidence_provenance, "incomplete", "Marked as incomplete when evidence is missing");
+    assert.equal(n.evidence_completeness, "partial", "Marked as incomplete when evidence is missing");
+    assert.equal(n.evidence_provenance, "local_device", "the evidence source is left as recorded");
   });
 
   it("server-projected event does not narrate as if verified", () => {
@@ -292,10 +293,10 @@ describe("8. LLM privacy and evidence boundary", () => {
     assert.ok(voice.whatHappened.length > 0, "Must produce a description");
   });
 
-  it("evidence_provenance field controls narration, not text content", () => {
-    // Even if text LOOKS like real evidence, server_projected provenance prevents narration.
+  it("evidence_representation field controls narration, not text content", () => {
+    // Even if text LOOKS like real evidence, a privacy-summary record prevents narration.
     const serverWithRealText = makeEvent({
-      evidence_provenance: "server_projected",
+      evidence_representation: "privacy_summary",
       what_happened: "This page impersonates a bank.",
     });
     const chunks = narrateEvent(serverWithRealText);

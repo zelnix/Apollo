@@ -77,36 +77,15 @@ class TestHigginsVoice:
         assert "Never manufacture a concern" in HIGGINS_VOICE
 
 
-class TestChatPrompt:
-    """Verify chat.py prompt alignment."""
+class TestChatMakesNoAICall:
+    """Ask Higgins answers only from Apollo's records, product knowledge and the KB: no general AI prompt exists."""
 
-    def test_chat_has_role_separation(self):
-        from services.higgins.chat import SYSTEM
-        assert "APOLLO DETECTS" in SYSTEM
-        assert "TC FLYBY AND MAGNUM DI INVESTIGATE" in SYSTEM
-        # Higgins' role line includes COMMUNICATES (may be preceded by other duties)
-        assert "COMMUNICATES" in SYSTEM and "HIGGINS" in SYSTEM
-
-    def test_chat_ordinary_boundaries(self):
-        from services.higgins.chat import SYSTEM
-        assert "scope" in SYSTEM.lower()
-        # Higgins may initiate investigations (no longer says "cannot start")
-        assert "initiate" in SYSTEM.lower() or "investigation" in SYSTEM.lower()
-
-    def test_chat_investigation_handoff(self):
-        from services.higgins.chat import SYSTEM
-        # Must guide user towards investigation when needed
-        assert "investigation" in SYSTEM.lower()
-        assert "recommend" in SYSTEM.lower() or "open an investigation" in SYSTEM.lower()
-
-    def test_chat_user_facing_names(self):
-        from services.higgins.chat import SYSTEM
-        for category in ["Websites & Links", "Messages & Calls", "Email & Accounts"]:
-            assert category in SYSTEM, f"Chat missing user-facing category: {category}"
-
-    def test_chat_follow_up_capability(self):
-        from services.higgins.chat import SYSTEM
-        assert "follow-up" in SYSTEM.lower() or "existing investigation" in SYSTEM.lower()
+    def test_chat_has_no_ai_prompt_or_call(self):
+        import inspect
+        from services.higgins import chat
+        source = inspect.getsource(chat)
+        assert not hasattr(chat, "SYSTEM") and not hasattr(chat, "ModelChatReply")
+        assert "provider.generate" not in source and "import provider" not in source
 
 
 class TestOutputDepth:
@@ -118,9 +97,9 @@ class TestOutputDepth:
         assert OUTPUT.value >= 16384, f"OUTPUT tokens {OUTPUT.value} too low for comprehensive investigations"
 
     def test_model_supports_output(self):
-        from services.higgins.provider import CAPABILITIES
-        caps = CAPABILITIES.get("gemini-3.8-flash")
-        assert caps is not None
+        from services.higgins.ai_settings import capabilities
+        caps = capabilities("gemini-3.8-flash")
+        assert caps
         assert "text" in caps
 
 

@@ -15,15 +15,15 @@ from pathlib import Path
 
 from core.db import db
 from services import emergent_storage, feed_health
-from services.higgins import model_choice
+from services.higgins import ai_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 _CODE_DIRS = ("core", "routers", "services", "content")
 # Settings whose VALUES are safe to compare (no credentials).
-SETTINGS = ("GEMINI_TEXT_MODEL", "APOLLO_PREVIEW_SIMULATOR", "FAMILY_ASSIST_ENABLED",
+SETTINGS = ("APOLLO_PREVIEW_SIMULATOR", "FAMILY_ASSIST_ENABLED",
             "FAMILY_ASSIST_TURN_PROVIDER")
 # Credentials: only whether each one is set is reported — never the value.
-CREDENTIALS = ("GEMINI_API_KEY", "EMERGENT_LLM_KEY", "SAFE_BROWSING_API_KEY", "VIRUSTOTAL_API_KEY", "IPQS_API_KEY",
+CREDENTIALS = ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "EMERGENT_LLM_KEY", "SAFE_BROWSING_API_KEY", "VIRUSTOTAL_API_KEY", "IPQS_API_KEY",
                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GMAIL_TOKEN_ENCRYPTION_KEY", "EMERGENT_EMAIL_KEY",
                "EMERGENT_PUSH_KEY", "URL_HMAC_SECRET", "RULE_SIGNING_PRIVATE_KEY", "INVESTIGATION_KEY_FILE",
                "CLOUDFLARE_TURN_KEY_ID", "OUTBOUND_PROXIES")
@@ -67,8 +67,9 @@ async def snapshot() -> dict:
         },
         "feeds": {row["feedId"]: {"status": row["status"], "via": row["relay"] or "direct"} for row in feeds["feeds"]},
         "settings": {name: os.environ.get(name) or None for name in SETTINGS},
-        # The model each feature calls, as picked on the Gemini Map (stored per server, in its own database).
-        "models": await model_choice.current(),
+        # The AI investigation provider and model, as selected in ApolloSG Settings (stored per server, in its own
+        # database). Magnum DI and TC FlyBy both use it.
+        "aiModel": {key: (await ai_settings.selection())[key] for key in ("provider", "model")},
         "credentialsSet": {name: bool(os.environ.get(name)) for name in CREDENTIALS},
         "fileStorage": "ok" if await _storage_ok() else "failing",
     }

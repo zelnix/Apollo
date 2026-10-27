@@ -19,7 +19,8 @@ function event(over: Partial<PatrolEvent>): PatrolEvent {
 
 const device = event({ investigation_case_id: "case-1" });
 const twin = event({
-  event_id: "server-twin", client_submission_id: "device-record", evidence_provenance: "server_projected",
+  event_id: "server-twin", client_submission_id: "device-record", evidence_provenance: "device_submission",
+  processing_source: "apollosg_servers", evidence_representation: "privacy_protected_copy",
   headline: "This matches a known scam", investigation_case_id: "case-1", investigation_completed_at: "2026-10-24T03:19:05.000Z",
 });
 
@@ -32,7 +33,7 @@ test("a server twin of this device's record is folded in, not shown twice", () =
 });
 
 test("both copies on the server still give one entry", () => {
-  const { events } = mergeLocalAndRemoteEvents([device], [twin, { ...device, evidence_provenance: "server_projected" }]);
+  const { events } = mergeLocalAndRemoteEvents([device], [twin, { ...device, evidence_representation: "privacy_summary" }]);
   assert.deepEqual(events.map((e) => e.event_id), ["device-record"]);
 });
 

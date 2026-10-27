@@ -1,7 +1,7 @@
 """Deterministic Higgins health check — no Gemini call and no synthetic investigation.
 
-Health is read from state Apollo already holds: whether the Gemini key is configured and how Apollo's
-real investigation calls have been going (the gemini_usage records). The report round trip still
+Health is read from state Apollo already holds: whether the selected AI provider's key is configured (ApolloSG
+Settings → AI Provider & Model) and how Apollo's real investigation calls have been going (the AI usage records). The report round trip still
 exercises the production encrypted report store with a fixed, server-owned report.
 """
 from __future__ import annotations
@@ -11,9 +11,8 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from core.config import GEMINI_API_KEY
 from core.db import db, now_utc
-from services.higgins import report_store
+from services.higgins import ai_settings, report_store
 
 RECENT_WINDOW = timedelta(hours=24)
 RECENT_CALLS = 5
@@ -30,7 +29,7 @@ class HealthFailure(Exception):
 
 
 async def provider_status() -> dict:
-    """Whether the Gemini key is set and how Apollo's last real Gemini call went. Read from records; no call is made."""
+    """Whether the selected provider's key is set and how Apollo's last real AI call went. Read from records; no call is made."""
     last = await db.gemini_usage.find_one({"extra.simulated": {"$ne": True}}, {"_id": 0, "timestamp": 1, "success": 1, "failure_code": 1, "purpose": 1},
                                           sort=[("timestamp", -1)])
     call = None
@@ -38,12 +37,13 @@ async def provider_status() -> dict:
         at = last.get("timestamp")
         call = {"at": (at.replace(tzinfo=at.tzinfo or timezone.utc).isoformat() if isinstance(at, datetime) else None),
                 "worked": bool(last.get("success")), "failureCode": last.get("failure_code"), "purpose": last.get("purpose")}
-    return {"keyConfigured": bool(GEMINI_API_KEY), "lastCall": call}
+    sel = await ai_settings.selection()
+    return {"keyConfigured": ai_settings.key_configured(sel["provider"]), "provider": sel["provider"], "model": sel["model"], "lastCall": call}
 
 
 async def investigate() -> dict:
-    """Deterministic provider status from existing records. Never calls Gemini."""
-    if not GEMINI_API_KEY:
+    """Deterministic provider status from existing records. Never calls the AI provider."""
+    if not ai_settings.key_configured((await ai_settings.selection())["provider"]):
         raise HealthFailure("provider_not_configured")
     recent = await db.gemini_usage.find({"correlation_id": {"$regex": "^case-"}, "timestamp": {"$gte": now_utc() - RECENT_WINDOW}},
                                         {"_id": 0, "success": 1, "failure_code": 1}).sort("timestamp", -1).limit(RECENT_CALLS).to_list(RECENT_CALLS)

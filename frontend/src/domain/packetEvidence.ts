@@ -1,6 +1,7 @@
 // Consumer policy, deliberately separate from the frozen public SDK contract.
 import type { EnforcementEvidence } from '../security/PlatformCapabilityProfile';
 import type { PatrolEnforcementEvidence, PatrolEvent } from './types';
+import { blockProofGap, withEvidenceModel, type StoredEvent } from './evidenceModel.ts';
 import { asUtc } from './utcTime.ts';
 
 const TIME_FIELDS = ['occurred_at', 'resolved_at', 'reopened_at', 'previously_resolved_at', 'detection_updated_at', 'investigation_completed_at'] as const;
@@ -36,12 +37,16 @@ export function eventHasPacketProof(event: PatrolEvent): boolean {
     (!e!.device_id || e!.device_id === event.device_id) && Date.parse(e!.observed_at) === Date.parse(event.occurred_at);
 }
 
-export function normalizeHistoricalEvent(input: PatrolEvent): PatrolEvent {
+export function normalizeHistoricalEvent(input: PatrolEvent | StoredEvent): PatrolEvent {
+  // Records stored before the separated evidence model are read into it (evidenceModel.ts).
+  const e: PatrolEvent = { ...withEvidenceModel(input) };
   // Earlier server copies sent these times without their zone; they are UTC, so they're marked as such.
-  const e: PatrolEvent = { ...input };
   for (const key of TIME_FIELDS) if (typeof e[key] === 'string') (e as unknown as Record<string, unknown>)[key] = asUtc(e[key] as string);
+  // The truth gate: a block claim without packet proof is downgraded. Its evidence source is left exactly as recorded;
+  // what's missing is recorded as completeness, with the reason.
   if ((e.state === 'biting' || e.verified_block) && !eventHasPacketProof(e)) return {
-    ...e, state: 'barking', verified_block: false, evidence_provenance: 'incomplete',
+    ...e, state: 'barking', verified_block: false, evidence_completeness: 'partial',
+    evidence_gaps: [...(e.evidence_gaps ?? []).filter((g) => g.check !== 'block_proof'), blockProofGap(e.occurred_at)],
     status: e.resolved_at ? 'resolved' : 'active', enforcement_evidence: null,
     headline: e.category === 'call' ? 'Call rejection requested' : 'Earlier block claim is not packet-verified',
     what_happened: 'This record does not establish an observed packet drop.',

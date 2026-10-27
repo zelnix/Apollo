@@ -9,6 +9,7 @@
 // recommended action and the severity the investigation actually reached. Pure and unit-tested.
 import type { DeviceInvestigation } from "../investigation/deviceStore";
 import { eventBriefing } from "./caseBriefing.ts";
+import { withEvidenceModel } from "./evidenceModel.ts";
 import type { ApolloState, PatrolEvent } from "./types";
 
 /** The severity the investigation reached — never higher than what it concluded. */
@@ -78,7 +79,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
   if (unchanged) return null;
 
   return {
-    ...event,
+    ...withEvidenceModel(event),
     state,
     // A finished investigation leaves the case open unless it found nothing at all.
     status: event.status === "blocked" || event.status === "trusted" ? event.status : state === "resting" ? "resolved" : "active",
@@ -87,8 +88,9 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     what_happened: whatHappened,
     why: findings.length ? findings : event.why,
     what_to_do: whatToDo,
-    // The result is held on this device; it is this device's own record.
-    evidence_provenance: "local_device",
+    // The result is now held in full on this device. What supplied the evidence, and where the case began, never
+    // change because an investigation answered.
+    evidence_representation: "full_record",
     investigation_case_id: event.investigation_case_id ?? inv.caseId,
     // The investigation has answered — the case is no longer "investigating".
     investigation_completed_at: inv.committedAt,

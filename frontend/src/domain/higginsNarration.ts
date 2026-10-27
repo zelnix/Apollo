@@ -4,7 +4,7 @@
 // ApolloSG's servers keep, Higgins says what Apollo has and what it couldn't verify — never where another copy might be.
 // OPERATING STANDARD: Higgins is an authoritative cybersecurity expert. He investigates, assesses, directs
 // and guides. Narration uses decisive, protective language — never passive advice or vague suggestions.
-import { hasRecordedFindings, triageShortfalls } from "./caseFacts.ts";
+import { caseShortfalls, hasRecordedFindings, unverifiedSentence } from "./caseFacts.ts";
 import { CATEGORY_LABEL, type IncidentPlan } from "./incidentPlan.ts";
 import { LIMITED_TODO } from "./triage/contract.ts";
 import { type PatrolEvent, STATE_LABEL, STATE_MEANING } from "./types.ts";
@@ -43,9 +43,10 @@ export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
       chunks.push({ id: "why", label: "Assessment", text: "Apollo found no specific warning signs. No action needed on this one." });
     }
     chunks.push({ id: "todo", label: "What to do", text: `Here's what to do: ${e.what_to_do}` });
-    // What Apollo couldn't verify, with the recorded reason. It narrows the result; it isn't a concern itself.
-    const unverified = triageShortfalls(e.triage_investigation);
-    if (unverified.length) chunks.push({ id: "unverified", label: "What couldn't be verified", text: `Apollo couldn't verify everything: ${unverified.map((r) => `${r.name}, ${r.status}. ${r.reason}`).join(" ")}` });
+    // What Apollo couldn't verify: what was checked, what happened, why, and what that left unverified — the recorded
+    // reason, never generic wording. It narrows the result; it isn't a concern itself.
+    const unverified = caseShortfalls(e);
+    if (unverified.length) chunks.push({ id: "unverified", label: "What couldn't be verified", text: `Apollo couldn't verify everything: ${unverified.map((r) => `${r.name}, ${r.status}. ${r.reason} ${unverifiedSentence(r)}`).join(" ")}` });
   }
   if (e.status !== "active") chunks.push({ id: "done", label: "Handled", text: e.state === "biting" && e.verified_block ? "This threat is blocked and contained. Apollo stopped it. Nothing further is needed." : "This one is handled. Well done." });
   return chunks;

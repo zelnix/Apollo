@@ -2,6 +2,7 @@
 // SAME briefing (backend services/higgins/explain/briefing.py), so they can't say different things about one case.
 // DI stays the technical trace and Evidence the original material. Pure: no React Native, unit-tested in node.
 import type { CaseBriefing, HigginsResponse } from "../investigation/types";
+import { evidenceModel } from "./evidenceModel.ts";
 import type { PatrolEvent } from "./types";
 
 /** What a Patrol event carries of its case's briefing (device-local, never synced). */
@@ -66,7 +67,9 @@ export function needsYou(event: PatrolEvent): boolean {
   if (b) return b.userActionRequired && !!clean(b.actionReason);
   const investigation = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;
   if (investigation) return false; // still investigating, or answered without a recorded decision
-  return BARKING(event) && event.evidence_provenance !== "server_projected" && event.evidence_provenance !== "incomplete"
+  const model = evidenceModel(event);
+  const serverHeld = model.representation === "privacy_summary" || model.representation === "privacy_protected_copy";
+  return BARKING(event) && !serverHeld && model.completeness !== "partial"
     && !!clean(event.why?.[0]) && !!clean(event.what_to_do);
 }
 

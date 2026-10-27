@@ -5,8 +5,10 @@
  * It is imported by ApolloContext (production) and by regression tests (verification).
  *
  * Rules:
- * 1. Local content wins whenever this device recorded it (any provenance except the server's own summary,
- *    "server_projected"): a DNS block, native protection or incomplete record is never replaced by a summary.
+ * 1. Local content wins whenever this device holds its own full record: a DNS block, native protection or incomplete
+ *    record is never replaced by the server's privacy-protected copy or summary.
+ * 1b. Syncing never changes what supplied the evidence or where it was processed: the source and processing this
+ *    device recorded are kept; the server's copy only fills in what this device didn't record.
  * 2. Server metadata is absorbed (patrol_record, investigation_case_id, etc.).
  * 3. Resolved/trusted events are never reopened unless the server carries genuinely new evidence
  *    (new enforcement_evidence.evidence_id not previously seen on this event).
@@ -14,6 +16,7 @@
  *    own case: records are per device, and server processing never changes where a case began.
  */
 import type { PatrolEvent } from "./types";
+import { evidenceModel } from "./evidenceModel.ts";
 import { STATE_RANK } from "./stateMachine.ts";
 
 export interface MergeResult {
@@ -52,7 +55,9 @@ export function mergeLocalAndRemoteEvents(
     const local = localById.get(remote.event_id);
     if (local) {
       // Recorded on this device: local content WINS. Absorb only server metadata.
-      const localIsDetailed = (local.evidence_provenance ?? "server_projected") !== "server_projected";
+      const localModel = evidenceModel(local);
+      const remoteModel = evidenceModel(remote);
+      const localIsDetailed = localModel.representation === "full_record";
 
       // Lifecycle guard: local resolution is preserved unless genuinely new evidence exists.
       const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
@@ -99,7 +104,13 @@ export function mergeLocalAndRemoteEvents(
         local_indicator: local.local_indicator ?? remote.local_indicator,
         claimed_brand: local.claimed_brand ?? remote.claimed_brand,
         scenario: local.scenario ?? remote.scenario,
-        evidence_provenance: localIsDetailed ? local.evidence_provenance : (remote.evidence_provenance ?? "server_projected"),
+        // Where the evidence came from and where it was processed never change in a sync.
+        evidence_provenance: localModel.source ?? remoteModel.source ?? undefined,
+        processing_source: localModel.processing ?? remoteModel.processing ?? undefined,
+        // What the record holds follows the content kept: this device's own, else the server's copy.
+        evidence_representation: (localIsDetailed ? localModel.representation : remoteModel.representation) ?? undefined,
+        evidence_completeness: (localIsDetailed ? localModel.completeness : remoteModel.completeness) ?? undefined,
+        evidence_gaps: localIsDetailed ? local.evidence_gaps : remote.evidence_gaps,
         // The case's origin never moves: the device that detected it.
         device_id: local.device_id,
         // Absorb server lifecycle metadata.

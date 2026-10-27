@@ -5,7 +5,7 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { triageShortfalls } from "@/src/domain/caseFacts";
+import { shortfallLine, triageShortfalls } from "@/src/domain/caseFacts";
 import { LIMITED_CAUTION, outcomeLabel, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
 import { spacing, useTheme } from "@/src/theme";
 
@@ -26,7 +26,7 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
   const met = record.rules.filter((rule) => rule.result === "met");
   const canRecheck = recheckCanHelp(record);
   const incomplete = record.incompleteChecks ?? [];
-  // Each check that didn't finish, named, with the reason recorded for it.
+  // Each check that didn't finish: what was checked → what happened → why it failed → what couldn't be verified.
   const shortfalls = triageShortfalls(record);
   const meaning = record.outcome === "NO_THREAT_IDENTIFIED" && incomplete.length
     ? "Apollo found nothing threatening in the checks that completed, but not every check it needed finished."
@@ -55,7 +55,7 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
         <View style={{ gap: spacing.xs }} testID="triage-incomplete-checks">
           <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What couldn&apos;t be checked</Text>
           {shortfalls.map((row) => (
-            <Body key={row.id} testID={`triage-shortfall-${row.id}`}>{`• ${row.name} — ${row.reason}`}</Body>
+            <Body key={row.id} testID={`triage-shortfall-${row.id}`}>{`• ${shortfallLine(row)}`}</Body>
           ))}
         </View>
       )}

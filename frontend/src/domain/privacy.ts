@@ -1,4 +1,5 @@
 import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
+import { DEVICE_EVIDENCE_SOURCES } from './evidenceModel.ts';
 import { projectedEventVoice } from './messageVoice.ts';
 import type { ApolloState } from './types';
 // Data egress policy, enforced in code. Every outbound payload passes through
@@ -21,6 +22,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do", "case_id",
     "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id", "enforcement_evidence", "supporting_references", "recovery_kinds",
+    // Which of the device's own sources supplied the evidence: a fixed label only (validated below).
+    "evidence_provenance",
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
@@ -198,6 +201,8 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (ev) validateEvidence(ev, out);
     if (out.category === 'call' && (ev || out.verified_block || out.state === 'biting' || out.indicator_host)) throw new EgressViolation(endpoint, 'call packet claim');
     if (out.indicator_host != null && !domainOnly(out.indicator_host)) throw new EgressViolation(endpoint, 'indicator_host');
+    // Only a device's own evidence source label may be synced — never content, never a server.
+    if (out.evidence_provenance != null && !DEVICE_EVIDENCE_SOURCES.has(String(out.evidence_provenance))) throw new EgressViolation(endpoint, 'evidence_provenance');
     if (out.supporting_references === undefined) out.supporting_references = [];
     if (!Array.isArray(out.supporting_references) || out.supporting_references.length > 6 || out.supporting_references.some((ref) => {
       if (!ref || typeof ref !== 'object') return true;

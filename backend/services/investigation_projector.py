@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 
 from core.db import db, now_utc
+from core.evidence_model import INVESTIGATION_ADAPTER, server_evidence_source
 from core.models import PatrolEvent
 from core.redaction import redact_investigation_secrets
 from routers.push import push_owner_alert
@@ -128,7 +129,7 @@ async def project_committed_cases(limit: int = 100) -> int:
             "indicator_digest": None,
             "local_indicator": None,
             "verified_block": False,
-            "adapter_label": "Magnum DI investigation",
+            "adapter_label": INVESTIGATION_ADAPTER,
             "occurred_at": latest.committed_at, "resolved_at": latest.committed_at if state == "resting" else None,
             "trust_allowed": False,
             "claimed_brand": indicators["claimed_brand"],
@@ -138,8 +139,8 @@ async def project_committed_cases(limit: int = 100) -> int:
             # The investigation has answered: this case is no longer "being investigated".
             "investigation_completed_at": latest.committed_at,
             "client_submission_id": case.get("client_submission_id"),
-            # Mark as server_projected so the frontend knows this has real investigation data
-            "evidence_provenance": "server_projected",
+            # The record now holds the investigation's own result, worked from a privacy-protected copy.
+            "evidence_representation": "privacy_protected_copy",
             # Actual recorded source metadata from intake — NOT Gemini-inferred
             "source_metadata": case.get("source_metadata"),
             # Pipeline initiator for telemetry
@@ -147,9 +148,13 @@ async def project_committed_cases(limit: int = 100) -> int:
             "deleted_at": None, "created_at": now_utc(), "updated_at": now_utc(),
         }
         created_at = document.pop("created_at")
-        upsert = await db.patrol_events.update_one({"device_id": case["owner_id"], "event_id": event_id}, {"$set": document, "$setOnInsert": {"created_at": created_at}}, upsert=True)
+        # Where the evidence came from, and where it was processed, are written only when the server files the record
+        # itself: an investigation never changes what this device recorded (server processing is not a source).
+        on_insert = {"created_at": created_at, "evidence_provenance": server_evidence_source(case.get("source_metadata")),
+                     "processing_source": "apollosg_servers"}
+        upsert = await db.patrol_events.update_one({"device_id": case["owner_id"], "event_id": event_id}, {"$set": document, "$setOnInsert": on_insert}, upsert=True)
         if upsert.upserted_id and state != "resting":
-            await push_owner_alert(PatrolEvent.from_mongo({**document, "created_at": created_at}))
+            await push_owner_alert(PatrolEvent.from_mongo({**document, **on_insert}))
         changed = await db.investigation_cases.update_one(
             {"owner_id": case["owner_id"], "case_id": case["case_id"], "response_revision": case["response_revision"],
              "$or": [{"patrol_projected_revision": {"$exists": False}}, {"patrol_projected_revision": {"$lt": case["response_revision"]}}]},
@@ -204,16 +209,17 @@ async def project_case_started(case: dict) -> bool:
         "why": ["The investigation is still running."],
         "what_to_do": "Nothing to do right now. Higgins will tell you as soon as the investigation finishes.",
         "indicator_host": indicators["indicator_host"], "indicator_digest": None, "local_indicator": None,
-        "verified_block": False, "adapter_label": "Magnum DI investigation",
+        "verified_block": False, "adapter_label": INVESTIGATION_ADAPTER,
         "occurred_at": case.get("created_at") or now_utc(), "resolved_at": None, "trust_allowed": False,
         "claimed_brand": indicators["claimed_brand"], "scenario": indicators["scenario"], "scent_id": None,
         "background": True, "investigation_case_id": case["case_id"], "client_submission_id": None,
         "investigation_completed_at": None,
-        "evidence_provenance": "server_projected", "source_metadata": case.get("source_metadata"),
+        "evidence_representation": "privacy_protected_copy", "source_metadata": case.get("source_metadata"),
         "initiator": case.get("initiator", "unknown"), "deleted_at": None, "updated_at": now_utc(),
     }
-    created_at = now_utc()
+    on_insert = {"created_at": now_utc(), "evidence_provenance": server_evidence_source(case.get("source_metadata")),
+                 "processing_source": "apollosg_servers"}
     await db.patrol_events.update_one(
         {"device_id": case["owner_id"], "event_id": event_id},
-        {"$set": document, "$setOnInsert": {"created_at": created_at}}, upsert=True)
+        {"$set": document, "$setOnInsert": on_insert}, upsert=True)
     return True

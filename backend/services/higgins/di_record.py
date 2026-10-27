@@ -1,13 +1,13 @@
 """Deep Investigation (DI) transaction record — the real Magnum DI processing record.
 
-One record per Gemini-boundary call: exactly what was prepared for Gemini (the real system prompt,
+One record per AI-gateway call: exactly what was prepared for the provider (the real system prompt,
 the real investigation context, and the post-redaction attachments that would be transmitted), what
-the provider — live Gemini or the preview simulator — returned, and the processing statistics
+the provider — the selected live provider or the preview simulator — returned, and the processing statistics
 available for that call.
 
 This is NOT evidence. Evidence stays the original evidentiary source Apollo received or detected;
 this record only describes Magnum DI's processing of it. Nothing here modifies evidence, and the
-attachment entries describe the post-redaction derivative that the production Gemini boundary
+attachment entries describe the post-redaction derivative that the production AI boundary
 receives — never an original unredacted attachment.
 """
 from __future__ import annotations
@@ -46,25 +46,23 @@ def _image_dimensions(data: bytes, mime: str) -> dict | None:
     return None
 
 
-def describe_request(system: str, contents: Any, tools: Any) -> dict:
-    """The actual final request at the Gemini boundary — not a reconstruction."""
-    from google.genai import types  # local import keeps this module importable without the SDK
+def describe_request(system: str, contents: Any, web_search: bool) -> dict:
+    """The actual final request at the AI gateway — not a reconstruction."""
+    from services.higgins.ai_request import Message, Part
 
     prompt_parts: list[str] = []
     attachments: list[dict] = []
     items = contents if isinstance(contents, list) else [contents]
     for item in items:
-        if not isinstance(item, types.Content):
-            if isinstance(item, str):
-                prompt_parts.append(item)
+        if isinstance(item, str):
+            prompt_parts.append(item)
             continue
-        for part in (item.parts or []):
-            if getattr(part, "text", None):
+        for part in item.parts if isinstance(item, Message) else [item] if isinstance(item, Part) else []:
+            if part.text:
                 prompt_parts.append(part.text)
-            inline = getattr(part, "inline_data", None)
-            if inline is not None:
-                data = inline.data or b""
-                mime = inline.mime_type or "application/octet-stream"
+            if part.data is not None:
+                data = part.data
+                mime = part.mime_type or "application/octet-stream"
                 entry: dict[str, Any] = {
                     "mimeType": mime,
                     "sizeBytes": len(data),
@@ -79,12 +77,7 @@ def describe_request(system: str, contents: Any, tools: Any) -> dict:
                     entry["dimensions"] = dims
                 attachments.append(entry)
 
-    tool_names: list[str] = []
-    for tool in (tools or []):
-        if getattr(tool, "google_search", None) is not None:
-            tool_names.append("google_search")
-        for declaration in (getattr(tool, "function_declarations", None) or []):
-            tool_names.append(getattr(declaration, "name", "function"))
+    tool_names = ["web_search"] if web_search else []
 
     prompt_text = "\n\n".join(prompt_parts)
     return {
@@ -107,7 +100,7 @@ def estimate_cost(usage: dict | None) -> dict:
 
 
 async def save_di_record(*, correlation_id: str | None, owner: str | None, investigation_id: str | None,
-                         model: str, purpose: str, simulated: bool, environment: str, status: str,
+                         model: str, purpose: str, simulated: bool, provider: str = "gemini", environment: str, status: str,
                          request: dict, response_text: str, finish_reason: str | None,
                          usage: dict | None, duration_ms: int, retries: int, calls: int,
                          failure_code: str | None = None) -> None:
@@ -121,6 +114,7 @@ async def save_di_record(*, correlation_id: str | None, owner: str | None, inves
         "environment": environment,
         "simulated": simulated,
         "engine": "Magnum DI",
+        "provider": provider,
         "model_requested": model,
         "purpose": purpose,
         "status": status,
@@ -171,7 +165,7 @@ def wire(record: dict) -> dict:
     }
 
 
-# Tool and route names as the DI tab shows them — no provider's product name.
+# Tool and route names as the DI tab shows them — no provider's product name (older records say google_search).
 _TOOL_NAMES = {"google_search": "web_search"}
 _FLYBY_FIELDS = ("resolved", "answeredBy", "outcome", "basis", "messageType", "pattern", "searchCalls", "searchQueries",
                  "cacheHits", "magnumNeeded", "magnumSearch", "reusedOnRetry", "gaps", "issues", "simulated")

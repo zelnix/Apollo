@@ -1,11 +1,13 @@
 // The sources Apollo actually consulted for one Threat Case, and exactly what each one returned.
 //
-// Every entry is built from recorded data only — the event's provenance, its stored Triage record,
+// Every entry is built from recorded data only — the event's evidence source, its stored Triage record,
 // its enforcement evidence, the saved Magnum DI investigation and its cited source references.
 // A source that did not answer is reported as such; nothing is inferred and nothing is invented.
+// ApolloSG's servers are never listed as a source: server processing is not where evidence comes from.
 
 import type { DeviceInvestigation } from "../investigation/deviceStore";
-import { triageShortfalls } from "./caseFacts.ts";
+import { caseShortfalls, hasRecordedFindings, unrecordedShortfall, type Shortfall } from "./caseFacts.ts";
+import { evidenceModel } from "./evidenceModel.ts";
 import { investigatorName } from "./messageVoice.ts";
 import type { EmailEvidenceProfile } from "./triage/emailEvidence.ts";
 import type { PatrolEvent } from "./types";
@@ -22,6 +24,8 @@ export interface CaseSource {
   answered: boolean;
   /** How it fell short when it didn't answer ("couldn't be verified"); "didn't answer" when absent. */
   status?: string;
+  /** For a check that didn't finish: what ApolloSG therefore couldn't verify ("where the link finally leads"). */
+  unverified?: string;
   /** Present for external references so the UI can open them. */
   url?: string;
 }
@@ -44,19 +48,23 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
   const { event, investigation } = input;
   const sources: CaseSource[] = [];
 
-  // 1. Where the finding itself came from.
-  if (event.evidence_provenance === "local_device") {
+  // 1. Where the evidence came from — its recorded source only.
+  const model = evidenceModel(event);
+  const provider = (event.source_metadata?.provider ?? "").trim();
+  if (model.source === "local_device") {
     const count = (event.why ?? []).filter((w) => !!w.trim()).length;
     sources.push({
       id: "device",
       name: "This device",
-      returned: count > 0
-        ? `Read directly on the device — ${count} recorded detail${count === 1 ? "" : "s"} about the finding`
-        : "Read directly on the device — the finding, with no further detail recorded",
+      returned: !hasRecordedFindings(event)
+        ? "Apollo checked it here. This record holds the kind of check and its result, not the content that was checked"
+        : count > 0
+          ? `Read directly on the device — ${count} recorded detail${count === 1 ? "" : "s"} about the finding`
+          : "Read directly on the device — the finding, with no further detail recorded",
       at: event.occurred_at,
       answered: true,
     });
-  } else if (event.evidence_provenance === "dns_observation" && event.indicator_host) {
+  } else if (model.source === "dns_observation" && event.indicator_host) {
     sources.push({
       id: "dns",
       name: "Apollo's known-threat list",
@@ -64,20 +72,8 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: event.occurred_at,
       answered: true,
     });
-  } else if (event.evidence_provenance === "server_projected") {
-    // Server processing belongs to THIS case: it worked from (or keeps) a privacy-protected version of the evidence.
-    const analysed = !!(event.triage_investigation || event.investigation_case_id || event.patrol_record?.investigationCaseId);
-    sources.push({
-      id: "server",
-      name: "ApolloSG's servers",
-      returned: analysed
-        ? "Checked a privacy-protected copy of this case's evidence"
-        : "Keep a privacy-protected summary of this check — its kind and result, not the content that was checked",
-      at: event.occurred_at,
-      answered: true,
-    });
-  } else if (event.evidence_provenance === "native_protection") {
-    const owner = (event.source_metadata?.provider ?? "").trim() || "Your device's built-in protection";
+  } else if (model.source === "native_protection") {
+    const owner = provider || "Your device's built-in protection";
     const verdict = (event.source_metadata?.provider_classification ?? "").trim();
     sources.push({
       id: "native_protection",
@@ -88,18 +84,13 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: event.occurred_at,
       answered: true,
     });
-  } else if (event.evidence_provenance === "incomplete") {
-    sources.push({
-      id: "incomplete",
-      name: "Original evidence",
-      returned: "Not part of this case's record",
-      at: event.occurred_at,
-      answered: false,
-    });
+  } else if (model.source === "device_submission") {
+    sources.push({ id: "device", name: "This device", returned: "Sent the item Apollo checked", at: event.occurred_at, answered: true });
+  } else if (model.source === "connected_mailbox" && !provider) {
+    sources.push({ id: "mailbox", name: "Your connected mailbox", returned: "Supplied the email Apollo checked", at: event.occurred_at, answered: true });
   }
 
   // 2. The mailbox or app the item was taken from, when intake recorded it.
-  const provider = (event.source_metadata?.provider ?? "").trim();
   if (provider) {
     sources.push({
       id: "provider",
@@ -145,11 +136,14 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: triage.evaluatedAt,
       answered: true,
     });
-    // Every check that didn't finish: the actual check, and the reason recorded for it — never generic wording.
-    for (const row of triageShortfalls(triage)) {
-      sources.push({ id: row.id, name: row.name, returned: row.reason, at: row.at, answered: false, status: row.status });
-    }
   }
+  // 3b. Every check that didn't finish: what was checked, what happened, why, and what couldn't be verified — the
+  //     recorded reason, never generic wording. Only when nothing records why does the fixed "not recorded" row show.
+  const shortfall = (row: Shortfall): CaseSource =>
+    ({ id: row.id, name: row.name, returned: row.reason, at: row.at, answered: false, status: row.status, unverified: row.unverified });
+  sources.push(...caseShortfalls(event).map(shortfall));
+  const unrecorded = unrecordedShortfall(event);
+  if (unrecorded) sources.push(shortfall(unrecorded));
 
   // 4. Apollo's own enforcement, when it genuinely acted.
   if (event.verified_block && event.enforcement_evidence) {

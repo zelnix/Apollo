@@ -1,7 +1,7 @@
 """Investigation coordinator: Higgins Triage → TC FlyBy → Magnum DI.
 
 On the first turn of a case, Higgins Triage decides what needs checking and TC FlyBy runs those checks the
-cheapest reliable way (official sources → Apollo KB → one targeted, low-cost Google Search call). When TC FlyBy
+cheapest reliable way (official sources → Apollo KB → one targeted web search call). When TC FlyBy
 reliably settles the case, its result is committed and Magnum DI is not called at all.
 
 Otherwise Magnum DI makes its call with the existing configured model. The request contains exactly three
@@ -10,8 +10,13 @@ things:
   2. the case evidence Magnum DI needs — the submitted material itself plus TC FlyBy's brief of what is
      still unresolved — each item labelled with its id and kind (raw lookups TC FlyBy already settled are not
      resent);
-  3. the required response shape, as Gemini's structured-output schema (`response_schema.py`).
-There is no system prompt. Google Search is attached only when a specific external fact is still missing.
+  3. the required response shape (`response_schema.py`), which the provider adapter turns into its own
+     structured-output schema.
+There is no system prompt. Web search is attached only when a specific external fact is still missing.
+
+The model is the one selected in ApolloSG Settings → AI Provider & Model (services/higgins/ai_settings.py),
+pinned on the job when the investigation starts; TC FlyBy uses the same one. The call goes through the single AI
+gateway (provider.generate), never a provider SDK.
 
 MAGNUM DI MAKES ONE CALL. There are no tool rounds, no nested research calls, no model escalation, no Pro
 fallback and no second call to present the answer: Higgins shows what this one call returned. The only
@@ -25,14 +30,13 @@ import logging
 import re
 from typing import Optional
 
-from google.genai import types
-
 from core.db import db, now_utc
 from services import device_stats
 from services.higgins import evidence as ev
 from services.higgins import explain
-from services.higgins import model_choice
+from services.higgins import ai_settings
 from services.higgins import provider
+from services.higgins.ai_request import Message, Part
 from services.higgins import repository as repo
 from services.higgins import teddy
 from services.higgins.contracts import Coverage, HigginsResponse, ProviderResult, TurnCommit, Usage
@@ -46,7 +50,7 @@ log = logging.getLogger("apollo.coordinator")
 # evidence collected for this case. It is registered as evidence, verbatim, so it can be cited.
 TRIAGE_EVIDENCE_ITEM_ID = teddy.PREGATHERED_ITEM_ID
 
-# Magnum DI's one Gemini call, plus at most one retry if that call fails.
+# Magnum DI's one AI call, plus at most one retry if that call fails.
 MAX_GEMINI_CALLS = 2
 
 
@@ -176,7 +180,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     payload = repo.dec_json(job["payload_ciphertext"])
     device = repo.device_profile(case)
     capability_ids = set((device or {}).get("capabilityIds", []))
-    job_model = job.get("provider_model") or await model_choice.model_for("magnum_di")
+    job_model = job.get("provider_model") or await ai_settings.investigation_model()
     if not job.get("provider_model"):
         await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"provider_model": job_model}})
         job = {**job, "provider_model": job_model}  # TC FlyBy reads it from here
@@ -213,27 +217,26 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     else:
         evidence_parts, pending_marks = _parts, _marks
 
-    contents = [types.Content(role="user", parts=[types.Part(text=payload["message"]), *evidence_parts])]
+    contents = [Message("user", [Part(text=payload["message"]), *evidence_parts])]
 
-    # Take a Gemini call slot before anything is sent. Refused = both attempts are already used:
+    # Take an AI call slot before anything is sent. Refused = both attempts are already used:
     # nothing is sent and the person is asked to resubmit later.
     if await repo.claim_gemini_call(owner, job["job_id"], MAX_GEMINI_CALLS) is None:
         return Outcome("call_limit_reached", errors=[f"this investigation already made {MAX_GEMINI_CALLS} AI calls"])
 
-    # Mark evidence as examined now that it has been sent to Gemini
+    # Mark evidence as examined now that it has been sent to the model
     for evidence_id, start, end, total in pending_marks:
         await ev.mark_examined(owner, case["case_id"], evidence_id, start, end, total)
 
-    # ── Step 3: Magnum DI's single Gemini call ──
+    # ── Step 3: Magnum DI's single AI call ──
     await progress("assess", "Magnum DI is examining what needs deeper analysis." if first_turn else "Magnum DI is examining the evidence.")
     job_source = job.get("source", "user_initiated")
-    tools = [types.Tool(google_search=types.GoogleSearch())] if search_on else None
-    # The schema lets Gemini cite only what is registered for this case; Gemini cannot know Apollo's ids.
+    # The schema lets the model cite only what is registered for this case; it cannot know Apollo's ids.
     source_ids = {s["id"] for s in await repo.sources(owner, case["case_id"])}
     # The DI transaction record is device-scoped: tell the gateway who owns this correlation id.
     provider.register_di_owner(f"case-{case['case_id']}", owner)
     # No system prompt: the required response shape is carried by the schema alone.
-    result = await provider.generate("", contents, model=job_model, tools=tools,
+    result = await provider.generate("", contents, model=job_model, web_search=search_on,
                                      capability="search" if search_on else "json", purpose=provider.Purpose.INVESTIGATION,
                                      json_output=True,
                                      response_schema=response_schema(evidence_ids=sorted(row["evidence_id"] for row in rows),
@@ -268,9 +271,9 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                        model=result.model)
 
     # ── Step 5: Commit the turn ──
-    # Google Search's grounding is Gemini's own record of the web pages behind this answer. They are
+    # The grounding record is the provider's own record of the web pages its search used for this answer. They are
     # registered as case sources (search results: leads, not verification) so the case shows them and
-    # a follow-up turn can cite them by Apollo's id. Gemini's answer itself is not altered.
+    # a follow-up turn can cite them by Apollo's id. The model's answer itself is not altered.
     grounded_ids = set((await repo.add_sources(owner, case["case_id"], grounding_sources(result.grounding))).values())
     usage = result.usage or {}
     provider_result = ProviderResult(model=result.model, finish_reason=result.finish_reason, provider_complete=result.finish_reason == "STOP",

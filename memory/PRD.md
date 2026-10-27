@@ -1,3 +1,26 @@
+## AI gateway: provider-neutral, Claude + OpenAI connected, Ask Higgins AI fallback removed (2026-10-27)
+**Owner's choices:** do all four steps; Claude and OpenAI use the owner's OWN keys (not the Emergent key). Keys were
+requested (ANTHROPIC_API_KEY, OPENAI_API_KEY) but the owner skipped the card — until they're added, Claude/OpenAI models
+show as "no … API key is set on the server" and can't be selected. **Not yet verified against the live Claude/OpenAI APIs.**
+- Gateway: `investigation → provider.generate() → adapters/<provider> → model`. `ai_request.py` = neutral Message/Part/
+  AIResult/ProviderFailure; `ai_settings.py` = one global selection (db `apollo_settings`, legacy `gemini_model_choices`
+  read once), approved models + capabilities, `unavailable()` reasons; keys only as yes/no. Admin → ApolloSG Settings →
+  AI Provider & Model (`/api/admin/apollosg-settings`), audit-logged; AI Map is read-only. No model/provider switching.
+- New adapters: `adapters/claude.py` (anthropic 2.3.0; Models API limits+capabilities, count_tokens, structured output;
+  with web search the shape is a strict `apollo_answer` tool + tool_choice any because Claude's citations can't combine
+  with output_config; web_search_20250305 max_uses 5; citations → grounding supports in UTF-8 byte offsets) and
+  `adapters/gpt.py` (openai 1.99.9 kept — emergentintegrations pins it; Responses API, store=False, strict json_schema +
+  web_search in one call, input tokens via raw POST /responses/input_tokens, published LIMITS table). Shared
+  `adapters/_schema.py` (closed objects, all required, null unions; Claude has no maxItems → moved to description).
+- Approved: claude-haiku-5-5, claude-sonnet-5-5, claude-opus-5-5; gpt-5.6-luna, gpt-5.4-mini, gpt-5.6-terra, gpt-5.4,
+  gpt-5.6-sol, gpt-5.5 (prices in gemini_usage.MODEL_PRICING; SEARCH_QUERY_USD now per provider).
+- Ask Higgins makes no AI call (chat.py has no provider/SYSTEM; routers/ask.py dead ProviderFailure handler removed).
+- Rule book: providers never named (frontend ruleBook test); re-stamped.
+- Tests: new `backend/tests/test_ai_adapters.py` (27, fake SDK clients); fixed 17 stale tests after the refactor.
+  Backend full suite 1313 passed + rulebook; frontend 1076/1076; tsc clean. No testing agent (owner's rule).
+- NEXT: once keys are added, restart backend and run a tiny live smoke call per provider (adapter.invoke directly,
+  outside the preview simulator) to confirm model IDs, schema acceptance and web search.
+
 ## Two labels fixed + Calls/Apps samples (2026-10-27)
 - Email L2 from a connected mailbox: catalogue `types.email.viaLevels.connected_mailbox.L2` → "L2 — Mailbox Email" with
   mailbox wording (same level/rank/rules); `newProfile` merges `viaLevels` over `levels`. Rule book L2 line updated; re-stamped.

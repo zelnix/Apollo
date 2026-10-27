@@ -67,8 +67,8 @@ async def test_the_simulator_marks_its_own_result_as_simulated(monkeypatch):
         return None
 
     monkeypatch.setattr("services.higgins.preview.preview_simulator._record_usage", _no_usage)
-    result = await simulate_generate("", "Is this message genuine?", model="gemini-3.1-flash-lite", capability="text",
-                                     json_output=True, tools=None, timeout=10, response_schema=None,
+    result = await simulate_generate("", "Is this message genuine?", model="gemini-3.1-flash-lite", provider="gemini", capability="text",
+                                     json_output=True, web_search=False, timeout=10, response_schema=None,
                                      purpose=Purpose.INVESTIGATION, correlation_id=None, trigger_source=None,
                                      payload_audit={})
     assert result.simulated is True

@@ -2,7 +2,7 @@
 // for handing to a bank, the police or a family member. Facts only: no analysis, no interpretation,
 // and nothing that wasn't already recorded on the case.
 
-import { caseOrigin, completenessLabel, evidenceSourceLabel, privacyNote, processingLabels } from "./caseFacts.ts";
+import { caseOrigin, completenessLabel, evidenceSourceLabel, privacyNote, processingLabels, unverifiedSentence } from "./caseFacts.ts";
 import { sourceHeading, type CaseSource } from "./caseSources.ts";
 import { categoryLabel, formatDateTime, STATUS_LABELS, threatCaseId, threatCaseStatus } from "./threatCase.ts";
 import type { PatrolEvent } from "./types";
@@ -33,7 +33,9 @@ export function buildEvidencePack(input: { event: PatrolEvent; facts: string[]; 
   if (sources.length > 0) {
     for (const source of sources) {
       const when = source.at ? ` (${formatDateTime(source.at)})` : "";
-      lines.push(`- ${sourceHeading(source)}: ${source.returned}${when}`);
+      // A check that didn't finish reads in order: what was checked — what happened: why. What couldn't be verified.
+      const unverified = source.unverified ? ` ${unverifiedSentence({ unverified: source.unverified })}` : "";
+      lines.push(`- ${sourceHeading(source)}: ${source.returned}${unverified}${when}`);
       if (source.url) lines.push(`  ${source.url}`);
     }
   } else {

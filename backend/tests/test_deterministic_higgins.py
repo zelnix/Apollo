@@ -205,25 +205,21 @@ async def test_device_state_prompts_from_apollo_screens_make_no_call(prompt, exp
 
 
 @pytest.mark.asyncio
-async def test_a_general_scam_question_keeps_its_one_gemini_call(monkeypatch, no_gemini):
-    """The owner's rule: a general scam question Apollo's knowledge can't answer still gets exactly one call."""
-    calls = AsyncMock(return_value=SimpleNamespace(text=json.dumps({"answer": "Scammers pressure you to act fast."}), simulated=False))
-    monkeypatch.setattr(provider, "generate", calls)
-    monkeypatch.setattr(chat.knowledge, "remember_gemini_answer", AsyncMock(return_value=True))
+async def test_a_general_question_nothing_trusted_answers_makes_no_ai_call(monkeypatch, no_gemini):
+    """Ask Higgins has no general AI fallback: when nothing trusted answers, Higgins says so."""
+    monkeypatch.setattr(chat.knowledge, "search", AsyncMock(return_value=[]))
     reply = await ask("Why do scammers ask for gift cards?")
-    assert reply.answered_by == "gemini"
-    calls.assert_awaited_once()
+    assert reply.answered_by == "apollo" and reply.answer == presenter.NOT_IN_TRUSTED_KNOWLEDGE
+    assert [n.route for n in reply.navigation] == ["/higgins/learning"]
+    no_gemini.assert_not_awaited()
 
 
-def test_chat_has_exactly_one_gemini_call_and_it_comes_last():
+def test_chat_makes_no_ai_call():
     source = (BACKEND / "services/higgins/chat.py").read_text()
     tree = ast.parse(source)
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-             and node.func.attr == "generate" and getattr(node.func.value, "id", "") == "provider"]
-    assert len(calls) == 1
-    reply_fn = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "reply")
-    deterministic = [n.lineno for n in ast.walk(reply_fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_deterministic"]
-    assert deterministic and max(deterministic) < calls[0].lineno
+             and node.func.attr in ("generate", "generate_json", "generate_text")]
+    assert calls == [] and "provider" not in {getattr(n, "id", "") for n in ast.walk(tree) if isinstance(n, ast.Name)}
 
 
 # ── Higgins health check ────────────────────────────────────────────────────────────────────────
@@ -233,13 +229,16 @@ async def test_health_status_comes_from_saved_records_only(monkeypatch):
     monkeypatch.setattr(provider, "generate", AsyncMock(side_effect=AssertionError("no test call")))
     last = {"timestamp": now_utc(), "success": False, "failure_code": "provider_configuration", "purpose": "investigation"}
     monkeypatch.setattr(health_check, "db", SimpleNamespace(gemini_usage=SimpleNamespace(find_one=AsyncMock(return_value=last))))
-    monkeypatch.setattr(health_check, "GEMINI_API_KEY", "set")
+    async def _selected():
+        return {"provider": "gemini", "model": "gemini-3.1-flash-lite"}
+    monkeypatch.setattr(health_check.ai_settings, "selection", _selected)
+    monkeypatch.setattr(health_check.ai_settings, "key_configured", lambda provider: True)
     status = await health_check.provider_status()
-    assert status["keyConfigured"] is True
+    assert status["keyConfigured"] is True and status["provider"] == "gemini" and status["model"] == "gemini-3.1-flash-lite"
     assert status["lastCall"]["worked"] is False and status["lastCall"]["failureCode"] == "provider_configuration"
     monkeypatch.setattr(health_check, "db", SimpleNamespace(gemini_usage=SimpleNamespace(find_one=AsyncMock(return_value=None))))
-    monkeypatch.setattr(health_check, "GEMINI_API_KEY", None)
-    assert await health_check.provider_status() == {"keyConfigured": False, "lastCall": None}
+    monkeypatch.setattr(health_check.ai_settings, "key_configured", lambda provider: False)
+    assert await health_check.provider_status() == {"keyConfigured": False, "provider": "gemini", "model": "gemini-3.1-flash-lite", "lastCall": None}
 
 
 def test_public_health_result_carries_the_provider_status():

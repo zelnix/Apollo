@@ -886,10 +886,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Wait until local events are restored, and merge against the live ref — merging against an
     // empty/stale snapshot let the server's unresolved copy overwrite a local "contained" decision.
     if (!remoteEvents.data || !ready) return;
-    const remoteConverted = remoteEvents.data.map((record) => {
-      const e = normalizeHistoricalEvent(patrolRecordToEvent(record));
-      return { ...e, evidence_provenance: e.evidence_provenance ?? "server_projected" as const };
-    });
+    // The server's records carry the separated evidence model; older records are read into it. A missing evidence
+    // source stays missing — server processing is never written in its place.
+    const remoteConverted = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
     const { events: merged } = mergeLocalAndRemoteEvents(eventsRef.current, remoteConverted);
     void persistEvents(merged);
   }, [remoteEvents.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -968,7 +967,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Cross-gate correlation associates findings into the same incident for display purposes,
     // but each event preserves its own independently assessed severity. The overall incident
     // status is derived at display time by buildScents(), not by upgrading individual events.
-    let e = normalizeHistoricalEvent({ ...input, evidence_provenance: input.evidence_provenance ?? "local_device" });
+    // A record this device makes: Apollo's own check unless it names its source, processed here, held in full.
+    let e = normalizeHistoricalEvent({
+      ...input, evidence_provenance: input.evidence_provenance ?? "local_device",
+      processing_source: input.processing_source ?? "this_device", evidence_representation: input.evidence_representation ?? "full_record",
+    });
     const events = eventsRef.current;
     if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
       const scent = findScentFor(e, events) ?? e.event_id;

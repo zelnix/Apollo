@@ -14,7 +14,8 @@ const placeholder = {
   what_to_do: "Nothing to do right now. Higgins will tell you as soon as the investigation finishes.",
   indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: "Magnum DI investigation",
   occurred_at: "2026-10-21T03:50:11Z", resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: null,
-  investigation_case_id: "case-1", evidence_provenance: "server_projected",
+  investigation_case_id: "case-1", evidence_provenance: "device_submission", processing_source: "apollosg_servers",
+  evidence_representation: "privacy_protected_copy",
 } as never;
 
 const investigation = (over: Record<string, unknown> = {}) => ({
@@ -50,7 +51,14 @@ test("the placeholder is replaced by the actual findings, conclusion and next st
   assert.equal(patched.what_to_do, "Do not open commbank-cancel.co and do not enter any details on it.");
   assert.equal(patched.state, "barking");
   assert.equal(patched.status, "active");
-  assert.equal(patched.evidence_provenance, "local_device");
+  // The result is now held in full here; what supplied the evidence is unchanged by the investigation.
+  assert.equal(patched.evidence_provenance, "device_submission");
+  assert.equal(patched.evidence_representation, "full_record");
+  // A placeholder stored before the separated model is read into it: never "server_projected" again.
+  const legacy = investigationPatch({ ...(placeholder as object), evidence_provenance: "server_projected", processing_source: undefined, evidence_representation: undefined } as never, investigation())!;
+  assert.equal(legacy.evidence_provenance, "device_submission");
+  assert.equal(legacy.processing_source, "apollosg_servers");
+  assert.equal(legacy.evidence_representation, "full_record");
 });
 
 test("a clean investigation closes the case and says nothing needs doing", () => {

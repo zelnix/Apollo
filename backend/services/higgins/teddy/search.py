@@ -1,11 +1,11 @@
-"""TC FlyBy stage 3 — targeted Google Search.
+"""TC FlyBy stage 3 — targeted web search.
 
 Only checks that the direct sources and Apollo's KB could not settle reach this stage. All of them go in ONE
-call to the low-cost Gemini model with Google Search grounding, each as a narrow factual question about an
+call, with web search, to the investigation model selected in ApolloSG Settings (the same one Magnum DI uses), each as a narrow factual question about an
 exact value (a domain, a number, a company, a licence). The model is asked to look things up, never to judge
 whether anything is a scam.
 
-Provenance: an answer counts only when Google Search's grounding record ties it to the pages it came from.
+Provenance: an answer counts only when the search's grounding record ties it to the pages it came from.
 An answer with no supporting page is recorded as unsourced and not used.
 
 Reuse (services/reusable_intel.py, services/sufficiency.py): before asking, each lookup about a public identifier is
@@ -20,14 +20,13 @@ import hashlib
 import re
 from datetime import timezone
 
-from google.genai import types
-
 from core.db import db, now_utc
 from services import kb_sources
 from services import reusable_intel as intel
 from services import sufficiency
 from services.higgins import knowledge
 from services.higgins import provider
+from services.higgins.ai_request import Message, Part
 from services.higgins.llm_boundary import Purpose, redact_registration_numbers
 from services.higgins.teddy.triage import Check
 
@@ -43,7 +42,7 @@ NOT_FOUND = {"NO_WARNING_FOUND", "NO_RECORD_FOUND", "NOT_CONFIRMED"}
 QUESTION_LINE = "Q{n} [statuses: {statuses}] [subject: {subject}] {question}"
 
 INSTRUCTION = (
-    "TC FlyBy fly-by lookup. Use Google Search to answer each question below with narrow, factual lookups only. "
+    "TC FlyBy fly-by lookup. Use web search to answer each question below with narrow, factual lookups only. "
     "Do not judge whether anything is a scam and do not investigate beyond the question.\n"
     "Reply with exactly one line per question, in this form:\n"
     "Q<number> | <STATUS> | <the fact found, quoting exact names, numbers and dates, and naming the publisher>\n"
@@ -212,8 +211,8 @@ async def run(checks: list[Check], *, model: str, correlation_id: str, trigger_s
     for check in to_ask:
         await intel.count(SITE, *decisions[check.id].events(call_made=True))
     try:
-        result = await provider.generate("", [types.Content(role="user", parts=[types.Part(text=prompt(to_ask))])],
-                                         model=model, tools=[types.Tool(google_search=types.GoogleSearch())],
+        result = await provider.generate("", [Message("user", [Part(text=prompt(to_ask))])],
+                                         model=model, web_search=True,
                                          capability="search", purpose=Purpose.TEDDY_SEARCH, json_output=False,
                                          correlation_id=correlation_id, trigger_source=trigger_source)
     except Exception as exc:  # noqa: BLE001 — an unavailable lookup is missing evidence, handed on as such

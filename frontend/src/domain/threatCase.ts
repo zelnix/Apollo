@@ -10,6 +10,7 @@
  */
 
 import { needsYou } from "./caseBriefing.ts";
+import { unverifiedSentence } from "./caseFacts.ts";
 import type { CaseSource } from "./caseSources.ts";
 import { investigatorName } from "./messageVoice.ts";
 import { outcomeLabel } from "./triage/contract.ts";
@@ -254,7 +255,7 @@ export function buildTimeline(
       id: `tl-${idx++}`,
       timestamp: source.at ?? event.occurred_at,
       title: source.answered ? `Checked ${source.name}` : `Couldn't check ${source.name}`,
-      description: source.returned,
+      description: source.unverified ? `${source.returned} ${unverifiedSentence({ unverified: source.unverified })}` : source.returned,
       dotColor: source.answered ? "#2563EB" : "#D97706",
       iconId: "gathering",
     });

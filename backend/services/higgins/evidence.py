@@ -12,7 +12,7 @@ import zipfile
 from datetime import datetime
 from typing import Optional
 
-from google.genai import types
+from services.higgins.ai_request import Part
 
 from core.db import now_utc
 from core.redaction import redact_investigation_secrets
@@ -782,10 +782,10 @@ def is_workflow_metadata(text: str) -> bool:
 EVIDENCE_WORD_LIMIT = 10_000
 
 
-async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[tuple[str, int, int, int]], int]:
-    """The case evidence as Gemini parts, each labelled with its id and kind.
+async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[Part], list[tuple[str, int, int, int]], int]:
+    """The case evidence as request parts, each labelled with its id and kind.
 
-    The request sent to Gemini is: the person's question, this evidence, and the response schema.
+    The request sent through the AI gateway is: the person's question, this evidence, and the response schema.
     Therefore:
     - Evidence is sent COMPLETE. Text is never truncated, shortened or summarised.
     - Each item appears ONCE. An image is sent as its bytes with a single identifying line; it is
@@ -805,7 +805,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
       stay referable — Apollo never silently drops evidence it holds but cannot supply.
 
     Returns the parts, the pending examination marks (evidence_id, start, end, total) applied only
-    after Gemini succeeds, and the total word count of the written evidence (labels excluded, images
+    after the model call succeeds, and the total word count of the written evidence (labels excluded, images
     contribute no words) so the caller can enforce EVIDENCE_WORD_LIMIT before any call is made.
 
     Privacy: text parts are credential-stripped by the provider boundary before the call; images were
@@ -826,7 +826,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
             return False
         return text in texts[parent_id]
 
-    parts: list[types.Part] = []
+    parts: list[Part] = []
     marks: list[tuple[str, int, int, int]] = []
     words = 0
     for row in rows:
@@ -835,14 +835,14 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
             label += f" · {row['label']}"
         if row["availability"] != "available":
             reason = (row.get("coverage") or {}).get("reason") or row["availability"]
-            parts.append(types.Part(text=f"{label} · unavailable: {reason}]"))
+            parts.append(Part(text=f"{label} · unavailable: {reason}]"))
             continue
         label += "]"
         if row["kind"] in ("text", "url", "observation", "source_snapshot"):
             text = texts[row["evidence_id"]]
             if redundant(row) or is_workflow_metadata(text) or not has_intelligence(_as_json(text)):
                 continue
-            parts.append(types.Part(text=f"{label}\n{text}"))
+            parts.append(Part(text=f"{label}\n{text}"))
             words += len(text.split())
             # The whole retained content of this item is in the part above, so sending it is the
             # examination. Character-counted items record the span; item-counted items (a URL, an
@@ -856,7 +856,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
                 marks.append((row["evidence_id"], 0, total, total))
         elif row["kind"] == "image":
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
-            parts.append(types.Part(text=label))
-            parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
+            parts.append(Part(text=label))
+            parts.append(Part.from_bytes(data=data, mime_type=row["media_type"]))
             marks.append((row["evidence_id"], 0, len(data), len(data)))
     return parts, marks, words

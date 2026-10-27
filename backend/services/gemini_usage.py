@@ -89,6 +89,17 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "thinking": 3.75,
         "cached_input": 0.075,
     },
+    # Anthropic Claude (platform.claude.com/docs/en/about-claude/pricing; Haiku 5.5 at its up-to-100k-token prompt price).
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "thinking": 0.50, "cached_input": 0.01},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "thinking": 10.00, "cached_input": 0.10},
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00, "thinking": 20.00, "cached_input": 0.20},
+    # OpenAI (developers.openai.com/api/docs/models; reasoning tokens are billed as output).
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20, "thinking": 1.20, "cached_input": 0.02},
+    "gpt-5.4-mini": {"input": 0.75, "output": 4.50, "thinking": 4.50, "cached_input": 0.075},
+    "gpt-5.6-terra": {"input": 2.00, "output": 12.00, "thinking": 12.00, "cached_input": 0.20},
+    "gpt-5.4": {"input": 2.50, "output": 15.00, "thinking": 15.00, "cached_input": 0.25},
+    "gpt-5.6-sol": {"input": 4.00, "output": 20.00, "thinking": 20.00, "cached_input": 0.40},
+    "gpt-5.5": {"input": 5.00, "output": 30.00, "thinking": 30.00, "cached_input": 0.50},
 }
 
 # Fallback pricing for unknown models
@@ -99,9 +110,10 @@ _DEFAULT_PRICING = {
     "cached_input": 0.10,
 }
 
-# Grounding with Google Search on Gemini 3 models is billed per search query Gemini runs
-# ($14 per 1,000 queries, list price before any monthly free allowance).
-SEARCH_QUERY_USD = 0.014
+# Web search is billed per search the model runs, by provider: Grounding with Google Search on Gemini 3 models
+# $14 per 1,000 queries (list price before any monthly free allowance); Claude's web search $10 per 1,000 searches;
+# OpenAI's web search tool $10 per 1,000 calls.
+SEARCH_QUERY_USD = {"gemini": 0.014, "anthropic": 0.010, "openai": 0.010}
 
 
 def _get_pricing(model: str) -> dict[str, float]:
@@ -242,6 +254,7 @@ async def record_usage(
     record_id: str | None = None,
     correlation_id: str | None = None,
     model: str,
+    provider: str = "gemini",
     purpose: str,
     call_type: str,
     success: bool,
@@ -261,7 +274,7 @@ async def record_usage(
     tokens = _extract_tokens(usage_metadata)
     cost = estimate_cost_usd(model, tokens)
     search_queries = int((extra or {}).get("search_queries") or 0)
-    search_cost = 0.0 if (extra or {}).get("simulated") else search_queries * SEARCH_QUERY_USD
+    search_cost = 0.0 if (extra or {}).get("simulated") else search_queries * SEARCH_QUERY_USD.get(provider, SEARCH_QUERY_USD["gemini"])
     cost += search_cost
     now = datetime.now(timezone.utc)
 
@@ -269,6 +282,7 @@ async def record_usage(
         "record_id": record_id,
         "correlation_id": correlation_id,
         "timestamp": now,
+        "provider": provider,
         "model": model,
         "purpose": purpose,
         "call_type": call_type,

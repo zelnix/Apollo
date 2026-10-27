@@ -206,7 +206,7 @@ section("Home prioritisation");
 // T17: High-priority current threat → Prominent Home alert
 (() => {
   // Summary-only record (no finding sentence to state), so Home falls back to the urgent wording.
-  const ev = makeEvent({ state: "barking", headline: "Confirmed scam detected", evidence_provenance: "server_projected" });
+  const ev = makeEvent({ state: "barking", headline: "Confirmed scam detected", evidence_representation: "privacy_summary" });
   const resolution = makeResolution([ev]);
   const attention = buildHomeAttention({ gates: [], events: [ev] });
   const voice = buildHomeVoice({ resolution, attention, gates: [], capabilities: [] });

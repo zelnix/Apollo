@@ -27,7 +27,7 @@ test("instruction-only text yields nothing rather than an instruction in the her
 });
 
 test("evidence that isn't on this device is never summarised", () => {
-  assert.equal(findingSentence(ev({ evidence_provenance: "server_projected", what_happened: "Apollo found something." })), null);
+  assert.equal(findingSentence(ev({ evidence_representation: "privacy_summary", what_happened: "Apollo found something." })), null);
 });
 
 test("a very long sentence is clipped at a word boundary", () => {

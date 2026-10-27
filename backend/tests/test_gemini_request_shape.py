@@ -14,7 +14,7 @@ from services.higgins import coordinator
 from services.higgins import evidence as ev
 from services.higgins import repository as repo
 from services.higgins.preview.preview_simulator import simulated_text
-from services.higgins.provider import GeminiResult, Purpose
+from services.higgins.provider import AIResult, Purpose
 from services.higgins.response_schema import RESPONSE_SCHEMA
 
 pytestmark = pytest.mark.anyio
@@ -43,11 +43,9 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
     original = coordinator.provider.generate
 
     async def capture(system, contents, **kwargs):
-        from google.genai import types
         captured["system"], captured["contents"], captured["kwargs"] = system, contents, kwargs
         text = simulated_text(Purpose.INVESTIGATION, True)
-        return GeminiResult(text=text, content=types.Content(role="model", parts=[types.Part(text=text)]),
-                            finish_reason="STOP", usage={"prompt_token_count": 1, "candidates_token_count": 1,
+        return AIResult(text=text, finish_reason="STOP", usage={"prompt_token_count": 1, "candidates_token_count": 1,
                                                           "total_token_count": 2}, grounding=None,
                             model=kwargs.get("model") or "gemini-3.8-flash")
 
@@ -63,20 +61,20 @@ async def test_request_is_question_plus_complete_evidence_plus_schema():
     #    evidence actually supplied (Gemini otherwise puts search citations like "1.1.4" in evidenceIds).
     assert captured["system"] == ""
     sent_schema = captured["kwargs"]["response_schema"]
-    assert set(sent_schema.properties) == set(RESPONSE_SCHEMA.properties)
-    assert sent_schema.properties["sourceIds"].max_items == 0
-    finding = sent_schema.properties["findings"].items.properties
-    assert finding["sourceIds"].max_items == 0
+    assert set(sent_schema["properties"]) == set(RESPONSE_SCHEMA["properties"])
+    assert sent_schema["properties"]["sourceIds"]["maxItems"] == 0
+    finding = sent_schema["properties"]["findings"]["items"]["properties"]
+    assert finding["sourceIds"]["maxItems"] == 0
     # Magnum DI may cite only what it was sent: the material and TC FlyBy's brief. The raw lookups TC FlyBy
     # already read, and TC FlyBy's full check record, stay registered for the case but are not resent.
     supplied = {row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])
                 if row["client_item_id"] not in ("apollo-triage-intelligence", "teddy-di-checks")}
-    allowed = finding["evidenceIds"].items.enum or []
+    allowed = finding["evidenceIds"]["items"].get("enum") or []
     assert allowed and set(allowed) == supplied
-    assert sent_schema.properties["remainingEvidenceIds"].items.enum == allowed
+    assert sent_schema["properties"]["remainingEvidenceIds"]["items"]["enum"] == allowed
     assert captured["kwargs"]["json_output"] is True
     # Nothing in this case needs an external fact TC FlyBy couldn't establish, so Google Search is off.
-    assert captured["kwargs"]["tools"] is None
+    assert captured["kwargs"].get("web_search", False) is False
 
     parts = captured["contents"][0].parts
     texts = [p.text for p in parts if getattr(p, "text", None)]

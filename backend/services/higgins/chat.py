@@ -1,27 +1,25 @@
-"""Higgins chat — Higgins faithfully communicates what Apollo already knows.
+"""Higgins chat — Higgins faithfully communicates what Apollo already knows. Ask Higgins makes NO AI call.
 
-HARD BOUNDARY. Before any Gemini call the question is checked against everything already established:
+Every answer comes from what Apollo already holds, first that applies:
   1. Investigation intent with an artefact → the shared investigation pipeline (TC FlyBy first, Magnum DI only
      when a deeper look could change the answer).
   2. A completed investigation report (TC FlyBy's or Magnum DI's), a scam alert, Patrol findings, the phone's live state, recent
      investigations or Apollo's product knowledge → deterministic presentation (presenter.py).
   3. Apollo's knowledge base — Learn articles, Scam Alerts, official guidance and researched trusted pages,
      quoted with their provenance and labelled as general knowledge, never as a finding about a case.
-Only a general scam-safety question that none of these answers reaches Gemini: one call, the question
-alone (no device state, no history, no case), and the answer is cached (labelled as Gemini's) so it is
-never asked again. Tavily is never used here — it only maintains the knowledge base.
-Questions outside Higgins' scope get a fixed reply. No tool loops, no repair calls, no presentation calls.
+When none of these covers a question, Higgins says so plainly — ApolloSG's trusted knowledge doesn't answer it —
+rather than asking a general AI model. Questions outside Higgins' scope get a fixed reply. A specific item to
+check goes to TC FlyBy → Magnum DI through the investigation pipeline (step 1), never answered here.
+Tavily is never used here — it only maintains the knowledge base.
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import ConfigDict, Field
-from pydantic.alias_generators import to_camel
+from pydantic import Field
 
 from core.db import db
 from core.redaction import redact_investigation_secrets
@@ -30,7 +28,7 @@ from services import reusable_intel as intel
 from services import sufficiency
 from services.higgins import app_knowledge, knowledge, presenter
 from services.higgins import context as memory
-from services.higgins import context_tools, model_choice, provider
+from services.higgins import context_tools
 from services.higgins.contracts import Wire
 from services.higgins.pipeline_submit import (
     detect_investigation_intent,
@@ -39,83 +37,6 @@ from services.higgins.pipeline_submit import (
 )
 
 log = logging.getLogger("apollo.higgins.chat")
-
-# ── Permanent core ────────────────────────────────────────────────────────────
-# These ~600 tokens NEVER leave the prompt. They protect Higgins' safety
-# invariants: role separation, evidence authority, scope, uncertainty handling.
-# Conditional modules are appended by build_system_prompt().
-
-_PERMANENT_CORE = """You are Higgins, Apollo's trusted adviser, interpreter and guide.
-
-APOLLO DETECTS AND PROTECTS. TC FLYBY AND MAGNUM DI INVESTIGATE AND SEARCH. HIGGINS KNOWS APOLLO AND SCAMS, AND COMMUNICATES, EXPLAINS AND GUIDES.
-
-You are the savant of this app. You know every screen, every check, every protection, every setting, every flow and every privacy rule in ApolloSG, and you know how scams and fraud work. You are not a general assistant and you do not investigate: TC FlyBy (fast checks of official sources, ApolloSG's knowledge base and one targeted search) and Magnum DI (deep investigation, only when it could change the answer) own investigation and external searching; Apollo owns detection and protection.
-
-SCOPE — STRICTLY ENFORCED:
-You specialise ONLY in: scams and fraud safety; cybersecurity and digital safety; ApolloSG functionality, features, protections, settings, checks, screens, flows, privacy; device settings and OS information as observed by Apollo; security findings and investigation results; Patrol findings and warnings; Scam Alerts; Learn articles; guidance in the above areas.
-
-If asked about anything outside this scope (e.g. general knowledge, cooking, maths, entertainment, politics, health, travel, coding, homework, creative writing), respond:
-"I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
-Do NOT answer general knowledge questions, even partially.
-
-INVESTIGATION: You may tell the person you'll hand it to Apollo's investigators when they ask to check/investigate a specific item: TC FlyBy checks it first, and Magnum DI investigates deeper only if that could change the answer. You do NOT conduct the investigation yourself. If a completed investigation already answers the question, use those stored findings directly. Do NOT re-summarise. Answer follow-up questions about existing investigations using the actual case evidence.
-
-EVIDENCE RULES (non-negotiable):
-- DEVICE SNAPSHOT: when supplied, it is a live authoritative reading. Use it for any question about their protections, threats, permissions, alerts, settings. It is the truth about their phone; NEVER contradict it and NEVER guess past it.
-- If Apollo cannot observe a requested detail, say so clearly. Never invent device model, OS version, permission state, or protection state.
-- Do NOT answer "no issues" when supplied context shows an active finding.
-- Do NOT combine contradictory statements.
-- When evidence is uncertain, direct towards the safest proportionate precaution without presenting suspicion as fact. Never manufacture a concern.
-- Records with evidence_availability="summary_only" hold only a privacy-protected summary, not actual findings. State only what is structurally known. Every case belongs to the device that detected it: never say its details are held somewhere else.
-
-SOURCE-OF-TRUTH: Device/Apollo state → use supplied context only. ApolloSG generally → answer from product knowledge. Existing content → use supplied content.
-
-GATE STATUS: A gate with state 'ready' or 'manual_checks_available' is NOT offline. Only 'offline' or 'unavailable/service_down' means offline.
-
-COMMUNICATION: Calm, knowledgeable, approachable Australian English. 2-4 short paragraphs max. Specific recommendations when action is warranted. Clear reassurance when findings support it. Explain technical terms simply. Do not lecture.
-
-NAVIGATION: return the route string in `navigate` chosen only from the APOLLO PRODUCT KNOWLEDGE route list. At most two. Only when the destination genuinely answers the question.
-
-Return only the required JSON."""
-
-
-def build_system_prompt(
-    knowledge_modules: list[str] | None = None,
-    route_groups: list[str] | None = None,
-) -> str:
-    """The system prompt for the general-knowledge fallback: permanent core + any selected modules.
-
-    The permanent core (~600 tokens) is always present.
-    Conditional modules and route groups are appended only when the classifier
-    determines the question needs them.
-    """
-    kb = app_knowledge.knowledge_block(
-        modules=knowledge_modules or [],
-        route_groups=route_groups or [],
-    )
-    return _PERMANENT_CORE + "\n\n" + kb
-
-
-# Legacy constant for tests and imports that reference SYSTEM directly.
-# This is the FULL prompt (all modules, all routes) — used only for backward
-# compatibility with tests.  Live turns use build_system_prompt() with
-# classifier-selected modules.
-SYSTEM = build_system_prompt(
-    knowledge_modules=list(app_knowledge.KNOWLEDGE_MODULES.keys()),
-    route_groups=list(app_knowledge.ROUTE_GROUPS.keys()),
-)
-
-
-class ModelChatReply(Wire):
-    model_config = ConfigDict(extra="ignore", alias_generator=to_camel, populate_by_name=True)
-    answer: str = Field(min_length=1, max_length=2000)
-    evidence_basis: list[str] = Field(default_factory=list, max_length=6)
-    uncertainty: list[str] = Field(default_factory=list, max_length=4)
-    clarification: Optional[str] = Field(default=None, max_length=300)
-    recommend_investigation: bool = False
-    destination: Optional[Literal["check_it", "higgins_case"]] = None
-    navigate: list[str] = Field(default_factory=list, max_length=4)
-
 
 class NavTarget(Wire):
     """A validated Apollo destination the person can tap straight through to."""
@@ -194,14 +115,6 @@ class ChatSource(Wire):
     licence: Optional[str] = None
 
 
-class ReusedResult(Wire):
-    """An earlier result Apollo reused instead of asking its provider again, and when it was last checked."""
-    provider: str
-    ai_generated: bool
-    last_checked_at: datetime
-    expires_at: datetime
-
-
 class ChatReply(Wire):
     turn_id: str
     conversation_id: str
@@ -216,11 +129,8 @@ class ChatReply(Wire):
     investigative_work_started: bool = False
     pipeline_case_id: Optional[str] = None
     sources: list[ChatSource] = Field(default_factory=list)
-    # apollo = Apollo's own records; knowledge_base = quoted KB sources; gemini = general-knowledge fallback
-    answered_by: Literal["apollo", "knowledge_base", "gemini"] = "apollo"
-    reused: Optional[ReusedResult] = None
-    # The answer came from the preview's stand-in for Gemini. It is processed exactly as a live one; this only tags it.
-    simulated: bool = False
+    # apollo = Apollo's own records; knowledge_base = quoted KB sources. There is no AI-written answer.
+    answered_by: Literal["apollo", "knowledge_base"] = "apollo"
     retention: ChatRetention
 
 
@@ -229,9 +139,9 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                 device_snapshot: DeviceSnapshot | None = None, selected_scam_alert_url: str | None = None) -> ChatReply:
     clean = redact_investigation_secrets(message).strip()
 
-    # ── P0: Completed Magnum DI report → deterministic follow-up (0 Gemini calls) ──
+    # ── P0: Completed Magnum DI report → deterministic follow-up (0 AI calls) ──
     # Checked first so a follow-up that mentions a new link, email or number is still answered from the
-    # finished record — it never opens a new investigation and never reaches Gemini.
+    # finished record — it never opens a new investigation.
     if selected_report_id:
         report = await _saved_report(owner, selected_report_id)
         if report is not None:
@@ -307,7 +217,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                 log.warning("higgins_pipeline_submit_failed device=%s error=%s", owner[:12], type(exc).__name__)
                 # Fall through to normal chat if pipeline submission fails
 
-    # ── P2: A scam alert the person opened → the source's own sections (0 Gemini calls) ──
+    # ── P2: A scam alert the person opened → the source's own sections (0 AI calls) ──
     card = _alert_card_in(clean)
     alert_url = selected_scam_alert_url or (card or {}).get("url") or _alert_url_in(clean)
     if alert_url or card:
@@ -316,12 +226,12 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
             return await _deterministic(owner, conversation_id, turn_id, clean, presenter.scam_alert_explanation(alert),
                                         "scam_alert", ["recognised_government_feed_cache"])
         if card:
-            # Apollo no longer holds the full alert: present only what the card carried. Never Gemini.
+            # Apollo no longer holds the full alert: present only what the card carried.
             return await _deterministic(owner, conversation_id, turn_id, clean,
                                         presenter.scam_alert_card(card["title"], card["source"], card["summary"], card["url"]),
                                         "scam_alert", ["scam_alert_card"])
 
-    # ── P2b: A Learn with Higgins article the person opened → its own words (0 Gemini calls) ──
+    # ── P2b: A Learn with Higgins article the person opened → its own words (0 AI calls) ──
     article_title = _article_title_in(clean)
     if article_title:
         article = await _learn_article(article_title)
@@ -330,77 +240,32 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
             "navigate": ["/higgins/learning"], "limitation": True}
         return await _deterministic(owner, conversation_id, turn_id, clean, result, "learn_article", ["learn_with_higgins_catalogue"])
 
-    # ── P3: The hard boundary — anything Apollo already knows is presented, never sent to Gemini ──
+    # ── P3: Anything Apollo already knows is presented as it stands ──
     plan = context_tools.classify_context(clean, has_selected_report=False, has_selected_patrol_record=bool(selected_patrol_record_id))
     established = await _from_apollo(owner, clean, plan, device_snapshot, selected_patrol_record_id)
     if established:
         result, label, provenance = established
         return await _deterministic(owner, conversation_id, turn_id, clean, result, label, provenance)
 
-    # ── P4: Apollo's knowledge base (Learn, Scam Alerts, cyber.gov.au), then Gemini's saved answers ──
-    # The sufficiency check (services/sufficiency.py) decides whether Apollo already knows enough to skip Gemini.
+    # ── P4: Apollo's knowledge base (Learn, Scam Alerts, official guidance, researched trusted pages) ──
     entries = await knowledge.search(clean)
-    query_terms = knowledge.terms(clean)
-    saved = [] if entries else await intel.find_question(clean, lambda q: knowledge.answers_question(q, query_terms),
-                                                         simulated=provider.get_provider_mode() == "preview")
-    need = sufficiency.Requirement(saved[0]["subject_key"] if saved else intel.subject_key("question", clean), needs=("answer",))
-    decision = sufficiency.assess(need, kb=entries, cache=saved)
+    decision = sufficiency.assess(sufficiency.Requirement(intel.subject_key("question", clean), needs=("answer",)), kb=entries)
+    await intel.count(GENERAL_SITE, *decision.events(call_made=False))
     if decision.kb:
-        await intel.count(GENERAL_SITE, *decision.events(call_made=False))
         answer, sources = knowledge.present(decision.kb, clean)
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": answer, "navigate": [], "sources": sources},
                                     "knowledge_base", [e["kind"] for e in decision.kb], answered_by="knowledge_base")
-    if decision.reuse:
-        # Gemini already answered this question and the answer is still current: shown as Gemini's, no new call.
-        record = decision.reuse[0]
-        await intel.used(record)
-        await intel.count(GENERAL_SITE, *decision.events(call_made=False))
-        return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": knowledge.present_saved_answer(record), "navigate": []},
-                                    "saved_answer", ["reusable_intelligence"], answered_by="gemini",
-                                    reused=ReusedResult(provider=record["provider"], ai_generated=bool(record.get("ai_generated")),
-                                                        last_checked_at=record["last_verified_at"], expires_at=record["expires_at"]),
-                                    simulated=bool(record.get("simulated")))
 
-    # Nothing Apollo holds answers it. Outside Higgins' scope → fixed reply, no AI.
+    # ── P5: Nothing trusted answers it. Higgins says so; no general AI model is asked. ──
     if not in_scope(clean):
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": presenter.OUT_OF_SCOPE, "navigate": []},
                                     "out_of_scope", [])
-    await intel.count(GENERAL_SITE, *decision.events(call_made=True))
-
-    # ── P5: One Gemini call for a general scam-safety question nothing else covers; saved for reuse ──
-    final = await provider.generate(
-        build_system_prompt(), json.dumps({"message": clean}, ensure_ascii=False), model=await model_choice.model_for("ask_higgins"),
-        capability="json", json_output=True, response_schema=ModelChatReply,
-        purpose=provider.Purpose.ORDINARY_CHAT, correlation_id=f"chat-{owner[:8]}", trigger_source="chat_general_knowledge",
-    )
-    try:
-        parsed = ModelChatReply.model_validate_json(final.text)
-    except (ValueError, TypeError):
-        parsed = ModelChatReply(answer="My answer came back in a form ApolloSG couldn't read, so I have nothing to show you for that question. "
-                                       "Nothing has been made up in its place — please ask again.")
-    else:
-        # Saved exactly as production saves it; a simulated answer is tagged, and only the preview ever reuses it.
-        await knowledge.remember_gemini_answer(clean, parsed.answer, simulated=final.simulated)
-    investigation_available = parsed.recommend_investigation or parsed.destination is not None
-    actions = []
-    if investigation_available:
-        destination = parsed.destination or "higgins_case"
-        actions.append(SuggestedAction(destination=destination, label="Investigate this" if destination == "higgins_case" else "Open Check It",
-                                       purpose="Start a separate, explicit investigation of the item you choose. Nothing has started yet."))
-    navigation = _navigation(parsed.navigate)
-    combined = parsed.answer + (f"\n\n{parsed.clarification}" if parsed.clarification else "")
-    expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, clean, combined,
-        classification="general_knowledge", context_sources=["gemini"], investigation_available=investigation_available)
-    return ChatReply(turn_id=turn_id, conversation_id=conversation_id, answer=parsed.answer,
-                     evidence_basis=parsed.evidence_basis, uncertainty=parsed.uncertainty,
-                     clarification=parsed.clarification, context_used=[ContextUse(source="gemini_general_knowledge", status="ok")],
-                     suggested_actions=actions, navigation=navigation, investigation_available=investigation_available,
-                     answered_by="gemini", simulated=final.simulated, retention=ChatRetention(server_content_expires_at=expires.isoformat()))
+    return await _deterministic(owner, conversation_id, turn_id, clean, presenter.not_in_trusted_knowledge(), "not_in_trusted_knowledge", [])
 
 
 # ── Deterministic helpers ─────────────────────────────────────────────────────
 
-GENERAL_SITE = "higgins_general_question"  # this call site, in the reuse counters
+GENERAL_SITE = "higgins_general_question"  # this call site, in the reuse counters (always answered without an AI call)
 
 _SCOPE = re.compile(r"\b(scam\w*|fraud\w*|phish\w*|smish\w*|vish\w*|spam|hack\w*|malware|virus\w*|ransomware|spyware|security|secure|safe\w*|cyber\w*|"
                     r"password\w*|passphrase\w*|passkey\w*|pin|two[- ]factor|2fa|mfa|authenticat\w*|identity|id theft|privacy|private|data breach\w*|breach\w*|"
@@ -486,7 +351,7 @@ async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan
     if label == "current_issues" and snapshot is None:
         found = await context_tools.execute(owner, "get_recent_patrol_outcomes")
         return presenter.patrol_findings(found.get("items") or []), label, ["authoritative_patrol_record_store"]
-    # Anything about THIS phone's state is answered from its live reading — never inferred, never sent to Gemini.
+    # Anything about THIS phone's state is answered from its live reading — never inferred.
     about_state = label in ("protection_status", "current_issues", "device_info") or bool(_ABOUT_STATE.search(message))
     device = presenter.device_state(snapshot, message, about_phone=about_state)
     if device and (about_state or _ABOUT_THIS_PHONE.search(message)):
@@ -512,9 +377,8 @@ _ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|
 
 
 async def _deterministic(owner: str, conversation_id: str, turn_id: str, message: str, result: dict, label: str,
-                         provenance: list[str], *, uncertainty: list[str] | None = None, answered_by: str = "apollo",
-                         reused: ReusedResult | None = None, simulated: bool = False) -> ChatReply:
-    """Higgins presents what is already established. No Gemini call is made on this path."""
+                         provenance: list[str], *, uncertainty: list[str] | None = None, answered_by: str = "apollo") -> ChatReply:
+    """Higgins presents what is already established. No AI call is made."""
     expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, message, result["answer"], classification=label,
                                              context_sources=provenance, investigation_available=False)
     limitation = ["Apollo's records don't answer this directly."] if result.get("limitation") else []
@@ -522,5 +386,5 @@ async def _deterministic(owner: str, conversation_id: str, turn_id: str, message
                      uncertainty=(uncertainty or []) + limitation, clarification=None,
                      context_used=[ContextUse(source=item, status="ok") for item in provenance], suggested_actions=[],
                      navigation=_navigation(result.get("navigate") or []), sources=[ChatSource(**src) for src in result.get("sources") or []],
-                     investigation_available=False, answered_by=answered_by, reused=reused, simulated=simulated,
+                     investigation_available=False, answered_by=answered_by,
                      retention=ChatRetention(server_content_expires_at=expires.isoformat()))

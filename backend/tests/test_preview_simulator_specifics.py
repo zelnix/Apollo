@@ -1,7 +1,7 @@
 """The preview simulator must say something specific about the evidence it was given."""
 import json
 
-from google.genai import types
+from services.higgins.ai_request import Message, Part
 
 from services.higgins.llm_boundary import Purpose
 from services.higgins.preview.preview_simulator import evidence_blocks, simulated_text
@@ -10,11 +10,11 @@ BANK_TEXT = ("CommBank: A payment of $920.00 to CRYPTO EXCHANGE LTD is pending. 
              "at http://commbank-cancel.co/stop and confirm your NetBank password.")
 
 
-def _contents(*texts: str) -> list[types.Content]:
-    parts = [types.Part(text="Is this a scam?")]
+def _contents(*texts: str) -> list[Message]:
+    parts = [Part(text="Is this a scam?")]
     for i, text in enumerate(texts, start=1):
-        parts.append(types.Part(text=f"[evidence EV-{i} · kind=text · message]\n{text}"))
-    return [types.Content(role="user", parts=parts)]
+        parts.append(Part(text=f"[evidence EV-{i} · kind=text · message]\n{text}"))
+    return [Message("user", parts)]
 
 
 def _result(*texts: str) -> dict:
@@ -105,7 +105,6 @@ def test_the_brand_article_agrees_with_the_name():
 
 # ── Apollo's knowledge base as the simulator's information base ─────────────
 
-from services.higgins.chat import ModelChatReply  # noqa: E402
 from services.higgins.knowledge import related_share, terms  # noqa: E402
 from services.higgins.preview.preview_simulator import query_text  # noqa: E402
 
@@ -114,30 +113,6 @@ KB_ENTRY = {"kb_id": "kb-1", "kind": "researched", "title": "Romance scams", "pu
             "jurisdiction": "AU", "provenance": {},
             "body": "Romance scammers create fake profiles on dating sites and social media.\n\n"
                     "They build trust quickly, then ask for money for an emergency or travel.\n\nNever send money to someone you haven't met."}
-
-
-def _chat(question: str, kb=None) -> dict:
-    blocks = evidence_blocks([types.Content(role="user", parts=[types.Part(text=json.dumps({"message": question}))])])
-    return json.loads(simulated_text(Purpose.ORDINARY_CHAT, True, blocks, kb=kb, query=question))
-
-
-def test_a_higgins_question_is_answered_from_the_knowledge_base_with_its_source():
-    reply = _chat("what is a romance scam", [KB_ENTRY])
-    ModelChatReply.model_validate(reply)  # the real chat validator accepts it
-    # The stand-in only replaces the AI tool's words: no preview wording of its own; the reply is tagged instead.
-    assert reply["answer"].startswith("Scamwatch — “Romance scams”") and "SIMULATED" not in reply["answer"]
-    assert reply["uncertainty"] == [] and "Preview build" not in json.dumps(reply)
-    assert "Scamwatch — “Romance scams”" in reply["answer"]
-    assert "fake profiles on dating sites" in reply["answer"]
-    assert "Read the original: https://www.scamwatch.gov.au/types-of-scams/romance-scams" in reply["answer"]
-    assert reply["evidenceBasis"] == ["preview_simulator", "apollo_kb"]
-
-
-def test_with_nothing_in_the_knowledge_base_it_says_so_and_invents_nothing():
-    reply = _chat("what is a romance scam", [])
-    ModelChatReply.model_validate(reply)
-    assert "knowledge base has nothing on this yet" in reply["answer"]
-    assert reply["evidenceBasis"] == ["preview_simulator"]
 
 
 async def test_tc_flybys_simulated_search_lines_carry_no_preview_wording(monkeypatch):
@@ -165,8 +140,8 @@ def test_an_investigation_adds_knowledge_as_general_knowledge_never_as_a_finding
 
 def test_the_lookup_uses_the_evidence_for_an_investigation_and_the_question_otherwise():
     assert query_text("investigation", evidence_blocks(_contents(BANK_TEXT))).startswith("CommBank:")
-    assert query_text("ordinary_chat", evidence_blocks([types.Content(role="user", parts=[
-        types.Part(text=json.dumps({"message": "is this a romance scam\n\nApollo context: ..."}))])])) == "is this a romance scam"
+    assert query_text("ordinary_chat", evidence_blocks([Message("user", [
+        Part(text=json.dumps({"message": "is this a romance scam\n\nApollo context: ..."}))])])) == "is this a romance scam"
 
 
 def test_only_sourced_entries_on_the_same_subject_count():

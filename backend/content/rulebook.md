@@ -558,7 +558,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 **The stages still end early only for a confirmed threat, or an answered general question.** The deciding test still applies.
 
 #### Stage 3: one targeted web search
-- Only open checks with a question get here: at most 6 questions in **one** call, with Google Search, to the same model as this investigation's Magnum DI, so TC FlyBy is never on a stronger model.
+- Only open checks with a question get here: at most 6 questions in **one** call, with web search, to the AI provider and model selected in ApolloSG Settings, the same one this investigation's Magnum DI uses. TC FlyBy has no model of its own.
 - ApolloSG's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
 - An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as verified and never as proof of safety.
@@ -622,7 +622,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 **Process**
 1. It runs only when TC FlyBy hands it issues under the deciding test, whether or not TC FlyBy reached a concern outcome. On later turns it runs only when the person answers Magnum DI's own question.
 2. **Size limit.** If the written evidence is over 10,000 words, nothing is sent, and the person is told the word count.
-3. **One inference attempt, plus one permitted retry: at most two provider calls.** The attempt goes to the model an admin picked for Magnum DI (the low-cost model until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
+3. **One inference attempt, plus one permitted retry: at most two provider calls.** The attempt goes to the AI provider and model selected in ApolloSG Settings → AI Provider & Model (ApolloSG's default until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation. If that model can't be used, or its call fails, the investigation says so: ApolloSG never switches to another model or provider.
    - **The permitted retry:** there is one retry after 4 seconds, only when the inference attempt failed temporarily or returned an invalid answer. Configuration errors are never retried.
    - **Two provider calls at most:** the inference attempt and its retry. The limit of 2 calls per job is enforced on the job record.
    - If the inference attempt and its retry both fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
@@ -636,7 +636,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
    - actions and the recommended action
    - an optional question
    - completion: complete, partial or waiting for the person
-6. Pages from Google Search are saved as case sources. They are leads, not verification.
+6. Pages the web search used are saved as case sources. They are leads, not verification.
 
 **Validation (an invalid answer is rejected, never replaced with an invented one)**
 - Findings may cite only registered evidence and sources. "Observed" needs evidence.
@@ -666,7 +666,7 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 
 **Job:** explains and guides. Higgins never investigates. It may change how a result is presented, never what it means.
 
-**Order before any AI is used.** HIG-01 to HIG-08 are tried in this order, and the first that applies answers.
+**Order.** HIG-01 to HIG-08 are tried in this order, and the first that applies answers. Ask Higgins makes no AI call: every answer comes from Apollo's records, the phone's live state, ApolloSG's product knowledge or ApolloSG's KB.
 
 **Higgins explanation rules (11)**
 
@@ -684,8 +684,8 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 - **HIG-06** · ApolloSG's KB is quoted with publisher and link, labelled as general knowledge
 - **HIG-07** · An off-topic question gets a fixed reply, word for word
   - "I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
-- **HIG-08** · A general scam-safety question nothing else answers gets one AI call with the question alone
-  - No device state, history or case is sent. The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
+- **HIG-08** · A question nothing above answers is told plainly that ApolloSG's trusted knowledge doesn't cover it; no general AI model is asked
+  - "ApolloSG's trusted knowledge doesn't cover that question yet, so I won't guess at an answer. If it's about something you've received — a message, link, email, call, app or file — tap + and add it, and Apollo's investigators will check it. Learn with Higgins has guides on the common scams.", with a tap to Learn with Higgins. Something specific to check still goes to TC FlyBy and Magnum DI (HIG-02).
 - **HIG-09** · The phone's live reading is the truth: Higgins never contradicts it, guesses past it or invents a concern
 - **HIG-10** · Answering Magnum DI's pending question continues that investigation, and isn't treated as a follow-up
 - **HIG-11** · Plain Australian English, no internal codes, 2–4 short paragraphs
@@ -1026,7 +1026,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 **Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
 
 **What it holds**
-- The AI tool's answer to a general scam-safety question nothing else answered.
+- Answers an AI tool wrote to general questions before Ask Higgins stopped asking one. They are kept until they expire and are never shown again.
 - TC FlyBy's targeted search about a link, phone number, email address, company, ABN, ACN or licence.
 - Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
 - Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
@@ -1036,7 +1036,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 **How long a result counts as current**
 | Information | Current for |
 |---|---|
-| General question answered by AI | 90 days |
+| Old AI answer to a general question (never shown) | 90 days |
 | TC FlyBy search that found something | 7 days |
 | TC FlyBy search that found nothing | 1 day |
 | Phone reputation (IPQualityScore) | 24 hours |
@@ -1050,11 +1050,9 @@ An expired result never counts as current. It is deleted 90 days after it expire
 - **Partial:** something relevant, but expired, incomplete, contradicted, or for a check that must be live. The call runs as before and the result is refreshed.
 - **Unknown:** nothing relevant. The call runs as before.
 - The KB is always checked first. The check only saves calls; it never lowers what a check must establish.
-- A saved AI answer is reused only for the same question: every content word, or at least 80% of them for longer questions.
 
 **What the person sees**
-- A reused result says when Apollo last checked it: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again". In Ask Higgins it reads "Saved answer · …"; in a result, it sits under the source.
-- A reused AI answer says that an AI tool wrote it and that no official source has checked it.
+- A reused result says when Apollo last checked it, under the source: "From Apollo's check 2 hours ago, still current, so it wasn't looked up again".
 
 **Staff see** the admin portal's Intelligence Reuse page: calls avoided and still needed, results saved, expired results checked again, by call site and by day, what the store holds and how long each kind stays current. Counts only, never content. The same counts go to the server logs.
 
@@ -1083,7 +1081,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
 - Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
 - Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, ACN and licence numbers, passport and social security numbers.
-- **ABN, ACN and licence numbers:** an exact number may be sent only to the approved lookup that verifies it: TC FlyBy's register question about that number (who holds it, and is it current). Every other AI or research request (Magnum DI, Higgins' general question, every other search question and KB research) carries it redacted as a label (an ABN becomes "[business number]"), with the register check's result where there is one.
+- **ABN, ACN and licence numbers:** an exact number may be sent only to the approved lookup that verifies it: TC FlyBy's register question about that number (who holds it, and is it current). Every other AI or research request (Magnum DI, every other search question and KB research) carries it redacted as a label (an ABN becomes "[business number]"), with the register check's result where there is one.
 - The original evidence is never changed; only the copy being sent is.
 
 **Pictures**
@@ -1100,7 +1098,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
 - **Original emails (.eml):** never leave the phone. An email check or investigation may carry only Higgins Triage's structured findings about the email evidence (see Email Gate) — never the subject, body, names, addresses, header text or the file. Any other field stops the request.
 - What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
-- **Threats records** synced to the server carry fixed wording ("ApolloSG's servers keep only this privacy-protected summary, not the content that was checked."), never the message, screenshot, file or link. Only a domain is kept as an indicator. Records written earlier are shown in this wording too.
+- **Threats records** synced to the server carry fixed wording ("ApolloSG's servers keep only this privacy-protected summary, not the content that was checked."), never the message, screenshot, file or link. Only a domain is kept as an indicator, plus a fixed label for which of the phone's own sources supplied the evidence (Apollo's check, its DNS filter or the phone's built-in protection). Records written earlier are shown in this wording too.
 - **Family helpers** see fixed wording ("Security check — review with the protected person"), never the content.
 - **Handing a result to Higgins:** at most 8 findings and 4 actions, each line short. Secrets, the person's own details and IP addresses are removed.
 - **My Personal Data:** the person's own saved details (such as their name, email address or phone number) are replaced with a label, such as "[Email address redacted]", in message and email checks and in what a result hands to Higgins. IP addresses become "[ip address]".
@@ -1190,8 +1188,9 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - A handled finding reopens only when genuinely new detection evidence arrives. A repeat of old evidence never reopens it.
 - Each finished investigation shows "Settled by TC FlyBy" or "Settled by Magnum DI". The badge is left off when the record doesn't say, rather than guessed.
 - **Evidence on each card:** every case with an evidence profile shows its level code only, in a small pill ("L3") — its level out of the strongest that kind of evidence can have; screen readers hear the level's name too. Sort cycles Latest first → Oldest first → Strongest evidence (strongest share first, then newest).
-- **Threat Case Evidence keeps five facts apart:** Origin (always "Detected on this device"), Evidence (what supplied it: Apollo's check on this device, Apollo's DNS filter, the phone's built-in protection, a connected mailbox, or what this device sent for checking), Checked (Higgins Triage on this device or on ApolloSG's servers, TC FlyBy, Magnum DI), Record (summary only, the checks that couldn't be completed, or none unfinished) and Privacy (when ApolloSG's servers worked from, or keep, a privacy-protected version). None is inferred from another.
-- **Checks that didn't finish** are listed under "Sources ApolloSG used" by the actual check and the reason recorded for it, for example "Final destination — couldn't be verified: The website's address doesn't exist.", "Reputation check — didn't answer: The service timed out." or "Sender authentication — didn't answer: ApolloSG didn't receive the full email headers." A coverage gap names the evidence its rule needed (page content, redirect chain, domain registration age …), never a vague catch-all, and isn't repeated in generic words when an unfinished check already names it. Missing evidence is never evidence of a threat: it only narrows what ApolloSG could verify, and a reason is never invented. The Evidence Pack carries the same five facts and the same rows.
+- **Threat Case Evidence keeps five facts apart:** Origin (always "Detected on this device"), Evidence (what supplied it: Apollo's check on this device, Apollo's DNS filter, the phone's built-in protection, a connected mailbox, or what this device sent for checking — never ApolloSG's servers, because server processing is not an evidence source), Checked (Higgins Triage on this device or on ApolloSG's servers, TC FlyBy, Magnum DI), Record (summary only, the checks that couldn't be completed, or none unfinished) and Privacy (when ApolloSG's servers worked from, or keep, a privacy-protected version). None is inferred from another.
+- **The evidence source is recorded once,** when the evidence is. Server processing, TC FlyBy, Magnum DI, privacy transformation, syncing and storage never change it, and never change the case's origin. Records written before this rule that named the server as the source are read with their real source (the connected mailbox, or what this device sent), or "Not recorded" when the source was never recorded.
+- **Checks that didn't finish** are listed under "Sources ApolloSG used" in this order: what was checked, what happened, why it failed (the reason recorded for it) and what ApolloSG therefore couldn't verify, for example "Final destination — couldn't be verified: The website's address doesn't exist. Couldn't verify where the link finally leads.", "Reputation check — didn't answer: The service timed out. Couldn't verify whether it's listed as a known threat." or "Sender authentication — didn't answer: ApolloSG didn't receive the full email headers." A coverage gap names the evidence its rule needed (page content, redirect chain, domain registration age …), never a vague catch-all, and isn't repeated in generic words when an unfinished check already names it. A block claim without packet proof is listed the same way: "Proof of the block — couldn't be verified: The record doesn't contain a packet drop Apollo observed and matched to this event. Couldn't verify that the connection was actually blocked." The fixed row "Original evidence — not recorded with this case: No reason was recorded." shows only when the record says evidence is missing and nothing records why; it never stands in for a recorded reason, and a known error is never replaced with generic "unavailable" wording. Missing evidence is never evidence of a threat: it only narrows what ApolloSG could verify, and a reason is never invented. The Evidence Pack and Higgins' narration carry the same five facts and the same rows.
 - **A summary-only record** (the privacy-protected summary is all the record holds, e.g. after reinstalling) says exactly that — Higgins narrates the kind of check and its result and adds nothing.
 - **Alerts:** Barking and Biting always come through and can't be turned off. Growling and Sniffing alerts can be turned off, and during quiet hours they wait until the quiet time ends; they are never dropped. Family helpers see fixed wording, never the content, unless the person sends them a summary (below).
 - **Alert wording:** an alert says what was found in one short line from Higgins and names the item, for example "The Instagram link you sent has signs that need checking. Open ApolloSG to see what I found." It never carries the full explanation, which stays in the Threat Case unchanged. Encoded characters such as `&quot;`, `&amp;` and `&#39;` are decoded once, just before the phone shows the alert. The stored case and evidence are never changed.
@@ -1253,8 +1252,8 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 
 **Taps and offers**
 - An answer offers at most 2 screens to tap, and only real Apollo screens.
-- "Investigate this" or "Open Check It" appears only when the general-knowledge answer suggests it. Nothing starts until it is tapped.
-- A general-knowledge answer is up to 2,000 characters.
+- Nothing starts a check from an answer until the person taps it.
+- **A question nothing trusted answers:** Higgins says ApolloSG's trusted knowledge doesn't cover it (HIG-08). No AI-written answer is ever shown.
 
 **What is kept, and for how long**
 - On the phone: the conversation for 1 hour, up to the last 40 messages, in the phone's secure storage.
@@ -1268,7 +1267,6 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 
 **When something goes wrong**
 - Higgins can't answer: "Higgins couldn't answer right now. No investigation was started.", with Try again.
-- A general-knowledge answer comes back unreadable: Higgins says so, and nothing is made up in its place.
 - **A stopped investigation** (Magnum DI's inference attempt and its permitted retry both failed): once it can be resubmitted, one quiet note shows above the conversation. The note goes when the case is resubmitted, answered, removed, dismissed or past its expiry. There is no pop-up anywhere else.
 
 ### Scam Alerts and government feeds {#scam-alerts}
@@ -1301,6 +1299,6 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - Gate and Higgins Triage: 0 AI calls.
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
 - Magnum DI: one inference attempt, plus one permitted retry only if that attempt fails or returns an invalid answer; at most two provider calls.
-- Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.
-- Models: Magnum DI and Ask Higgins each call the model an admin picked for them on the admin portal, the low-cost model until an admin changes it. Only models that can do that feature's job can be picked, and TC FlyBy always uses Magnum DI's model. Every change is kept in the admin audit log.
+- Higgins and Ask Higgins: 0 AI calls. Plain English and its Fidelity Check: 0 calls.
+- Models: Magnum DI and TC FlyBy call the one AI provider and model selected in ApolloSG Settings → AI Provider & Model on the admin portal (ApolloSG's default until an admin changes it). Only an approved model that returns the fixed answer shape, reads images sent as evidence and searches the web with sources can be selected, and only when ApolloSG is connected to its provider and the provider's API key is set on the server. ApolloSG is connected to three AI providers; each provider's key is kept only in the server's configuration. API keys are never shown. An investigation keeps the model it started with. A failure is reported as it is: ApolloSG never switches model or provider. Each change records who made it and when, and goes in the admin audit log.
 

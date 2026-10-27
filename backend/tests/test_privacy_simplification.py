@@ -12,7 +12,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from google.genai import types  # noqa: E402
+from services.higgins.adapters import gemini as gemini_adapter  # noqa: E402
+from services.higgins.ai_request import Part  # noqa: E402
 
 from services.higgins import provider  # noqa: E402
 from services.higgins.provider import generate as _real_generate  # noqa: E402  (captured before the autouse live-call blocker)
@@ -72,20 +73,20 @@ def test_gemini_boundary_screens_a_copy_and_leaves_caller_parts_untouched(monkey
         class aio:  # noqa: N801
             models = _Models()
 
-    monkeypatch.setattr(provider, "client", lambda: _Client())
+    monkeypatch.setattr(gemini_adapter, "client", lambda: _Client())
+    monkeypatch.setattr(gemini_adapter, "_model_limits", {})
     monkeypatch.setattr(provider, "_preview_generate", None)  # the live path is what this test captures
 
     async def _no_usage(*_a, **_k):  # keep the shared DB client off this test's private event loop
         return None
     monkeypatch.setattr(provider, "_record_usage", _no_usage)
     monkeypatch.delenv("APOLLO_FORBID_PROVIDER_CALLS", raising=False)
-    monkeypatch.setattr(provider, "GEMINI_API_KEY", "test-key", raising=False)
-    part = types.Part(text=SCAM)
+    part = Part(text=SCAM)
     try:
         # Private loop: asyncio.run() would clear the shared event loop that other test modules rely on.
         loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(_real_generate("sys", [part], purpose=Purpose.INVESTIGATION, correlation_id="t"))
+            loop.run_until_complete(_real_generate("sys", [part], model="gemini-3.1-flash-lite", purpose=Purpose.INVESTIGATION, correlation_id="t"))
         finally:
             loop.close()
     except Exception as exc:  # noqa: BLE001

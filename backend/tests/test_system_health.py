@@ -84,7 +84,7 @@ class _Cursor:
 async def test_health_check_is_deterministic_and_never_calls_gemini(monkeypatch, rows, healthy):
     fake = AsyncMock(side_effect=AssertionError("the health check must never call Gemini"))
     monkeypatch.setattr(provider, "generate", fake)
-    monkeypatch.setattr(health_check, "GEMINI_API_KEY", "test-only-fixture")
+    monkeypatch.setattr(health_check.ai_settings, "key_configured", lambda _provider: True)
     monkeypatch.setattr(health_check, "db", SimpleNamespace(gemini_usage=SimpleNamespace(find=lambda *_a, **_k: _Cursor(rows))))
     if healthy:
         result = await health_check.investigate()

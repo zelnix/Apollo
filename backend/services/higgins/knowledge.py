@@ -8,8 +8,9 @@ Every entry keeps its source, link, authority tier, jurisdiction and dates, and 
                        markers TC FlyBy compares submitted material against
 - researched         — trusted pages found and maintained through Tavily (services/apollo_kb.py), versioned
 
-Gemini's saved answers to general questions are NOT KB knowledge: they live in the reusable intelligence cache
-(services/reusable_intel.py), labelled as Gemini's, with an expiry, and are never promoted into the KB.
+AI-written answers are NOT KB knowledge and are never used to answer anyone: Ask Higgins no longer asks a general AI
+model, and the answers it saved before that (moved to the reusable intelligence cache, services/reusable_intel.py)
+are never shown again.
 
 KB knowledge is general knowledge. It is never evidence about anything a person asked Apollo to check.
 
@@ -308,26 +309,7 @@ def storable(question: str) -> bool:
     return redact_investigation_secrets(question) == question and not _PERSONAL.search(question)
 
 
-GEMINI_PUBLISHER = "Higgins (written by an AI tool)"
-
-
-async def remember_gemini_answer(question: str, answer: str, simulated: bool = False) -> bool:
-    """Gemini's answer to a general question, saved as reusable intelligence (AI-generated, never KB knowledge).
-    A question with personal detail is never saved. A simulated answer is saved the same way, tagged simulated."""
-    from services import reusable_intel as intel
-    if not storable(question):
-        return False
-    await intel.put(intel.subject_key("question", question), intel.GEMINI, intel.GENERAL_ANSWER, "general_answer", {"answer": answer},
-                    knowledge_class="ai_generated_answer", ai_generated=True, question=question, provenance={"publisher": GEMINI_PUBLISHER},
-                    simulated=simulated)
-    await intel.count("higgins_general_question", "cache_write")
-    return True
-
-
-def answers_question(stored_question: str, query_terms: list[str]) -> float:
-    """A saved answer is reused only for the question it answered: its question must cover the new one."""
-    cover = _coverage(query_terms, stored_question)
-    return cover if cover >= (1.0 if len(query_terms) <= 2 else 0.8) else 0.0
+GEMINI_PUBLISHER = "Higgins (written by an AI tool)"  # provenance on the old saved answers (reusable_intel)
 
 
 # ── Search and verbatim presentation ──────────────────────────────────────────
@@ -438,15 +420,6 @@ def excerpt(body: str, query_terms: list[str], max_chars: int = 900) -> str:
         if total >= max_chars * 0.6:
             break
     return "\n\n".join(paragraphs[i] for i in sorted(chosen))[: max_chars + 200]
-
-
-SAVED_ANSWER_NOTE = ("(ApolloSG saved this answer earlier. An AI tool wrote it because ApolloSG's library didn't cover this "
-                     "question. No official source has checked it.)")
-
-
-def present_saved_answer(record: dict) -> str:
-    """A reused Gemini answer: its words, always labelled as Gemini's and unchecked by any official source."""
-    return f"{(record.get('payload') or {}).get('answer', '')}\n\n{SAVED_ANSWER_NOTE}"
 
 
 GENERAL_KNOWLEDGE_NOTE = "This is general knowledge from ApolloSG's library. It isn't a finding about anything you've asked Apollo to check."

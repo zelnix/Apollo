@@ -25,11 +25,9 @@ test("the reused line names Apollo's earlier check", () => {
   assert.equal(reusedLine("2026-10-25T07:00:00Z", NOW), "From Apollo's check 2 hours ago, still current, so it wasn't looked up again");
 });
 
-test("Ask Higgins and the report show the line for a reused result", () => {
+test("the report shows the line for a reused result; Ask Higgins has no saved AI answers to show", () => {
   const ask = readFileSync(new URL("../app/(tabs)/ask.tsx", import.meta.url), "utf8");
-  assert.match(ask, /import \{ reusedLine \} from "@\/src\/domain\/checkedAgo"/);
-  assert.match(ask, /reusedAt: reply\.reused\?\.lastCheckedAt/);
-  assert.match(ask, /testID=\{`ask-reused-\$\{message\.id\}`\}>Saved answer · \{reusedLine\(message\.reusedAt\)\}/);
+  assert.doesNotMatch(ask, /reusedLine|Saved answer|ask-reused-|ask-simulated-/);
   const body = readFileSync(new URL("../src/components/report/ReportBody.tsx", import.meta.url), "utf8");
   assert.match(body, /source\.reused \? <Text style=\{s\.muted\} testID=\{`\$\{testID\}-reused`\}>\{reusedLine\(source\.retrievedAt\)\}/);
 });

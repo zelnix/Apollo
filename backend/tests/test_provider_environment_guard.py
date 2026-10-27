@@ -7,7 +7,7 @@ APOLLO_ENV is deliberately not the switch: the deployment's secrets still hold a
 Emergent deploys the whole project, `services/higgins/preview/` included, so the directory's presence
 proves nothing (it was the guard before, and production ended up answering from the simulator).
 A missing, empty or unrecognised value is production — `register_preview_handler()` refuses,
-`get_provider_mode()` answers "live" and `generate()` reaches live Gemini only.
+`get_provider_mode()` answers "live" and `generate()` reaches the live provider only.
 
 Run: cd /app/backend && python -m pytest tests/test_provider_environment_guard.py -q
 """
@@ -18,6 +18,7 @@ import pathlib
 import pytest
 
 from services.higgins import provider
+from services.higgins.adapters import gemini as gemini_adapter
 from services.higgins.provider import ProviderFailure
 
 SOURCE = pathlib.Path(provider.__file__).read_text()
@@ -52,7 +53,7 @@ def test_explicit_preview_installs_the_simulator_and_blocks_the_live_client(monk
     assert provider.get_provider_mode() == "preview"
     # With the simulator answering, the live client must be unreachable — not merely unused.
     with pytest.raises(ProviderFailure):
-        provider.client()
+        gemini_adapter.client()
 
 
 def test_the_preview_workspace_is_recognised_by_its_own_address(monkeypatch):
@@ -64,7 +65,7 @@ def test_the_preview_workspace_is_recognised_by_its_own_address(monkeypatch):
     provider.register_preview_handler(_handler)
     assert provider.get_provider_mode() == "preview"
     with pytest.raises(ProviderFailure):
-        provider.client()
+        gemini_adapter.client()
 
 
 @pytest.mark.parametrize("url", ["https://threat-patrol-1.emergent.host", "https://apollo.example.com", "",
@@ -126,7 +127,7 @@ def test_production_startup_loads_no_simulation_module():
 @pytest.mark.anyio
 async def test_preview_runs_every_production_check_before_the_simulator(monkeypatch):
     """The simulator replaces only the network call: a request production refuses is refused in preview."""
-    from google.genai import types
+    from services.higgins.ai_request import Part
     from services.higgins.llm_boundary import Purpose
     calls = []
 
@@ -134,13 +135,16 @@ async def test_preview_runs_every_production_check_before_the_simulator(monkeypa
         calls.append(1)
 
     monkeypatch.setattr(provider, "_preview_generate", _handler)
-    image = types.Part.from_bytes(data=b"\x89PNG fake", mime_type="image/png")
+    image = Part.from_bytes(data=b"\x89PNG fake", mime_type="image/png")
     with pytest.raises(ProviderFailure) as refused:
-        await _REAL_GENERATE("", [image], model=provider.TEXT_MODEL, capability="text", purpose=Purpose.ORDINARY_CHAT)
+        await _REAL_GENERATE("", [image], model="gemini-3.1-flash-lite", capability="text", purpose=Purpose.ORDINARY_CHAT)
     assert refused.value.code == "privacy_violation"
     with pytest.raises(ProviderFailure) as unknown_model:
         await _REAL_GENERATE("", "hello", model="not-a-model", capability="text", purpose=Purpose.ORDINARY_CHAT)
     assert unknown_model.value.code == "provider_configuration"
+    with pytest.raises(ProviderFailure) as no_search:  # a model that can't search is refused, never swapped for one that can
+        await _REAL_GENERATE("", "hello", model="gemini-2.5-flash-lite", capability="json", web_search=True, purpose=Purpose.TEDDY_SEARCH)
+    assert no_search.value.code == "provider_configuration"
     assert calls == [], "the simulator must never answer a request production would refuse"
 
 

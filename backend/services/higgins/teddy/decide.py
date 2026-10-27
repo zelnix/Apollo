@@ -282,6 +282,6 @@ def decisive(plan_: Plan) -> bool:
 
 
 def magnum_needs_search(plan_: Plan, issues: list[Issue]) -> bool:
-    """Google Search stays OFF for Magnum DI unless a specific external fact may still be missing: content it
+    """Web search stays OFF for Magnum DI unless a specific external fact may still be missing: content it
     will read for the first time, a lookup that was unavailable, or a general question Teddy couldn't answer."""
     return bool(any(i.capability == "reading" for i in issues) or any(c.status == "unavailable" for c in plan_.checks) or plan_.general)

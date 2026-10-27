@@ -15,6 +15,7 @@ from datetime import timedelta
 from typing import Awaitable, Callable, Optional
 
 from core.db import db, now_utc
+from core.evidence_model import evidence_model
 from core.redaction import redact_investigation_secrets
 from services import capability_registry, government_alerts
 from services import patrol_records, learning
@@ -59,8 +60,11 @@ async def patrol(owner: str, *, one: bool = False) -> dict:
     rows = [row for row in await patrol_records.current(owner, limit + 5) if row["category"] != "system"][:limit]
     items = []
     for row in rows:
-        provenance = row.get("evidence_provenance", "")
-        is_projected = provenance == "server_projected" or (not provenance and not (row.get("summary") or "").strip())
+        # The separated evidence model (core/evidence_model.py): a privacy summary is said to be one, and the
+        # evidence source is only ever what supplied it — never the server that processed it.
+        model = evidence_model(row.get("event") or {})
+        summary_text = row.get("summary") or ""
+        is_projected = model["evidence_representation"] == "privacy_summary" or not summary_text.strip()
         effective_state = row["effectiveState"]
         has_block = row.get("observedBlockReference") is not None
         scenario_ctx = row.get("scenarioContext") or {}
@@ -72,14 +76,13 @@ async def patrol(owner: str, *, one: bool = False) -> dict:
             "claimedBrand": scenario_ctx.get("claimedBrand"),
             "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
         }
-        summary_text = row.get("summary") or ""
         items.append({
             "recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
             "effectiveState": effective_state, "effectiveReason": row["effectiveReason"],
             "headline": redact_investigation_secrets(row["headline"])[:200],
             "summary": redact_investigation_secrets(summary_text)[:400] if not is_projected else SUMMARY_ONLY,
             "evidence_availability": "full" if not is_projected else "summary_only",
-            "evidence_provenance": provenance or ("local_device" if not is_projected else "server_projected"),
+            **model,
             "structuredFacts": structured_facts,
             "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
             "observedBlockReference": row.get("observedBlockReference"),

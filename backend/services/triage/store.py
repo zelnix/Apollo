@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 from core.db import db, now_utc
+from core.evidence_model import EVIDENCE_SOURCES, TRIAGE_ADAPTER
 from services.triage import telemetry
 from services.triage.catalogue import LIMITED_CAUTION, gap_plain
 from services.triage.completeness import AVAILABLE_CHECKS, incomplete_plain
@@ -32,10 +33,16 @@ async def ensure_indexes() -> None:
 
 
 async def record_triage_history(device_id: str, investigation: TriageInvestigation, *,
-                                category: str, subject: str = "", client_submission_id: str | None = None,
+                                category: str, evidence_source: str, subject: str = "",
+                                client_submission_id: str | None = None,
                                 investigation_case_id: str | None = None,
                                 indicator_host: str | None = None) -> str:
-    """Save the Triage Investigation and project it into Patrol History (idempotent)."""
+    """Save the Triage Investigation and project it into Patrol History (idempotent).
+
+    `evidence_source` is what supplied the evidence (core/evidence_model.py): "connected_mailbox" for an email the
+    server read from the person's mailbox, "device_submission" for what this device sent. Never the server itself."""
+    if evidence_source not in EVIDENCE_SOURCES:
+        raise ValueError(f"not an evidence source: {evidence_source!r}")
     wire = investigation.wire()
     incomplete = investigation.incomplete_checks
     saved = await db[COLLECTION].update_one(
@@ -75,17 +82,21 @@ async def record_triage_history(device_id: str, investigation: TriageInvestigati
                        else LIMITED_CAUTION if investigation.outcome is Outcome.LIMITED
                        else "Apollo is investigating this further."),
         "indicator_host": indicator_host, "indicator_digest": None, "local_indicator": None,
-        "verified_block": False, "adapter_label": "Higgins Triage (deterministic)",
+        "verified_block": False, "adapter_label": TRIAGE_ADAPTER,
         "occurred_at": investigation.evaluated_at or now_utc(),
         "resolved_at": (investigation.evaluated_at or now_utc()) if investigation.outcome is Outcome.NO_THREAT else None,
         "trust_allowed": False, "claimed_brand": None, "scenario": None, "scent_id": None,
         "background": True, "investigation_case_id": investigation_case_id,
         "client_submission_id": client_submission_id,
-        "evidence_provenance": "server_projected",
+        # Worked from a privacy-protected copy; evidence missing when a check didn't finish or a gap was recorded.
+        "evidence_representation": "privacy_protected_copy",
+        "evidence_completeness": "partial" if incomplete or gaps else "complete",
         "triage_investigation": wire,
         "initiator": "apollo_triage",
         "deleted_at": None, "updated_at": now_utc(),
     }
+    # The evidence source and where it was processed are recorded once, when the record is filed.
+    on_insert = {"created_at": now_utc(), "evidence_provenance": evidence_source, "processing_source": "apollosg_servers"}
     await db.patrol_events.update_one({"device_id": device_id, "event_id": event_id},
-                                      {"$set": document, "$setOnInsert": {"created_at": now_utc()}}, upsert=True)
+                                      {"$set": document, "$setOnInsert": on_insert}, upsert=True)
     return event_id
