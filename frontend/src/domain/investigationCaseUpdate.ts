@@ -73,6 +73,7 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     && event.state === state
     && event.investigation_completed_at === inv.committedAt
     && (event.investigation_answered_by ?? null) === (inv.answeredBy ?? event.investigation_answered_by ?? null)
+    && !!event.investigation_simulated === !!(inv.simulated || event.investigation_simulated)
     && JSON.stringify(event.case_briefing ?? null) === JSON.stringify(briefing);
   if (unchanged) return null;
 
@@ -93,6 +94,8 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     investigation_completed_at: inv.committedAt,
     // Who settled it (TC FlyBy or Magnum DI), when the committed result recorded it — never guessed.
     investigation_answered_by: inv.answeredBy ?? event.investigation_answered_by ?? null,
+    // Tagged when an outside source behind it was simulated in the preview — never untagged once it was.
+    ...(inv.simulated || event.investigation_simulated ? { investigation_simulated: true } : {}),
     // The same briefing Home, Threats and notifications project (device-local, never synced).
     case_briefing: briefing,
   };

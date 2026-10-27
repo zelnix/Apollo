@@ -226,14 +226,17 @@ async def inventory(owner: str, case_id: str) -> Inventory:
 
 async def case_view(doc: dict) -> InvestigationCase:
     response = HigginsResponse.model_validate(dec_json(doc["response_ciphertext"])) if doc.get("response_ciphertext") else None
+    routing = doc.get("routing") or {}
+    simulated = bool((routing.get("teddy") or {}).get("simulated") or (routing.get("magnum") or {}).get("simulated"))
     return InvestigationCase(id=doc["case_id"], revision=doc["revision"], gates=doc["gates"], status=doc["status"], created_at=utc(doc["created_at"]),
                              updated_at=utc(doc["updated_at"]), expires_at=utc(doc["expires_at"]), response=response, active_job_id=doc.get("active_job_id"),
                              evidence_expires_at=utc(doc["evidence_expires_at"]) if doc.get("evidence_expires_at") else None,
                              retention_class=doc.get("retention_class", ""),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
-                             cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=(doc.get("routing") or {}).get("answeredBy"),
+                             cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=routing.get("answeredBy"),
                              settled_reason=rulebook.settled_reason(doc.get("routing")) if response else None,
-                             content_delete_by=utc(doc["content_delete_by"]) if doc.get("content_delete_by") else None)
+                             content_delete_by=utc(doc["content_delete_by"]) if doc.get("content_delete_by") else None,
+                             simulated=simulated)
 
 
 def device_profile(doc: dict) -> Optional[dict]:

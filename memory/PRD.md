@@ -1,3 +1,14 @@
+## Preview sample check + Simulated tag on list rows (2026-10-27)
+- Threats screen (preview build only, `simulation.included`): "Try a sample check" (`threats-sample-check`) opens the
+  "Your messages" sample sheet (`threats-sample-picker`); a pick runs the real `checkMessage(..., {via:"inbox", simulated:true})`
+  and opens the resulting case, or a toast when the rules open none. Verified in preview: AusPost sample → TC-2026-… case.
+- `isSimulated(event)` (threatCase.ts) = evidence_profile.simulated || investigation_simulated. "Simulated" Pill on Threats
+  cards (`threat-card-<id>-simulated`) and Patrol history rows (`patrol-history-row-<id>-simulated`).
+- Server case wire `InvestigationCase.simulated` (routing.teddy/magnum simulated) → DeviceInvestigation.simulated →
+  event.investigation_simulated (investigationPatch; never dropped once tagged).
+- Tests: test_teddy_routing case_view simulated; investigationCaseUpdate.test.ts tag test. Backend 1326 + flaky feed test
+  passes alone; frontend 1071/1071; tsc clean.
+
 ## Preview = production, only external sources simulated and tagged (2026-10-27)
 Owner principle: preview runs exactly like production (rules, processing, messaging, on device and server); only Gemini and
 other external sources are simulated, and anything simulated is tagged "Simulated". Audit fixes:

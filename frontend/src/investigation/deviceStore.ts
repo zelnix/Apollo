@@ -43,6 +43,8 @@ export interface DeviceInvestigation {
   answeredBy?: string | null;
   /** The rule that settled it, as one plain sentence. Absent on results saved before it was recorded. */
   settledReason?: import("./types").SettledReason | null;
+  /** An outside source behind the result was simulated in the preview. Everything else ran as in production. */
+  simulated?: boolean;
   /** When the server's copy of what was sent was removed, or the latest time it will be. Absent on older results. */
   serverCopy?: ServerCopy;
 }

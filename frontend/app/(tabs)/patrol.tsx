@@ -39,6 +39,7 @@ import {
   caseGroupKey,
   categoryLabel,
   formatDateTime,
+  isSimulated,
   threatCaseId,
   type ThreatCaseStatus,
 } from "@/src/domain/threatCase";
@@ -51,6 +52,9 @@ import { evidenceStrength } from "@/src/domain/triage/evidenceProfile";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { HeaderIconTile } from "@/src/components/HeaderIconTile";
+import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { Button, Pill } from "@/src/components/ui";
+import { simulation } from "@/src/simulation";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
 import { subjectRowLabel } from "@/src/domain/threatSubject";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -168,6 +172,7 @@ const useStyles = makeStyles((c) => ({
   // Status pill
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
   statusPillText: { fontFamily: fonts.textSemibold, fontSize: 11 },
+  sampleRow: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   // Empty state
   emptyText: { fontFamily: fonts.text, fontSize: 15, color: c.muted, textAlign: "center", paddingVertical: spacing.xl * 2, paddingHorizontal: spacing.xl },
 }));
@@ -195,6 +200,7 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
         <Text style={s.cardMeta} numberOfLines={1} testID={`threat-card-${event.event_id}-meta`}>
           {si.label} · {formatDateTime(event.occurred_at)}
         </Text>
+        {isSimulated(event) ? <Pill compact label="Simulated" testID={`threat-card-${event.event_id}-simulated`} /> : null}
         <View style={[s.statusPill, { backgroundColor: statusColor.bg }]}>
           <Text style={[s.statusPillText, { color: statusColor.text }]}>{STATUS_LABELS[status]}</Text>
         </View>
@@ -223,7 +229,9 @@ export default function ThreatsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { events, lastVerifiedAt } = useApollo();
+  const { events, lastVerifiedAt, checkMessage, showToast } = useApollo();
+  const [samplePicker, setSamplePicker] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState(false);
   // Most recent moment Apollo ran any check or discovered/updated a threat.
   const lastActivityAt = useMemo(() => {
     const times = [lastVerifiedAt, ...events.flatMap((e) => [e.occurred_at, e.detection_updated_at])]
@@ -282,6 +290,24 @@ export default function ThreatsScreen() {
 
   const toggleSort = () => setSortOrder((prev) => NEXT_SORT[prev]);
 
+  // Preview only: a sample message stands in for one picked from this phone's messages and goes through the very
+  // same message check production runs. Apollo's own rules decide whether a Threat Case opens; nothing is pre-made.
+  const runSample = async (id: string) => {
+    setSamplePicker(false);
+    const sample = simulation.texts.find((t) => t.id === id);
+    if (!sample) return;
+    setSampleBusy(true);
+    try {
+      const outcome = await checkMessage(sample.sender, sample.text, { via: "inbox", simulated: true });
+      if (outcome.event) router.push(`/patrol/${outcome.event.event_id}`);
+      else showToast("Apollo's message check identified no threat in that message, so no case was opened.", "neutral");
+    } catch {
+      showToast("ApolloSG couldn't run that check.", "growling");
+    } finally {
+      setSampleBusy(false);
+    }
+  };
+
   return (
     <View style={s.root} testID="threats-screen">
       {/* Title */}
@@ -326,6 +352,18 @@ export default function ThreatsScreen() {
           <ChevronRight size={16} color={colors.brandPrimary} />
         </Pressable>
       </View>
+
+      {simulation.included ? (
+        <View style={s.sampleRow}>
+          <Button
+            testID="threats-sample-check"
+            variant="ghost"
+            label={sampleBusy ? "Checking the sample…" : "Try a sample check"}
+            onPress={() => setSamplePicker(true)}
+            disabled={sampleBusy}
+          />
+        </View>
+      ) : null}
 
       {/* Filter + sort row */}
       <View style={s.controlsRow}>
@@ -387,6 +425,18 @@ export default function ThreatsScreen() {
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
         testID="threats-list"
+      />
+
+      <SourcePickerSheet
+        visible={samplePicker}
+        title="Your messages"
+        note="Apollo runs the real message check on whichever one you pick. A Threat Case opens only if Apollo's rules find one."
+        preview
+        items={simulation.texts.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes }))}
+        emptyText="There are no messages to choose from here."
+        onSelect={(id: string) => void runSample(id)}
+        onClose={() => setSamplePicker(false)}
+        testID="threats-sample-picker"
       />
     </View>
   );

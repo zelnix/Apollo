@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { bodyFrom, headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
-import { STATUS_LABELS, settledBy, threatCaseStatus } from "../src/domain/threatCase.ts";
+import { STATUS_LABELS, isSimulated, settledBy, threatCaseStatus } from "../src/domain/threatCase.ts";
 
 const placeholder = {
   event_id: "ev1", device_id: "d1", category: "message", state: "sniffing", status: "active",
@@ -122,4 +122,22 @@ test("a finished case records who settled it, for the Threats list badge — nev
   // A case patched before the record existed picks it up once the stored result has it.
   const before = investigationPatch(placeholder, investigation())!;
   assert.equal(investigationPatch(before, { ...(investigation() as object), answeredBy: "teddy_search" } as never)!.investigation_answered_by, "teddy_search");
+});
+
+test("a case is tagged Simulated when an outside source behind it was simulated — never otherwise", () => {
+  const live = investigationPatch(placeholder, investigation())!;
+  assert.equal(live.investigation_simulated, undefined);
+  assert.equal(isSimulated(live), false, "a production result carries no tag");
+  const simulated = investigationPatch(placeholder, { ...(investigation() as object), simulated: true } as never)!;
+  assert.equal(simulated.investigation_simulated, true);
+  assert.equal(isSimulated(simulated), true);
+  // The same findings and outcome either way: the tag is the only difference.
+  const { investigation_simulated: _tag, ...rest } = simulated;
+  assert.deepEqual(rest, live);
+  // Picked up by a case patched before the result recorded it, and never dropped once tagged.
+  assert.equal(investigationPatch(live, { ...(investigation() as object), simulated: true } as never)!.investigation_simulated, true);
+  assert.equal(investigationPatch(simulated, investigation()), null, "still tagged; nothing to change");
+  // A preview sample input is tagged through its evidence profile.
+  assert.equal(isSimulated({ evidence_profile: { simulated: true } } as never), true);
+  assert.equal(isSimulated({ evidence_profile: { simulated: undefined } } as never), false);
 });

@@ -303,6 +303,9 @@ async def test_a_plain_message_asking_nothing_is_settled_without_magnum(monkeypa
     assert teddy["resolved"] is True and teddy["issues"] == []
     assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "not_needed"
     assert (await repo.case_view(case)).wire()["answeredBy"] == teddy["answeredBy"] == "teddy_kb", "the app is told who settled it"
+    assert (await repo.case_view(case)).wire()["simulated"] is False, "nothing outside was simulated"
+    assert (await repo.case_view({**case, "routing": {**case["routing"], "teddy": {**teddy, "simulated": True}}})).wire()["simulated"] is True
+    assert (await repo.case_view({**case, "routing": {**case["routing"], "magnum": {"simulated": True}}})).wire()["simulated"] is True
 
 
 async def test_a_screenshot_is_investigated_through_the_text_triage_extracted(monkeypatch):

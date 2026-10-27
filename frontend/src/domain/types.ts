@@ -199,6 +199,9 @@ export interface PatrolEvent {
   /** Who settled that investigation: "magnum_di" or a TC FlyBy route ("teddy_official", "teddy_kb",
    *  "teddy_search"). Device-local, copied from the committed result; absent when not recorded. */
   investigation_answered_by?: string | null;
+  /** An outside source behind that investigation was simulated in the preview (copied from the committed result).
+   *  Device-local. Everything else ran exactly as in production; this only tags the case. */
+  investigation_simulated?: boolean;
   /** Server-owned correlation: links a background-intake submission to its projected Patrol event.
    * Set by the investigation projector; the frontend sets it on local placeholder events for
    * reconciliation. When the server supplies a value, it is authoritative and supersedes the local

@@ -305,6 +305,9 @@ class InvestigationCase(Wire):
     settled_reason: Optional[SettledReason] = None
     # The latest moment the server keeps what was submitted: 24 hours after the investigation finished (None while it runs).
     content_delete_by: Optional[datetime] = None
+    # An outside source behind the result was simulated (the preview's stand-in for Magnum DI's call or TC FlyBy's search).
+    # Everything else ran exactly as in production; this only tags it.
+    simulated: bool = False
 
 
 class RetryAttempt(Wire):

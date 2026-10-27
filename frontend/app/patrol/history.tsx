@@ -11,8 +11,8 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
-import { Body, Button, Card } from "@/src/components/ui";
-import { STATUS_COLORS, STATUS_LABELS, threatCaseStatus, threatCaseId } from "@/src/domain/threatCase";
+import { Body, Button, Card, Pill } from "@/src/components/ui";
+import { STATUS_COLORS, STATUS_LABELS, isSimulated, threatCaseStatus, threatCaseId } from "@/src/domain/threatCase";
 import type { PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -119,6 +119,7 @@ export default function PatrolHistory() {
                               {new Date(event.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {threatCaseId(event)}
                             </Text>
                           </View>
+                          {isSimulated(event) ? <Pill compact label="Simulated" testID={`patrol-history-row-${event.event_id}-simulated`} /> : null}
                           <View style={[s.pill, { backgroundColor: colour.bg }]}>
                             <Text style={[s.pillText, { color: colour.text }]}>{STATUS_LABELS[status]}</Text>
                           </View>

@@ -30,6 +30,12 @@ export function settledBy(event: Pick<PatrolEvent, "investigation_completed_at" 
   return event.investigation_completed_at && event.investigation_answered_by ? investigatorName(event.investigation_answered_by) : null;
 }
 
+/** The case came from a preview sample, or an outside source behind its investigation was simulated. It was
+ *  processed exactly as in production; this only tags it. Never true in a production build: nothing there is simulated. */
+export function isSimulated(event: Pick<PatrolEvent, "evidence_profile" | "investigation_simulated">): boolean {
+  return !!(event.evidence_profile?.simulated || event.investigation_simulated);
+}
+
 // ── Threat Case ID ──────────────────────────────────────────────────────────
 
 export function threatCaseId(event: PatrolEvent): string {
