@@ -79,7 +79,7 @@ export default function CheckApp() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ name?: string; source?: AppSource; scent?: string }>();
+  const params = useLocalSearchParams<{ name?: string; source?: AppSource; scent?: string; sample?: string }>();
   const { ready, setupDone, upsertEvent, resolveEvent, deviceId, adapterLabel, showToast, events } = useApollo();
   const [name, setName] = useState(params.name ?? "");
   const [developer, setDeveloper] = useState("");
@@ -98,6 +98,8 @@ export default function CheckApp() {
   const [pickedPackage, setPickedPackage] = useState<string | null>(null);
   // Set when a simulated app has been filled in and the ordinary check should run once the fields land.
   const [autoRun, setAutoRun] = useState<string | null>(null);
+  // The fields came from a preview sample app: checked exactly as a picked app, only tagged Simulated.
+  const [sampled, setSampled] = useState(false);
   const [appQuery, setAppQuery] = useState("");
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [showMoreFields, setShowMoreFields] = useState(false);
@@ -125,7 +127,24 @@ export default function CheckApp() {
     }
     finally { setAppsLoading(false); }
   };
-  const pickApp = (app: InstalledAppRef) => { setName(app.appName); setPickedPackage(app.packageId); setSource("not_sure"); setPerms([]); setPickerOpen(false); setAppQuery(""); };
+  const pickApp = (app: InstalledAppRef) => { setName(app.appName); setPickedPackage(app.packageId); setSource("not_sure"); setPerms([]); setPickerOpen(false); setAppQuery(""); setSampled(false); };
+  // A preview sample app fills the same answers a person would give, exactly as the installed-apps sheet does.
+  const applySampleApp = (id: string) => {
+    const a = simulation.apps.find((x) => x.id === id);
+    if (!a) return;
+    setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
+    setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
+    setSampled(true);
+    setAutoRun(a.appName);
+  };
+  // Preview only: a sample chosen elsewhere (Threats → Try a sample check) runs exactly as picking it here does.
+  const sampleRan = React.useRef(false);
+  useEffect(() => {
+    if (!params.sample || !ready || !setupDone || sampleRan.current) return;
+    sampleRan.current = true;
+    applySampleApp(params.sample);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.sample, ready, setupDone]);
   const filteredApps = (installedApps ?? []).filter((a) => a.appName.toLowerCase().includes(appQuery.trim().toLowerCase()));
 
   // Threat Scent: non-resting events from other gates inside the window (call → link → download → install).
@@ -172,6 +191,7 @@ export default function CheckApp() {
         via: pickedPackage ? "picked" : params.name ? "linked" : "typed", name: name.trim(), developer: developer.trim() || null,
         source: observedSource, ticked: perms, device: sdk ?? null, analysis: a,
         badDestinations: remote?.hosts.filter((h) => h.verdict === "malicious").length ?? 0,
+        simulated: sampled,
       });
       let event: PatrolEvent | null = null;
       const linked = recentLinked.find((e) => (ctx.promptedByCaller && e.category === "call") || (ctx.promptedByMessageOrSite && e.category !== "call")) ?? (a.remoteCapable || a.scenario === "A16" ? recentLinked[0] : null) ?? null;
@@ -352,11 +372,7 @@ export default function CheckApp() {
         emptyText="There are no apps to choose from here."
         onSelect={(id: string) => {
           setAppPicker(false);
-          const a = simulation.apps.find((x) => x.id === id);
-          if (!a) return;
-          setName(a.appName); setDeveloper(a.developer); setPickedPackage(a.packageId);
-          setSource(a.source); setPurpose(a.purpose); setPerms(a.permissions);
-          setAutoRun(a.appName);
+          applySampleApp(id);
         }}
         onClose={() => setAppPicker(false)}
         testID="app-source-picker"

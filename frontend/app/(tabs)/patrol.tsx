@@ -224,8 +224,8 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
 
 // ── Preview samples ─────────────────────────────────────────────────────────
 // Each kind opens its own gate screen with `sample`, and that screen runs the sample through its real check.
-type SampleKind = "message" | "email" | "link" | "file";
-const SAMPLE_KINDS: Record<SampleKind, { label: string; gate: string; path: "/message" | "/email" | "/check" | "/file"; items: () => SourceChoice[] }> = {
+type SampleKind = "message" | "email" | "link" | "file" | "call" | "app";
+const SAMPLE_KINDS: Record<SampleKind, { label: string; gate: string; path: "/message" | "/email" | "/check" | "/file" | "/call-guard" | "/app-check"; items: () => SourceChoice[] }> = {
   message: { label: "Messages", gate: "Text Gate", path: "/message",
     items: () => simulation.texts.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes })) },
   email: { label: "Emails", gate: "Email Gate", path: "/email",
@@ -234,6 +234,10 @@ const SAMPLE_KINDS: Record<SampleKind, { label: string; gate: string; path: "/me
     items: () => simulation.links.map((x) => ({ id: x.id, primary: x.url, meta: x.probes })) },
   file: { label: "Files", gate: "File Gate", path: "/file",
     items: () => simulation.files.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, meta: f.probes })) },
+  call: { label: "Calls", gate: "Call Gate", path: "/call-guard",
+    items: () => simulation.calls.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes })) },
+  app: { label: "Apps", gate: "App Gate", path: "/app-check",
+    items: () => simulation.apps.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes })) },
 };
 
 // ── Main Screen ──────────────────────────────────────────────────────────────

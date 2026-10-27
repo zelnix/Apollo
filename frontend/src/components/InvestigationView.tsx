@@ -563,8 +563,10 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation" }: {
+export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation", kind: kindHint }: {
   state: CaseState; onAnswer?: (text: string) => void; onRetry: () => void; onCancel: () => void; onAction?: (action: ActionProposal, outcome: ActionOutcome) => void; testID?: string;
+  /** The kind of check this report is about, when the screen knows it better than the investigation's gate (a file check). */
+  kind?: string;
 }) {
   const s = useStyles(); const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -673,7 +675,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const derivedEvidence = useMemo(() => evidenceItems.filter((e) => e.origin !== "user_submission" && e.origin !== "device_observation"), [evidenceItems]);
 
   // ── Status info ──
-  const kind = checkKind(caseData?.gates?.[0]);
+  const kind = checkKind(kindHint ?? caseData?.gates?.[0]);
   const status = statusInfo(phase, response, failure);
   const timeline = useMemo(() => buildTimeline(state), [state]);
 

@@ -1,3 +1,14 @@
+## Two labels fixed + Calls/Apps samples (2026-10-27)
+- Email L2 from a connected mailbox: catalogue `types.email.viaLevels.connected_mailbox.L2` → "L2 — Mailbox Email" with
+  mailbox wording (same level/rank/rules); `newProfile` merges `viaLevels` over `levels`. Rule book L2 line updated; re-stamped.
+- File results titled "File check": display-only `kind` prop (InvestigationCheckScreen → InvestigationFlow → InvestigationView);
+  file.tsx passes `kind="file"`; Threat Case screen titles a file-evidence case "File check". The investigation still runs under
+  its existing gate (file events are category known_threat → case gate "link") — processing unchanged.
+- Sample check now 6 kinds: + Calls (`/call-guard?sample=` → `runInvestigation(number, true)`, `NumberCheckOptions.simulated`
+  → `buildCallProfile({simulated})`) and Apps (`/app-check?sample=` → `applySampleApp`, `buildAppProfile({simulated: sampled})`).
+  In-screen sample caller/app pickers are tagged too. Verified in preview: call (TC FlyBy) and app (Magnum DI, SIMULATED notice).
+- Frontend 1073/1073; tsc clean; backend rulebook/email tests pass.
+
 ## Sample check for all four kinds + Simulated tag on the case screen (2026-10-27)
 - Threats "Try a sample check" → kind sheet (`threats-sample-kinds`: Messages/Text Gate, Emails/Email Gate, Links/Link Gate,
   Files/File Gate) → item sheet (`threats-sample-picker`) → `router.push({pathname, params: {sample}})`. Each gate screen

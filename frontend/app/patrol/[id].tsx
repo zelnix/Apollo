@@ -1180,7 +1180,8 @@ export default function ThreatCaseScreen() {
   const outcome = outcomeLabel(investigation?.response?.outcome);
   const tone = outcomeTone(investigation?.response?.outcome);
   const outcomeColors = { resting: [colors.restingTint, colors.restingText], barking: [colors.barkingTint, colors.barkingText], ears_up: [colors.ears_upTint, colors.ears_upText], sniffing: [colors.sniffingTint, colors.sniffingText] }[tone] ?? [colors.sniffingTint, colors.sniffingText];
-  const kind = checkKind(investigation?.gates?.[0] ?? event.source_metadata?.type ?? event.category);
+  // A file check is titled from its file evidence: its investigation runs under the Link Gate's case gate.
+  const kind = checkKind(event.evidence_profile?.type === "file" ? "file" : investigation?.gates?.[0] ?? event.source_metadata?.type ?? event.category);
 
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   const hasSubstantiveData = !!(event.what_happened && event.what_happened.length > 30);

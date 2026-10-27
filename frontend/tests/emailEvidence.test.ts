@@ -10,7 +10,9 @@ import { buildEmailProfile, emailFindings, emailLevelFor, mergeEmailProfiles, sa
 import { emailTriageEvidence } from "../src/domain/triage/evidence.ts";
 import { evaluateTriage, EMAIL_AUTH_NEEDS_ORIGINAL } from "../src/domain/triage/engine.ts";
 import { outcomeLabel } from "../src/domain/triage/contract.ts";
-import { analysisSourceFor, headerEvidenceFor } from "../src/domain/triage/emailIntake.ts";
+import { headerEvidenceFor, analysisSourceFor } from "../src/domain/triage/emailIntake.ts";
+import { buildCallProfile } from "../src/domain/triage/callEvidence.ts";
+import { buildAppProfile } from "../src/domain/triage/appEvidence.ts";
 
 const sha = async (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
@@ -156,6 +158,25 @@ test("a preview inbox email is processed exactly as one retrieved from the mailb
   assert.equal(live.simulated, undefined);
   assert.deepEqual([sample.level, sample.label, sample.viaLabel, sample.capabilities], [live.level, live.label, live.viaLabel, live.capabilities]);
   assert.equal(emailLevelFor("connected_mailbox", false), sample.level);
+  // Same level and rules as a shared email without headers, described as what it is: from the mailbox.
+  assert.equal(live.level, "L2");
+  assert.equal(live.label, "L2 — Mailbox Email");
+  assert.match(live.basis, /retrieved the email from your connected mailbox, but not its full headers/);
+  assert.equal(live.rank, buildEmailProfile({ via: "shared", analysis }).rank);
+  assert.equal(buildEmailProfile({ via: "shared", analysis }).label, "L2 — Shared Email");
+});
+
+test("a preview sample caller and app are checked exactly as entered and picked ones — only tagged Simulated", () => {
+  const rep = { number: "+61412345678", decision: "review", fraud_score: 60, checked_at: "2026-10-27T10:00:00Z" } as never;
+  const call = buildCallProfile({ via: "entered", number: "+61412345678", reputation: rep, simulated: true });
+  const liveCall = buildCallProfile({ via: "entered", number: "+61412345678", reputation: rep });
+  assert.equal(call.simulated, true);
+  assert.equal(liveCall.simulated, undefined);
+  assert.deepEqual([call.level, call.label, call.viaLabel, call.capabilities], [liveCall.level, liveCall.label, liveCall.viaLabel, liveCall.capabilities]);
+  const appArgs = { via: "picked" as const, name: "QuickSupport", source: "play_store" as const, ticked: [], device: null, analysis: { remoteCapable: true, claimedBrand: null } };
+  const app = buildAppProfile({ ...appArgs, simulated: true });
+  assert.equal(app.simulated, true);
+  assert.deepEqual([app.level, app.label, app.capabilities], [buildAppProfile(appArgs).level, buildAppProfile(appArgs).label, buildAppProfile(appArgs).capabilities]);
 });
 
 test("Triage: an L1 email can't present sender authentication as checked — 'No threat found by available checks'", () => {

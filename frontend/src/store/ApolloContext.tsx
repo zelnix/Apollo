@@ -166,7 +166,11 @@ export interface MessageCheckOptions {
   simulated?: boolean;
 }
 /** How a number came to be checked (sets its evidence level) — ApolloSG's call screening passes when it saw the call. */
-export interface NumberCheckOptions { deliberate?: boolean; carrierWarning?: CarrierWarning; via?: CallVia; screenedAt?: string | null }
+export interface NumberCheckOptions {
+  deliberate?: boolean; carrierWarning?: CarrierWarning; via?: CallVia; screenedAt?: string | null;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged Simulated. */
+  simulated?: boolean;
+}
 /** One email check: the deterministic analysis, the link reputation behind it, the single patrol
  *  record it filed, and the Magnum DI case id when Triage escalated (null when it did not). */
 export interface EmailOutcome {
@@ -1436,7 +1440,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // What ApolloSG had for this number: one it was asked about, or a call its screening saw arrive.
     result.evidence_profile = buildCallProfile({
       via: options?.via ?? (options?.deliberate ? "entered" : "screened"), number: result.number, reputation: result,
-      screenedAt: options?.screenedAt ?? null, carrierWarning: !!options?.carrierWarning,
+      screenedAt: options?.screenedAt ?? null, carrierWarning: !!options?.carrierWarning, simulated: options?.simulated,
     });
     const numberCtx = { numberDecision: result.decision, reputationFailure: numberLookupFailure(result) };
     // Every number check reports its Triage outcome — allowed, risky and unknown alike — so the admin

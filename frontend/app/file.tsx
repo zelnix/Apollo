@@ -231,6 +231,7 @@ export default function CheckFile() {
             submissionId={result.event.event_id}
             eventId={result.event.event_id}
             caseId={result.event.investigation_case_id ?? null}
+            kind="file"
             actions={fileActions}
           />
         ) : (

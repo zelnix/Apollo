@@ -249,7 +249,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 
 **Email evidence levels** (Higgins Triage classifies every email check, on the phone)
 - **L1 — Visual/Text:** a screenshot or pasted text. "ApolloSG only received a screenshot or pasted text, so technical sender authentication could not be independently verified."
-- **L2 — Shared Email:** shared from another app without its full headers (also an "original" with no delivery headers, and a connected-mailbox email that came back without them).
+- **L2 — Shared Email:** shared from another app without its full headers (also an "original" with no delivery headers). A connected-mailbox email that came back without them is the same level, shown as **L2 — Mailbox Email**: retrieved from the connected mailbox, without its full headers.
 - **L3 — Original Message:** the original email with its full headers — an .eml file (chosen on the Check email screen, added later, or shared into ApolloSG) or the original source pasted ("Show original"). "ApolloSG examined the original email and full headers."
 - **L4 — Provider-Verified Source:** the original retrieved by ApolloSG itself through the connected email account.
 - **Read on the phone:** the original is parsed on the phone — headers, encoded subject, MIME parts, attachments (fingerprinted with SHA-256) and links. It is kept unaltered with its case on the phone and is never uploaded, not even to read its headers.

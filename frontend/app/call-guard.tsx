@@ -115,7 +115,7 @@ export default function CheckNumber() {
   const { checkNumberRisk, showToast } = useApollo();
   const inputRef = useRef<TextInput>(null);
   // Opened from "I got a ‘Potential Fraud’ warning" (with the number when it's known), or that button tapped here.
-  const params = useLocalSearchParams<{ carrierWarning?: string; number?: string }>();
+  const params = useLocalSearchParams<{ carrierWarning?: string; number?: string; sample?: string }>();
   const [carrierWarning, setCarrierWarning] = useState<CarrierWarning | null>(isCarrierWarning(params.carrierWarning) ? params.carrierWarning : null);
   const inAustralia = regionCountry(Localization.getLocales()[0]?.regionCode) === "AU";
 
@@ -135,8 +135,8 @@ export default function CheckNumber() {
   // ── Primary investigation action ──
   // `pickedNumber` lets a simulated selection be checked immediately. Everything below is the same
   // real flow a typed number runs: real reputation check, then the real Magnum DI investigation only
-  // where that escalates.
-  const runInvestigation = async (pickedNumber?: string) => {
+  // where that escalates. `simulated` only tags a preview sample caller.
+  const runInvestigation = async (pickedNumber?: string, simulated = false) => {
     const number = pickedNumber ?? numberState;
     if (pickedNumber) setNumber(pickedNumber);
     if (!number.trim()) return;
@@ -148,7 +148,7 @@ export default function CheckNumber() {
       // escalate a number Apollo cannot settle from its own sources to a Magnum DI investigation.
       // Where it does, the case id comes back on the result and the shared InvestigationFlow below
       // FOLLOWS that case — this screen never opens a second investigation of the same number.
-      const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true, carrierWarning: carrierWarning ?? undefined });
+      const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true, carrierWarning: carrierWarning ?? undefined, simulated });
       setResult(riskResult);
       void recordCheck("call", {
         at: new Date().toISOString(),
@@ -180,6 +180,15 @@ export default function CheckNumber() {
     // Runs once, for how the screen was opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Preview only: a sample caller chosen elsewhere (Threats → Try a sample check) runs exactly as picking it here does.
+  const sampleRan = useRef(false);
+  useEffect(() => {
+    const c = params.sample ? simulation.calls.find((x) => x.id === params.sample) : undefined;
+    if (!c || sampleRan.current) return;
+    sampleRan.current = true;
+    void runInvestigation(c.number, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.sample]);
 
   const reportWarning = () => { setCarrierWarning("potential_fraud"); inputRef.current?.focus(); };
 
@@ -361,7 +370,7 @@ export default function CheckNumber() {
         error={simulation.included ? null : "There are no sample callers in this build. Enter or paste the number above instead."}
         items={simulation.calls.map((c) => ({ id: c.id, primary: c.number, secondary: c.name ?? undefined, meta: c.probes }))}
         emptyText="There are no recent callers to choose from here."
-        onSelect={(id: string) => { setCallSourcePicker(false); const c = simulation.calls.find((x) => x.id === id); if (c) void runInvestigation(c.number); }}
+        onSelect={(id: string) => { setCallSourcePicker(false); const c = simulation.calls.find((x) => x.id === id); if (c) void runInvestigation(c.number, true); }}
         onClose={() => setCallSourcePicker(false)}
         testID="callguard-source-picker"
       />

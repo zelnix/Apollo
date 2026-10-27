@@ -29,6 +29,8 @@ export interface AppEvidenceInput {
   /** Destinations with a malicious reputation. */
   badDestinations?: number;
   at?: string;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
+  simulated?: boolean;
 }
 
 const sourceLabel = (s: AppSource) => APP_SOURCES.find((x) => x.id === s)?.label ?? s;
@@ -67,5 +69,5 @@ export function buildAppProfile(input: AppEvidenceInput): EvidenceProfile {
   if (input.analysis.claimedBrand) signals.push({ id: "brand_name", text: fill(WORDS.signals.brand_name, { brand: input.analysis.claimedBrand }) });
   const bad = input.badDestinations ?? 0;
   if (bad) signals.push({ id: "bad_destination", text: fill(WORDS.signals.bad_destination, { count: String(bad), plural: bad === 1 ? "" : "es" }) });
-  return newProfile({ type: "app", level, via: input.via, at: input.at, capabilities: caps, signals });
+  return newProfile({ type: "app", level, via: input.via, at: input.at, capabilities: caps, signals, simulated: input.simulated });
 }

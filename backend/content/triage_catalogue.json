@@ -138,6 +138,15 @@
             "basis": "ApolloSG retrieved the original email itself through your connected email account and examined it with its full headers."
           }
         },
+        "viaLevels": {
+          "connected_mailbox": {
+            "L2": {
+              "label": "L2 — Mailbox Email",
+              "received": "the email from your connected mailbox, without its full headers",
+              "basis": "ApolloSG retrieved the email from your connected mailbox, but not its full headers, so technical sender authentication could not be independently verified."
+            }
+          }
+        },
         "capabilities": {
           "original_message": "Original message",
           "provider_provenance": "Provider provenance",

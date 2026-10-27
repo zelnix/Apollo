@@ -78,6 +78,8 @@ export interface InvestigationCheckScreenProps {
   addingOriginal?: boolean;
   /** What changed with the evidence on this check (an upgrade, or an original that didn't match). */
   evidenceNotice?: string | null;
+  /** Display only: the kind of check the report is titled with, when the screen knows it (a file check). */
+  kind?: string;
 }
 
 export function InvestigationCheckScreen({
@@ -92,6 +94,7 @@ export function InvestigationCheckScreen({
   onAddOriginal,
   addingOriginal,
   evidenceNotice,
+  kind,
 }: InvestigationCheckScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -124,6 +127,7 @@ export function InvestigationCheckScreen({
           autoStart
           eventId={eventId}
           caseId={caseId}
+          kind={kind}
         />
 
         {result.evidenceProfile ? (

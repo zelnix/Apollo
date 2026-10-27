@@ -46,7 +46,11 @@ export interface EvidenceProfile {
 }
 
 interface LevelWords { rank: number; label: string; received: string; basis: string }
-interface TypeWords { label: string; levels: Record<string, LevelWords>; capabilities: Record<string, string>; via?: Record<string, string> }
+/** `viaLevels`: the same level, described for the source it came from (its rank and rules never change). */
+interface TypeWords {
+  label: string; levels: Record<string, LevelWords>; capabilities: Record<string, string>; via?: Record<string, string>;
+  viaLevels?: Record<string, Record<string, Omit<LevelWords, "rank">>>;
+}
 
 export const PROFILE_WORDS = (catalogue as unknown as {
   evidenceProfiles: {
@@ -80,7 +84,7 @@ export function newProfile(args: {
   capabilities: CapabilityRow[]; signals: EvidenceSignal[]; original?: EvidenceProfile["original"]; simulated?: boolean;
 }): EvidenceProfile {
   const words = typeWords(args.type);
-  const level = words.levels[args.level];
+  const level = { ...words.levels[args.level], ...(words.viaLevels?.[args.via]?.[args.level] ?? {}) };
   const at = args.at ?? new Date().toISOString();
   return {
     version: PROFILE_WORDS.version, type: args.type, level: args.level, label: level.label, rank: level.rank,

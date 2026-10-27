@@ -30,6 +30,8 @@ export interface CallEvidenceInput {
   brand?: string | null;
   carrierWarning?: boolean;
   at?: string;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
+  simulated?: boolean;
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -78,5 +80,5 @@ export function buildCallProfile(input: CallEvidenceInput): EvidenceProfile {
   if (asks.some((a) => a === "install" || a === "remote" || a === "screen")) signals.push({ id: "remote_ask", text: WORDS.signals.remote_ask });
   if (asks.some((a) => a === "code" || a === "password" || a === "bankdetails")) signals.push({ id: "secret_ask", text: WORDS.signals.secret_ask });
   if (input.brand) signals.push({ id: "brand_claim", text: fill(WORDS.signals.brand_claim, { brand: input.brand }) });
-  return newProfile({ type: "call", level, via: input.via, at: input.at, capabilities: caps, signals });
+  return newProfile({ type: "call", level, via: input.via, at: input.at, capabilities: caps, signals, simulated: input.simulated });
 }
