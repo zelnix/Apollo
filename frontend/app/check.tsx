@@ -9,6 +9,7 @@ import Clock from "lucide-react-native/icons/clock";
 import Link2 from "lucide-react-native/icons/link-2";
 import Search from "lucide-react-native/icons/search";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { simulation } from "@/src/simulation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -174,7 +175,7 @@ export default function CheckLink() {
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" });
   };
-  const params = useLocalSearchParams<{ url?: string; source?: string; sharedIntakeId?: string; scent?: string }>();
+  const params = useLocalSearchParams<{ url?: string; source?: string; sharedIntakeId?: string; scent?: string; sample?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedUrl = shared?.webUrl || extractUrl(shared?.text) || params.url || "";
   const [input, setInput] = useState(String(sharedUrl));
@@ -185,18 +186,26 @@ export default function CheckLink() {
   const liveEvent = outcome?.event ? events.find((e) => e.event_id === outcome.event!.event_id) ?? outcome.event : null;
   const state = liveEvent?.state ?? outcome?.decision.state;
 
-  const run = useCallback(async (value: string) => {
+  const run = useCallback(async (value: string, simulated = false) => {
     if (!value.trim()) return;
     setBusy(true); setOutcome(null);
     // Where the link came from sets how its evidence is described ("Link from a message or email", "Shared from another app").
     const via: LinkVia = params.source === "email" || params.source === "message" || params.source === "text" ? "message"
       : params.source === "share" || params.sharedIntakeId ? "shared" : "pasted";
-    try { setOutcome(await checkLink(value, params.scent || undefined, { via })); } finally { setBusy(false); }
+    try { setOutcome(await checkLink(value, params.scent || undefined, { via, simulated })); } finally { setBusy(false); }
   }, [checkLink, params.scent, params.source, params.sharedIntakeId]);
 
   useEffect(() => {
     if (sharedUrl && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedUrl)); }
   }, [sharedUrl, ready, setupDone, run]);
+  // Preview only: a sample link (Threats → Try a sample check) is checked exactly as a pasted link, tagged Simulated.
+  useEffect(() => {
+    const sample = params.sample ? simulation.links.find((x) => x.id === params.sample) : undefined;
+    if (!sample || !ready || !setupDone || autoRan.current) return;
+    autoRan.current = true;
+    setInput(sample.url);
+    void run(sample.url, true);
+  }, [params.sample, ready, setupDone, run]);
 
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 

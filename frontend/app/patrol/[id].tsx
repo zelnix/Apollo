@@ -33,7 +33,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
 import * as Clipboard from "expo-clipboard";
-import { Body, Button, Card } from "@/src/components/ui";
+import { Body, Button, Card, toneText, toneTint } from "@/src/components/ui";
 import { scrubMessage } from "@/src/domain/messageVoice";
 import {
   threatCaseId,
@@ -46,6 +46,7 @@ import {
   buildTimeline,
   formatDateTime,
   formatTime,
+  isSimulated,
   type ThreatCaseStatus,
   type TimelineEntry,
 } from "@/src/domain/threatCase";
@@ -1209,6 +1210,8 @@ export default function ThreatCaseScreen() {
           badges={[
             ...(outcome ? [{ label: outcome, bg: outcomeColors[0], fg: outcomeColors[1], testID: "tc-outcome" }] : []),
             { label: STATUS_LABELS[status], bg: statusColor.bg, fg: statusColor.text, testID: "tc-status-pill" },
+            // Tagged at the top of the case whenever its input or an outside source behind it was simulated.
+            ...(isSimulated(event) ? [{ label: "Simulated", bg: toneTint(colors, "neutral"), fg: toneText(colors, "neutral"), testID: "tc-simulated" }] : []),
           ]}
           time={formatDateTime(event.occurred_at)}
           outcome={outcome ? investigation?.response?.outcome : null}

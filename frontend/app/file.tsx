@@ -5,7 +5,7 @@ import * as Crypto from "expo-crypto";
 import * as FS from "expo-file-system/legacy";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -97,7 +97,7 @@ export default function CheckFile() {
     setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, profile });
     void markCheckDone("file");
   };
-  const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string; sharedIntakeId?: string }>();
+  const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string; sharedIntakeId?: string; sample?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedFile = shared?.files?.[0];
   const incomingUri = sharedFile?.path || params.uri;
@@ -134,6 +134,14 @@ export default function CheckFile() {
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
   useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false, "shared"); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Preview only: a sample chosen elsewhere (Threats → Try a sample check) runs exactly as picking it here does.
+  const sampleRan = useRef(false);
+  useEffect(() => {
+    const f = params.sample ? simulation.files.find((x) => x.id === params.sample) : undefined;
+    if (!f || !ready || !setupDone || sampleRan.current) return;
+    sampleRan.current = true;
+    void checkSimulatedFile(f);
+  }, [params.sample, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
   const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false, via: FileVia = "picked", simulated = false) => {
     setBusy(true);
     try {

@@ -149,7 +149,11 @@ export interface CheckOutcome {
   notice?: string | null;
 }
 /** Where a link to check came from (sets how its evidence is described), and the case a re-check belongs to. */
-export interface LinkCheckOptions { via?: LinkVia; upgradeEventId?: string | null }
+export interface LinkCheckOptions {
+  via?: LinkVia; upgradeEventId?: string | null;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged Simulated. */
+  simulated?: boolean;
+}
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export type { MessageUrlResult };
 export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null;
@@ -1667,7 +1671,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
     let decision = decide(local, intel, trusted);
     // Higgins Triage's classification of what this check had to go on — merged into the case on a re-check.
-    const freshProfile = buildLinkProfile({ via: options?.via ?? "pasted", local, intel, lookupFailed: !!lookup.failure, failureText: intelError });
+    const freshProfile = buildLinkProfile({ via: options?.via ?? "pasted", local, intel, lookupFailed: !!lookup.failure, failureText: intelError, simulated: options?.simulated });
     const priorProfile = previous?.evidence_profile?.type === "link" ? previous.evidence_profile : null;
     if (previous && priorProfile && freshProfile.rank < priorProfile.rank) {
       // A re-check that got less far (its lookups didn't answer) never replaces a stronger earlier result.

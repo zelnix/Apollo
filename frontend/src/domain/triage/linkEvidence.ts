@@ -109,6 +109,8 @@ function signalsFor(level: LinkLevel, local: LocalAnalysis, intel: LinkIntel | n
 /** Higgins Triage's classification of the evidence behind a link check. `failureText`: why the lookups didn't answer. */
 export function buildLinkProfile(args: {
   via: LinkVia; local: LocalAnalysis; intel: LinkIntel | null; lookupFailed: boolean; failureText?: string | null; at?: string;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
+  simulated?: boolean;
 }): EvidenceProfile {
   const ok = answered(args.intel, args.lookupFailed);
   const level = linkLevelFor(args.intel, args.lookupFailed);
@@ -116,6 +118,7 @@ export function buildLinkProfile(args: {
     type: "link", level, via: args.via, at: args.at,
     capabilities: capabilitiesFor(level, args.local, args.intel, ok, args.failureText ?? null),
     signals: signalsFor(level, args.local, args.intel, ok),
+    simulated: args.simulated,
   });
 }
 

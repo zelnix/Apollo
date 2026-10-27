@@ -30,6 +30,16 @@ test("a failed lookup claims nothing: every lookup row is 'Couldn't be verified'
   assert.equal(status(p, "original_url"), "observed");
 });
 
+test("a preview sample link is checked exactly as a pasted link — only tagged Simulated", () => {
+  const args = { via: "pasted" as const, local: analyseUrlLocally("https://www.servicesaustralia.gov.au/mygov"), intel: null, lookupFailed: true };
+  const sample = buildLinkProfile({ ...args, simulated: true });
+  const live = buildLinkProfile(args);
+  assert.equal(sample.simulated, true);
+  assert.equal(live.simulated, undefined);
+  assert.deepEqual([sample.level, sample.label, sample.viaLabel, sample.capabilities, sample.signals],
+    [live.level, live.label, live.viaLabel, live.capabilities, live.signals]);
+});
+
 test("followed shortener: redirect chain observed, registry and lists recorded (not verified), signal for a different site", () => {
   const local = analyseUrlLocally("https://bit.ly/x1");
   const intel = { verdict: "clean" as const, coverage: "full", sources: [SB, LIST], redirect_chain: ["bit.ly", "commbank-verify.top"], final_url: "https://commbank-verify.top/login", domain_info: DOMAIN };

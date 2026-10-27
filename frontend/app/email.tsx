@@ -195,7 +195,7 @@ export default function CheckEmail() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string; sample?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedBody = shared?.text || shared?.webUrl || params.text || "";
   const sharedBodyRaw = useRef(sharedBody);         // original for backend
@@ -285,6 +285,13 @@ export default function CheckEmail() {
   // on arrival and show the email that is being checked, so the share always lands in a real check.
   useEffect(() => {
     if (!ready || !setupDone || autoRan.current) return;
+    // Preview only: a sample chosen elsewhere (Threats → Try a sample check) runs exactly as picking it from the inbox here does.
+    const sim = params.sample ? simulation.emails.find((x) => x.id === params.sample) : undefined;
+    if (sim) {
+      autoRan.current = true;
+      void run({ from: sim.from, subject: sim.subject, raw: sim.body, via: "connected_mailbox", simulated: true });
+      return;
+    }
     if (sharedEml) {
       autoRan.current = true;
       void (async () => {
@@ -304,7 +311,7 @@ export default function CheckEmail() {
     // Send the ORIGINAL raw content to the backend for full analysis.
     void run({ from: "", subject: "", raw: sharedBodyRaw.current, via: "shared" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharedBody, sharedEml?.path, ready, setupDone]);
+  }, [sharedBody, sharedEml?.path, ready, setupDone, params.sample]);
 
   // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
   // alongside a connected one.

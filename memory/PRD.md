@@ -1,3 +1,15 @@
+## Sample check for all four kinds + Simulated tag on the case screen (2026-10-27)
+- Threats "Try a sample check" → kind sheet (`threats-sample-kinds`: Messages/Text Gate, Emails/Email Gate, Links/Link Gate,
+  Files/File Gate) → item sheet (`threats-sample-picker`) → `router.push({pathname, params: {sample}})`. Each gate screen
+  (`message.tsx`, `email.tsx`, `check.tsx`, `file.tsx`) runs `?sample=` once (preview build only) exactly as its own picker:
+  message inbox+simulated, email connected_mailbox+simulated, link pasted+simulated (`LinkCheckOptions.simulated` →
+  `buildLinkProfile({simulated})`), file `checkSimulatedFile`. Verified in preview: all four ran; link/file escalated with
+  SIMULATED notice.
+- Case screen: "Simulated" badge in the ReportHeader badges (`tc-simulated`) when `isSimulated(event)`.
+- Observed, not changed (pre-existing): connected-mailbox email without headers shows "L2 — Shared Email … shared from
+  another app"; File check result header reads "Website check".
+- Frontend 1072/1072; tsc clean; rule book re-stamped.
+
 ## Preview sample check + Simulated tag on list rows (2026-10-27)
 - Threats screen (preview build only, `simulation.included`): "Try a sample check" (`threats-sample-check`) opens the
   "Your messages" sample sheet (`threats-sample-picker`); a pick runs the real `checkMessage(..., {via:"inbox", simulated:true})`

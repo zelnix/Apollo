@@ -52,7 +52,7 @@ import { evidenceStrength } from "@/src/domain/triage/evidenceProfile";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { HeaderIconTile } from "@/src/components/HeaderIconTile";
-import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
+import { SourcePickerSheet, type SourceChoice } from "@/src/components/SourcePickerSheet";
 import { Button, Pill } from "@/src/components/ui";
 import { simulation } from "@/src/simulation";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
@@ -222,6 +222,20 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
   );
 }
 
+// ── Preview samples ─────────────────────────────────────────────────────────
+// Each kind opens its own gate screen with `sample`, and that screen runs the sample through its real check.
+type SampleKind = "message" | "email" | "link" | "file";
+const SAMPLE_KINDS: Record<SampleKind, { label: string; gate: string; path: "/message" | "/email" | "/check" | "/file"; items: () => SourceChoice[] }> = {
+  message: { label: "Messages", gate: "Text Gate", path: "/message",
+    items: () => simulation.texts.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes })) },
+  email: { label: "Emails", gate: "Email Gate", path: "/email",
+    items: () => simulation.emails.map((x) => ({ id: x.id, primary: x.subject, secondary: x.from, meta: x.probes })) },
+  link: { label: "Links", gate: "Link Gate", path: "/check",
+    items: () => simulation.links.map((x) => ({ id: x.id, primary: x.url, meta: x.probes })) },
+  file: { label: "Files", gate: "File Gate", path: "/file",
+    items: () => simulation.files.map((f) => ({ id: f.id, primary: f.name, secondary: f.mime, meta: f.probes })) },
+};
+
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ThreatsScreen() {
@@ -229,9 +243,10 @@ export default function ThreatsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { events, lastVerifiedAt, checkMessage, showToast } = useApollo();
-  const [samplePicker, setSamplePicker] = useState(false);
-  const [sampleBusy, setSampleBusy] = useState(false);
+  const { events, lastVerifiedAt } = useApollo();
+  // Preview only: which kind of sample is being chosen (the kind sheet opens first).
+  const [kindPicker, setKindPicker] = useState(false);
+  const [sampleKind, setSampleKind] = useState<SampleKind | null>(null);
   // Most recent moment Apollo ran any check or discovered/updated a threat.
   const lastActivityAt = useMemo(() => {
     const times = [lastVerifiedAt, ...events.flatMap((e) => [e.occurred_at, e.detection_updated_at])]
@@ -290,22 +305,11 @@ export default function ThreatsScreen() {
 
   const toggleSort = () => setSortOrder((prev) => NEXT_SORT[prev]);
 
-  // Preview only: a sample message stands in for one picked from this phone's messages and goes through the very
-  // same message check production runs. Apollo's own rules decide whether a Threat Case opens; nothing is pre-made.
-  const runSample = async (id: string) => {
-    setSamplePicker(false);
-    const sample = simulation.texts.find((t) => t.id === id);
-    if (!sample) return;
-    setSampleBusy(true);
-    try {
-      const outcome = await checkMessage(sample.sender, sample.text, { via: "inbox", simulated: true });
-      if (outcome.event) router.push(`/patrol/${outcome.event.event_id}`);
-      else showToast("Apollo's message check identified no threat in that message, so no case was opened.", "neutral");
-    } catch {
-      showToast("ApolloSG couldn't run that check.", "growling");
-    } finally {
-      setSampleBusy(false);
-    }
+  // Preview only: the chosen sample opens its own gate screen, which runs it through that gate's real check and
+  // shows production's own result. Apollo's rules decide whether a Threat Case opens; nothing is pre-made.
+  const runSample = (kind: SampleKind, id: string) => {
+    setSampleKind(null);
+    router.push({ pathname: SAMPLE_KINDS[kind].path, params: { sample: id } });
   };
 
   return (
@@ -358,9 +362,8 @@ export default function ThreatsScreen() {
           <Button
             testID="threats-sample-check"
             variant="ghost"
-            label={sampleBusy ? "Checking the sample…" : "Try a sample check"}
-            onPress={() => setSamplePicker(true)}
-            disabled={sampleBusy}
+            label="Try a sample check"
+            onPress={() => setKindPicker(true)}
           />
         </View>
       ) : null}
@@ -428,14 +431,27 @@ export default function ThreatsScreen() {
       />
 
       <SourcePickerSheet
-        visible={samplePicker}
-        title="Your messages"
-        note="Apollo runs the real message check on whichever one you pick. A Threat Case opens only if Apollo's rules find one."
+        visible={kindPicker}
+        title="Try a sample check"
+        note="Pick what to check. Each sample goes through that gate's real check, exactly as in production."
         preview
-        items={simulation.texts.map((m) => ({ id: m.id, primary: m.sender, secondary: m.text, meta: m.probes }))}
-        emptyText="There are no messages to choose from here."
-        onSelect={(id: string) => void runSample(id)}
-        onClose={() => setSamplePicker(false)}
+        items={(Object.keys(SAMPLE_KINDS) as SampleKind[]).map((kind) => ({
+          id: kind, primary: SAMPLE_KINDS[kind].label, secondary: SAMPLE_KINDS[kind].gate,
+        }))}
+        emptyText="There are no samples here."
+        onSelect={(id: string) => { setKindPicker(false); setSampleKind(id as SampleKind); }}
+        onClose={() => setKindPicker(false)}
+        testID="threats-sample-kinds"
+      />
+      <SourcePickerSheet
+        visible={!!sampleKind}
+        title={sampleKind ? SAMPLE_KINDS[sampleKind].label : ""}
+        note="Apollo runs the real check on whichever one you pick. A Threat Case opens only if Apollo's rules find one."
+        preview
+        items={sampleKind ? SAMPLE_KINDS[sampleKind].items() : []}
+        emptyText="There are no samples to choose from here."
+        onSelect={(id: string) => { if (sampleKind) runSample(sampleKind, id); }}
+        onClose={() => setSampleKind(null)}
         testID="threats-sample-picker"
       />
     </View>

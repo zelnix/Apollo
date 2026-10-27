@@ -131,7 +131,7 @@ export default function CheckMessage() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string; sharedIntakeId?: string; receivedAt?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string; sharedIntakeId?: string; receivedAt?: string; sample?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedText = shared?.text || shared?.webUrl || params.text || "";
   const sharedImage = shared?.files?.find((file) => (file.mimeType ?? "").startsWith("image/"))?.path || params.imageUri || "";
@@ -189,6 +189,14 @@ export default function CheckMessage() {
       void run(String(sharedText), params.sender ? String(params.sender) : "", fromInbox ? "inbox" : "shared", fromInbox && params.receivedAt ? String(params.receivedAt) : null);
     }
   }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Preview only: a sample chosen elsewhere (Threats → Try a sample check) runs exactly as picking it here does.
+  useEffect(() => {
+    const m = params.sample ? simulation.texts.find((x) => x.id === params.sample) : undefined;
+    if (!m || !ready || !setupDone || autoRan.current) return;
+    autoRan.current = true;
+    setSender(m.sender); setText(m.text);
+    void run(m.text, m.sender, "inbox", null, true);
+  }, [params.sample, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The phone reads the screenshot's text (credentials removed) and the ordinary message check runs on that
    *  text. The picture itself never leaves the phone; only Magnum DI's one investigation call may follow. */
