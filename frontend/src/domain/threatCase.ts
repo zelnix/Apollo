@@ -12,6 +12,8 @@
 import { needsYou } from "./caseBriefing.ts";
 import type { CaseSource } from "./caseSources.ts";
 import { investigatorName } from "./messageVoice.ts";
+import { outcomeLabel } from "./triage/contract.ts";
+import { upgrades } from "./triage/evidenceProfile.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import type {
   ApolloState,
@@ -241,6 +243,21 @@ export function buildTimeline(
         (event.enforcement_evidence.enforced_action ? `. ${humanAction(event.enforcement_evidence.enforced_action)}` : ""),
       dotColor: "#059669",
       iconId: "protection",
+    });
+  }
+
+  // 2b. Better evidence added later (e.g. the original email after a screenshot): when it arrived, and that
+  //     Triage re-checked the case with it. The earlier result stays on record.
+  const earlier = event.triage_history ?? [];
+  for (const [i, { from, to }] of upgrades(event.evidence_profile).entries()) {
+    const before = earlier[i] ?? earlier[earlier.length - 1];
+    entries.push({
+      id: `tl-${idx++}`,
+      timestamp: to.at,
+      title: `Evidence upgraded to ${to.label}`,
+      description: `Was ${from.label}. Higgins Triage re-checked the case with the new evidence${before ? `; the earlier result (${outcomeLabel(before)}) is kept on record` : ""}.`,
+      dotColor: "#2563EB",
+      iconId: "content",
     });
   }
 

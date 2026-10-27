@@ -9,6 +9,7 @@ import { serverLeavesBy } from "@/src/domain/serverCopyNote";
 import { deleteImageEvidenceFor } from "@/src/store/imageEvidence";
 import { deleteReportProgress } from "@/src/store/reportProgress";
 import { deleteOriginalSource } from "@/src/store/originalSource";
+import { deleteOriginalEmailsFor } from "@/src/store/originalEmail";
 import { forgetStopped, rememberStopped } from "@/src/store/resubmitReminderStore";
 import { canResubmit } from "./resubmit";
 import * as api from "./client";
@@ -379,6 +380,7 @@ export function useInvestigation(boundOperationId?: string | null) {
       void deleteImageEvidenceFor(caseData.id);
       void deleteReportProgress(caseData.id);
       void deleteOriginalSource(caseData.id);
+      void deleteOriginalEmailsFor(caseData.id);
       try { await api.deleteCase(caseData.id); } catch { await rememberDeletion(caseData.id); update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); }
     }
   }, [state.caseData]);

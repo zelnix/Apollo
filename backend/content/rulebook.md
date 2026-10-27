@@ -2,7 +2,7 @@
 
 How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
-_Last reviewed against the code: 2026-10-26._
+_Last reviewed against the code: 2026-10-27._
 
 This is the only copy. Whenever a rule or process changes, this book is updated in the same change. An automatic check stops the change until it is.
 
@@ -67,6 +67,8 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 
 The Site Gate has no catalogue rules of its own. It blocks only websites already verified as dangerous; a link the person checks is judged by the Link Gate rules.
 
+**Evidence received:** a website Site Gate stopped is classified "Connection seen by Site Gate": the connection attempt is ApolloSG's own observation (Verified by ApolloSG), and the block is Verified when the operating system confirmed the drop, or Recorded when it reported a stopped flow. "It saw where the connection was going, not the page itself" — the full link, redirects, certificate and hosting are Couldn't be verified. A re-check from the case can raise it to "Destination followed".
+
 ### Link Gate {#link-gate}
 
 **Job:** check a link before it is opened.
@@ -79,6 +81,15 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - A link the person checks themselves opens an investigation, which TC FlyBy and Magnum DI pick up as usual.
 - **Trusted links:** trust covers only the exact link the person chose. Removing it ends the trust.
 - **Never a threat on their own:** an http link, a bare IP address, punycode, an unusual port, a risky TLD, a link shortener, a long link, deep subdomains, encoded characters, a newly registered domain, a QR code itself, and data or blob links.
+
+**Link evidence levels** (Higgins Triage classifies every link check, on the phone)
+- **Link as given:** none of ApolloSG's lookups answered. "ApolloSG only had the link itself — none of its lookups answered, so nothing about the site could be verified." Every lookup row is Couldn't be verified, with how it failed.
+- **Link checked:** the lookups answered but the link couldn't be followed to where it finally leads (the final-destination check didn't complete).
+- **Destination followed:** followed by ApolloSG's server (never opened on the phone) to its final destination and checked there.
+- **What could be examined:** Original URL (observed) · Redirect chain and Final destination (observed when followed) · Domain registration (recorded by the domain's registry, not verified by ApolloSG) · Reputation (recorded by the lists that answered: "Listed as … by N of M lists" or "No match on N lists that answered"; a clean answer isn't proof a site is safe) · TLS certificate and Hosting and DNS (ApolloSG doesn't inspect these).
+- **Investigation signals — not proof of fraud:** the address's own structure as the on-device analyser reads it (bare IP, hidden username, punycode, http, unusual port, risky TLD, shortener — dropped once followed —, deep subdomains, many hyphens, encoded characters, brand lookalike, brand in the path, credential lure), a redirect to a different site, a newly registered domain, and a destination that couldn't be followed.
+- **Where it came from** is recorded: Link you entered · Shared from another app · QR code · Link from a message or email · Re-check from the case.
+- **Re-check from the case:** the same link is re-triaged in that case. The case keeps its first detection time and every earlier level and Triage result; a move to a stronger level shows "Evidence upgraded from … to …". A re-check that got less far than the earlier check never replaces it: "The re-check couldn't get as far as the earlier check (…), so this case keeps its earlier result." A case that already has an investigation keeps it; one without starts Magnum DI only if the re-check is a Possible Threat.
 
 **Link Gate rules (21)**
 - **LINK-01** · Authoritative reputation reports the destination as malicious
@@ -196,6 +207,18 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - Message content is used for that check only and never written to ApolloSG's database. A receipt for each message, with no content, stops it from being checked twice.
 - An attachment is checked by its fingerprint when the file-reputation service is connected; the attachment itself isn't uploaded.
 - **Never a threat on their own:** a calendar invitation, a form-builder domain, valid sender checks (SPF, DKIM and DMARC) from a form provider, and an address appearing in a breach.
+
+**Email evidence levels** (Higgins Triage classifies every email check, on the phone)
+- **L1 — Visual/Text:** a screenshot or pasted text. "ApolloSG only received a screenshot or pasted text, so technical sender authentication could not be independently verified."
+- **L2 — Shared Email:** shared from another app without its full headers (also an "original" with no delivery headers, and a connected-mailbox email that came back without them).
+- **L3 — Original Message:** the original email with its full headers — an .eml file (chosen on the Check email screen, added later, or shared into ApolloSG) or the original source pasted ("Show original"). "ApolloSG examined the original email and full headers."
+- **L4 — Provider-Verified Source:** the original retrieved by ApolloSG itself through the connected email account.
+- **Read on the phone:** the original is parsed on the phone — headers, encoded subject, MIME parts, attachments (fingerprinted with SHA-256) and links. It is kept unaltered with its case on the phone and is never uploaded, not even to read its headers.
+- **Sender authentication is reported as recorded, never re-checked:** SPF, DKIM, DMARC and ARC come from the topmost Authentication-Results header and are credited to the server that wrote it ("Recorded by mx.google.com, the mail server that received this email"). A server ApolloSG can't match to the delivering servers is said so. Status words: Verified by ApolloSG · Recorded by the source, not verified by ApolloSG · Observed, not verified · Couldn't be verified.
+- **Below L3, authentication is never presented as checked:** the check says it needs the original email with its full headers, and the authentication rules (EMAIL-11, EMAIL-12) are not applicable: "Not applicable here: SPF, DKIM and DMARC results are only in the original email's full headers, which ApolloSG didn't receive."
+- **Investigation signals — not proof of fraud:** Reply-To or Return-Path on another domain, SPF/DKIM/DMARC recorded as failed, a passing DKIM signature from another domain, no results recorded, results from an unmatched server, an address shown in the display name, a Message-ID from another domain. "Passing SPF, DKIM or DMARC confirms only which domain sent the email. It never makes an email safe."
+- **Upgrading the evidence:** on the result or the Threat case, "Add the original email (.eml)" is offered below L3. The same email is re-checked by Higgins Triage in its existing case: the stronger level becomes current, every earlier level and Triage result is kept, and the timeline shows "Evidence upgraded to …". An original that isn't the same email (subject, sender address or opening text) never changes that case: "That original doesn't match the email you checked, so ApolloSG checked it as a separate email."
+- **What travels with an investigation:** only Higgins Triage's findings — level, each capability's status, the recorded results and who recorded them, domains, counts, attachment types/sizes/fingerprints, signal names and the original's fingerprint. A case still under investigation receives better evidence the same way; a finished investigation keeps it on the phone only.
 
 **Email Gate rules (19)**
 - **EMAIL-01** · Claimed brand with sender-domain mismatch and a consequential action
@@ -956,6 +979,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - **What the phone is:** registration, and the check-in each time ApolloSG opens, also carry the phone's make, model, system and version, the country chosen in its region settings (a two-letter code, never location) and the date ApolloSG was installed. Anything the phone can't tell is left out.
 - **Which features were used:** a Device Check, or opening a Learn article or a scam alert, sends only which one it was. The server keeps a count, and for articles and alerts a one-way code of which one, so opening the same one again counts once. Never the title, the text or what was checked.
 - In a link, credentials, the part after "#" and secret values are removed. The path is kept, because a scam page and a real homepage need different answers.
+- **Original emails (.eml):** never leave the phone. An email check or investigation may carry only Higgins Triage's structured findings about the email evidence (see Email Gate) — never the subject, body, names, addresses, header text or the file. Any other field stops the request.
 - What the person submits leaves the phone only for the check they asked for. It is never copied into Threats records, logs, analytics or background monitoring.
 - **Threats records** synced to the server carry fixed wording ("Details stay on the device"), never the message, screenshot, file or link. Only a domain is kept as an indicator.
 - **Family helpers** see fixed wording ("Security check — review with the protected person"), never the content.
@@ -972,7 +996,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 | What | How long |
 |---|---|
 | Finished results | Until the person deletes the check, or deletes all their data |
-| Pictures, files and originals sent for a check | Never deleted automatically. They stay until the person removes them, deletes the check they belong to, or deletes all their data |
+| Pictures, files and originals sent for a check (including original email files, .eml) | Never deleted automatically. They stay until the person removes them, deletes the check they belong to, or deletes all their data |
 | Ask Higgins chat | Up to 1 hour, and at most the last 40 messages |
 | Calls Apollo screened (Android) | The last 50 calls, for up to 30 days |
 | Email addresses watched for breaches | Until the person removes them. The last 12 scans are kept |

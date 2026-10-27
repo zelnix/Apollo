@@ -112,6 +112,14 @@ WATCHED = (
     "frontend/src/domain/deviceAnalysis.ts",
     "frontend/src/domain/deviceReview.ts",
     "frontend/src/domain/networkAnalysis.ts",
+    # Evidence received: levels, what could be examined, signals and upgrades (email first).
+    "frontend/src/domain/triage/evidenceProfile.ts",
+    "frontend/src/domain/triage/emailEvidence.ts",
+    "frontend/src/domain/triage/emailOriginal.ts",
+    "frontend/src/domain/triage/emailIntake.ts",
+    "frontend/src/domain/triage/linkEvidence.ts",
+    "frontend/src/store/originalEmail.ts",
+    "backend/services/email_evidence.py",
     # Scam Alerts and the government feeds.
     "backend/services/government_alerts.py",
     "backend/services/feed_health.py",

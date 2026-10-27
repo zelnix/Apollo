@@ -1,3 +1,37 @@
+## Evidence received: email finished (Check Results), then websites and links (2026-10-27)
+**Owner's choices:** go ahead with the Check Results work; then "Start websites and links right away". No testing agent.
+- **Email Check Results (`app/email.tsx`):** the result shows the Evidence received card (`check-result-evidence-profile` /
+  `investigation-check-evidence-profile`) with "Add the original email (.eml)" below L3 → `checkEmail({via: "eml_file",
+  original, upgradeEventId})`, a "Checking the original email" modal, and a notice on the card (`…-notice`): the upgrade
+  sentence, or "That original doesn't match the email you checked…". New input card "Open the original email (.eml)"
+  (`email-open-original`); pasted original source ("Show original") is detected (`looksLikeRawEmail`) and read as
+  `raw_source` (L3); inbox picks are `connected_mailbox`, shares `shared`, preview samples `simulated`. A shared .eml file
+  now routes to /email (`isOriginalEmailFile` in classifyShare) and is read on the phone. Upgrades don't count as a new check.
+- **Bug fixed:** an L1 pasted email could never be upgraded — its From/Subject lived inside the text, so `sameEmail` saw no
+  subject/sender. ApolloContext now reads the earlier capture with `parseEmail` before comparing.
+- **Backend (was missing):** `MessageAnalyseIn.email_evidence` (strict `services/email_evidence.EmailEvidenceFindings`, extra
+  fields → 422) adds a plain summary to the investigation's initial findings; new `POST /investigations/{id}/evidence-profile`
+  `{findings}` attaches better evidence to a running email case (idempotent per level+fingerprint; 404/410 for gone cases —
+  the phone then says "This case's investigation had already finished, so the new evidence is kept with the case on this phone").
+- **Links and websites (`src/domain/triage/linkEvidence.ts`):** levels Link as given (no lookup answered) · Link checked
+  (destination not followed) · Destination followed · Connection seen by Site Gate (Site Gate biting / desktop flow drops).
+  Capabilities: original URL, redirect chain, final destination, domain registration (recorded by the registry), reputation
+  ("Listed as … by N of M lists" / "No match on N lists that answered"), TLS + hosting (not inspected). Signals: on-device URL
+  structure signals (plain words from risk.ts), redirect to another site, newly registered, destination not followed.
+  `checkLink(input, scent, {via, upgradeEventId})`: case re-check (`RecheckCase`) re-triages the SAME link in place (history,
+  triage_history, first detection time kept); a weaker re-check never replaces a stronger result (`recheckWeaker`). Shown on
+  the link Check Result (`linkCheckResultAdapter.evidenceProfile`) and the Threat case (CaseEvidenceProfile, now generic).
+  QR scans `via: "qr"`; links from email/messages `via: "message"`. `PatrolEvent.evidence_profile` is now `EvidenceProfile`.
+- Catalogue: link words (levels, via, notes, upgrade/recheck/recheckWeaker, signals); `catalogue.ts` regenerated with
+  `/tmp/regen_catalogue.mjs` (JSON.stringify of the backend file). Rule book: Email Gate "Email evidence levels", Site Gate
+  "Evidence received", Link Gate "Link evidence levels", privacy (originals never leave the phone), Your data (.eml); WATCHED +
+  evidence files; re-stamped. Also fixed a committed tsc error (`urlIntel.ts` missing `quota_exhausted` message).
+- Tests: frontend 1051/1051 (`emailEvidence` +1, `share` +1, new `linkEvidence` 7); backend `tests/test_email_evidence.py` (5),
+  full suite 1310 passed. Preview verified by screenshots: L1→L3 upgrade, direct .eml (L3 + recorded auth), pasted source,
+  mismatch, link check "Link checked" with signals.
+- **Next (not started):** messages, calls, files, images, QR, apps — catalogue words for these types already exist.
+
+
 ## Triage Limited check by cause (2026-10-26, report only — nothing changed)
 - Full report: `/app/memory/triage_limited_report.md` (simulation script /tmp/sim_limited.ts, real engine + real
   /intel/check answers for the 120-link benchmark corpus).

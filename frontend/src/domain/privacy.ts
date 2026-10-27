@@ -6,7 +6,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry" | "email_evidence";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode",
@@ -39,7 +39,11 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // `client_submission_id` is the id of the patrol record THIS device filed for this check (a
   // locally generated UUID, no personal content). It lets the investigation name that record, so one
   // check stays one case instead of being filed twice.
-  message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion", "client_submission_id", "gate"]),
+  // `email_evidence`: Higgins Triage's minimal structured findings about the email evidence (level, recorded
+  // authentication results, domains, counts, fingerprints) — never the original .eml, its headers or names.
+  message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion", "client_submission_id", "gate", "email_evidence"]),
+  // Better email evidence for an existing case (e.g. the original .eml after a screenshot): findings only.
+  email_evidence: new Set(["findings"]),
   link_investigation: new Set(["device_id", "url", "local_state", "local_findings", "claimed_brand", "client_submission_id"]),
   // Gmail read-only connect (Gate 1 add-on): only device_id — the scan itself is triggered here,
   // but the actual message fetch happens entirely on the backend against Google's API using the
@@ -134,6 +138,15 @@ export class EgressViolation extends Error {
   }
 }
 
+/** The only keys an email evidence finding may carry (see src/domain/triage/emailEvidence.ts emailFindings). */
+const EMAIL_FINDING_KEYS = new Set(["type", "level", "via", "capabilities", "auth", "from_domain", "reply_to_domains", "return_path_domain", "message_id_domain",
+  "dkim_domains", "received_hops", "header_count", "attachments", "signals", "original_sha256", "original_bytes", "observed_at"]);
+function validateEmailFindings(endpoint: EgressEndpoint, value: unknown) {
+  if (value == null) return;
+  if (typeof value !== "object" || Array.isArray(value)) throw new EgressViolation(endpoint, "email_evidence");
+  for (const key of Object.keys(value)) if (!EMAIL_FINDING_KEYS.has(key)) throw new EgressViolation(endpoint, `email_evidence.${key}`);
+}
+
 export function enforceEgress<T extends Record<string, unknown>>(endpoint: EgressEndpoint, payload: T): T {
   const allowed = ALLOWED_KEYS[endpoint];
   const out: Record<string, unknown> = {};
@@ -141,6 +154,8 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (FORBIDDEN_KEYS.has(key) || !allowed.has(key)) throw new EgressViolation(endpoint, key);
     out[key] = payload[key];
   }
+  if (endpoint === 'message_check') validateEmailFindings(endpoint, out.email_evidence);
+  if (endpoint === 'email_evidence') validateEmailFindings(endpoint, out.findings);
   if (endpoint === 'message_check' || endpoint === 'account_check') {
     if (typeof out.text !== 'string' || typeof out.sender !== 'string') throw new EgressViolation(endpoint, 'submission types');
     // Non-blocking: learn personal data from submitted message text (email signatures, etc.)

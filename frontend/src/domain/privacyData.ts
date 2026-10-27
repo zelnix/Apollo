@@ -2,6 +2,7 @@
 // plus the local-wipe used by "Delete My Apollo Data". Deletion is driven by the person's explicit request.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearAllImageEvidence } from "@/src/store/imageEvidence";
+import { clearAllOriginalEmails } from "@/src/store/originalEmail";
 
 export type RetentionLocation = "device" | "service";
 
@@ -38,7 +39,7 @@ export const RETENTION_INVENTORY: RetentionItem[] = [
     what: "Device registration, protection-health checks and alert delivery records — no personal content.",
     retention: "Kept until you delete all your data." },
   { key: "case_evidence", label: "Evidence for your cases (this phone)", where: "device",
-    what: "The original item you submitted and the redacted copy ApolloSG sent for a check — text, links, images and device readings.",
+    what: "The original item you submitted and the redacted copy ApolloSG sent for a check — text, links, images, original email files (.eml) and device readings.",
     retention: "Never deleted automatically. Both copies stay on this phone until you delete the case, remove the original, or delete all your data." },
   { key: "local_only", label: "On this phone only", where: "device",
     what: "Your settings, saved checks, recent-check history and preferences stored only on this device.",
@@ -58,6 +59,7 @@ export interface DeleteDataResult { device_id: string; total: number; removed: R
  *  identity is cleared separately via clearDeviceIdentity(). */
 export async function wipeLocalApolloData(): Promise<void> {
   await clearAllImageEvidence().catch(() => undefined);
+  await clearAllOriginalEmails().catch(() => undefined);
   try {
     const keys = await AsyncStorage.getAllKeys();
     const apolloKeys = keys.filter((k) => k.startsWith("apollo."));

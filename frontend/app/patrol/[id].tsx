@@ -59,6 +59,7 @@ import { buildEvidencePack } from "@/src/domain/evidencePack";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
+import { CaseEvidenceProfile } from "@/src/components/CaseEvidenceProfile";
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { LIMITED_CAUTION, LIMITED_TODO, plainTriageText } from "@/src/domain/triage/contract";
 import { investigatorName, looksLikeInternalCode, outcomeLabel, outcomeTone } from "@/src/domain/messageVoice";
@@ -437,7 +438,9 @@ function RecheckCase({ event }: { event: PatrolEvent }) {
     setBusy(true);
     try {
       if (plan.kind === "link") {
-        const outcome = await checkLink(plan.url, event.scent_id ?? undefined);
+        // The same link is re-triaged in THIS case: its evidence level, history and earlier results stay with it.
+        const outcome = await checkLink(plan.url, event.scent_id ?? undefined, { via: "recheck", upgradeEventId: event.event_id });
+        if (outcome.notice) showToast(outcome.notice, "neutral");
         openResult(outcome.event, "ApolloSG re-checked the website and found nothing to flag this time.");
       } else if (plan.kind === "message") {
         const original = await getOriginalSource(event.event_id).catch(() => null);
@@ -698,6 +701,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   if (isInvestigation) {
     return (
       <View style={s.content}>
+        <CaseEvidenceProfile event={event} />
         {/* The artefact itself, as it arrived, with the copy that was sent alongside it. */}
         <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
           packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />
@@ -805,6 +809,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   // ── Non-investigation (deterministic): show local observation as before ──
   return (
     <View style={s.content}>
+      <CaseEvidenceProfile event={event} />
       {/* The artefact itself, when the exact original is on this phone. */}
       <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
         packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />

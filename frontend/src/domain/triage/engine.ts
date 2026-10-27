@@ -543,6 +543,46 @@ const NETWORK: Record<string, (ev: TriageEvidence) => Verdict> = {
     (ev) => (ev.certificate_change && correlated(ev) ? met("new trusted root certificate", "correlated suspicious network behaviour") : unmet("no new root certificate with correlated behaviour"))),
 };
 
+// ── Email (the header rules the phone can run) ─────────────────────────────
+// The receiving mail server's recorded SPF/DKIM/DMARC results are read as recorded and credited to it —
+// ApolloSG never re-checks them. Without the original's full headers these rules cannot run here: they are
+// NOT APPLICABLE with the reason, and the missing authentication is recorded as an incomplete check.
+
+export const EMAIL_AUTH_NEEDS_ORIGINAL = "Not applicable here: SPF, DKIM and DMARC results are only in the original email's full headers, which ApolloSG didn't receive.";
+export const EMAIL_AUTH_NOT_RECORDED = "Not applicable here: the receiving mail server didn't record SPF, DKIM or DMARC results in this email.";
+const FAILED_AUTH = ["fail", "softfail", "permerror"];
+const recordedBy = (ev: TriageEvidence) => `recorded by ${ev.auth_recorded_by && ev.auth_recorded_by !== "unknown" ? ev.auth_recorded_by : "the receiving mail server"}`;
+
+const EMAIL: Record<string, (ev: TriageEvidence) => Verdict> = {
+  "EMAIL-08": (ev) => {
+    if (ev.reply_to_mismatch === null || ev.reply_to_mismatch === undefined) return naBecause("Not applicable here: ApolloSG didn't receive the email's Reply-To header.");
+    return ev.reply_to_mismatch && ev.consequential_action
+      ? met("material From/Reply-To mismatch", "consequential action")
+      : unmet("no material From/Reply-To mismatch with a consequential action");
+  },
+  "EMAIL-09": (ev) => (ev.link_outcome == null ? na
+    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("an embedded link reached Possible Threat") : unmet(`link triage: ${ev.link_outcome}`)),
+  "EMAIL-11": (ev) => {
+    const auth = prov(ev, "auth_results");
+    if (!Object.keys(auth).length) return naBecause((ev.evidence_rank ?? 0) >= 3 ? EMAIL_AUTH_NOT_RECORDED : EMAIL_AUTH_NEEDS_ORIGINAL);
+    const failed = ["spf", "dkim", "dmarc"].filter((m) => FAILED_AUTH.includes(auth[m]));
+    return failed.length && (ev.consequential_action || ev.sender_domain_mismatch)
+      ? met(`authentication failure ${recordedBy(ev)} (${failed.join(", ")})`, "consequential request or anomaly")
+      : unmet(failed.length ? `authentication failure ${recordedBy(ev)} (${failed.join(", ")}) without a consequential request or anomaly` : `no authentication failure ${recordedBy(ev)}`);
+  },
+  "EMAIL-12": (ev) => {
+    const auth = prov(ev, "auth_results");
+    if (!Object.keys(auth).length) return naBecause((ev.evidence_rank ?? 0) >= 3 ? EMAIL_AUTH_NOT_RECORDED : EMAIL_AUTH_NEEDS_ORIGINAL);
+    if (!["spf", "dkim", "dmarc"].some((m) => auth[m] === "pass")) return unmet("sender not authenticated — rule not applicable");
+    const strong = ([["changed payment details", ev.payment_change], ["malicious link", ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED"],
+      // A sign-in request from an authenticated sender is ordinary (security alerts); it's unusual only alongside
+      // a sender or Reply-To anomaly.
+      ["unusual credential request", ev.credential_request && (ev.sender_domain_mismatch || ev.reply_to_mismatch)]] as [string, unknown][])
+      .filter(([, flag]) => !!flag).map(([name]) => name);
+    return strong.length ? met(`authenticated sender (${recordedBy(ev)})`, ...strong) : unmet("authenticated sender with no strong anomaly");
+  },
+};
+
 // ── Cross-protection correlation ────────────────────────────────────────────
 
 const CORR_MECHANICS: Record<string, string[]> = {
@@ -566,13 +606,18 @@ const CORRELATION: Record<string, (ev: TriageEvidence) => Verdict> = Object.from
 
 const REGISTRY: Record<string, Record<string, (ev: TriageEvidence) => Verdict>> = {
   link: LINK, message: MESSAGE, call: CALL, app: APP, file: FILE, device: DEVICE, network: NETWORK,
-  correlation: CORRELATION, email: {}, account: {},
+  correlation: CORRELATION, email: EMAIL, account: {},
+};
+
+/** Why a catalogue rule has no predicate on the phone, per category. */
+const NOT_ON_DEVICE: Record<string, string> = {
+  email: "not run on the phone: the message rules cover this email's content; this rule runs on ApolloSG's server for connected mailboxes",
 };
 
 const SCOPE: Record<string, string[]> = {
   link: ["link", "correlation"], url: ["link", "correlation"], site: ["link", "correlation"], qr: ["link", "correlation"],
   message: ["message", "link", "correlation"], text: ["message", "link", "correlation"],
-  call: ["call", "correlation"], email: ["email", "link", "correlation"], account: ["account", "correlation"],
+  call: ["call", "correlation"], email: ["message", "email", "link", "correlation"], account: ["account", "correlation"],
   file: ["file", "link", "correlation"], app: ["app", "correlation"], device: ["device", "correlation"],
   network: ["network", "correlation"],
 };
@@ -593,7 +638,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
       const predicate = REGISTRY[category]?.[definition.id];
       if (!predicate) {
         records.push({ ruleId: definition.id, title: definition.title, category, applicable: false, checked: false,
-          result: "not_applicable", evidence: [], coverageGap: null, detail: "evaluated on the server where this evidence lives" });
+          result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "evaluated on the server where this evidence lives" });
         continue;
       }
       let verdict: Verdict;

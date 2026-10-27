@@ -15,7 +15,8 @@ const CATALOGUE = {
     "checks": {
       "reputation": "A reputation check didn't complete",
       "final_destination": "Apollo couldn't verify where this link finally leads",
-      "number_reputation": "The phone number's reputation check didn't complete"
+      "number_reputation": "The phone number's reputation check didn't complete",
+      "sender_authentication": "ApolloSG couldn't read the email's sender authentication (SPF, DKIM and DMARC)"
     },
     "failures": {
       "timeout": "it timed out",
@@ -35,9 +36,333 @@ const CATALOGUE = {
       "unsafe_destination": "it pointed somewhere Apollo won't connect to",
       "redirect_limit": "it redirected too many times",
       "unparseable_link": "the link couldn't be read",
-      "redirect_failure": "the redirect couldn't be followed"
+      "redirect_failure": "the redirect couldn't be followed",
+      "original_not_provided": "ApolloSG received a copy of the email without its full headers",
+      "not_recorded": "the receiving mail server didn't record those results in the email"
     },
     "stale": "the live lookup failed ({failure}), so Apollo used the result of its last check"
+  },
+  "evidenceProfiles": {
+    "version": 1,
+    "classifiedBy": "Higgins Triage",
+    "statuses": {
+      "verified": "Verified by ApolloSG",
+      "recorded": "Recorded by the source, not verified by ApolloSG",
+      "observed": "Observed, not verified",
+      "unavailable": "Couldn't be verified"
+    },
+    "signalsTitle": "Investigation signals — not proof of fraud",
+    "caution": "Each of these is one signal to weigh in context. On its own, none of them makes something safe or fraudulent.",
+    "authCaution": "Passing SPF, DKIM or DMARC confirms only which domain sent the email. It never makes an email safe.",
+    "types": {
+      "email": {
+        "label": "Email",
+        "levels": {
+          "L1": {
+            "rank": 1,
+            "label": "L1 — Visual/Text",
+            "received": "a screenshot or pasted text of the email",
+            "basis": "ApolloSG only received a screenshot or pasted text, so technical sender authentication could not be independently verified."
+          },
+          "L2": {
+            "rank": 2,
+            "label": "L2 — Shared Email",
+            "received": "the email shared from another app, with the details that app passed on",
+            "basis": "ApolloSG received the email shared from another app, but not its full headers, so technical sender authentication could not be independently verified."
+          },
+          "L3": {
+            "rank": 3,
+            "label": "L3 — Original Message",
+            "received": "the original email with its full headers",
+            "basis": "ApolloSG examined the original email and full headers."
+          },
+          "L4": {
+            "rank": 4,
+            "label": "L4 — Provider-Verified Source",
+            "received": "the original email, retrieved by ApolloSG itself through your connected email account",
+            "basis": "ApolloSG retrieved the original email itself through your connected email account and examined it with its full headers."
+          }
+        },
+        "capabilities": {
+          "original_message": "Original message",
+          "provider_provenance": "Provider provenance",
+          "full_headers": "Full headers",
+          "sender_address": "Sender address",
+          "reply_to": "Reply-To",
+          "return_path": "Return-Path",
+          "message_id": "Message-ID",
+          "received_chain": "Routing (Received chain)",
+          "spf": "SPF",
+          "dkim": "DKIM",
+          "dmarc": "DMARC",
+          "arc": "ARC",
+          "mime": "MIME structure",
+          "attachments": "Attachments",
+          "links": "Links and domains"
+        },
+        "via": {
+          "pasted": "Pasted text",
+          "screenshot": "Screenshot",
+          "shared": "Shared from another app",
+          "eml_file": "Original email file (.eml)",
+          "raw_source": "Original message source, pasted",
+          "connected_mailbox": "Retrieved from your connected email account",
+          "simulated": "Preview sample email"
+        },
+        "authRecorded": "Recorded by {server}, the mail server that received this email. ApolloSG reports this result as recorded and didn't re-check it.",
+        "authUnconfirmed": "Recorded in the email by {server}. ApolloSG couldn't match that to the servers that delivered it, and didn't re-check it.",
+        "authNotRecorded": "The receiving mail server didn't record a result for this.",
+        "authNeedsOriginal": "Needs the original email with its full headers.",
+        "upgrade": "Evidence upgraded from {from} to {to}. Higgins Triage re-checked the email with the new evidence; the earlier result is kept in the case history.",
+        "upgradeMismatch": "That original doesn't match the email you checked, so ApolloSG checked it as a separate email.",
+        "signals": {
+          "reply_to_differs": "Replies would go to {replyTo}, not the sender's domain {from}.",
+          "return_path_differs": "Bounced mail goes to {returnPath}, a different domain from the sender {from}. Mailing services often do this.",
+          "spf_failed": "The receiving server recorded SPF as {result}: the server that sent it wasn't authorised to send for {domain}.",
+          "dkim_failed": "The receiving server recorded DKIM as {result}: the email's signature didn't check out.",
+          "dmarc_failed": "The receiving server recorded DMARC as {result}: the email didn't prove it really came from {from}.",
+          "dkim_unaligned": "The DKIM signature that passed belongs to {domain}, not the sender's domain {from}.",
+          "no_auth_recorded": "The receiving mail server didn't record any SPF, DKIM or DMARC results in this email.",
+          "recorder_unconfirmed": "The authentication results were recorded by {server}, which ApolloSG couldn't match to the servers that delivered this email.",
+          "display_name_address": "The sender's display name shows the address {shown}, but the email was sent from {from}.",
+          "message_id_differs": "Its Message-ID was created at {domain}, not at the sender's domain {from}."
+        }
+      },
+      "link": {
+        "label": "Link or website",
+        "levels": {
+          "as_given": {
+            "rank": 1,
+            "label": "Link as given",
+            "received": "the link itself",
+            "basis": "ApolloSG only had the link itself — none of its lookups answered, so nothing about the site could be verified."
+          },
+          "checked": {
+            "rank": 2,
+            "label": "Link checked",
+            "received": "the link, checked against ApolloSG's lookups",
+            "basis": "ApolloSG checked the link with its own lookups."
+          },
+          "followed": {
+            "rank": 3,
+            "label": "Destination followed",
+            "received": "the link, followed by ApolloSG to where it really leads",
+            "basis": "ApolloSG followed the link to its final destination and checked it there."
+          },
+          "seen_by_site_gate": {
+            "rank": 2,
+            "label": "Connection seen by Site Gate",
+            "received": "a connection this phone tried to make, seen by Site Gate",
+            "basis": "ApolloSG's Site Gate saw this phone try to connect to the site and stopped it on this device. It saw where the connection was going, not the page itself."
+          }
+        },
+        "capabilities": {
+          "original_url": "Original URL",
+          "redirect_chain": "Redirect chain",
+          "final_destination": "Final destination",
+          "domain_registration": "Domain registration",
+          "reputation": "Reputation",
+          "tls_certificate": "TLS certificate",
+          "hosting": "Hosting and DNS",
+          "connection": "Connection attempt",
+          "block": "Block on this device"
+        },
+        "via": {
+          "pasted": "Link you entered",
+          "shared": "Shared from another app",
+          "qr": "QR code",
+          "message": "Link from a message or email",
+          "recheck": "Re-check from the case",
+          "site_gate": "Site Gate on this phone"
+        },
+        "notes": {
+          "noLookup": "ApolloSG's lookups didn't answer, so this couldn't be checked.",
+          "notFollowed": "ApolloSG couldn't follow the link to where it finally leads.",
+          "followedBy": "Followed by ApolloSG's server. It never opens the page on your phone.",
+          "registry": "Recorded by the domain's registry, not verified by ApolloSG.",
+          "registryNoAnswer": "The domain's registry didn't answer.",
+          "reputation": "Each list says only what it already knows. A clean answer isn't proof that a site is safe.",
+          "tls": "ApolloSG doesn't inspect the site's security certificate.",
+          "hosting": "ApolloSG doesn't look up where the site is hosted.",
+          "siteGateOnly": "Site Gate sees the site's name, not the full link or the page.",
+          "connectionSeen": "Seen by ApolloSG's Site Gate on this phone.",
+          "blockConfirmed": "Blocked on this phone, confirmed by the operating system.",
+          "blockFlow": "The operating system reported the connection as stopped."
+        },
+        "upgrade": "Evidence upgraded from {from} to {to}. Higgins Triage re-checked the link with it; the earlier result is kept in the case history.",
+        "recheck": "Higgins Triage re-checked the link with fresh lookups. The earlier result is kept in the case history.",
+        "recheckWeaker": "The re-check couldn't get as far as the earlier check ({level}), so this case keeps its earlier result.",
+        "signals": {
+          "redirects_elsewhere": "The link redirects to {final}, a different site from {host}.",
+          "newly_registered": "The domain {domain} was registered {age}.",
+          "destination_unverified": "ApolloSG couldn't follow the link to where it finally leads, so the page it opens wasn't checked."
+        }
+      },
+      "message": {
+        "label": "Message",
+        "levels": {
+          "screenshot": {
+            "rank": 1,
+            "label": "Screenshot",
+            "received": "a screenshot of the message",
+            "basis": "ApolloSG only received a screenshot, so who really sent it and when could not be verified."
+          },
+          "pasted": {
+            "rank": 1,
+            "label": "Pasted text",
+            "received": "the message text you pasted",
+            "basis": "ApolloSG only received the pasted text, so who really sent it and when could not be verified."
+          },
+          "shared": {
+            "rank": 2,
+            "label": "Shared from an app",
+            "received": "the message shared from another app",
+            "basis": "ApolloSG received the message shared from another app; the app passed on its text, not proof of who sent it."
+          },
+          "captured": {
+            "rank": 3,
+            "label": "Captured from the notification",
+            "received": "the message as your phone's notification showed it",
+            "basis": "ApolloSG read the message from your phone's notification itself, so it knows which app posted it and when — not who really sent it."
+          }
+        },
+        "capabilities": {
+          "sender": "Sender",
+          "timestamp": "Time received",
+          "source": "How ApolloSG got it",
+          "platform_provenance": "Platform provenance",
+          "links": "Links",
+          "numbers": "Phone numbers",
+          "attachments": "Attachments"
+        }
+      },
+      "call": {
+        "label": "Call",
+        "levels": {
+          "number_only": {
+            "rank": 1,
+            "label": "Number only",
+            "received": "the phone number",
+            "basis": "ApolloSG only had the number; its reputation lookup didn't answer, so nothing about it could be verified."
+          },
+          "number_checked": {
+            "rank": 2,
+            "label": "Number checked",
+            "received": "the phone number, checked with a number-reputation lookup",
+            "basis": "ApolloSG checked the number's reputation. The number shown for a call can be faked, and ApolloSG can't yet read the phone network's own caller verification."
+          },
+          "screened_call": {
+            "rank": 3,
+            "label": "Call screened by ApolloSG",
+            "received": "the call itself, seen by ApolloSG's call screening",
+            "basis": "ApolloSG's call screening saw this call arrive. The number shown can still be faked, and ApolloSG can't yet read the phone network's own caller verification."
+          }
+        },
+        "capabilities": {
+          "number": "Number",
+          "caller_id": "Caller ID",
+          "timestamp": "Time of the call",
+          "screening_result": "Screening result",
+          "carrier": "Carrier and line type",
+          "reputation": "Reputation",
+          "spoofing_indicators": "Spoofing indicators"
+        }
+      },
+      "file": {
+        "label": "File or document",
+        "levels": {
+          "name_only": {
+            "rank": 1,
+            "label": "File name only",
+            "received": "the file's name and size",
+            "basis": "ApolloSG couldn't read the file's contents, so it could only go by the name and size."
+          },
+          "contents_read": {
+            "rank": 2,
+            "label": "Contents read",
+            "received": "the file, read on your phone",
+            "basis": "ApolloSG read the start of the file on your phone to find what it really is."
+          },
+          "fingerprinted": {
+            "rank": 3,
+            "label": "Contents read and fingerprinted",
+            "received": "the whole file, read and fingerprinted on your phone",
+            "basis": "ApolloSG read the file on your phone, found what it really is and fingerprinted it (SHA-256)."
+          }
+        },
+        "capabilities": {
+          "file_name": "File name",
+          "declared_type": "Declared type",
+          "true_type": "True file type",
+          "sha256": "SHA-256 fingerprint",
+          "metadata": "Document metadata",
+          "signature": "Signatures and certificates",
+          "macros": "Macros",
+          "embedded_links": "Embedded links and scripts",
+          "threat_indicators": "Threat indicators"
+        }
+      },
+      "image": {
+        "label": "Image",
+        "levels": {
+          "image": {
+            "rank": 1,
+            "label": "Image",
+            "received": "the image",
+            "basis": "ApolloSG read the picture on your phone. A picture shows what was on screen, not where it came from."
+          }
+        },
+        "capabilities": {
+          "image_content": "Image content",
+          "metadata": "Image metadata",
+          "source": "Where it came from",
+          "embedded_identifiers": "Links, numbers and codes in it"
+        }
+      },
+      "qr": {
+        "label": "QR code",
+        "levels": {
+          "decoded": {
+            "rank": 2,
+            "label": "QR payload decoded",
+            "received": "the QR code, decoded by ApolloSG",
+            "basis": "ApolloSG decoded the QR code itself, so it knows exactly what the code contains — not who put it there."
+          }
+        },
+        "capabilities": {
+          "payload": "QR payload",
+          "url": "URL in the code",
+          "identifiers": "Other identifiers"
+        }
+      },
+      "app": {
+        "label": "App",
+        "levels": {
+          "described": {
+            "rank": 1,
+            "label": "Described by you",
+            "received": "the app details you entered",
+            "basis": "ApolloSG only had the details you entered, so the app's real identity, source and permissions could not be verified."
+          },
+          "read_from_device": {
+            "rank": 2,
+            "label": "Read from this device",
+            "received": "the installed app's details, read from this phone",
+            "basis": "ApolloSG read the installed app's details from this phone. Its signing information isn't available to ApolloSG yet."
+          }
+        },
+        "capabilities": {
+          "app_name": "App name",
+          "package_id": "Package / bundle ID",
+          "developer": "Publisher / developer",
+          "install_source": "Install source",
+          "permissions": "Permissions",
+          "version": "Version",
+          "signing": "Signing information",
+          "store_security": "Store and OS security information"
+        }
+      }
+    }
   },
   "coverageGapCodes": [
     {

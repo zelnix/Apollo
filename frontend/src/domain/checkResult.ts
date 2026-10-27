@@ -78,6 +78,8 @@ export interface CheckResultModel {
   completedAt: string;
   /** Optional investigation id — links to Patrol / Higgins / saved reports. */
   investigationId?: string | null;
+  /** Higgins Triage's classification of the evidence received (e.g. email L1–L4) and what it could examine. */
+  evidenceProfile?: import("./triage/evidenceProfile").EvidenceProfile | null;
 }
 
 /** Short status label for a check item (plain English, same text spoken by Higgins).

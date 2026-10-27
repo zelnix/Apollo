@@ -205,5 +205,6 @@ export function buildLinkCheckResult(args: {
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: liveEvent?.investigation_case_id ?? null,
+    evidenceProfile: liveEvent?.evidence_profile ?? outcome.profile ?? null,
   };
 }

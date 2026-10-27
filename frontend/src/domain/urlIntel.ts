@@ -44,6 +44,7 @@ const LOOKUP_FAILURE_MESSAGE: Record<LookupFailure, string> = {
   rejected: "The reputation service couldn't accept this link for checking.",
   not_configured: "The reputation service isn't set up here.",
   no_data: "The reputation service had no information about this.",
+  quota_exhausted: "The reputation service has used up its checks for now.",
 };
 
 export function lookupFailureMessage(failure: LookupFailure, error?: unknown): string {

@@ -8,6 +8,30 @@ import type { PatrolEvent } from "./types";
 import { toneForState, buildEvidenceRowsFromTechnical, appendEventContext, buildCheckResult, buildEvidenceRows } from "./checkResultFramework";
 import { ACTION_LINKS } from "./actionRegistry";
 import { GATE_REGISTRY } from "./gateRegistry";
+import type { EmailEvidenceProfile } from "./triage/emailEvidence";
+
+const FAILED_AUTH = new Set(["fail", "softfail", "permerror", "hardfail"]);
+
+/** Sender authentication, exactly as the receiving mail server recorded it — ApolloSG never re-checks it. */
+function authItem(profile: EmailEvidenceProfile | null | undefined): CheckItem {
+  const base = { id: "email:auth", name: "Sender authentication (SPF, DKIM, DMARC)" };
+  if (!profile || profile.rank < 3) {
+    return { ...base, status: "not_performed", finding: `Needs the original email with its full headers. ApolloSG received ${profile?.received ?? "a copy without them"}.` };
+  }
+  const auth = profile.auth;
+  if (!auth) return { ...base, status: "incomplete", finding: "The receiving mail server didn't record SPF, DKIM or DMARC results in this email." };
+  const server = auth.recordedBy === "unknown" ? "the receiving mail server" : auth.recordedBy;
+  const results = (["spf", "dkim", "dmarc"] as const).map((m) => `${m.toUpperCase()} ${auth[m] ?? "not recorded"}`).join(", ");
+  const failed = (["spf", "dkim", "dmarc"] as const).some((m) => FAILED_AUTH.has(auth[m] ?? ""));
+  const allPass = (["spf", "dkim", "dmarc"] as const).every((m) => auth[m] === "pass");
+  const credit = auth.receiverConfirmed ? `Recorded by ${server}, the mail server that received it` : `Recorded in the email by ${server} (ApolloSG couldn't match it to the servers that delivered it)`;
+  return {
+    ...base,
+    status: failed ? "concern" : allPass ? "clear" : "incomplete",
+    finding: `${credit}: ${results}. ApolloSG reports these as recorded and didn't re-check them.${allPass ? " Passing confirms only which domain sent it — it never makes an email safe." : ""}`,
+    raw: { recorded_by: server, spf: auth.spf ?? "not recorded", dkim: auth.dkim ?? "not recorded", dmarc: auth.dmarc ?? "not recorded", arc: auth.arc ?? "not recorded" },
+  };
+}
 
 
 /** Derive confidence from evidence quality, not just the final state.
@@ -36,8 +60,11 @@ export function buildEmailCheckResult(args: {
   phones?: { raw: string; decision: string; fraud_score: number | null }[];
   /** The explanation that came back from the Higgins backend, if any. */
   explanation: { summary?: string; why?: string[]; recommendation?: string } | null;
+  /** Higgins Triage's classification of the email evidence (L1–L4). */
+  profile?: EmailEvidenceProfile | null;
 }): CheckResultModel {
   const { analysis: a, event, from, subject: subj, submissionId, urlResults, explanation } = args;
+  const headers = (args.profile?.rank ?? 0) >= 3;
   const phones = args.phones ?? [];
   const displaySubject = a.parsed.fromAddress || from.trim() || a.claimedBrand || "Unknown sender";
 
@@ -56,7 +83,7 @@ export function buildEmailCheckResult(args: {
       finding: isMismatch
         ? `Sent from ${a.senderDomain}, which is NOT ${a.claimedBrand}'s official domain.`
         : isOfficial
-          ? `Sent from ${a.senderDomain} — a known domain for ${a.claimedBrand}. Apollo matched the domain name only; email authentication (SPF/DKIM) cannot be verified from pasted text.`
+          ? `Sent from ${a.senderDomain} — a known domain for ${a.claimedBrand}.${headers ? " See sender authentication for what the receiving mail server recorded." : " Apollo matched the domain name only; email authentication (SPF/DKIM) cannot be verified from pasted text."}`
           : `Sent from ${a.senderDomain}. Apollo could not match this to a configured known domain.`,
     });
   } else {
@@ -67,6 +94,8 @@ export function buildEmailCheckResult(args: {
       finding: "No sender address was supplied or detected in the pasted email.",
     });
   }
+
+  items.push(authItem(args.profile));
 
   // Reply-To check
   if (a.replyToDomain && a.senderDomain && a.replyToDomain !== a.senderDomain) {
@@ -158,9 +187,10 @@ export function buildEmailCheckResult(args: {
   // Evidence rows — shared utility for technical strings + event context.
   const evidence = buildEvidenceRowsFromTechnical(a.technical);
   if (a.signalLabels.length) evidence.push({ label: "Signals", value: a.signalLabels.join("; ") });
+  if (args.profile) evidence.push({ label: "Evidence level", value: `${args.profile.label} — classified by ${args.profile.classifiedBy}` });
   appendEventContext(evidence, { scenario: `${a.scenario} — ${a.title}`, eventId: event?.event_id });
 
-  return buildCheckResult({
+  return { ...buildCheckResult({
     gate: GATE_REGISTRY.email.checkResultGate,
     checkType: GATE_REGISTRY.email.defaultCheckType,
     subject: displaySubject,
@@ -174,5 +204,5 @@ export function buildEmailCheckResult(args: {
     evidence,
     event,
     investigationId: submissionId,
-  });
+  }), evidenceProfile: args.profile ?? null };
 }

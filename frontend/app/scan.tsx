@@ -66,7 +66,7 @@ export default function Scan() {
     setPayload(p); setAssess(a);
     try {
       if ((p.type === "url" || p.type === "payment") && p.url) {
-        const out = await checkLink(p.url);
+        const out = await checkLink(p.url, undefined, { via: "qr" });
         setWeb(out);
         // Merge the physical-context findings into the Gate 3 event so it is ONE incident in Patrol / Threat Scent.
         if (out.event && a.why.length && a.state !== "resting") {

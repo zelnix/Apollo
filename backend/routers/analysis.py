@@ -25,6 +25,7 @@ from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
 from services.higgins import evidence as ev, repository as invest_repo
 from services.higgins.contracts import EvidenceItem, EvidenceProvenance, Transformation, Coverage, SubmitTurn
 from routers.investigations import _launch_investigation, _submit_turn
+from services.email_evidence import EmailEvidenceFindings, summary as email_evidence_summary
 from core.db import now_utc
 
 router = APIRouter()
@@ -51,6 +52,9 @@ class MessageAnalyseIn(BaseModel):
     # it on the case means ONE record per check: the investigation projector updates that event
     # instead of filing a second, server-owned twin for the same material.
     client_submission_id: Optional[str] = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9._:-]{1,64}$")
+    # Email Gate only: Higgins Triage's minimal findings about the email evidence (level, recorded authentication,
+    # domains, counts, fingerprints). The original email itself never leaves the phone.
+    email_evidence: Optional[EmailEvidenceFindings] = None
 
     @field_validator("urls")
     @classmethod
@@ -183,6 +187,8 @@ async def message_analyse(body: MessageAnalyseIn, request: Request):
         initial_findings.append(f"ApolloSG scenario classification: {body.scenario}")
     if body.local_state != "resting":
         initial_findings.append(f"ApolloSG local state: {body.local_state}")
+    if body.gate == "email" and body.email_evidence:
+        initial_findings.append(email_evidence_summary(body.email_evidence))
 
     case_id, job, investigation_error = await _launch_investigation(
         owner, body.gate, question, submissions,

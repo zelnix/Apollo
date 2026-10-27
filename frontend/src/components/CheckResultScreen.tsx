@@ -20,6 +20,7 @@ import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
+import { EvidenceProfileCard } from "./EvidenceProfileCard";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -63,9 +64,14 @@ export interface CheckResultScreenProps {
   onAskHiggins?: () => void;
   /** Optional close override — defaults to goBackOrHome. */
   onClose?: () => void;
+  /** Offered on the evidence card while the email evidence is below the original message (L1/L2). */
+  onAddOriginal?: () => void;
+  addingOriginal?: boolean;
+  /** What changed with the evidence on this check (an upgrade, or an original that didn't match). */
+  evidenceNotice?: string | null;
 }
 
-export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose }: CheckResultScreenProps) {
+export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose, onAddOriginal, addingOriginal, evidenceNotice }: CheckResultScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
@@ -121,6 +127,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
                 </View>
               ) : null}
         </Card>
+
+        {result.evidenceProfile ? (
+          <EvidenceProfileCard profile={result.evidenceProfile} onAddOriginal={onAddOriginal} busy={addingOriginal} notice={evidenceNotice} testID="check-result-evidence-profile" />
+        ) : null}
 
         {/* ── What Apollo checked ── */}
         <Card style={{ gap: 0 }} testID="check-result-items">

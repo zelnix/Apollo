@@ -209,6 +209,12 @@ export interface PatrolEvent {
    *  checked, results, evidence, coverage gaps, retries, correlation and the final outcome.
    *  Present for every outcome — No Threat, Possible Threat and Limited alike. */
   triage_investigation?: import("./triage/contract").TriageInvestigationRecord | null;
+  /** Earlier Triage records for this same item, oldest first — kept when new evidence (e.g. the original email)
+   *  re-ran Triage, so the case never loses how it was assessed before. Device-local. */
+  triage_history?: import("./triage/contract").TriageInvestigationRecord[] | null;
+  /** Higgins Triage's classification of the evidence it received (email: L1–L4; link: as given → followed), what it
+   *  could examine, the signals it raised and every level the case has had. Device-local: never part of the Patrol sync payload. */
+  evidence_profile?: import("./triage/evidenceProfile").EvidenceProfile | null;
   /** Telephone/mobile numbers found in this case's ORIGINAL EVIDENCE and exactly what the reputation
    *  service returned for each. Device-local: numbers are never part of the Patrol sync payload
    *  (see patrolPayload). */

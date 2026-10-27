@@ -16,6 +16,7 @@ import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
+import { EvidenceProfileCard } from "./EvidenceProfileCard";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -72,6 +73,11 @@ export interface InvestigationCheckScreenProps {
   }[];
   /** Optional close override — defaults to goBackOrHome. */
   onClose?: () => void;
+  /** Offered on the evidence card while the email evidence is below the original message (L1/L2). */
+  onAddOriginal?: () => void;
+  addingOriginal?: boolean;
+  /** What changed with the evidence on this check (an upgrade, or an original that didn't match). */
+  evidenceNotice?: string | null;
 }
 
 export function InvestigationCheckScreen({
@@ -83,6 +89,9 @@ export function InvestigationCheckScreen({
   caseId,
   actions = [],
   onClose,
+  onAddOriginal,
+  addingOriginal,
+  evidenceNotice,
 }: InvestigationCheckScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -116,6 +125,10 @@ export function InvestigationCheckScreen({
           eventId={eventId}
           caseId={caseId}
         />
+
+        {result.evidenceProfile ? (
+          <EvidenceProfileCard profile={result.evidenceProfile} onAddOriginal={onAddOriginal} busy={addingOriginal} notice={evidenceNotice} testID="investigation-check-evidence-profile" />
+        ) : null}
 
         {actions.length > 0 ? (
           <View style={s.secondary}>

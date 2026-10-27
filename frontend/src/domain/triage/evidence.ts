@@ -7,6 +7,9 @@ import type { CallAnalysis, CallInput } from "@/src/domain/callAnalysis.ts";
 import type { TriageEvidence } from "./engine.ts";
 import type { TriageOutcome } from "./contract.ts";
 import { fromSources, incompleteCheck, type IncompleteCheck, type SourceLike } from "./completeness.ts";
+import type { EmailAnalysis } from "@/src/domain/emailAnalysis.ts";
+import { registrableDomain } from "../brand.ts";
+import type { EmailEvidenceProfile } from "./emailEvidence.ts";
 
 export interface CorrelationInput {
   related?: { category: string; event_id: string; occurred_at?: string }[];
@@ -141,6 +144,43 @@ export function messageTriageEvidence(args: {
     incomplete_checks: args.incompleteChecks ?? [],
     visibility: DEVICE_VISIBILITY,
     correlation: args.correlation ?? {},
+  };
+}
+
+/** An email: the message rules over its content, plus the header evidence its level made available — the
+ *  authentication results the receiving server recorded (never re-checked by ApolloSG) and the Reply-To.
+ *  Below L3 the authentication check is recorded as incomplete, so the result can never read as complete. */
+export function emailTriageEvidence(args: Parameters<typeof messageTriageEvidence>[0] & {
+  profile: Pick<EmailEvidenceProfile, "level" | "rank" | "auth" | "facts">;
+  analysis: Pick<EmailAnalysis, "signals" | "verdict" | "why" | "senderMismatch" | "replyMismatch" | "bankChange" | "parsed">;
+}): TriageEvidence {
+  const base = messageTriageEvidence(args);
+  const s = base.signals as Record<string, unknown>;
+  const { profile, analysis } = args;
+  const auth = profile.auth;
+  const headers = profile.rank >= 3;
+  const results = auth ? Object.fromEntries((["spf", "dkim", "dmarc"] as const).filter((m) => auth[m]).map((m) => [m, auth[m]])) : {};
+  const incomplete = [...(base.incomplete_checks as IncompleteCheck[])];
+  if (!Object.keys(results).length) {
+    incomplete.push(incompleteCheck("sender_authentication", headers ? "not_recorded" : "original_not_provided", { source: headers ? auth?.recordedBy ?? null : null }));
+  }
+  // With full headers Reply-To is known either way; below that only when the copy showed it.
+  const replyKnown = headers || !!analysis.parsed.replyTo;
+  return {
+    ...base,
+    source_type: "email",
+    evidence_level: profile.level,
+    evidence_rank: profile.rank,
+    auth_results: results,
+    auth_recorded_by: auth?.recordedBy ?? null,
+    auth_receiver_confirmed: auth?.receiverConfirmed ?? false,
+    sender_domain: profile.facts.fromDomain,
+    sender_domain_mismatch: analysis.senderMismatch,
+    reply_to_mismatch: replyKnown ? (headers ? profile.facts.replyToDomains.some((d) => !!profile.facts.fromDomain && registrableDomain(d) !== registrableDomain(profile.facts.fromDomain)) : analysis.replyMismatch) : null,
+    consequential_action: ["login_request", "code_request", "identity_request", "payment_request", "money_request", "gift_cards", "remote_access", "callback_request"].some((k) => !!s[k]) || analysis.bankChange,
+    credential_request: !!(s.login_request || s.code_request),
+    payment_change: analysis.bankChange,
+    incomplete_checks: incomplete,
   };
 }
 

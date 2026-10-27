@@ -9,7 +9,7 @@ import * as Localization from "expo-localization";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
-import { API_BASE, apiDelete, apiGet, apiPatch, apiPost, apiPostEmpty, apiPut } from "@/src/api/client";
+import { API_BASE, ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPostEmpty, apiPut } from "@/src/api/client";
 import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backendHealth";
 import { clearDeviceIdentity, getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { PENDING_DELETE_KEY, wipeLocalApolloData, type DeleteDataResult } from "@/src/domain/privacyData";
@@ -22,7 +22,7 @@ import { minimalIndicator } from "@/src/domain/privacy";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
-import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
+import { analyseEmail, parseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { fetchMessageUrlIntel, linkTriageOutcome, lookupFailureMessage, lookupUrlIntel, type MessageUrlResult } from "@/src/domain/urlIntel";
 import { urlIncompleteChecks } from "@/src/domain/triage/completeness";
 import { fetchEvidencePhoneIntel, lookupNumberRisk } from "@/src/domain/phoneIntel";
@@ -33,7 +33,13 @@ import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/cal
 import { nativeClassificationAttribution, nativeClassificationProvenance, nativeClassificationWhyLine, triggersInvestigation, type NativeClassificationFact } from "@/src/domain/nativeClassification";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { evaluateTriage } from "@/src/domain/triage/engine";
-import { callTriageEvidence, linkTriageEvidence, messageTriageEvidence, numberRiskTriageEvidence, type CorrelationInput } from "@/src/domain/triage/evidence";
+import { callTriageEvidence, emailTriageEvidence, linkTriageEvidence, messageTriageEvidence, numberRiskTriageEvidence, type CorrelationInput } from "@/src/domain/triage/evidence";
+import { buildEmailProfile, emailFindings, mergeEmailProfiles, sameEmail, upgradeSentence, type EmailEvidenceProfile, type EmailVia } from "@/src/domain/triage/emailEvidence";
+import { fill, mergeProfiles, upgrades, type EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
+import { buildLinkProfile, buildSiteGateProfile, LINK_WORDS, sameLink, type LinkVia } from "@/src/domain/triage/linkEvidence";
+import { analysisSourceFor, headerEvidenceFor } from "@/src/domain/triage/emailIntake";
+import type { ParsedOriginal } from "@/src/domain/triage/emailOriginal";
+import { keepOriginalEmail } from "@/src/store/originalEmail";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
@@ -131,13 +137,40 @@ function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: 
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
-export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
+export interface CheckOutcome {
+  submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null;
+  /** Higgins Triage's classification of the evidence behind this link check (as given → followed). */
+  profile: EvidenceProfile | null;
+  /** A re-check updated its case in place (same link), keeping the case's history. */
+  upgraded?: boolean;
+  /** What a re-check did to its case, in one sentence. */
+  notice?: string | null;
+}
+/** Where a link to check came from (sets how its evidence is described), and the case a re-check belongs to. */
+export interface LinkCheckOptions { via?: LinkVia; upgradeEventId?: string | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export type { MessageUrlResult };
 export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
 /** One email check: the deterministic analysis, the link reputation behind it, the single patrol
  *  record it filed, and the Magnum DI case id when Triage escalated (null when it did not). */
-export interface EmailOutcome { submissionId: string; analysis: EmailAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; event: PatrolEvent; investigationCaseId: string | null }
+export interface EmailOutcome {
+  submissionId: string; analysis: EmailAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; event: PatrolEvent; investigationCaseId: string | null;
+  /** Higgins Triage's classification of the email evidence (L1–L4) — current level plus every earlier one. */
+  profile: EmailEvidenceProfile;
+  /** This check added better evidence to an existing case and re-ran Triage there. */
+  upgraded: boolean;
+  /** Better evidence was offered for a case but didn't match its email, so it was checked as a separate email. */
+  upgradeMismatch: boolean;
+}
+/** One email to check. `via` sets its evidence level; `original` is the message parsed on this phone (its bytes stay here). */
+export interface EmailCheckInput {
+  from: string; subject: string; raw: string;
+  captured?: { from: string; subject: string; text: string };
+  via?: EmailVia;
+  original?: { parsed: ParsedOriginal; binary: string } | null;
+  /** Add this evidence to an existing email case and re-triage it there, keeping its history. */
+  upgradeEventId?: string | null;
+}
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
  * only reach "growling"/"barking" in the app, never a verified "biting" block.
@@ -182,11 +215,11 @@ interface ApolloContextValue {
   events: PatrolEvent[];
   trust: TrustEntry[];
   resolution: StateResolution;
-  checkLink(input: string, scentId?: string): Promise<CheckOutcome>;
+  checkLink(input: string, scentId?: string, options?: LinkCheckOptions): Promise<CheckOutcome>;
   checkMessage(sender: string, text: string): Promise<MessageOutcome>;
   /** Gate 1: Check Email — deterministic engine + link reputation + Triage. Files exactly one patrol
    *  record per check and opens at most one Magnum DI case (reused across correlated evidence). */
-  checkEmail(input: { from: string; subject: string; raw: string; captured?: { from: string; subject: string; text: string } }): Promise<EmailOutcome>;
+  checkEmail(input: EmailCheckInput): Promise<EmailOutcome>;
   /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
    * (never stored server-side), runs each through the same on-device email engine as the paste
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
@@ -474,6 +507,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : base.local_indicator,
         verified_block: true, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
         background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
+        evidence_profile: isCall ? base.evidence_profile ?? null : buildSiteGateProfile({ domain, observedAt: e.observedAt, confirmed: true }),
       };
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
       void saveOriginalSource([ev.event_id], { kind: "network", data: e, capturedAt: e.observedAt });
@@ -495,6 +529,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         why: ["The operating system reported an enforced flow or connection-authorization drop.", "Apollo reserves Biting for correlated packet-drop evidence."],
         what_to_do: "Review the application that attempted the connection and keep the destination blocked.", indicator_host: domain, indicator_digest: null,
         verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+        evidence_profile: buildSiteGateProfile({ domain, observedAt: e.observedAt, confirmed: false }),
       };
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
       void saveOriginalSource([ev.event_id], { kind: ev.category === "call" ? "call" : "network", data: e, capturedAt: e.observedAt });
@@ -1083,20 +1118,49 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // (0 Gemini calls) whether there is a possible threat. Magnum DI is launched ONLY then, and only
   // once per correlated case; the patrol record this check files is named on the case
   // (client_submission_id) so Apollo's servers update THAT record instead of filing a second one.
-  const checkEmail = useCallback(async (input: { from: string; subject: string; raw: string; captured?: { from: string; subject: string; text: string } }): Promise<EmailOutcome> => {
-    const analysis = analyseEmail(input.raw, { from: input.from, subject: input.subject });
-    const eventId = Crypto.randomUUID();
+  const checkEmail = useCallback(async (input: EmailCheckInput): Promise<EmailOutcome> => {
+    // An original message is read from its real headers and decoded parts — on this phone, never uploaded.
+    const parsedOriginal = input.original?.parsed ?? null;
+    const source = parsedOriginal ? analysisSourceFor(parsedOriginal) : null;
+    const rawInput = source?.raw ?? input.raw;
+    const fromInput = source?.fields.from ?? input.from;
+    const subjectInput = source?.fields.subject ?? input.subject;
+    const analysis = analyseEmail(rawInput, { from: fromInput, subject: subjectInput }, parsedOriginal ? headerEvidenceFor(parsedOriginal) : undefined);
+
+    // Evidence upgrade: the SAME email with better evidence is re-triaged in its existing case. An original that
+    // isn't that email never rewrites the case — it is checked as a separate email.
+    let previous = input.upgradeEventId ? eventsRef.current.find((e) => e.event_id === input.upgradeEventId) ?? null : null;
+    let upgradeMismatch = false;
+    if (previous) {
+      const before = await getOriginalSource(previous.event_id);
+      const field = (label: string) => before?.fields?.find((f) => f.label === label)?.value ?? undefined;
+      // A pasted copy keeps its From/Subject lines inside the text — read them the way the engine does.
+      const prior = parseEmail(before?.text ?? "", { from: field("From"), subject: field("Subject") });
+      if (!sameEmail({ sender: prior.fromAddress ?? field("From"), subject: prior.subject, text: prior.body },
+        { sender: fromInput || analysis.parsed.fromAddress, subject: subjectInput || analysis.parsed.subject, text: analysis.parsed.body })) {
+        previous = null;
+        upgradeMismatch = true;
+      }
+    }
+    const eventId = previous?.event_id ?? Crypto.randomUUID();
+    const keptOnDevice = input.original
+      ? await keepOriginalEmail([eventId, previous?.investigation_case_id], input.original.binary, input.original.parsed.sha256)
+      : false;
+    const prior = previous?.evidence_profile?.type === "email" ? previous.evidence_profile as EmailEvidenceProfile : null;
+    const profile = mergeEmailProfiles(prior, buildEmailProfile({ via: input.via ?? "pasted", analysis, original: parsedOriginal, keptOnDevice }));
     const urls = await fetchMessageUrlIntel(analysis.urls, deviceId);
     // Telephone/mobile numbers in the email get the same real reputation check the links get.
-    const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${input.from}\n${input.subject}\n${input.raw}`), deviceId, deviceRegion());
+    const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${fromInput}\n${subjectInput}\n${rawInput}`), deviceId, deviceRegion());
     let state = analysis.state;
     const why = [...analysis.why];
     // Email Guard: automatic pre-click assessment of every link plus any display-text-vs-destination
     // mismatch. This can only raise the state.
-    const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(input.raw));
+    const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(rawInput));
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
     why.push(...guard.why);
     why.push(...phoneWhyLines(phones));
+    const upgradeLine = previous ? upgradeSentence(profile) : null;
+    if (upgradeLine) why.unshift(upgradeLine);
     const firstHost = urls.find((u) => u.verdict === "malicious")?.host
       ?? (analysis.lookalikeUrls[0] ? analysis.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null)
       ?? urls[0]?.host ?? analysis.senderDomain;
@@ -1104,19 +1168,29 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
+    const triage = evaluateTriage(emailTriageEvidence({ analysis, profile, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
       incompleteChecks: [...urlIncompleteChecks(urls), ...phoneIncompleteChecks(phones)] }));
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 
-    let investigationCaseId: string | null = null;
-    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+    let investigationCaseId: string | null = previous?.investigation_case_id ?? null;
+    if (previous && investigationCaseId) {
+      // The case already has an investigation: it gets the new evidence's findings — never the original email.
+      try {
+        await apiPost(`/investigations/${investigationCaseId}/evidence-profile`, "email_evidence", { findings: emailFindings(profile) });
+      } catch (error) {
+        // A finished investigation isn't kept on the server (410/404) — the case and its new evidence live on this phone.
+        why.push(error instanceof ApiError && (error.status === 410 || error.status === 404)
+          ? "This case's investigation had already finished, so the new evidence is kept with the case on this phone. Higgins Triage re-checked it here."
+          : "ApolloSG couldn't add the new evidence to this case's investigation on its servers, so it is recorded on this phone only.");
+      }
+    } else if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
       if (existingCaseId) investigationCaseId = existingCaseId;
       else {
         try {
           const remote = await apiPost<{ urls?: MessageUrlResult[]; investigation_case_id?: string | null; investigation_error?: string | null }>("/message/analyse", "message_check", {
             device_id: deviceId ?? "local-device",
-            sender: input.from.trim(),
-            text: `${input.subject}\n${input.raw}`,
+            sender: fromInput.trim(),
+            text: parsedOriginal ? `${subjectInput}\n${parsedOriginal.bodyText}` : `${input.subject}\n${input.raw}`,
             urls: analysis.urls.slice(0, 20),
             local_state: state,
             scenario: analysis.scenario,
@@ -1125,6 +1199,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             second_opinion: false,
             client_submission_id: eventId,
             gate: "email",
+            email_evidence: emailFindings(profile),
           });
           investigationCaseId = typeof remote.investigation_case_id === "string" ? remote.investigation_case_id : null;
           if (remote.investigation_error) why.push(`${remote.investigation_error} This result comes from Apollo's deterministic checks only.`);
@@ -1136,9 +1211,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Every email Triage examined is recorded in Patrol — whether or not it became a threat case.
-    const captured = input.captured ?? { from: input.from, subject: input.subject, text: input.raw };
+    const captured = input.captured ?? (parsedOriginal ? { from: fromInput, subject: subjectInput, text: parsedOriginal.bodyText } : { from: input.from, subject: input.subject, text: input.raw });
     const resting = state === "resting";
+    const now = new Date().toISOString();
     const event = await upsertEvent({
+      ...(previous ?? {}),
       event_id: eventId, device_id: deviceId ?? "local", category: "email", state,
       status: resting ? "resolved" : "active",
       headline: `Email: ${analysis.title}`,
@@ -1147,10 +1224,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       what_to_do: analysis.recommendation,
       indicator_host: firstHost, indicator_digest: null, local_indicator: null, verified_block: false,
       adapter_label: securityAdapter.label,
-      occurred_at: new Date().toISOString(), resolved_at: resting ? new Date().toISOString() : null,
+      // An upgrade keeps the case's first detection time; the re-check's own time is on its Triage record.
+      occurred_at: previous?.occurred_at ?? now, resolved_at: resting ? (previous?.resolved_at ?? now) : null,
       trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
       investigation_case_id: investigationCaseId,
       triage_investigation: triage,
+      triage_history: previous ? [...(previous.triage_history ?? []), ...(previous.triage_investigation ? [previous.triage_investigation] : [])] : null,
+      evidence_profile: profile,
       evidence_phones: phones.length ? phones : null,
     }, {
       kind: "email",
@@ -1160,11 +1240,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         ...(analysis.parsed.attachments.length ? [{ label: "Attachments", value: analysis.parsed.attachments.join(", ") }] : []),
       ],
       text: captured.text,
+      ...(profile.original ? { data: { email_original: profile.original } } : {}),
     });
     return {
       submissionId: event.event_id,
       analysis: { ...analysis, state: event.state, why: event.why },
-      urls, phones, event, investigationCaseId,
+      urls, phones, event, investigationCaseId, profile, upgraded: !!previous, upgradeMismatch,
     };
   }, [correlationFor, deviceId, upsertEvent]);
 
@@ -1544,15 +1625,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return granted;
   }, [refresh]);
 
-  const checkLink = useCallback(async (input: string, scentId?: string): Promise<CheckOutcome> => {
+  const checkLink = useCallback(async (input: string, scentId?: string, options?: LinkCheckOptions): Promise<CheckOutcome> => {
     const local = analyseUrlLocally(input);
     if (!local.valid || !local.normalizedUrl || !local.host) {
       const decision: Decision = { state: "growling", headline: "That doesn't look like a web link", what_happened: "Apollo could not read this as a web address.", why: ["Only http and https links can be checked."], what_to_do: "Paste the full link, including the website name.", action_required: false, trust_allowed: false, block_offered: false, confidence: "low" };
-      return { submissionId: Crypto.randomUUID(), local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
+      return { submissionId: Crypto.randomUUID(), local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null, profile: null };
     }
     const indicator = minimalIndicator(local.normalizedUrl);
+    // A re-check from a case: the SAME link is re-triaged in that case, keeping its history. Any other link is its own check.
+    const previous = options?.upgradeEventId
+      ? eventsRef.current.find((e) => e.event_id === options.upgradeEventId && sameLink(e, indicator, local.host)) ?? null : null;
     // The patrol record this check will file — named on the case so one check stays one record.
-    const eventId = Crypto.randomUUID();
+    const eventId = previous?.event_id ?? Crypto.randomUUID();
     let intel: IntelResult | null = null; let intelError: string | null = null;
     // Controlled retry with in-flight deduplication. If every attempt fails, the reputation dependency is
     // recorded as unavailable (with how it failed) — never converted into a pass.
@@ -1562,8 +1646,21 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
     let decision = decide(local, intel, trusted);
+    // Higgins Triage's classification of what this check had to go on — merged into the case on a re-check.
+    const freshProfile = buildLinkProfile({ via: options?.via ?? "pasted", local, intel, lookupFailed: !!lookup.failure, failureText: intelError });
+    const priorProfile = previous?.evidence_profile?.type === "link" ? previous.evidence_profile : null;
+    if (previous && priorProfile && freshProfile.rank < priorProfile.rank) {
+      // A re-check that got less far (its lookups didn't answer) never replaces a stronger earlier result.
+      return { submissionId: previous.event_id, local, intel, intelError, decision, assessment: null, investigationError: null, event: previous,
+        profile: priorProfile, upgraded: false, notice: fill(LINK_WORDS.recheckWeaker, { level: priorProfile.label }) };
+    }
+    const profile = mergeProfiles(priorProfile, freshProfile);
+    const lastUpgrade = upgrades(profile).pop();
+    const notice = previous
+      ? lastUpgrade?.to.at === freshProfile.at ? fill(LINK_WORDS.upgrade, { from: lastUpgrade.from.label, to: lastUpgrade.to.label }) : LINK_WORDS.recheck
+      : null;
     let assessment: InvestigationResult | null = null; let investigationError: string | null = null;
-    let investigationCaseId: string | null = null;
+    let investigationCaseId: string | null = previous?.investigation_case_id ?? null;
     // ── Triage Investigation (deterministic, 0 Gemini calls) ──
     const { correlation, existingCaseId } = correlationFor({ indicator: local.host, scentId, mechanics: ["deceptive_link", "download", "malicious_destination"] });
     const triage = evaluateTriage(linkTriageEvidence({
@@ -1571,8 +1668,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       credentialInteraction: local.signals.some((s) => s.code === "credential_lure" || s.code === "credentials_in_url"),
     }), { retries: [lookup.retry] });
     reportTriageOutcome(triage, { reputationFailure: lookup.failure }, lookup.retry);
-    // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat, once per correlated case.
-    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
+    // Tier 2 (Magnum DI) runs ONLY for a deterministic Possible Threat, once per correlated case. A case that
+    // already has an investigation keeps it.
+    if (!investigationCaseId && triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
       if (existingCaseId) investigationCaseId = existingCaseId;
       else try {
         const remote = await apiPost<{ investigation_case_id?: string | null; verdict?: string; investigation_error?: string | null }>("/link/investigate", "link_investigation", {
@@ -1587,18 +1685,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     // Apollo's deterministic decision stands. Magnum DI investigates asynchronously.
     const isEvent = decision.state !== "resting" || trusted;
+    const now = new Date().toISOString();
     const ev: PatrolEvent = {
+      ...(previous ?? {}),
       event_id: eventId, device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
       state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
       headline: decision.headline,
       what_happened: patrolSafeSummary(decision.what_happened),
-      why: decision.why,
+      why: notice ? [notice, ...decision.why] : decision.why,
       what_to_do: decision.what_to_do,
       indicator_host: intel?.final_url ? (intel.redirect_chain?.[intel.redirect_chain.length - 1] ?? local.host) : local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
-      occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
+      // A re-check keeps the case's first detection time; the re-check's own time is on its Triage record.
+      occurred_at: previous?.occurred_at ?? now, resolved_at: decision.state === "resting" ? (previous?.resolved_at ?? now) : null, trust_allowed: decision.trust_allowed,
       claimed_brand: decision.claimed_brand ?? null,
       investigation_case_id: investigationCaseId,
       triage_investigation: triage,
+      triage_history: previous ? [...(previous.triage_history ?? []), ...(previous.triage_investigation ? [previous.triage_investigation] : [])] : null,
+      evidence_profile: profile,
       // Scent handoff: when checkLink is invoked from a message flow, the caller provides the
       // message event's scent_id so that findScentFor can discover the correlation.
       ...(scentId ? { scent_id: scentId } : {}),
@@ -1613,7 +1716,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         recordNativeFailure("triggerUrgentRuleRefresh", error instanceof Error ? error.message : String(error));
       });
     }
-    return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
+    return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev, profile, upgraded: !!previous, notice };
   }, [correlationFor, deviceId, trust, upsertEvent]);
 
   const blockEvent = useCallback(async (event: PatrolEvent) => {

@@ -639,6 +639,30 @@ async def list_evidence(case_id: str, request: Request, cursor: Optional[str] = 
     return JSONResponse({"items": [repo.evidence_view(r).wire() for r in page], "nextCursor": str(start + 100) if len(rows) > start + 100 else None, "total": len(rows)}, headers=NO_STORE)
 
 
+@router.post("/investigations/{case_id}/evidence-profile", status_code=201)
+async def add_email_evidence_profile(case_id: str, request: Request):
+    """Better email evidence for a case still under investigation (e.g. the original .eml after a screenshot).
+
+    Only Higgins Triage's minimal findings arrive here — never the original email. A finished or expired case
+    answers 410: the server doesn't keep finished investigations, so the phone keeps the new evidence with its case."""
+    from services.email_evidence import EmailEvidenceFindings, attach
+    owner = owner_of(request)
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict) or set(payload) != {"findings"}:
+            raise ValueError("findings only")
+        findings = EmailEvidenceFindings.model_validate(payload["findings"])
+    except (ValidationError, ValueError) as exc:
+        raise http(422, "invalid_input", "Email evidence must be Higgins Triage's structured findings only.") from exc
+    case = await repo.get_case(owner, case_id, for_mutation=True)
+    if case.get("gates") and "email" not in case["gates"]:
+        raise http(409, "conflict", "This investigation isn't about an email.")
+    item, replayed = await attach(owner, case, findings)
+    if not replayed:
+        await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {}})
+    return JSONResponse({"recorded": True, "replayed": replayed, "evidenceId": getattr(item, "id", None)}, status_code=201, headers=NO_STORE)
+
+
 @router.get("/investigations/{case_id}/evidence/{evidence_id}")
 async def get_single_evidence(case_id: str, evidence_id: str, request: Request):
     """Return a single evidence item's metadata. Available even after evidence content expires."""

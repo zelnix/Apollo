@@ -26,6 +26,7 @@ import { saveImageEvidence } from "@/src/store/imageEvidence";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Body, Button, Pill, Card } from "@/src/components/ui";
 import { buildLinkCheckResult } from "@/src/domain/linkCheckResultAdapter";
+import type { LinkVia } from "@/src/domain/triage/linkEvidence";
 import { verifyWebsite } from "@/src/domain/brand";
 import { STATE_NAME } from "@/src/domain/types";
 import { saveCheck } from "@/src/store/savedCheckStore";
@@ -187,8 +188,11 @@ export default function CheckLink() {
   const run = useCallback(async (value: string) => {
     if (!value.trim()) return;
     setBusy(true); setOutcome(null);
-    try { setOutcome(await checkLink(value, params.scent || undefined)); } finally { setBusy(false); }
-  }, [checkLink, params.scent]);
+    // Where the link came from sets how its evidence is described ("Link from a message or email", "Shared from another app").
+    const via: LinkVia = params.source === "email" || params.source === "message" || params.source === "text" ? "message"
+      : params.source === "share" || params.sharedIntakeId ? "shared" : "pasted";
+    try { setOutcome(await checkLink(value, params.scent || undefined, { via })); } finally { setBusy(false); }
+  }, [checkLink, params.scent, params.source, params.sharedIntakeId]);
 
   useEffect(() => {
     if (sharedUrl && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedUrl)); }

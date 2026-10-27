@@ -7,6 +7,7 @@
 import type { DeviceInvestigation } from "../investigation/deviceStore";
 import { investigatorName } from "./messageVoice.ts";
 import { gapPlainEnglish } from "./triage/contract.ts";
+import type { EmailEvidenceProfile } from "./triage/emailEvidence.ts";
 import type { PatrolEvent } from "./types";
 
 export interface CaseSource {
@@ -111,6 +112,26 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: event.source_metadata?.received_at ?? event.occurred_at,
       answered: true,
     });
+  }
+
+  // 2b. The evidence Higgins Triage received (email L1–L4) and, from an original, the server that recorded its
+  //     sender authentication — credited to that server; ApolloSG reports it and never re-checks it.
+  const profile = event.evidence_profile;
+  if (profile) {
+    const label = profile.type === "email" ? "Email evidence" : profile.type === "link" ? "Link evidence" : "Evidence";
+    sources.push({ id: "evidence_profile", name: `${label} received: ${profile.label}`, returned: profile.basis, at: profile.at, answered: true });
+    const auth = profile.type === "email" ? (profile as EmailEvidenceProfile).auth : null;
+    if (auth) {
+      const server = auth.recordedBy === "unknown" ? "The receiving mail server" : auth.recordedBy;
+      const results = (["spf", "dkim", "dmarc"] as const).map((m) => `${m.toUpperCase()} ${auth[m] ?? "not recorded"}`).join(", ");
+      sources.push({
+        id: "auth_results", name: `${server} (sender authentication)`,
+        returned: `Recorded ${results}${auth.receiverConfirmed ? "" : " — ApolloSG couldn't match this server to the ones that delivered the email"}. ApolloSG reported these and didn't re-check them.`,
+        at: profile.at, answered: true,
+      });
+    } else if (profile.type === "email" && profile.rank >= 3) {
+      sources.push({ id: "auth_results", name: "The receiving mail server (sender authentication)", returned: "Recorded no SPF, DKIM or DMARC results in this email.", at: profile.at, answered: false });
+    }
   }
 
   // 3. The deterministic Triage checks — outcome and counts, plus every source that didn't answer.

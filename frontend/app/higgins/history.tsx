@@ -11,6 +11,7 @@ import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { deleteInvestigation, listInvestigations, subscribeDeviceInvestigations, type DeviceInvestigationMeta } from "@/src/investigation/deviceStore";
 import { deleteImageEvidenceFor } from "@/src/store/imageEvidence";
 import { deleteOriginalSource } from "@/src/store/originalSource";
+import { deleteOriginalEmailsFor } from "@/src/store/originalEmail";
 import { deleteReportProgress } from "@/src/store/reportProgress";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -73,6 +74,7 @@ export default function HigginsHistoryScreen() {
     await deleteInvestigation(item.caseId);
     await deleteImageEvidenceFor(item.caseId).catch(() => undefined);
     await deleteOriginalSource(item.caseId).catch(() => undefined);
+    await deleteOriginalEmailsFor(item.caseId).catch(() => undefined);
     await deleteReportProgress(item.caseId).catch(() => undefined);
     load();
   };

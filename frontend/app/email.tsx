@@ -7,6 +7,7 @@ import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Clock from "lucide-react-native/icons/clock";
+import FileText from "lucide-react-native/icons/file-text";
 import ImageIcon from "lucide-react-native/icons/image";
 import Inbox from "lucide-react-native/icons/inbox";
 import Mail from "lucide-react-native/icons/mail";
@@ -43,7 +44,11 @@ import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { buildEmailCheckResult } from "@/src/domain/emailCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
-import { type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
+import { type EmailOutcome, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
+import { EMAIL_WORDS, upgradeSentence, type EmailEvidenceProfile, type EmailVia } from "@/src/domain/triage/emailEvidence";
+import { looksLikeRawEmail } from "@/src/domain/triage/emailOriginal";
+import { pickOriginalEmail, readEmailFile, readOriginal, readOriginalText, type OriginalEmail } from "@/src/store/originalEmail";
+import { isOriginalEmailFile } from "@/src/share/classifyShare";
 import type { EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
@@ -194,7 +199,11 @@ export default function CheckEmail() {
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedBody = shared?.text || shared?.webUrl || params.text || "";
   const sharedBodyRaw = useRef(sharedBody);         // original for backend
+  // A shared original email file (.eml) — read on this phone, never uploaded.
+  const sharedEml = shared?.files?.find(isOriginalEmailFile) ?? null;
   const autoRan = useRef(false);
+  /** The text in the box came from the connected mailbox (until the person edits it). */
+  const fromInbox = useRef(false);
   const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox } = useApollo();
 
   // ── Input state ──
@@ -211,10 +220,15 @@ export default function CheckEmail() {
     phones: EvidencePhoneResult[];
     /** The Magnum DI case Apollo opened for this email — null when Triage found no possible threat. */
     caseId: string | null;
+    /** Higgins Triage's classification of the evidence (L1–L4), with every earlier level. */
+    profile: EmailEvidenceProfile;
+    /** What just changed with the evidence: an upgrade, or an original that didn't match. */
+    notice: string | null;
     explanation: null;
     assessment: null;
   } | null>(null);
   const [verify, setVerify] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   // ── Account state ──
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
@@ -270,13 +284,27 @@ export default function CheckEmail() {
   // Shared into Apollo from another app (Share → Apollo, or an apollo://email deep link): check it
   // on arrival and show the email that is being checked, so the share always lands in a real check.
   useEffect(() => {
-    if (!sharedBody.trim() || !ready || !setupDone || autoRan.current) return;
+    if (!ready || !setupDone || autoRan.current) return;
+    if (sharedEml) {
+      autoRan.current = true;
+      void (async () => {
+        try {
+          const uri = /^[a-z]+:\/\//i.test(sharedEml.path) ? sharedEml.path : `file://${sharedEml.path}`;
+          const original = await readOriginal(await readEmailFile({ uri, size: sharedEml.size }));
+          await run({ from: "", subject: "", raw: "", via: "eml_file", original });
+        } catch (e) {
+          showToast(e instanceof Error ? e.message : "ApolloSG couldn\u2019t read that email file.", "growling");
+        }
+      })();
+      return;
+    }
+    if (!sharedBody.trim()) return;
     autoRan.current = true;
     setEmailTextOpen(true);
     // Send the ORIGINAL raw content to the backend for full analysis.
-    void run({ from: "", subject: "", raw: sharedBodyRaw.current });
+    void run({ from: "", subject: "", raw: sharedBodyRaw.current, via: "shared" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharedBody, ready, setupDone]);
+  }, [sharedBody, sharedEml?.path, ready, setupDone]);
 
   // The simulated inbox exists only where the preview cannot reach a real mailbox, and never
   // alongside a connected one.
@@ -423,6 +451,7 @@ export default function CheckEmail() {
       setFrom(detail.from || msg.from);
       setSubject(detail.subject || msg.subject);
       setRaw(detail.body || msg.snippet);
+      fromInbox.current = true;
       setPickerVisible(false);
       // Auto-investigate the selected email
       const body = detail.body || msg.snippet;
@@ -469,12 +498,52 @@ export default function CheckEmail() {
   // away without waiting for state to settle. The flow below is the ONE real email check: same
   // on-device analysis, same /message/analyse call (real Triage, and real Magnum DI where Triage
   // escalates), same event. There is no separate path for simulated input.
-  const run = async (source?: { from: string; subject: string; raw: string }) => {
+  const showOutcome = (outcome: EmailOutcome, meta: { sender: string; subject: string; account?: string; notice?: string | null }) => {
+    const a = outcome.analysis;
+    setResult({
+      submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls, phones: outcome.phones,
+      caseId: outcome.investigationCaseId, profile: outcome.profile, notice: meta.notice ?? null, explanation: null, assessment: null,
+    });
+    void recordEmailCheck({
+      id: outcome.submissionId,
+      at: new Date().toISOString(),
+      state: a.state,
+      summary: a.title,
+      subject: meta.subject || undefined,
+      sender: meta.sender || undefined,
+      account: meta.account,
+      eventId: outcome.event.event_id,
+      scenario: a.scenario,
+    });
+    // An upgrade re-checks the same email in its case — it isn't a new check.
+    if (!outcome.upgraded) void recordCheck("email", { at: new Date().toISOString(), state: a.state, summary: a.title });
+    void refreshRecentChecks();
+  };
+
+  /** Check an original message (an .eml file or pasted original source), read on this phone from its real headers.
+   *  With `upgradeEventId` it is added to that email's case and re-triaged there. */
+  const checkOriginal = async (original: OriginalEmail, via: EmailVia, upgradeEventId?: string) => {
+    const outcome = await checkEmail({ from: "", subject: "", raw: "", via, original, upgradeEventId });
+    const sender = outcome.analysis.parsed.fromAddress ?? "";
+    const subj = outcome.analysis.parsed.subject ?? "";
+    setFrom(sender);
+    setSubject(subj);
+    showOutcome(outcome, {
+      sender, subject: subj, account: selectedAccount || undefined,
+      notice: outcome.upgradeMismatch ? EMAIL_WORDS.upgradeMismatch : outcome.upgraded ? upgradeSentence(outcome.profile) : null,
+    });
+  };
+
+  const run = async (source?: { from: string; subject: string; raw: string; via?: EmailVia; original?: OriginalEmail }) => {
     setBusy(true);
     try {
       const rawInput = source?.raw ?? raw;
       const subjectInput = source?.subject ?? subject;
       const from = source?.from ?? fromState;
+      const via: EmailVia = source?.via ?? (fromInbox.current ? "connected_mailbox" : "pasted");
+      if (source?.original) { await checkOriginal(source.original, via); return; }
+      // Pasted original source ("Show original") is read on this phone from its real headers and parts.
+      if (looksLikeRawEmail(rawInput.slice(0, 65536))) { await checkOriginal(await readOriginalText(rawInput), "raw_source"); return; }
       const safeRaw = redactUserSecrets(rawInput);
       const safeSubject = redactUserSecrets(subjectInput);
       if (safeRaw !== rawInput) setRaw(safeRaw); else if (source) setRaw(rawInput);
@@ -483,30 +552,39 @@ export default function CheckEmail() {
       // ONE check → ONE patrol record → at most ONE Magnum DI case (opened only where Triage finds a
       // possible threat, and reused when this email correlates with something already investigated).
       const outcome = await checkEmail({
-        from, subject: safeSubject, raw: safeRaw,
+        from, subject: safeSubject, raw: safeRaw, via,
         captured: { from, subject: subjectInput, text: rawInput },
       });
-      const a = outcome.analysis;
-      setResult({
-        submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls, phones: outcome.phones,
-        caseId: outcome.investigationCaseId, explanation: null, assessment: null,
+      showOutcome(outcome, {
+        sender: from.trim() || outcome.analysis.parsed.fromAddress || "",
+        subject: safeSubject.trim() || outcome.analysis.parsed.subject || "",
+        account: via === "simulated" ? simulation.accountLabel : selectedAccount || undefined,
       });
-      void recordEmailCheck({
-        id: outcome.submissionId,
-        at: new Date().toISOString(),
-        state: a.state,
-        summary: a.title,
-        subject: safeSubject.trim() || a.parsed.subject || undefined,
-        sender: from.trim() || a.parsed.fromAddress || undefined,
-        account: source ? simulation.accountLabel : selectedAccount || undefined,
-        eventId: outcome.event.event_id,
-        scenario: a.scenario,
-      });
-      void recordCheck("email", { at: new Date().toISOString(), state: a.state, summary: a.title });
-      void refreshRecentChecks();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Couldn\u2019t read that email.", "barking");
     } finally { setBusy(false); }
+  };
+
+  /** "Open the original email (.eml)" on the input screen: the file is read on this phone, never uploaded. */
+  const openOriginal = async () => {
+    try {
+      const original = await pickOriginalEmail();
+      if (original) await run({ from: "", subject: "", raw: "", via: "eml_file", original });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "ApolloSG couldn\u2019t read that email file.", "growling");
+    }
+  };
+
+  /** "Add the original email (.eml)" on the result: re-triages THIS email's case with the stronger evidence. */
+  const addOriginal = async (eventId: string) => {
+    try {
+      const original = await pickOriginalEmail();
+      if (!original) return;
+      setUpgrading(true);
+      await checkOriginal(original, "eml_file", eventId);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "ApolloSG couldn\u2019t read that email file.", "growling");
+    } finally { setUpgrading(false); }
   };
 
   // ── Navigation ──
@@ -528,6 +606,7 @@ export default function CheckEmail() {
       urlResults: result.urls,
       phones: result.phones,
       explanation: result.explanation,
+      profile: result.profile,
     });
     const askPrompt = `About the email I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const emailActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
@@ -576,14 +655,21 @@ export default function CheckEmail() {
         setRaw("");
         setFrom("");
         setSubject("");
+        fromInbox.current = false;
         void refreshRecentChecks();
       },
     });
+    const evidence = {
+      onAddOriginal: () => void addOriginal(result.event.event_id),
+      addingOriginal: upgrading,
+      evidenceNotice: result.notice,
+    };
 
     return (
       <>
         {result.caseId ? (
           <InvestigationCheckScreen
+            key={result.event.event_id}
             result={model}
             investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
             investigationQuestion={askPrompt}
@@ -591,10 +677,17 @@ export default function CheckEmail() {
             eventId={result.event.event_id}
             caseId={result.caseId}
             actions={emailActions}
+            {...evidence}
           />
         ) : (
-          <CheckResultScreen result={model} actions={emailActions} />
+          <CheckResultScreen key={result.event.event_id} result={model} actions={emailActions} {...evidence} />
         )}
+        <CheckingModal
+          visible={upgrading}
+          title="Checking the original email"
+          subject={subject.trim() || undefined}
+          description={"Higgins Triage is reading its full headers on this phone\nand re-checking the email with them."}
+        />
         {result.event ? (
           <RecoveryFlow
             event={result.event}
@@ -657,8 +750,8 @@ export default function CheckEmail() {
           info={{
             title: "About email checking",
             body: [
-              "Paste a forwarded email or fill in the sender, subject and body. Apollo analyses the email for scam indicators, phishing patterns and suspicious links.",
-              "Apollo checks sender reputation, authentication headers, embedded links and content patterns. Raw content is discarded after the assessment.",
+              "Paste a forwarded email, paste its original source (\u201cShow original\u201d), or open the original email file (.eml). Apollo analyses the email for scam indicators, phishing patterns and suspicious links.",
+              "With the original email, Higgins Triage also reads its full headers and the sender authentication (SPF, DKIM, DMARC) the receiving mail server recorded. ApolloSG reports those results as recorded and doesn\u2019t re-check them. The original is read and kept on this phone \u2014 it isn\u2019t uploaded.",
               "A manual check works without connecting any email account. Account selection is for organising your checks across multiple email addresses.",
             ],
           }}
@@ -797,6 +890,22 @@ export default function CheckEmail() {
             </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
           </Pressable>
+          {/* Open the original email (.eml) — read on this phone, full headers included */}
+          <Pressable
+            testID="email-open-original"
+            accessibilityRole="button"
+            accessibilityLabel="Open the original email file"
+            disabled={busy}
+            onPress={() => void openOriginal()}
+            style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.actionCardHeader}>
+              <View style={s.actionCardIconWell}><FileText size={20} color={colors.onSurface} /></View>
+              <Text style={s.actionCardTitle}>Open the original email (.eml)</Text>
+              <ChevronRight size={18} color={colors.muted} />
+            </View>
+            <Text style={s.actionCardSub}>Lets Higgins Triage read the full headers and the sender authentication the receiving mail server recorded. Read on this phone — the file isn&apos;t uploaded.</Text>
+          </Pressable>
         </View>
 
         {/* ── Enter email text (expandable) ── */}
@@ -818,8 +927,8 @@ export default function CheckEmail() {
               testID="email-body"
               style={s.emailInput}
               value={raw}
-              onChangeText={setRaw}
-              placeholder="Paste email content here (sender, subject, message)"
+              onChangeText={(t) => { fromInbox.current = false; setRaw(t); }}
+              placeholder="Paste the email (sender, subject, message) or its original source (“Show original”)"
               placeholderTextColor={colors.muted}
               multiline
               textAlignVertical="top"
@@ -1026,7 +1135,7 @@ export default function CheckEmail() {
         onSelect={(id) => {
           setEmailSourcePicker(false);
           const sim = simulation.emails.find((x) => x.id === id);
-          if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body });
+          if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body, via: "simulated" });
         }}
         onClose={() => setEmailSourcePicker(false)}
         testID="email-source-picker"
