@@ -165,8 +165,7 @@ const CATALOGUE = {
           "shared": "Shared from another app",
           "eml_file": "Original email file (.eml)",
           "raw_source": "Original message source, pasted",
-          "connected_mailbox": "Retrieved from your connected email account",
-          "simulated": "Preview sample email"
+          "connected_mailbox": "Retrieved from your connected email account"
         },
         "authRecorded": "Recorded by {server}, the mail server that received this email. ApolloSG reports this result as recorded and didn't re-check it.",
         "authUnconfirmed": "Recorded in the email by {server}. ApolloSG couldn't match that to the servers that delivered it, and didn't re-check it.",
@@ -306,7 +305,6 @@ const CATALOGUE = {
           "shared": "Shared from another app",
           "captured": "Notification on this phone",
           "inbox": "Your messages on this phone",
-          "simulated": "Preview sample message",
           "recheck": "Re-check from the case"
         },
         "notes": {
@@ -444,8 +442,7 @@ const CATALOGUE = {
         "via": {
           "picked": "File chosen on this phone",
           "shared": "Shared from another app",
-          "name_only": "File name you entered",
-          "simulated": "Preview sample file"
+          "name_only": "File name you entered"
         },
         "notes": {
           "byName": "Taken from the file's name. A name is only a claim.",

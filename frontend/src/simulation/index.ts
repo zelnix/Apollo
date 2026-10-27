@@ -17,7 +17,6 @@ import { registerSimulatedRead } from "@/src/domain/imagePrivacy";
 import type { PreviewSimulation } from "@/src/simulationContract";
 
 import { SimulatedPicker } from "./SimulatedPicker";
-import { EXAMPLE_THREAT_EVENT } from "./exampleThreatCase";
 import { SIMULATED_EMAILS } from "./simulatedInbox";
 import {
   SIMULATED_APPS, SIMULATED_CALLS, SIMULATED_DEVICE_CONCERNS, SIMULATED_FILES,
@@ -46,7 +45,6 @@ export const simulation: PreviewSimulation = {
   Picker: SimulatedPicker,
   registerImage: registerPreviewImage,
   read: simulatedRead,
-  exampleCase: EXAMPLE_THREAT_EVENT,
 };
 
 // The image screening path never imports this folder — it accepts a registration instead, so a

@@ -168,15 +168,12 @@ export function useDiTransactions(caseId: string | null, refreshKey?: unknown): 
  *  production included. A simulated verdict must never pass for a Magnum DI investigation. */
 export function SimulatedAnswerNotice({ caseId, refreshKey, style }: { caseId: string | null; refreshKey?: unknown; style?: StyleProp<ViewStyle> }) {
   const s = useStyles();
-  const { records } = useDiTransactions(caseId, refreshKey);
-  if (!records.some((record) => record.simulated)) return null;
+  const { records, trace } = useDiTransactions(caseId, refreshKey);
+  if (!records.some((record) => record.simulated) && !trace?.flyby?.simulated && !trace?.magnum?.simulated) return null;
   return (
     <View style={[s.diNotice, style]} testID="simulated-answer-notice" accessibilityRole="alert">
-      <Text style={s.diNoticeText}>SIMULATED ANSWER — not from Magnum DI</Text>
-      <Text style={s.sourceSub}>
-        The preview simulator answered this investigation in place of Magnum DI, so this verdict is not a real
-        investigation and must not be relied on.
-      </Text>
+      <Text style={s.diNoticeText}>SIMULATED</Text>
+      <Text style={s.sourceSub}>The preview stood in for the outside service Magnum DI calls. Everything else ran exactly as in production.</Text>
     </View>
   );
 }
@@ -383,7 +380,7 @@ function ResponseBody({ records, trace, hasCase }: { records: DiTransaction[]; t
               <DiRow label="Investigation ID:" value={record.investigationId} />
               <DiRow label="Engine:" value={record.engine} />
               <DiRow label="Environment:" value={record.environment} />
-              <DiRow label="Mode:" value={record.mode} note={record.simulated ? "The preview simulator answered; Magnum DI was not engaged." : "Magnum DI was engaged."} />
+              <DiRow label="Mode:" value={record.mode} note={record.simulated ? "Magnum DI was engaged; the preview stood in for the outside service Magnum DI calls." : "Magnum DI was engaged."} />
               <DiRow label="Status:" value={record.failureCode ? `${record.status ?? "failed"} (${record.failureCode})` : record.status ?? "not recorded"} />
               <DiRow label="Date/time:" value={record.occurredAt ? formatDateTime(record.occurredAt) : "not recorded"} />
             </View>
@@ -407,7 +404,7 @@ function ResponseBody({ records, trace, hasCase }: { records: DiTransaction[]; t
                 label="Cost:"
                 value={p.cost?.amountUsd == null ? "not recorded" : `US$${p.cost.amountUsd.toFixed(6)}`}
                 note={record.simulated
-                  ? "Simulated — not billed. Magnum DI was not engaged."
+                  ? "Simulated — not billed. The preview stood in for the outside service Magnum DI calls."
                   : `${p.cost?.basis === "estimated" ? "Estimated" : "Recorded"} — ${p.cost?.note ?? ""}`}
               />
             </View>
@@ -460,8 +457,8 @@ export function DiReport({ caseId, triage }: { caseId: string | null; triage?: T
       {state.records.map((record, index) => record.simulated ? (
         <View key={index} style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
           <Text style={s.diNoticeText}>
-            SIMULATED — the preview simulator answered in place of Magnum DI. The workflow, the request and the
-            processing below are real; the response is not a real investigation and must not be relied on.
+            SIMULATED — the preview stood in for the outside service Magnum DI calls. The workflow, the request and the processing below ran
+            exactly as in production.
           </Text>
         </View>
       ) : record.notice ? (

@@ -59,8 +59,8 @@ def _briefing(ind: Indicators, subject: str | None, assessment: str) -> str:
             official = ind.mismatched[0][1]
             paras.append(
                 "Impersonation works by borrowing a name you already trust, so the destination is never questioned. "
-                f"Here the name and the destination disagree, and that is what this conclusion rests on: a genuine "
-                f"{subject or 'organisation'} message has no reason to send you anywhere other than {official}.")
+                f"Here the name and the destination disagree, and that is what this conclusion rests on: the link "
+                f"isn't {official}, {subject or 'the organisation'}'s published domain.")
         if ind.credentials:
             paras.append(
                 "Credentials are the point of a request like this. Once they are typed in they can be used straight "
@@ -208,7 +208,7 @@ def analyse(blocks: list[EvidenceBlock], question: str = "") -> dict:
     else:
         assessment, attention, outcome = "no_concern_found_within_scope", "none", "no_scam_indicators"
         overview = ("Nothing in this material asks for money, credentials or urgent action, and it contains no link. "
-                    "Nothing here needs action — this covers only what was submitted.")
+                    "This covers only what was submitted.")
         attention_reason = None
 
     uncertainties: list[str] = []

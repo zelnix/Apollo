@@ -12,7 +12,7 @@ function header(record: DiTransaction): string[] {
     line("Investigation ID", record.investigationId),
     line("Engine", record.engine),
     line("Environment", record.environment),
-    line("Mode", record.simulated ? "Simulated — the preview simulator answered; Magnum DI was not engaged" : "Live — Magnum DI engaged"),
+    line("Mode", record.simulated ? "Simulated — Magnum DI engaged; the preview stood in for the outside service Magnum DI calls" : "Live — Magnum DI engaged"),
     line("Date/time", record.occurredAt),
   ];
 }
@@ -56,7 +56,7 @@ export function diResponseText(record: DiTransaction): string {
   const p = record.processing;
   const tokenNote = provenanceLabel(!!p.tokensAreSimulated, p.tokensAreEstimates);
   return [
-    `APOLLO — ${record.simulated ? "SIMULATOR RESPONSE (in place of Magnum DI)" : "RESPONSE FROM MAGNUM DI"} (Deep Investigation)`,
+    `APOLLO — ${record.simulated ? "SIMULATED RESPONSE" : "RESPONSE FROM MAGNUM DI"} (Deep Investigation)`,
     "",
     ...header(record),
     line("Status", record.failureCode ? `${record.status ?? "failed"} (${record.failureCode})` : record.status),

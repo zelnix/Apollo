@@ -311,14 +311,15 @@ def storable(question: str) -> bool:
 GEMINI_PUBLISHER = "Higgins (written by an AI tool)"
 
 
-async def remember_gemini_answer(question: str, answer: str) -> bool:
+async def remember_gemini_answer(question: str, answer: str, simulated: bool = False) -> bool:
     """Gemini's answer to a general question, saved as reusable intelligence (AI-generated, never KB knowledge).
-    A question with personal detail is never saved."""
+    A question with personal detail is never saved. A simulated answer is saved the same way, tagged simulated."""
     from services import reusable_intel as intel
     if not storable(question):
         return False
     await intel.put(intel.subject_key("question", question), intel.GEMINI, intel.GENERAL_ANSWER, "general_answer", {"answer": answer},
-                    knowledge_class="ai_generated_answer", ai_generated=True, question=question, provenance={"publisher": GEMINI_PUBLISHER})
+                    knowledge_class="ai_generated_answer", ai_generated=True, question=question, provenance={"publisher": GEMINI_PUBLISHER},
+                    simulated=simulated)
     await intel.count("higgins_general_question", "cache_write")
     return True
 

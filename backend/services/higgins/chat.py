@@ -219,6 +219,8 @@ class ChatReply(Wire):
     # apollo = Apollo's own records; knowledge_base = quoted KB sources; gemini = general-knowledge fallback
     answered_by: Literal["apollo", "knowledge_base", "gemini"] = "apollo"
     reused: Optional[ReusedResult] = None
+    # The answer came from the preview's stand-in for Gemini. It is processed exactly as a live one; this only tags it.
+    simulated: bool = False
     retention: ChatRetention
 
 
@@ -339,7 +341,8 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
     # The sufficiency check (services/sufficiency.py) decides whether Apollo already knows enough to skip Gemini.
     entries = await knowledge.search(clean)
     query_terms = knowledge.terms(clean)
-    saved = [] if entries else await intel.find_question(clean, lambda q: knowledge.answers_question(q, query_terms))
+    saved = [] if entries else await intel.find_question(clean, lambda q: knowledge.answers_question(q, query_terms),
+                                                         simulated=provider.get_provider_mode() == "preview")
     need = sufficiency.Requirement(saved[0]["subject_key"] if saved else intel.subject_key("question", clean), needs=("answer",))
     decision = sufficiency.assess(need, kb=entries, cache=saved)
     if decision.kb:
@@ -355,7 +358,8 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": knowledge.present_saved_answer(record), "navigate": []},
                                     "saved_answer", ["reusable_intelligence"], answered_by="gemini",
                                     reused=ReusedResult(provider=record["provider"], ai_generated=bool(record.get("ai_generated")),
-                                                        last_checked_at=record["last_verified_at"], expires_at=record["expires_at"]))
+                                                        last_checked_at=record["last_verified_at"], expires_at=record["expires_at"]),
+                                    simulated=bool(record.get("simulated")))
 
     # Nothing Apollo holds answers it. Outside Higgins' scope → fixed reply, no AI.
     if not in_scope(clean):
@@ -375,9 +379,8 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         parsed = ModelChatReply(answer="My answer came back in a form ApolloSG couldn't read, so I have nothing to show you for that question. "
                                        "Nothing has been made up in its place — please ask again.")
     else:
-        # A simulated (preview) answer is never saved as if Gemini had written it.
-        if not final.simulated:
-            await knowledge.remember_gemini_answer(clean, parsed.answer)
+        # Saved exactly as production saves it; a simulated answer is tagged, and only the preview ever reuses it.
+        await knowledge.remember_gemini_answer(clean, parsed.answer, simulated=final.simulated)
     investigation_available = parsed.recommend_investigation or parsed.destination is not None
     actions = []
     if investigation_available:
@@ -392,7 +395,7 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                      evidence_basis=parsed.evidence_basis, uncertainty=parsed.uncertainty,
                      clarification=parsed.clarification, context_used=[ContextUse(source="gemini_general_knowledge", status="ok")],
                      suggested_actions=actions, navigation=navigation, investigation_available=investigation_available,
-                     answered_by="gemini", retention=ChatRetention(server_content_expires_at=expires.isoformat()))
+                     answered_by="gemini", simulated=final.simulated, retention=ChatRetention(server_content_expires_at=expires.isoformat()))
 
 
 # ── Deterministic helpers ─────────────────────────────────────────────────────
@@ -510,7 +513,7 @@ _ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|
 
 async def _deterministic(owner: str, conversation_id: str, turn_id: str, message: str, result: dict, label: str,
                          provenance: list[str], *, uncertainty: list[str] | None = None, answered_by: str = "apollo",
-                         reused: ReusedResult | None = None) -> ChatReply:
+                         reused: ReusedResult | None = None, simulated: bool = False) -> ChatReply:
     """Higgins presents what is already established. No Gemini call is made on this path."""
     expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, message, result["answer"], classification=label,
                                              context_sources=provenance, investigation_available=False)
@@ -519,5 +522,5 @@ async def _deterministic(owner: str, conversation_id: str, turn_id: str, message
                      uncertainty=(uncertainty or []) + limitation, clarification=None,
                      context_used=[ContextUse(source=item, status="ok") for item in provenance], suggested_actions=[],
                      navigation=_navigation(result.get("navigate") or []), sources=[ChatSource(**src) for src in result.get("sources") or []],
-                     investigation_available=False, answered_by=answered_by, reused=reused,
+                     investigation_available=False, answered_by=answered_by, reused=reused, simulated=simulated,
                      retention=ChatRetention(server_content_expires_at=expires.isoformat()))

@@ -53,6 +53,7 @@ export function EvidenceProfileCard({ profile, onAddOriginal, busy, notice, test
       ) : null}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
         <Pill tone="neutral" label={profile.label} testID={`${testID}-level`} />
+        {profile.simulated ? <Pill tone="neutral" label="Simulated" testID={`${testID}-simulated`} /> : null}
       </View>
       <Text style={s.body} testID={`${testID}-basis`}>{profile.basis}</Text>
       <Text style={s.meta}>{`Classified by ${profile.classifiedBy} · ${profile.viaLabel}`}</Text>

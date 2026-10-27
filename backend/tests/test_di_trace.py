@@ -79,7 +79,7 @@ def test_the_di_record_never_carries_the_model_or_provider_tool_name():
                             "request": {"tools": ["google_search"], "investigationPrompt": "x"}, "created_at": AT})
     assert "modelRequested" not in wired
     assert wired["request"]["tools"] == ["web_search"]
-    assert wired["notice"] == "SIMULATED — the preview simulator answered; Magnum DI was not engaged"
+    assert wired["notice"] == "SIMULATED — the preview stood in for the outside service Magnum DI calls; everything else ran exactly as in production"
     assert "gemini" not in repr(wired).lower() and "AI call" not in repr(wired)
 
 

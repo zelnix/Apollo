@@ -33,6 +33,23 @@ test("message levels follow how it reached ApolloSG; who really sent it is never
   }
 });
 
+test("a preview sample is processed exactly as the source it stands in for — only tagged Simulated", () => {
+  const base = { sender: "AusPost", signals: {}, urls: [], phones: [] };
+  const { simulated, ...sample } = buildMessageProfile({ ...base, via: "inbox", simulated: true });
+  const { at: _a, history: _h, ...live } = buildMessageProfile({ ...base, via: "inbox" });
+  assert.equal(simulated, true);
+  assert.deepEqual({ ...sample, at: undefined, history: undefined }, { ...live, at: undefined, history: undefined });
+  assert.equal(sample.label, "Read from your messages");
+  assert.equal(buildMessageProfile({ ...base, via: "inbox" }).simulated, undefined, "a real input is never tagged");
+  // The tag survives a merge either way round.
+  assert.equal(mergeProfiles(buildMessageProfile({ ...base, via: "inbox", simulated: true }), buildMessageProfile({ ...base, via: "pasted" })).simulated, true);
+  const a = analyseFile({ name: "Invoice.pdf", size: 10, mime: "application/pdf", headBytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]), textSample: "", source: "email" });
+  const file = buildFileProfile({ via: "picked", simulated: true, name: "Invoice.pdf", analysis: a, inspected: true });
+  assert.equal(file.label, buildFileProfile({ via: "picked", name: "Invoice.pdf", analysis: a, inspected: true }).label);
+  assert.equal(file.viaLabel, "File chosen on this phone");
+  assert.equal(file.simulated, true);
+});
+
 test("message links and numbers: checked, partly checked or not checked — and gaps become signals", () => {
   const p = buildMessageProfile({
     via: "pasted", sender: "", signals: { platformSwitch: true, callbackNumber: "1300 000 000" },

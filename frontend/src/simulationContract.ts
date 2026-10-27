@@ -6,7 +6,6 @@
  * declared as this type, so the compiler itself guarantees there is no configuration in which only
  * part of the simulation system is present: every member is on both sides or neither.
  */
-import type { PatrolEvent } from "@/src/domain/types";
 import type { SimulatedChoice } from "@/src/simulation/SimulatedPicker";
 import type { SimulatedEmail } from "@/src/simulation/simulatedInbox";
 import type {
@@ -57,6 +56,4 @@ export interface PreviewSimulation {
   registerImage: (uri: string, sampleId: string) => void;
   /** The simulated text read. Always null in a production build. */
   read: (uri: string) => SimulatedImageRead | null;
-  /** The clearly-labelled example threat case. Null in a production build. */
-  exampleCase: PatrolEvent | null;
 }

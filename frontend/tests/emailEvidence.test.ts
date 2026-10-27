@@ -148,6 +148,16 @@ test("L1 profile: no header capability is claimed and authentication says it nee
   assert.equal(profile.capabilities.find((c) => c.id === "dmarc")?.note, "Needs the original email with its full headers.");
 });
 
+test("a preview inbox email is processed exactly as one retrieved from the mailbox — only tagged Simulated", () => {
+  const analysis = analyseEmail("From: security@commbank.com.au\nSubject: verify\n\nLog in now http://x.co/login");
+  const sample = buildEmailProfile({ via: "connected_mailbox", analysis, simulated: true });
+  const live = buildEmailProfile({ via: "connected_mailbox", analysis });
+  assert.equal(sample.simulated, true);
+  assert.equal(live.simulated, undefined);
+  assert.deepEqual([sample.level, sample.label, sample.viaLabel, sample.capabilities], [live.level, live.label, live.viaLabel, live.capabilities]);
+  assert.equal(emailLevelFor("connected_mailbox", false), sample.level);
+});
+
 test("Triage: an L1 email can't present sender authentication as checked — 'No threat found by available checks'", () => {
   const analysis = analyseEmail("From: Coles <receipts@coles.com.au>\nSubject: Your receipt\n\nThanks for shopping with us. Total $64.20.");
   const profile = buildEmailProfile({ via: "pasted", analysis });

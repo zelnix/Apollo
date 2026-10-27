@@ -135,8 +135,9 @@ test("there is no configuration where only part of the simulation system is pres
   for (const key of ["texts", "calls", "apps", "files", "links", "deviceConcerns", "screenshots", "emails"] as const) {
     assert.deepEqual(absent[key], [], `${key} must be empty in a production build`);
   }
-  assert.equal(absent.exampleCase, null);
   assert.equal(absent.read("file:///anything"), null);
+  assert.ok(!("exampleCase" in absent), "no hand-written case: every case comes from Apollo's own checks");
+  assert.ok(!existsSync(join(ROOT, "src/simulation/exampleThreatCase.ts")));
   assert.equal(absent.Picker({ title: "", note: "", items: [], onSelect: () => {}, testID: "x" }), null);
 
   // …and the preview source really does carry samples.

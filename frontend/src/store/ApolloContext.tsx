@@ -112,7 +112,7 @@ const deviceMeta = async () => ({
   ...(await deviceInfo()),
 });
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", exampleSeeded: "apollo.example.threat.seeded", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen", notifPrefs: "apollo.notification.prefs" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen", notifPrefs: "apollo.notification.prefs" };
 /** The device's region, so a local number in captured material ("0412 345 678") can be resolved. */
 const deviceRegion = () => Localization.getLocales()[0]?.regionCode ?? undefined;
 
@@ -156,7 +156,11 @@ export interface MessageOutcome { submissionId: string; analysis: MessageAnalysi
   /** Higgins Triage's classification of how the message reached ApolloSG. */
   profile?: EvidenceProfile | null }
 /** How a message reached ApolloSG (sets its evidence level), and the case a re-check belongs to. */
-export interface MessageCheckOptions { via?: MessageVia; receivedAt?: string | null; upgradeEventId?: string | null }
+export interface MessageCheckOptions {
+  via?: MessageVia; receivedAt?: string | null; upgradeEventId?: string | null;
+  /** The input came from a preview sample standing in for `via`. Processed exactly as `via`; only tagged. */
+  simulated?: boolean;
+}
 /** How a number came to be checked (sets its evidence level) — ApolloSG's call screening passes when it saw the call. */
 export interface NumberCheckOptions { deliberate?: boolean; carrierWarning?: CarrierWarning; via?: CallVia; screenedAt?: string | null }
 /** One email check: the deterministic analysis, the link reputation behind it, the single patrol
@@ -175,6 +179,8 @@ export interface EmailCheckInput {
   from: string; subject: string; raw: string;
   captured?: { from: string; subject: string; text: string };
   via?: EmailVia;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged Simulated. */
+  simulated?: boolean;
   original?: { parsed: ParsedOriginal; binary: string } | null;
   /** Add this evidence to an existing email case and re-triage it there, keeping its history. */
   upgradeEventId?: string | null;
@@ -653,32 +659,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           setSetupDone(!!done);
           if (ev) {
             const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent)
-              // The example case is sample data and only exists in a preview build: refresh its
-              // wording from the current definition, but never overwrite what the person did with it.
-              .map((event) => (simulation.exampleCase && event.event_id === simulation.exampleCase.event_id
-                ? {
-                    ...simulation.exampleCase,
-                    status: event.status,
-                    state: event.state,
-                    resolved_at: event.resolved_at,
-                    reopened_at: event.reopened_at,
-                    previously_resolved_at: event.previously_resolved_at,
-                  }
-                : event));
+              // The hand-written example case an earlier preview seeded never went through Apollo's checks,
+              // so it is dropped: every case in Patrol is one Apollo's own rules produced.
+              .filter((event) => event.event_id !== "preview-mock-threat-001");
             eventsRef.current = restored;
             alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state]));
             setEvents(restored);
-          }
-          // Seed the clearly-labelled EXAMPLE threat case once, so the full investigation UI can be
-          // seen before a real check has run. It is sample data, so it only exists in a preview
-          // build; it is seeded only when there is nothing else in Patrol, and only once.
-          if (simulation.exampleCase && eventsRef.current.length === 0 && !(await storage.getItem<boolean>(K.exampleSeeded, false))) {
-            const seed = [simulation.exampleCase];
-            eventsRef.current = seed;
-            alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state]));
-            setEvents(seed);
-            void storage.setItem(K.exampleSeeded, true);
-            void storage.setItem(K.events, JSON.stringify(seed));
           }
           if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
           if (done) {
@@ -1066,7 +1052,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const priorProfile = previous?.evidence_profile?.type === "message" ? previous.evidence_profile : null;
     const profile = mergeProfiles(priorProfile, buildMessageProfile({
       via: options?.via ?? "pasted", level: options?.via === "recheck" ? priorProfile?.level : undefined,
-      sender, receivedAt: options?.receivedAt ?? null,
+      sender, receivedAt: options?.receivedAt ?? null, simulated: options?.simulated,
       provider: nativeFact ? { provider: nativeFact.provider, classification: nativeFact.classification } : null,
       signals: analysis.signals, urls, phones,
     }));
@@ -1170,7 +1156,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       ? await keepOriginalEmail([eventId, previous?.investigation_case_id], input.original.binary, input.original.parsed.sha256)
       : false;
     const prior = previous?.evidence_profile?.type === "email" ? previous.evidence_profile as EmailEvidenceProfile : null;
-    const profile = mergeEmailProfiles(prior, buildEmailProfile({ via: input.via ?? "pasted", analysis, original: parsedOriginal, keptOnDevice }));
+    const profile = mergeEmailProfiles(prior, buildEmailProfile({ via: input.via ?? "pasted", analysis, original: parsedOriginal, keptOnDevice, simulated: input.simulated }));
     const urls = await fetchMessageUrlIntel(analysis.urls, deviceId);
     // Telephone/mobile numbers in the email get the same real reputation check the links get.
     const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${fromInput}\n${subjectInput}\n${rawInput}`), deviceId, deviceRegion());

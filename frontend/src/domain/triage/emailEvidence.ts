@@ -15,7 +15,7 @@ import type { EmailAnalysis } from "../emailAnalysis.ts";
 import { sameOrg, type AuthEntry, type EmailTechnical, type ParsedOriginal } from "./emailOriginal.ts";
 import { capability, fill, mergeProfiles, newProfile, typeWords, upgrades, type CapabilityRow, type EvidenceProfile, type EvidenceSignal } from "./evidenceProfile.ts";
 
-export type EmailVia = "pasted" | "screenshot" | "shared" | "eml_file" | "raw_source" | "connected_mailbox" | "simulated";
+export type EmailVia = "pasted" | "screenshot" | "shared" | "eml_file" | "raw_source" | "connected_mailbox";
 export type EmailLevel = "L1" | "L2" | "L3" | "L4";
 
 export interface EmailAuthSummary {
@@ -66,7 +66,6 @@ const domainOf = (value: string | null | undefined): string | null =>
 export function emailLevelFor(via: EmailVia, fullHeaders: boolean): EmailLevel {
   if (via === "connected_mailbox") return fullHeaders ? "L4" : "L2";
   if (via === "eml_file" || via === "raw_source") return fullHeaders ? "L3" : "L2";
-  if (via === "simulated") return fullHeaders ? "L3" : "L1";
   if (via === "shared") return "L2";
   return "L1";
 }
@@ -177,7 +176,7 @@ function capabilitiesFor(level: EmailLevel, via: EmailVia, t: EmailTechnical | n
 
 /** Higgins Triage's classification of the email evidence it was given. */
 export function buildEmailProfile(args: {
-  via: EmailVia; analysis: EmailAnalysis; original?: ParsedOriginal | null; keptOnDevice?: boolean; at?: string;
+  via: EmailVia; analysis: EmailAnalysis; original?: ParsedOriginal | null; keptOnDevice?: boolean; at?: string; simulated?: boolean;
 }): EmailEvidenceProfile {
   const original = args.original ?? null;
   const level = emailLevelFor(args.via, !!original?.fullHeaders);
@@ -188,6 +187,7 @@ export function buildEmailProfile(args: {
     capabilities: capabilitiesFor(level, args.via, t, auth, args.analysis, original),
     signals: signalsFor(t && (level === "L3" || level === "L4") ? t : null, auth, args.analysis),
     original: original ? { sha256: original.sha256, bytes: original.byteLength, keptOnDevice: !!args.keptOnDevice } : null,
+    simulated: args.simulated,
   });
   const facts: EmailFacts = {
     fromDomain: t?.from?.domain ?? args.analysis.senderDomain,

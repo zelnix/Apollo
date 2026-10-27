@@ -1,3 +1,17 @@
+## Preview = production, only external sources simulated and tagged (2026-10-27)
+Owner principle: preview runs exactly like production (rules, processing, messaging, on device and server); only Gemini and
+other external sources are simulated, and anything simulated is tagged "Simulated". Audit fixes:
+- Backend: preview chat stand-in no longer writes "SIMULATED — No AI call… Preview build…" or a preview uncertainty line;
+  `ChatReply.simulated` tags it (app shows "Simulated" under the bubble). Simulated answers are now saved like live ones,
+  tagged `simulated`, and reused only by the preview (`reusable_intel.find_question(simulated=)`). TC FlyBy search stand-in
+  lines carry no "(Simulated…)" text. preview_analysis wording follows the production wording rules (no "has no reason to
+  send you…", no "Nothing here needs action"). DI/PDF notices say the preview stood in for the outside service; Magnum DI ran.
+- Frontend: hand-written example Threat Case removed (and dropped from storage on restore). Samples run through the real path
+  of the source they stand in for: SMS picker → `inbox`, mailbox → `connected_mailbox`, file → `picked`, Text Gate → `pasted`;
+  `EvidenceProfile.simulated` shows a "Simulated" pill. "simulated" via labels removed from the catalogue (no preview-only rule).
+  Case-level SIMULATED notice also shows when TC FlyBy's search was simulated (trace.flyby.simulated).
+- Rule Book: KB "Preview" bullet + Reusable intelligence line rewritten to the principle; re-stamped.
+
 ## Higgins wording corrections approved and implemented (2026-10-27)
 Owner approved all 7 items in `/app/memory/higgins_wording_review.md` (file left unchanged as the review record).
 EXPLAIN-layer wording only — no change to thresholds, TC FlyBy settlement (decide.py untouched), Magnum DI, gate outcomes or evidence.

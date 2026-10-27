@@ -100,7 +100,7 @@ export default function TextGuard() {
   const runWith = async (source?: { sender: string; text: string }) => {
     if (source) { setSender(source.sender); setText(source.text); }
     setBusy(true); setError(null);
-    try { setResult(await checkMessage(source?.sender ?? sender, source?.text ?? text, { via: source ? "simulated" : "pasted" })); }
+    try { setResult(await checkMessage(source?.sender ?? sender, source?.text ?? text, { via: "pasted", simulated: !!source })); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); }
     finally { setBusy(false); }
   };

@@ -151,11 +151,12 @@ async def find(key: str, provider: str, source_type: str, *, simulated: bool = F
     return [row] if row else []
 
 
-async def find_question(question: str, accepts) -> list[dict]:
+async def find_question(question: str, accepts, *, simulated: bool = False) -> list[dict]:
     """Saved general answers whose question matches `question`: the exact key first, then the KB's own coverage
-    rule (`accepts(stored_question) -> score`), so a reworded question is matched exactly as it was before."""
+    rule (`accepts(stored_question) -> score`), so a reworded question is matched exactly as it was before.
+    Only answers of the same kind are ever returned: simulated ones to the preview, live ones everywhere else."""
     await _ready()
-    exact = await find(subject_key("question", question), GEMINI, GENERAL_ANSWER)
+    exact = await find(subject_key("question", question), GEMINI, GENERAL_ANSWER, simulated=simulated)
     if exact:
         return exact
     from services.higgins.knowledge import terms
@@ -163,7 +164,7 @@ async def find_question(question: str, accepts) -> list[dict]:
     if not words:
         return []
     try:
-        rows = await db.reusable_intelligence.find({"$text": {"$search": " ".join(words)}, "source_type": GENERAL_ANSWER, "simulated": False},
+        rows = await db.reusable_intelligence.find({"$text": {"$search": " ".join(words)}, "source_type": GENERAL_ANSWER, "simulated": simulated},
                                                    {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(10).to_list(10)
     except Exception:  # noqa: BLE001 — a missing index means no match, never a crash
         return []

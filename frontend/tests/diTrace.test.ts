@@ -77,7 +77,7 @@ test("escalated but no Magnum DI record yet, a failed call and a simulated answe
   assert.match(failed.summary, /provider_timeout/);
   const simulated = buildDecisionTrace({ trace: flybyTrace(false), records: [record({ simulated: true, mode: "Simulated" })], triage: null, hasCase: true })[2];
   assert.equal(simulated.status, "simulated");
-  assert.match(simulated.summary, /in place of Magnum DI/);
+  assert.match(simulated.summary, /the preview stood in for the outside service Magnum DI calls/);
 });
 
 test("the copied request and response name Magnum DI only — no provider, model or 'AI'", () => {

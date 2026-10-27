@@ -46,7 +46,7 @@ class AttachmentFact(_Strict):
 class EmailEvidenceFindings(_Strict):
     type: Literal["email"]
     level: Literal["L1", "L2", "L3", "L4"]
-    via: Literal["pasted", "screenshot", "shared", "eml_file", "raw_source", "connected_mailbox", "simulated"]
+    via: Literal["pasted", "screenshot", "shared", "eml_file", "raw_source", "connected_mailbox"]
     capabilities: dict[str, CAPABILITY_STATUS] = Field(default_factory=dict, max_length=30)
     auth: Optional[RecordedAuth] = None
     from_domain: Optional[str] = Field(default=None, pattern=DOMAIN)

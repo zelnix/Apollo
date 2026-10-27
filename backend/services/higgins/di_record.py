@@ -167,7 +167,7 @@ def wire(record: dict) -> dict:
         "request": request,
         "response": record.get("response") or {},
         "processing": record.get("processing") or {},
-        "notice": "SIMULATED — the preview simulator answered; Magnum DI was not engaged" if record.get("simulated") else None,
+        "notice": "SIMULATED — the preview stood in for the outside service Magnum DI calls; everything else ran exactly as in production" if record.get("simulated") else None,
     }
 
 

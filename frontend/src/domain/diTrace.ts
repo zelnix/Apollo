@@ -97,7 +97,7 @@ function magnumStep(trace: DiTrace | null, records: DiTransaction[], hasCase: bo
     ];
     if (last.simulated) {
       return { id: "magnum", name, status: "simulated", label: "Simulated", details,
-        summary: "The preview simulator answered in place of Magnum DI. This is not a real investigation and must not be relied on." };
+        summary: "Magnum DI ran exactly as in production; the preview stood in for the outside service Magnum DI calls." };
     }
     if (!diSucceeded(last)) {
       return { id: "magnum", name, status: "failed", label: "Didn't finish", details,

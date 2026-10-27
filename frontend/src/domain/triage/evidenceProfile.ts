@@ -41,6 +41,8 @@ export interface EvidenceProfile {
   original: { sha256: string; bytes: number; keptOnDevice: boolean } | null;
   /** Every level this case's evidence has had, oldest first. The current one is last. */
   history: LevelChange[];
+  /** It came from a preview sample standing in for `via`. It was processed exactly as `via`; this only tags it. */
+  simulated?: boolean;
 }
 
 interface LevelWords { rank: number; label: string; received: string; basis: string }
@@ -75,7 +77,7 @@ export function capability(type: string, id: string, status: CapabilityStatus, v
 
 export function newProfile(args: {
   type: string; level: string; via: string; at?: string;
-  capabilities: CapabilityRow[]; signals: EvidenceSignal[]; original?: EvidenceProfile["original"];
+  capabilities: CapabilityRow[]; signals: EvidenceSignal[]; original?: EvidenceProfile["original"]; simulated?: boolean;
 }): EvidenceProfile {
   const words = typeWords(args.type);
   const level = words.levels[args.level];
@@ -85,6 +87,7 @@ export function newProfile(args: {
     received: level.received, basis: level.basis, via: args.via, viaLabel: words.via?.[args.via] ?? args.via,
     classifiedBy: PROFILE_WORDS.classifiedBy, at, capabilities: args.capabilities, signals: args.signals,
     original: args.original ?? null, history: [{ level: args.level, label: level.label, via: args.via, at }],
+    ...(args.simulated ? { simulated: true } : {}),
   };
 }
 
@@ -94,7 +97,8 @@ export function mergeProfiles(previous: EvidenceProfile | null | undefined, next
   if (!previous) return next;
   const history = [...(previous.history?.length ? previous.history : [{ level: previous.level, label: previous.label, via: previous.via, at: previous.at }]),
     ...next.history.filter((h) => !(previous.history ?? []).some((p) => p.at === h.at && p.level === h.level))];
-  return next.rank >= previous.rank ? { ...next, history } : { ...previous, history };
+  const simulated = previous.simulated || next.simulated ? { simulated: true } : {};
+  return next.rank >= previous.rank ? { ...next, history, ...simulated } : { ...previous, history, ...simulated };
 }
 
 /** How strong this evidence is for its kind: its level's rank out of the strongest level that kind can have. */

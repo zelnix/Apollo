@@ -285,7 +285,7 @@ export default function Ask() {
     }
     void askHiggins(message, conversationId.current, turnId, previousTurnIds, snapshotRef.current).then((reply) => {
       const links = resolveNavLinks(reply.navigation);
-      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined, reusedAt: reply.reused?.lastCheckedAt }]; void saveLocalChat(next); return next; });
+      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined, reusedAt: reply.reused?.lastCheckedAt, simulated: reply.simulated || undefined }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
     }).catch(() => setChatError("Higgins couldn't answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
@@ -588,6 +588,7 @@ export default function Ask() {
               <View style={{ flexShrink: 1 }}>
                 <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View>
                 {message.reusedAt ? <Text style={s.reused} testID={`ask-reused-${message.id}`}>Saved answer · {reusedLine(message.reusedAt)}</Text> : null}
+                {message.simulated ? <Text style={s.reused} testID={`ask-simulated-${message.id}`}>Simulated</Text> : null}
                 {message.links?.length ? <View style={s.linkRow} testID={`ask-links-${message.id}`}>
                   {message.links.map((link, index) => <Pressable key={link.route} testID={`ask-link-${message.id}-${index}`} accessibilityRole="button" accessibilityLabel={`Open ${link.label}`} style={s.linkChip} onPress={() => router.push(link.route as never)}>
                     <Text style={s.linkText} numberOfLines={1}>{link.label}</Text>

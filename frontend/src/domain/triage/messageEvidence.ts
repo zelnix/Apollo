@@ -4,7 +4,7 @@
 
 import { capability, fill, newProfile, typeWords, type CapabilityRow, type EvidenceProfile, type EvidenceSignal } from "./evidenceProfile.ts";
 
-export type MessageVia = "pasted" | "screenshot" | "shared" | "captured" | "inbox" | "simulated" | "recheck";
+export type MessageVia = "pasted" | "screenshot" | "shared" | "captured" | "inbox" | "recheck";
 
 const WORDS = typeWords("message") as ReturnType<typeof typeWords> & {
   notes: Record<string, string>; signals: Record<string, string>; upgrade: string; recheck: string;
@@ -12,7 +12,7 @@ const WORDS = typeWords("message") as ReturnType<typeof typeWords> & {
 export const MESSAGE_WORDS = WORDS;
 
 const LEVEL: Record<Exclude<MessageVia, "recheck">, string> = {
-  pasted: "pasted", simulated: "pasted", screenshot: "screenshot", shared: "shared", captured: "captured", inbox: "inbox",
+  pasted: "pasted", screenshot: "screenshot", shared: "shared", captured: "captured", inbox: "inbox",
 };
 
 /** What the message check found that matters for its evidence (shapes of MessageSignals / url and number results). */
@@ -20,6 +20,8 @@ export interface MessageEvidenceInput {
   via: MessageVia;
   /** A re-check keeps the level of the evidence the case already had. */
   level?: string;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
+  simulated?: boolean;
   sender: string;
   /** When the phone recorded it arriving (messages app or notification), ISO. */
   receivedAt?: string | null;
@@ -73,5 +75,5 @@ export function buildMessageProfile(input: MessageEvidenceInput): EvidenceProfil
   if (input.signals.callbackNumber) signals.push({ id: "callback_number", text: fill(WORDS.signals.callback_number, { number: input.signals.callbackNumber }) });
   if (failedUrls) signals.push({ id: "links_unchecked", text: fill(WORDS.signals.links_unchecked, { count: String(failedUrls) }) });
   if (failedPhones) signals.push({ id: "numbers_unchecked", text: fill(WORDS.signals.numbers_unchecked, { count: String(failedPhones) }) });
-  return newProfile({ type: "message", level, via, at: input.at, capabilities: caps, signals });
+  return newProfile({ type: "message", level, via, at: input.at, capabilities: caps, signals, simulated: input.simulated });
 }

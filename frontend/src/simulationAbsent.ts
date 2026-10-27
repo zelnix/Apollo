@@ -33,5 +33,4 @@ export const simulation: PreviewSimulation = {
   Picker: () => null,
   registerImage: () => {},
   read: () => null,
-  exampleCase: null,
 };

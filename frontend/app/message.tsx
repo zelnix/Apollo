@@ -175,12 +175,12 @@ export default function CheckMessage() {
   }, [loadRecentSms]);
 
   // `via` is how the message reached ApolloSG — it sets the evidence level Higgins Triage records for it.
-  const run = async (t = text, snd = sender, via: MessageVia = "pasted", receivedAt: string | null = null) => {
+  const run = async (t = text, snd = sender, via: MessageVia = "pasted", receivedAt: string | null = null, simulated = false) => {
     const safeText = redactUserSecrets(t);
     if (!safeText.trim()) return;
     if (safeText !== t) setText(safeText);
     setBusy("checking"); setError(null); setResult(null);
-    try { const outcome = await checkMessage(snd, safeText, { via, receivedAt }); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
+    try { const outcome = await checkMessage(snd, safeText, { via, receivedAt, simulated }); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
   };
   useEffect(() => {
     if (sharedText && ready && setupDone && !autoRan.current) {
@@ -541,7 +541,7 @@ export default function CheckMessage() {
           const m = simulation.texts.find((x) => x.id === id);
           if (!m) return;
           setSender(m.sender); setText(m.text);
-          void run(m.text, m.sender, "simulated");
+          void run(m.text, m.sender, "inbox", null, true);
         }}
         onClose={() => setMessagePicker(false)}
         testID="message-source-picker"

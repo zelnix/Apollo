@@ -534,7 +534,7 @@ export default function CheckEmail() {
     });
   };
 
-  const run = async (source?: { from: string; subject: string; raw: string; via?: EmailVia; original?: OriginalEmail }) => {
+  const run = async (source?: { from: string; subject: string; raw: string; via?: EmailVia; original?: OriginalEmail; simulated?: boolean }) => {
     setBusy(true);
     try {
       const rawInput = source?.raw ?? raw;
@@ -552,13 +552,13 @@ export default function CheckEmail() {
       // ONE check → ONE patrol record → at most ONE Magnum DI case (opened only where Triage finds a
       // possible threat, and reused when this email correlates with something already investigated).
       const outcome = await checkEmail({
-        from, subject: safeSubject, raw: safeRaw, via,
+        from, subject: safeSubject, raw: safeRaw, via, simulated: source?.simulated,
         captured: { from, subject: subjectInput, text: rawInput },
       });
       showOutcome(outcome, {
         sender: from.trim() || outcome.analysis.parsed.fromAddress || "",
         subject: safeSubject.trim() || outcome.analysis.parsed.subject || "",
-        account: via === "simulated" ? simulation.accountLabel : selectedAccount || undefined,
+        account: source?.simulated ? simulation.accountLabel : selectedAccount || undefined,
       });
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Couldn\u2019t read that email.", "barking");
@@ -1135,7 +1135,7 @@ export default function CheckEmail() {
         onSelect={(id) => {
           setEmailSourcePicker(false);
           const sim = simulation.emails.find((x) => x.id === id);
-          if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body, via: "simulated" });
+          if (sim) void run({ from: sim.from, subject: sim.subject, raw: sim.body, via: "connected_mailbox", simulated: true });
         }}
         onClose={() => setEmailSourcePicker(false)}
         testID="email-source-picker"

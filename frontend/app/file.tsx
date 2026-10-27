@@ -54,7 +54,7 @@ const useStyles = makeStyles((c) => ({
 
 type FileAsset = { uri: string; name: string; mimeType?: string | null; size?: number };
 /** What the check could read of the file — the file's evidence profile is built from it. */
-type FileRead = { via: FileVia; inspected: boolean; inspectionError?: string | null; sha256?: string | null };
+type FileRead = { via: FileVia; simulated?: boolean; inspected: boolean; inspectionError?: string | null; sha256?: string | null };
 type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean; owned: boolean; read: FileRead };
 
 export default function CheckFile() {
@@ -88,7 +88,7 @@ export default function CheckFile() {
 
   const finish = async (a: FileAnalysis, file: { name: string; size?: number; mime?: string | null; passwordInMessage?: boolean }, read: FileRead) => {
     // Higgins Triage's classification of what ApolloSG could read of the file (name only → fingerprinted).
-    const profile = buildFileProfile({ via: read.via, name: file.name, size: file.size ?? null, mime: file.mime ?? null, analysis: a,
+    const profile = buildFileProfile({ via: read.via, simulated: read.simulated, name: file.name, size: file.size ?? null, mime: file.mime ?? null, analysis: a,
       inspected: read.inspected, inspectionError: read.inspectionError ?? null, sha256: read.sha256 ?? null, passwordInMessage: file.passwordInMessage });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
@@ -110,12 +110,12 @@ export default function CheckFile() {
       const size = sim.content.length;
       if (Platform.OS === "web") {
         const blob = new Blob([sim.content], { type: sim.mime });
-        await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false, "simulated");
+        await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false, "picked", true);
         return;
       }
       const targetUri = (FS.cacheDirectory ?? "") + sim.name;
       await FS.writeAsStringAsync(targetUri, sim.content, { encoding: FS.EncodingType.UTF8 });
-      await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true, "simulated");
+      await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true, "picked", true);
     } catch (error) {
       setPickerError(error instanceof Error ? error.message : "ApolloSG could not prepare the simulated file.");
     }
@@ -134,7 +134,7 @@ export default function CheckFile() {
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
   useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false, "shared"); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
-  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false, via: FileVia = "picked") => {
+  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false, via: FileVia = "picked", simulated = false) => {
     setBusy(true);
     try {
       // ── Hard size gate: reject oversized files BEFORE inspection ──
@@ -168,7 +168,7 @@ export default function CheckFile() {
         if (innerErr instanceof Error && innerErr.message.includes("limit")) throw innerErr;
         inspected.inspectionError = 'This build could not read the file contents.';
       }
-      const read: FileRead = { via, inspected: !!inspected.headBytes && inspected.headBytes.length >= 4 && !inspected.inspectionError, inspectionError: inspected.inspectionError ?? null, sha256 };
+      const read: FileRead = { via, simulated, inspected: !!inspected.headBytes && inspected.headBytes.length >= 4 && !inspected.inspectionError, inspectionError: inspected.inspectionError ?? null, sha256 };
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
       // The real, still-live handle is kept (never blanked) — Higgins needs it if the person later asks for a deeper,
       // explicitly-authorised cloud check. Filenames/size/mime travel as METADATA describing the file, never as a

@@ -1020,7 +1020,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 **Where the KB is used**
 - **Higgins:** quoted as general knowledge (Higgins step 6), and for a general question asked about a finished case, kept apart from its findings.
 - **TC FlyBy:** stage 2 (scam patterns, claims and general questions). Only sourced, current entries are used; historical pages and saved AI answers never are.
-- **Preview:** the simulator answers from the KB instead of calling the AI tools, and says so.
+- **Preview:** the preview runs exactly as production does. Only the AI tools are simulated, answered here from the KB, and anything that came from the simulator is tagged **Simulated**. Its rules, processing and wording are production's.
 
 #### Reusable intelligence (not KB knowledge)
 **Job:** results ApolloSG already obtained from its approved external providers, kept so the same thing isn't paid for twice. It is not the KB: nothing in it is ever moved into the KB or treated as sourced knowledge, and anything AI-derived stays labelled as AI-derived.
@@ -1031,7 +1031,7 @@ Only the page's own headings, paragraphs and bullet points are kept; menus, foot
 - Phone and link reputation (IPQualityScore) and domain registration (RDAP) keep their own stores, with freshness from the same table.
 - Each result records who produced it, by which ApolloSG process, when ApolloSG first obtained it, when it was last checked, and when it stops counting as current.
 
-**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result from the preview is never used outside the preview, and a simulated AI answer is never saved.
+**Never kept:** what the person sent, Magnum DI's findings about a case, quoted phrases from the material, claims, people's names, and a question with a secret or personal detail (no link, email address, number of 6 or more digits, "my name is", "I live at" or "my address"). Phone numbers and email addresses are filed under a one-way code. A simulated result is kept exactly as a live one is, tagged Simulated, and is only ever reused by the preview.
 
 **How long a result counts as current**
 | Information | Current for |

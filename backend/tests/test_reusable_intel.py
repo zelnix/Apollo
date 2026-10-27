@@ -199,11 +199,20 @@ async def test_kb_knowledge_answers_before_any_saved_answer_or_call(gemini, stor
     assert await counts(store, chat.GENERAL_SITE) == {"cache_write": 1, "sufficiency_known": 1, "kb_hit": 1, "external_call_avoided": 1}
 
 
-async def test_a_simulated_answer_is_never_saved_for_reuse(gemini, store):
+async def test_a_simulated_answer_is_saved_tagged_and_reused_only_by_the_preview(gemini, store, monkeypatch):
+    """Preview processes a simulated answer exactly as production processes a live one: saved, then reused
+    with no new call. The tag keeps it to the preview — a live server never reuses it."""
     gemini.return_value = SimpleNamespace(text=json.dumps({"answer": ANSWER}), simulated=True)
-    await ask(QUESTION)
-    await ask(QUESTION)
-    assert gemini.await_count == 2 and await store.reusable_intelligence.count_documents({}) == 0
+    monkeypatch.setattr(provider, "get_provider_mode", lambda: "preview")
+    first = await ask(QUESTION)
+    assert first.answered_by == "gemini" and first.simulated is True and first.reused is None
+    assert (await store.reusable_intelligence.find_one({}, {"_id": 0}))["simulated"] is True
+    again = await ask(QUESTION)
+    assert gemini.await_count == 1 and again.reused is not None and again.simulated is True
+    monkeypatch.setattr(provider, "get_provider_mode", lambda: "live")
+    gemini.return_value = SimpleNamespace(text=json.dumps({"answer": ANSWER}), simulated=False)
+    live = await ask(QUESTION)
+    assert gemini.await_count == 2 and live.reused is None and live.simulated is False
 
 
 async def test_a_question_with_personal_detail_is_answered_but_never_saved(gemini, store):

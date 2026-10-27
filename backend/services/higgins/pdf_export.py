@@ -197,9 +197,8 @@ def generate_pdf(
 
     # A simulated answer is stated on the report itself, so a printed copy can't pass for a Gemini one.
     if simulated:
-        story.append(Paragraph("<b>SIMULATED ANSWER — not from Magnum DI.</b> The preview simulator answered this "
-                               "investigation; Magnum DI was not engaged. It is not a real investigation "
-                               "and must not be relied on.", s["subtitle"]))
+        story.append(Paragraph("<b>SIMULATED.</b> The preview stood in for the AI tool; everything else ran exactly as in production.",
+                               s["subtitle"]))
         story.append(Spacer(1, 12))
 
     # ── Overview ──

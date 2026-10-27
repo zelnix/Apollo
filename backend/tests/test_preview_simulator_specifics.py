@@ -52,6 +52,13 @@ def test_a_plain_notice_is_not_dressed_up_as_a_threat():
     assert out["attentionReason"] is None
     assert out["actions"] == []
     assert "AP88213" not in out["overview"]  # nothing invented about it either
+    assert "needs action" not in out["overview"], "the same wording rules as production: no all-clear beyond what was checked"
+
+
+def test_impersonation_says_what_was_established_about_the_link():
+    text = json.dumps(_result(BANK_TEXT))
+    assert "no reason to send you" not in text
+    assert "the link isn't commbank.com.au, CommBank's published domain" in text
 
 
 def test_an_unattributed_link_is_reported_as_unverified_not_as_a_scam():
@@ -117,7 +124,9 @@ def _chat(question: str, kb=None) -> dict:
 def test_a_higgins_question_is_answered_from_the_knowledge_base_with_its_source():
     reply = _chat("what is a romance scam", [KB_ENTRY])
     ModelChatReply.model_validate(reply)  # the real chat validator accepts it
-    assert reply["answer"].startswith("SIMULATED — No AI call was made")
+    # The stand-in only replaces the AI tool's words: no preview wording of its own; the reply is tagged instead.
+    assert reply["answer"].startswith("Scamwatch — “Romance scams”") and "SIMULATED" not in reply["answer"]
+    assert reply["uncertainty"] == [] and "Preview build" not in json.dumps(reply)
     assert "Scamwatch — “Romance scams”" in reply["answer"]
     assert "fake profiles on dating sites" in reply["answer"]
     assert "Read the original: https://www.scamwatch.gov.au/types-of-scams/romance-scams" in reply["answer"]
@@ -129,6 +138,21 @@ def test_with_nothing_in_the_knowledge_base_it_says_so_and_invents_nothing():
     ModelChatReply.model_validate(reply)
     assert "knowledge base has nothing on this yet" in reply["answer"]
     assert reply["evidenceBasis"] == ["preview_simulator"]
+
+
+async def test_tc_flybys_simulated_search_lines_carry_no_preview_wording(monkeypatch):
+    """The search stand-in answers in Google Search grounding's own line format; the case is tagged instead."""
+    from services.higgins import knowledge
+    from services.higgins.preview import preview_simulator as sim
+
+    async def none(*_a, **_k):
+        return []
+    monkeypatch.setattr(knowledge, "search", none)
+    monkeypatch.setattr(knowledge, "related", none)
+    prompt = "Q1 [statuses: ANSWER, NOT_FOUND] [subject: 0412 345 678] Who uses 0412 345 678?"
+    text, grounding = await sim.teddy_lookup([sim.EvidenceBlock(None, "question", "q", prompt)])
+    assert text == "Q1 | NOT_FOUND | ApolloSG's knowledge base has nothing on 0412 345 678."
+    assert "Simulated" not in text and "preview" not in text.lower() and grounding["grounding_chunks"] == []
 
 
 def test_an_investigation_adds_knowledge_as_general_knowledge_never_as_a_finding():

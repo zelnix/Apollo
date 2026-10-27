@@ -5,7 +5,7 @@
 import type { FileAnalysis } from "../fileAnalysis.ts";
 import { capability, fill, newProfile, typeWords, type CapabilityRow, type EvidenceProfile, type EvidenceSignal } from "./evidenceProfile.ts";
 
-export type FileVia = "picked" | "shared" | "name_only" | "simulated";
+export type FileVia = "picked" | "shared" | "name_only";
 
 const WORDS = typeWords("file") as ReturnType<typeof typeWords> & { notes: Record<string, string>; signals: Record<string, string> };
 export const FILE_WORDS = WORDS;
@@ -23,6 +23,8 @@ const RISKY: Record<string, { words: string; ext: string[] }> = {
 
 export interface FileEvidenceInput {
   via: FileVia;
+  /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
+  simulated?: boolean;
   name: string;
   size?: number | null;
   mime?: string | null;
@@ -81,5 +83,6 @@ export function buildFileProfile(input: FileEvidenceInput): EvidenceProfile {
   return newProfile({
     type: "file", level, via: input.via, at: input.at, capabilities: caps, signals,
     original: input.sha256 && input.size != null ? { sha256: input.sha256, bytes: input.size, keptOnDevice: false } : null,
+    simulated: input.simulated,
   });
 }
