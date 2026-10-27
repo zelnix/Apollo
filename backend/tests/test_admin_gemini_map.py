@@ -200,6 +200,13 @@ def test_the_settings_page_saves_the_selection_and_audits_it(admin_cookie, resto
     assert "AIza" not in page and "GEMINI_API_KEY" not in page, "keys are never shown"
     current = DB[ai_settings.COLLECTION].find_one({"setting": ai_settings.SETTING}) or {}
     pick = "gemini-2.5-flash" if current.get("model") != "gemini-2.5-flash" else "gemini-3.1-flash-lite"
+    untested = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "gemini", "model": pick},
+                          cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert untested.status_code == 400 and f"test {pick} first" in untested.text, "a new model is saved only after it passes the test"
+    tested = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model/test", data={"provider": "gemini", "model": pick},
+                        cookies=admin_cookie, timeout=120).json()
+    assert tested["ok"] is True and tested["simulated"] is True, tested  # the preview simulator stands in for the provider
+    assert [c["label"] for c in tested["checks"]] == ["Ready to use", "Answered", "Accepted web search", "Fixed answer shape"]
     r = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "gemini", "model": pick},
                    cookies=admin_cookie, timeout=20, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/api/admin/apollosg-settings?saved=1"
@@ -216,6 +223,26 @@ def test_the_settings_page_saves_the_selection_and_audits_it(admin_cookie, resto
                         cookies=admin_cookie, timeout=20, follow_redirects=False)
     assert claude.status_code == 400
     assert (DB[ai_settings.COLLECTION].find_one({"setting": ai_settings.SETTING}) or {}).get("model") == pick
+
+
+def test_testing_a_model_without_its_key_sends_nothing_and_says_so(admin_cookie, restore_selection):
+    if ai_settings.key_configured("anthropic"):
+        pytest.skip("an Anthropic key is set on this server")
+    page = httpx.get(f"{BASE}/admin/apollosg-settings", cookies=admin_cookie, timeout=20).text
+    for testid in ("ai-model-test", "ai-model-test-result", "ai-model-save-hint"):
+        assert f'data-testid="{testid}"' in page
+    assert "claude-sonnet-5-5" in page, "every approved model is listed, with why it can't be used"
+    before = DB.gemini_usage.count_documents({})
+    r = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model/test", data={"provider": "anthropic", "model": "claude-sonnet-5-5"},
+                   cookies=admin_cookie, timeout=20).json()
+    assert r["ok"] is False and r["message"].startswith("No Anthropic Claude API key is set on the server") and "Nothing was sent" in r["message"]
+    assert r["checks"] == [{"label": "Ready to use", "ok": False, "detail": "no Anthropic Claude API key is set on the server"}]
+    assert DB.gemini_usage.count_documents({}) == before, "no AI call was made"
+    saved = httpx.post(f"{BASE}/admin/apollosg-settings/ai-model", data={"provider": "anthropic", "model": "claude-sonnet-5-5"},
+                       cookies=admin_cookie, timeout=20, follow_redirects=False)
+    assert saved.status_code == 400 and "no Anthropic Claude API key is set on the server" in saved.text
+    assert httpx.post(f"{BASE}/admin/apollosg-settings/ai-model/test", data={"provider": "gemini", "model": "gemini-2.5-flash"},
+                      timeout=20).status_code == 401, "signed-out visitors can't run a test"
 
 
 def test_signed_out_visitors_cannot_see_or_change_the_selection():

@@ -115,6 +115,7 @@ async def _check_hostname_reputation(hostname: str, ts) -> DnsReputationResponse
     # Check if already in active rule bundle
     indicator = await db.threat_indicators.find_one({
         "hostname": hostname,
+        "scope": "hostname",
         "status": "active",
         "evidence_expiry_deadline": {"$gt": ts},
     })
@@ -180,6 +181,7 @@ async def _check_hash_prefix(prefix: str, ts) -> DnsReputationResponse:
     # For efficiency, check the active indicators collection
     matching_hostnames = []
     async for doc in db.threat_indicators.find({
+        "scope": "hostname",
         "status": "active",
         "evidence_expiry_deadline": {"$gt": ts},
     }):
@@ -222,7 +224,7 @@ async def _create_threat_indicator(hostname: str, threat_types: list[str], sourc
     Fields `scope` and `indicator_id` are required by _get_active_indicator_rules().
     """
     import uuid
-    existing = await db.threat_indicators.find_one({"hostname": hostname, "status": "active"})
+    existing = await db.threat_indicators.find_one({"hostname": hostname, "scope": "hostname", "status": "active"})
     if existing:
         return  # Already tracked
     

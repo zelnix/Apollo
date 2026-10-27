@@ -28,7 +28,7 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 
 **Process**
 1. **First look on the phone.** Fixed rules give the check one of six states: Checking, Patrolling, Sniffing, Growling, Barking or Biting.
-2. **Specialist lookups, gathered once.** These are Google Safe Browsing and Apollo's blocklist, the domain registration record (RDAP), redirect expansion, IPQualityScore (links and phone numbers), direct-download detection, official scam advisories and breach data. TC FlyBy and Magnum DI reuse these results; they never repeat them.
+2. **Specialist lookups, gathered once.** These are Google Safe Browsing, Apollo's blocklist and the free threat lists (see ApolloSG's knowledge base), the domain registration record (RDAP), redirect expansion, IPQualityScore (links and phone numbers), direct-download detection, official scam advisories and breach data. TC FlyBy and Magnum DI reuse these results; they never repeat them.
 3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule has one class (see Rule classes) and is listed under its gate below, grouped by class.
 4. **Retries.** A temporary failure gets up to 3 attempts. This covers a provider not answering, a network failure, content that couldn't be opened, or a check error. Permanent limits are never retried. On the phone, link and number reputation lookups follow the same policy within a time budget, and identical lookups already running are shared, never sent twice. An authorisation failure or rejected input is not retried. If every attempt fails, the lookup is recorded as unavailable, with how it failed. It is never counted as a pass, and the attempts appear in the DI.
 5. **Rules that can't run here.** A rule that needs something this context can never provide is **not applicable**, not a coverage gap. The DI still lists it, with the reason. Example: BITM-01 to BITM-04 need the page's live content and WebSocket traffic as a browser sees them, which ApolloSG can't observe from an app. A coverage gap means a check that should have run, but didn't.
@@ -93,7 +93,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 **Job:** check a link before it is opened.
 
 **How a link is checked**
-- The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. When the final destination can't be verified (more than 5 redirects, an address that doesn't exist, a website that can't be reached, a timeout), the link is judged as given and the final-destination check is recorded as not completed, with how it failed.
+- The link is checked exactly as given: Apollo's blocklist, Google Safe Browsing and the free threat lists (PhishTank, OpenPhish, Spamhaus DROP, ASIC's investor alert list and ACMA's blocked gambling websites), then up to 5 redirects followed to the final address. When the final destination can't be verified (more than 5 redirects, an address that doesn't exist, a website that can't be reached, a timeout), the link is judged as given and the final-destination check is recorded as not completed, with how it failed.
 - The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
 - Every link Apollo checks, in a message, an email or on its own, gets the same check.
 - **QR codes:** the address inside is checked as a link. QR-01 is a ROUTE rule: it hands the address to the Link Gate rules and never makes a Possible Threat by itself. A QR check is a Possible Threat only when a threat-producing rule is met for the address (QR-02, QR-03 or any other Link Gate rule). The QR code itself is never a threat.
@@ -527,7 +527,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - **Link**
   - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **verified as official**. This settles the link's domain check only, not the case.
   - Redirects to another site → weak signal. Moving within the same site, or between one organisation's own domains, isn't. The final destination is checked too.
-  - Listed by Safe Browsing or Apollo's blocklist → **decisive concern**. Not listed → **no known threat listing found**, never proof the link is safe.
+  - Listed by Safe Browsing, Apollo's blocklist or one of the free threat lists → **decisive concern**. Not listed → **no known threat listing found**, never proof the link is safe. A free list that hasn't been refreshed within its window is "couldn't be checked", never "not listed".
   - Registered less than 90 days ago, or flagged as new → weak signal.
   - Flagged by IPQualityScore (phishing, malware or suspicious) → weak signal (a third-party reputation warning).
   - Downloads a file directly → weak signal.
@@ -539,8 +539,8 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
   - A real lookalike sign → a warning sign on its own: the name with words added (commbank-notice.net, signin-ebay.com.au), a look-alike spelling (paypa1.com), the name in front of someone else's address (ebay.com.secure-login.example), or the name on another ending (commbank.co).
   - The name in front of a link-sharing or website service anyone can use (ebay.onelink.me) → a warning sign on its own.
   - The name is only *mentioned* beside an address that doesn't carry it → can't be confirmed either way; needs corroboration.
-- **Phone:** an IPQualityScore fraud score of 85 or more, or recent abuse → weak signal (a third-party reputation warning).
-- **Email:** an official domain → **verified as official**, which settles the email address check only. A free personal account (Gmail and similar) while an organisation is named → warning sign, but it needs corroboration.
+- **Phone:** named on ASIC's investor alert list → **decisive concern** (an official source naming this exact number). An IPQualityScore fraud score of 85 or more, or recent abuse → weak signal (a third-party reputation warning).
+- **Email:** named on ASIC's investor alert list → **decisive concern** (an official source naming this exact address). An official domain → **verified as official**, which settles the email address check only. A free personal account (Gmail and similar) while an organisation is named → warning sign, but it needs corroboration.
 - **ABN/ACN:** checked with the official check-digit test. A fail is a warning sign and settles the check. A pass shows only that the number is well formed, never who holds it.
 
 **TC FlyBy's stages end here only for a decisive concern → Confirmed scam or threat.** The deciding test still applies.
@@ -657,7 +657,7 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 - **A fresh device reading, a setting to open or a permission to grant**, only when the phone advertises that capability.
 
 **Established threat evidence and provisional concern**
-- **Established threat evidence** is never overridden. It is authoritative evidence (a Safe Browsing or blocklist listing, an official scam advisory, or an official source naming this exact item: a decisive concern) and deterministic evidence Apollo observed directly that is threat evidence in itself (the material asks for a password, PIN, one-time code or card details; a program disguised as a document; credentials written into a link; a displayed link that differs from where it really goes). Magnum DI can't contradict it, and a case whose concern rests on it is never lowered.
+- **Established threat evidence** is never overridden. It is authoritative evidence (a Safe Browsing, blocklist or free threat list listing, an official scam advisory, or an official source naming this exact item: a decisive concern) and deterministic evidence Apollo observed directly that is threat evidence in itself (the material asks for a password, PIN, one-time code or card details; a program disguised as a document; credentials written into a link; a displayed link that differs from where it really goes). Magnum DI can't contradict it, and a case whose concern rests on it is never lowered.
 - **A provisional concern** is one TC FlyBy inferred: a scam-pattern match, a corroborated impersonation, an established warning sign, or a concern resting on what Apollo's register or a third party doesn't list. Magnum DI may confirm it, raise it, or correct it downward when deeper investigation shows it was a false positive, for example when the link proves to be the organisation's own or the contact proves official.
 - Magnum DI lowers a provisional concern only with evidence that resolves it, and its result names the provisional finding it corrected and cites that evidence. Finding nothing more never lowers a concern.
 - It is never called only to move a case between concern outcomes.
@@ -966,6 +966,27 @@ Every result shows **"Settled by TC FlyBy"** or **"Settled by Magnum DI"**, in t
 | Official guidance | cyber.gov.au guidance shipped with ApolloSG (CC BY 4.0, attributed) |
 | Scam patterns | The Scamwatch patterns TC FlyBy compares material against |
 | Researched pages | Pages on trusted websites, found and kept up to date through Tavily |
+| Exploited vulnerabilities | CISA's Known Exploited Vulnerabilities catalogue, with the severity from the US National Vulnerability Database (NVD) |
+| Attack techniques | MITRE ATT&CK techniques for Mobile and Enterprise (attributed to The MITRE Corporation) |
+
+Exploited vulnerabilities and attack techniques are technical knowledge: they are used only when a question names their exact id (a CVE such as CVE-2024-3400, or a technique such as T1660), never to answer an everyday question.
+
+#### Free threat lists {#free-threat-lists}
+**Job:** published lists of known threats, from free public sources only, kept in ApolloSG's own indicator store. No paid source and no separate threat-intelligence system.
+
+| List | What it names | Publisher |
+|---|---|---|
+| PhishTank | Verified phishing pages that are online | PhishTank (Cisco Talos) |
+| OpenPhish | Phishing pages (community feed) | OpenPhish |
+| Spamhaus DROP | Networks hijacked or run by criminals (IPv4 and IPv6) | The Spamhaus Project |
+| ASIC's investor alert list | Websites, email addresses and phone numbers of unlicensed and imposter financial operators | ASIC (Moneysmart) |
+| ACMA's blocked gambling websites | Illegal gambling websites blocked in Australia | ACMA |
+
+- **How they are used:** every link check looks each one up as its own list. A page is matched exactly; a whole website only when the list names the website, never a shared platform, a free mail provider or an organisation's own domain. A website on a Spamhaus DROP network matches by its IP address. Email addresses and phone numbers are matched against ASIC's list only.
+- **Provenance:** every entry keeps its list, the list's own reference, the publisher, the licence or terms, when ApolloSG first saw it, when the list last confirmed it, and when it stops counting.
+- **Freshness:** each list is refreshed once a day, and retried every 2 hours after a failure. Staff can refresh now from the admin portal. An entry a successful refresh no longer lists stops counting at once; an entry not confirmed within its window (3 days, or 7 for Spamhaus, ASIC and ACMA) stops counting. A download with fewer than half of last time's entries is refused and the existing list is kept.
+- **Privacy:** these are published lists. Email addresses and phone numbers are kept only as a one-way code.
+- The CISA, NVD and MITRE downloads follow the same schedule and appear on Feed Health with the lists.
 
 Saved AI answers are **not** in the KB. They are reusable intelligence (below), labelled as written by AI and never treated as sourced knowledge.
 

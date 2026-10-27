@@ -105,18 +105,25 @@ def official_domain(host: str) -> tuple[str, str] | None:
     return None
 
 
-def _sb_publisher(sources: list[dict]) -> str:
-    names = []
-    for s in sources:
-        if s.get("status") != "match":
-            continue
-        name = (s.get("name") or "").lower()
-        names.append("Google Safe Browsing" if "safe" in name or "google" in name else "Apollo's blocklist" if "block" in name else s.get("name"))
-    return " and ".join(dict.fromkeys(n for n in names if n)) or "Google Safe Browsing"
-
-
 _THREATS = {"SOCIAL_ENGINEERING": "a phishing (social engineering) site", "MALWARE": "a malware site",
-            "UNWANTED_SOFTWARE": "a site serving unwanted software", "POTENTIALLY_HARMFUL_APPLICATION": "a site serving harmful apps"}
+            "UNWANTED_SOFTWARE": "a site serving unwanted software", "POTENTIALLY_HARMFUL_APPLICATION": "a site serving harmful apps",
+            "CRIMINAL_NETWORK": "a site on a network run by criminals", "UNLICENSED_FINANCIAL_SERVICE": "an unlicensed financial operator",
+            "IMPOSTER_FINANCIAL_SERVICE": "an imposter of a real financial firm", "ILLEGAL_GAMBLING": "a blocked illegal gambling website"}
+
+# The free lists' own pages, for the source of a listing fact (services/threat_feeds.py).
+_LIST_PAGES = {"phishtank": "https://phishtank.org/", "openphish": "https://openphish.com/", "spamhaus_drop": "https://www.spamhaus.org/drop/",
+               "asic_investor_alerts": "https://moneysmart.gov.au/check-and-report-scams/investor-alert-list",
+               "acma_blocked_gambling": "https://www.acma.gov.au/blocked-gambling-websites"}
+_OFFICIAL_LISTS = {"asic_investor_alerts", "acma_blocked_gambling"}
+
+
+def _listing_source(sources: list[dict], host: str, checked_at: str | None) -> dict:
+    from services import intel
+    names = [s.get("name") for s in sources if s.get("status") == "match"]
+    first = next((n for n in names if n in _LIST_PAGES), None)
+    url = _LIST_PAGES[first] if first else f"https://transparencyreport.google.com/safe-browsing/search?url={host}"
+    return source_ref(intel.listed_by(sources), url=url, authority="official" if first in _OFFICIAL_LISTS else "independent",
+                      basis="Direct threat-list lookup", checked_at=checked_at)
 
 
 def _threat_words(types: list[str]) -> str:
@@ -149,7 +156,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
             sb = pg["safe_browsing"].get(target)
             if sb and sb.get("status", "ok") == "ok" and sb.get("verdict"):
                 result = {"verdict": sb["verdict"], "threatTypes": sb.get("threat_types") or [], "coverage": sb.get("coverage", "full"),
-                          "sources": [{"name": "Google Safe Browsing", "status": "match" if sb["verdict"] == "malicious" else "clear"}],
+                          "sources": sb.get("sources") or [{"name": "google_safe_browsing", "status": "match" if sb["verdict"] == "malicious" else "clear"}],
                           "checkedAt": sb.get("queried_at")}
             else:
                 result = await lookup_url(target)
@@ -158,14 +165,15 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
             checked_any = True
             target_host = _host_of(target)
             if result["verdict"] == "malicious":
-                publisher = _sb_publisher(result["sources"])
-                check.facts.append(fact(f"{publisher} lists {target_host} as {_threat_words(result['threatTypes'])}.", "concern", decisive=True, topic="listing",
-                                        source=source_ref(publisher, url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
-                                                       authority="independent", basis="Direct Safe Browsing / blocklist lookup", checked_at=result.get("checkedAt"))))
+                from services import intel
+                check.facts.append(fact(f"{intel.listed_by(result['sources'])} lists {target_host} as {_threat_words(result['threatTypes'])}.", "concern",
+                                        decisive=True, topic="listing", source=_listing_source(result["sources"], target_host, result.get("checkedAt"))))
             elif result["verdict"] == "clean":
-                check.facts.append(fact(f"{target_host} is not listed by Google Safe Browsing or Apollo's blocklist.", "clear", topic="listing",
-                                        source=source_ref("Google Safe Browsing", url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
-                                                       authority="independent", basis="Direct Safe Browsing / blocklist lookup", checked_at=result.get("checkedAt"))))
+                from services import intel
+                check.facts.append(fact(f"{target_host} is not listed by {intel.answered(result['sources'])}.", "clear", topic="listing",
+                                        source=source_ref("Google Safe Browsing and the free threat lists",
+                                                          url=f"https://transparencyreport.google.com/safe-browsing/search?url={target_host}",
+                                                          authority="independent", basis="Direct threat-list lookup", checked_at=result.get("checkedAt"))))
     domain = registrable(host)
     rd = pg["rdap"].get(domain) or pg["rdap"].get(host)
     record = None
@@ -241,7 +249,27 @@ def _impersonation(check: Check, plan_: Plan) -> None:
     check.status, check.route = "resolved", "official_source"
 
 
-def _phone(check: Check, pg: dict) -> None:
+async def _regulator_listing(check: Check, scope: str, what: str) -> bool:
+    """ASIC's investor alert list names this exact email address or phone number: a decisive concern from an official source."""
+    from services import threat_feeds
+    try:
+        rows = await threat_feeds.listed(scope, check.subject)
+    except Exception:  # noqa: BLE001 — an unchecked list is missing evidence, never a clear result
+        return False
+    if not rows:
+        return False
+    row = rows[0]
+    check.facts.append(fact(f"ASIC's investor alert list names this {what} ({row.get('entity') or 'an entity'}, {row.get('category') or 'listed'}).",
+                            "concern", decisive=True, topic="listing",
+                            source=source_ref(row.get("publisher") or "ASIC", url=row.get("detail_url"), authority="official",
+                                              basis="Listed by Australia's financial regulator on its investor alert list",
+                                              checked_at=(row.get("last_verified_at") or datetime.now(timezone.utc)).isoformat())))
+    check.status, check.route = "resolved", "official_source"
+    return True
+
+
+async def _phone(check: Check, pg: dict) -> None:
+    await _regulator_listing(check, "phone", "phone number")
     info = next((v for k, v in pg["ipqs_phones"].items() if k and check.subject and k[-8:] in check.subject.replace(" ", "")), None)
     if info and info.get("status") == "ok":
         risky = (info.get("fraud_score") or 0) >= 85 or info.get("recent_abuse")
@@ -251,7 +279,8 @@ def _phone(check: Check, pg: dict) -> None:
                                 source=source_ref("IPQualityScore", authority="independent", basis="Commercial phone reputation lookup")))
 
 
-def _email(check: Check, plan_: Plan) -> None:
+async def _email(check: Check, plan_: Plan) -> None:
+    await _regulator_listing(check, "email", "email address")
     domain = check.subject.split("@")[-1].lower()
     owner = official_domain(domain)
     if owner:
@@ -286,9 +315,9 @@ async def run(plan_: Plan, pre_gathered: dict | None, text: str) -> None:
         elif check.kind == "impersonation":
             _impersonation(check, plan_)
         elif check.kind == "phone":
-            _phone(check, pg)
+            await _phone(check, pg)
         elif check.kind == "email":
-            _email(check, plan_)
+            await _email(check, plan_)
         elif check.kind in ("abn", "acn"):
             _registration_number(check)
         elif check.kind == "scam_alerts":

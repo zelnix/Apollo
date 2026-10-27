@@ -109,6 +109,8 @@ async def lifespan(_: FastAPI):
     await push.ensure_indexes()
     await family_assist.ensure_indexes()
     await ensure_threat_indexes()
+    from services import threat_feeds
+    await threat_feeds.ensure_indexes()
     # Caller reputation freshness index
     await db.caller_id_numbers.create_index("evidence_expires_at")
     # Legacy blocklist migration disabled (product decision: no independent Apollo threat catalogue).
@@ -264,7 +266,24 @@ async def lifespan(_: FastAPI):
 
     apollo_kb_task = asyncio.create_task(apollo_kb_loop(), name="apollo-kb")
 
+    # 9. threat_feeds_loop — the free threat-intelligence feeds (services/threat_feeds.py): each refreshes once a day,
+    #    failures are retried every 2 hours. Hourly it only refreshes the feeds that are due; admins can refresh now.
+    async def threat_feeds_loop():
+        from services import threat_feeds
+        await asyncio.sleep(90)  # let startup settle first
+        while True:
+            try:
+                await threat_feeds.run(trigger="scheduled", only_due=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("threat feeds loop failed")
+            await asyncio.sleep(3600)
+
+    threat_feeds_task = asyncio.create_task(threat_feeds_loop(), name="apollo-threat-feeds")
+
     yield
+    threat_feeds_task.cancel()
     apollo_kb_task.cancel()
     learn_publish_task.cancel()
     maintenance_task.cancel()
@@ -273,7 +292,7 @@ async def lifespan(_: FastAPI):
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(apollo_kb_task, learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(threat_feeds_task, apollo_kb_task, learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

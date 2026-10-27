@@ -28,7 +28,7 @@ from core.db import db, now_utc
 from core import local_time
 from core.brand import BANNER_ALT, BANNER_PATH
 from services.gemini_usage import MODEL_PRICING
-from services.higgins import ai_settings, provider
+from services.higgins import ai_settings, model_test, provider
 from services.admin_health import (
     OK, DEGRADED, DOWN, UNKNOWN, CONNECTED, NOT_CONFIGURED, UNABLE,
     get_dashboard_health, check_integrations, get_usage_and_costs,
@@ -2956,8 +2956,52 @@ async def knowledge_page(request: Request):
     <table><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Searches</th><th>Pages</th><th>Scam Alerts</th><th>Learn articles</th><th>Rejected</th></tr>{runs or '<tr><td colspan="8">No runs yet</td></tr>'}</table>
     <h2>Recently rejected by the automatic checks</h2>
     <table><tr><th>When</th><th>Reason</th><th>Page</th></tr>{rejected or '<tr><td colspan="3">None</td></tr>'}</table>
+    {await _threat_feeds_section(request.query_params.get("feeds", ""))}
     """
     return _shell("Knowledge Base", "/api/admin/knowledge", body, admin=adm)
+
+
+_FEED_HEALTH_COLOUR = {"healthy": "var(--green)", "stale": "#d29922", "failing": "var(--red)"}
+_FEED_STORE = {"indicators": "Threat indicators (link, email and phone checks)", "knowledge": "ApolloSG KB (technical knowledge)",
+               "enrich": "Adds severity to the KB's exploited vulnerabilities"}
+
+
+async def _threat_feeds_section(notice_key: str) -> str:
+    """Free threat feeds (services/threat_feeds.py): health, entries, last run, and Refresh now (all or one)."""
+    from services import threat_feeds
+    esc = html_mod.escape
+    notice = {"started": '<div class="alert alert-ok" data-testid="threat-feeds-started">Refresh started. Reload this page in a few minutes to see the results.</div>',
+              "busy": '<div class="alert alert-warning" data-testid="threat-feeds-busy">A threat feed refresh is already running.</div>'}.get(notice_key, "")
+    rows = []
+    for row in await threat_feeds.status():
+        feed, state, last = row["feed"], row["state"], row["last_run"] or {}
+        health = row["health"]
+        counts = f" · +{last.get('added', 0):,} / −{last.get('removed', 0):,}" if last.get("status") == "success" else ""
+        run_text = (f"{_kb_when(last.get('started_at'))} · {esc(last.get('trigger', ''))} · {esc(last.get('status', ''))}{counts}"
+                    if last else "Never run")
+        error = f"<br><span style='color:var(--red);font-size:0.85em;'>{esc(row['error'])}</span>" if row["error"] else ""
+        rows.append(
+            f"<tr data-testid='threat-feed-row-{feed.feed_id}'><td><b>{esc(feed.publisher)}</b><br><span style='font-size:0.85em;color:var(--muted);'>{esc(feed.name)}"
+            f" · <a href='{esc(feed.terms)}' target='_blank' rel='noopener'>terms</a></span></td>"
+            f"<td style='font-size:0.85em;'>{esc(_FEED_STORE[feed.store])}</td>"
+            f"<td data-testid='threat-feed-health-{feed.feed_id}' style='color:{_FEED_HEALTH_COLOUR[health]};font-weight:600;'>{health.title()}{error}</td>"
+            f"<td>{_kb_when(state.get('last_success_at'))}</td>"
+            f"<td style='text-align:right;' data-testid='threat-feed-current-{feed.feed_id}'>{row['current']:,}</td>"
+            f"<td style='font-size:0.85em;'>{run_text}</td>"
+            f"<td><form method='post' action='/api/admin/threat-feeds/refresh' style='margin:0;'><input type='hidden' name='feed_id' value='{esc(feed.feed_id)}'>"
+            f"<button class='btn' data-testid='threat-feed-refresh-{feed.feed_id}'>Refresh</button></form></td></tr>")
+    return f"""
+    <h2 id="threat-feeds" data-testid="threat-feeds-heading">Free threat feeds</h2>
+    {notice}
+    <p style="font-size:0.9em;color:var(--muted);">Free, public lists and catalogues, stored in ApolloSG's own threat indicators and KB with their source,
+    reference, licence and dates. Each feed refreshes once a day; a failed refresh is retried every 2 hours. An entry a successful refresh no longer lists
+    stops counting; a download with under half of last time's entries is refused. A list that isn't current is reported as not checked, never as clear.</p>
+    <div class="topbar-row">
+        <div style="font-size:0.88em;">{len(threat_feeds.FEEDS)} feeds &middot; no paid sources</div>
+        <form method="post" action="/api/admin/threat-feeds/refresh" style="margin:0;"><button class="btn" data-testid="threat-feeds-refresh-all">Refresh now</button></form>
+    </div>
+    <table data-testid="threat-feeds-table"><tr><th>Feed</th><th>Goes into</th><th>Health</th><th>Last success</th><th>Current entries</th><th>Last run</th><th></th></tr>
+    {''.join(rows)}</table>"""
 
 
 _KB_TASKS: set = set()  # keeps a manual refresh alive until it finishes
@@ -3049,6 +3093,27 @@ async def knowledge_refresh(request: Request):
         task.add_done_callback(_KB_TASKS.discard)
         await _audit_log(adm.get("email", ""), "knowledge_refresh", "manual ApolloSG KB refresh")
     return RedirectResponse(f"/api/admin/knowledge?refresh={'busy' if busy else 'started'}", status_code=303)
+
+
+@router.post("/admin/threat-feeds/refresh")
+async def threat_feeds_refresh(request: Request):
+    """Refresh now: every free threat feed, or the one named by `feed_id`, in the background."""
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    import asyncio
+    from urllib.parse import parse_qs
+    from services import threat_feeds
+    feed_id = (parse_qs((await request.body()).decode("utf-8", "replace")).get("feed_id") or [""])[0] or None
+    if feed_id and feed_id not in threat_feeds.BY_ID:
+        return RedirectResponse("/api/admin/knowledge#threat-feeds", status_code=303)
+    busy = await db.apollo_kb_state.find_one({"_id": threat_feeds.LOCK_ID, "held_until": {"$gt": now_utc()}}, {"_id": 1})
+    if not busy:
+        task = asyncio.create_task(threat_feeds.run(feed_id, trigger="manual"))
+        _KB_TASKS.add(task)
+        task.add_done_callback(_KB_TASKS.discard)
+        await _audit_log(adm.get("email", ""), "threat_feeds_refresh", f"manual refresh: {feed_id or 'all free threat feeds'}")
+    return RedirectResponse(f"/api/admin/knowledge?feeds={'busy' if busy else 'started'}#threat-feeds", status_code=303)
 
 
 # ── Releases ─────────────────────────────────────────────────────────────────
@@ -3474,6 +3539,9 @@ _GEMINI_FEATURES = (
     ("tc_flyby", "TC FlyBy web search", "Narrow searches about a link, number, company, ABN, ACN or licence.",
      "services/higgins/teddy/search.py → run()",
      "During an investigation, only for what no saved answer from the last 7 days covers."),
+    ("model_test", "Test this model", "One fixed, made-up sample check of a provider and model, shaped like a Magnum DI call.",
+     "services/higgins/model_test.py → run()",
+     "Only when an admin taps Test this model in ApolloSG Settings."),
 )
 _FEATURE_NAMES = {key: name for key, name, *_ in _GEMINI_FEATURES}
 _RETIRED_FEATURES = {
@@ -3489,6 +3557,7 @@ def _starts(prefix: str) -> dict:
 
 
 _FEATURE_OF_RECORD = {"$switch": {"branches": [
+    {"case": _starts("model-test-"), "then": "model_test"},
     {"case": {"$and": [{"$in": ["$purpose", ["investigation", "vision_investigation"]]}, _starts("case-")]}, "then": "magnum_di"},
     {"case": {"$eq": ["$purpose", "teddy_search"]}, "then": "tc_flyby"},
     {"case": {"$and": [{"$eq": ["$purpose", "ordinary_chat"]}, _starts("chat-")]}, "then": "ask_higgins"},
@@ -3590,6 +3659,8 @@ def _model_label(model: str) -> str:
 
 def _model_cell(key: str, sel: dict) -> str:
     """The model a feature calls: always the one ApolloSG Settings selected. Read-only here."""
+    if key == "model_test":
+        return f"<td data-testid='gemini-model-{key}'>The model being tested<br><span class='muted'>+ web search, as Magnum DI</span></td>"
     note = "Always the same as Magnum DI" if key == "tc_flyby" else "+ web search when it needs it"
     return (f"<td data-testid='gemini-model-{key}'>{html_mod.escape(_selection_text(sel))}"
             f"<br><span class='muted'>{note} · <a href='/api/admin/apollosg-settings'>Change in ApolloSG Settings</a></span></td>")
@@ -3644,9 +3715,11 @@ async def gemini_map_page(request: Request):
 def _ai_model_section(sel: dict, flash: str = "", error: str = "") -> str:
     esc = html_mod.escape
     opts = ai_settings.options()
-    available = {p["id"]: [{"id": m["id"], "label": _model_label(m["id"])} for m in p["models"] if not m["reasons"]] for p in opts}
+    # Every approved model is listed; one that can't be used says why, can be tested (nothing is sent) but never saved.
+    listed = {p["id"]: [{"id": m["id"], "label": _model_label(m["id"]) + (" — can't be used" if m["reasons"] else ""),
+                         "reasons": m["reasons"]} for m in p["models"]] for p in opts}
     providers = "".join(f"<option value='{p['id']}'{' selected' if p['id'] == sel['provider'] else ''}>{esc(p['label'])}</option>" for p in opts)
-    current = available.get(sel["provider"], [])
+    current = listed.get(sel["provider"], [])
     models = ("".join(f"<option value='{esc(m['id'])}'{' selected' if m['id'] == sel['model'] else ''}>{esc(m['label'])}</option>" for m in current)
               or "<option value='' disabled selected>No models available for this provider</option>")
     who = ("Default — nobody has changed it yet" if sel.get("default")
@@ -3677,15 +3750,45 @@ def _ai_model_section(sel: dict, flash: str = "", error: str = "") -> str:
       <label>Model<select name="model" id="ai-model" data-testid="ai-model-select">{models}</select></label>
       <p class="warn" data-testid="ai-model-warning">Changing this affects future investigations only. Existing results, and
       investigations already running, keep the model they used.</p>
-      <button class="btn" id="ai-save" data-testid="ai-model-save"{'' if current else ' disabled'}>Save</button>
+      <p class="muted" id="ai-model-blocked" data-testid="ai-model-blocked"></p>
+      <div class="ai-buttons">
+        <button type="button" class="btn secondary" id="ai-test" data-testid="ai-model-test">Test this model</button>
+        <button class="btn" id="ai-save" data-testid="ai-model-save" disabled>Save</button>
+      </div>
+      <p class="muted" id="ai-save-hint" data-testid="ai-model-save-hint">Test this model before saving: one fixed, made-up
+      sample message is checked the way Magnum DI checks evidence (answer shape and web search). Nobody's data is sent.</p>
+      <div id="ai-test-result" data-testid="ai-model-test-result" aria-live="polite"></div>
     </form>
     <p class="muted">Only approved models that can return ApolloSG's fixed answer shape, read images sent as evidence and
-    search the web with sources are listed, cheapest first.</p>
+    search the web with sources can be saved, cheapest first.</p>
     {unavailable_html}
-    <script>(function(){{var models={json.dumps(available)};var p=document.getElementById('ai-provider'),m=document.getElementById('ai-model'),b=document.getElementById('ai-save');
+    <script>(function(){{var models={json.dumps(listed)};var saved={json.dumps([sel['provider'], sel['model']])};
+    var p=document.getElementById('ai-provider'),m=document.getElementById('ai-model'),b=document.getElementById('ai-save'),
+        t=document.getElementById('ai-test'),r=document.getElementById('ai-test-result'),why=document.getElementById('ai-model-blocked');
+    var passed=null;
+    function esc(s){{return String(s).replace(/[&<>"']/g,function(c){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c];}});}}
+    function picked(){{return (models[p.value]||[]).filter(function(x){{return x.id===m.value;}})[0];}}
+    function refresh(){{var x=picked();var blocked=x&&x.reasons.length;
+      why.textContent=blocked?('Can\\'t be saved — '+x.reasons.join('; ')+'.'):'';
+      t.disabled=!x;b.disabled=!x||blocked||!(passed&&passed[0]===p.value&&passed[1]===m.value)||(saved[0]===p.value&&saved[1]===m.value);}}
     p.addEventListener('change',function(){{var list=models[p.value]||[];m.innerHTML='';
     if(!list.length){{var o=document.createElement('option');o.value='';o.disabled=true;o.selected=true;o.textContent='No models available for this provider';m.appendChild(o);}}
-    list.forEach(function(x){{var o=document.createElement('option');o.value=x.id;o.textContent=x.label;m.appendChild(o);}});b.disabled=!list.length;}});}})();</script>"""
+    list.forEach(function(x){{var o=document.createElement('option');o.value=x.id;o.textContent=x.label;m.appendChild(o);}});r.innerHTML='';refresh();}});
+    m.addEventListener('change',function(){{r.innerHTML='';refresh();}});
+    t.addEventListener('click',function(){{var pv=p.value,mv=m.value;t.disabled=true;b.disabled=true;
+      r.innerHTML='<p class="muted" data-testid="ai-model-test-running">Testing '+esc(mv)+'… one sample check, usually under a minute.</p>';
+      fetch('/api/admin/apollosg-settings/ai-model/test',{{method:'POST',credentials:'same-origin',
+        headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:new URLSearchParams({{provider:pv,model:mv}}).toString()}})
+      .then(function(res){{return res.json();}}).then(function(d){{
+        passed=d.ok?[pv,mv]:null;
+        var rows=(d.checks||[]).map(function(c){{return '<li>'+(c.ok?'&#10003; ':'&#10007; ')+esc(c.label)+(c.detail?' <span class="muted">— '+esc(c.detail)+'</span>':'')+'</li>';}}).join('');
+        r.innerHTML='<div class="'+(d.ok?'flash':'error')+'" data-testid="ai-model-test-'+(d.ok?'passed':'failed')+'"><p>'+esc(d.message||'')+
+          (d.simulated?' <span class="tag" data-testid="ai-model-test-simulated">Simulated</span>':'')+'</p>'+
+          (d.simulated?'<p class="muted">Preview: the simulator stood in for the provider, as it does for every AI call here. No call was made.</p>':'')+
+          (rows?'<ul>'+rows+'</ul>':'')+'</div>';
+        refresh();}})
+      .catch(function(){{r.innerHTML='<div class="error" data-testid="ai-model-test-failed"><p>The test couldn\\'t be run. Check your connection and try again.</p></div>';refresh();}});}});
+    refresh();}})();</script>"""
 
 
 _SETTINGS_CSS = (".muted{color:var(--muted);font-size:0.85em;} .current{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:12px 0;}"
@@ -3693,6 +3796,9 @@ _SETTINGS_CSS = (".muted{color:var(--muted);font-size:0.85em;} .current{backgrou
                  " .ai-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;}"
                  " .ai-form select{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:8px;font-weight:400;}"
                  " .ai-form .btn{align-self:flex-start;} .ai-form .btn[disabled]{opacity:0.5;cursor:not-allowed;}"
+                 " .ai-buttons{display:flex;gap:10px;flex-wrap:wrap;} .ai-buttons .btn[disabled]{opacity:0.5;cursor:not-allowed;} .btn.secondary{background:transparent;border:1px solid var(--accent);color:var(--accent);}"
+                 " .tag{display:inline-block;border:1px solid #d29922;color:#d29922;border-radius:10px;padding:0 8px;font-size:0.8em;margin-left:6px;}"
+                 " #ai-test-result ul{margin:6px 0 0 18px;} #ai-test-result p{margin:4px 0;}"
                  " .warn{border-left:3px solid #d29922;padding:6px 10px;margin:6px 0;font-size:0.9em;}"
                  " .error{border:1px solid var(--red);border-radius:8px;padding:10px 14px;}"
                  " .flash{background:var(--card);border:1px solid var(--green);border-radius:8px;padding:10px 14px;}"
@@ -3725,6 +3831,12 @@ async def apollosg_settings_save_model(request: Request):
     from urllib.parse import parse_qs
     form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
     chosen_provider, chosen_model = form.get("provider", ""), form.get("model", "")
+    current = await ai_settings.selection()
+    reasons = ai_settings.unavailable(chosen_provider, chosen_model)
+    if (not reasons and (current["provider"], current["model"]) != (chosen_provider, chosen_model)
+            and not await model_test.passed_recently(chosen_provider, chosen_model)):
+        return await _apollosg_settings(adm, error=f"Nothing was changed: test {chosen_model} first. It hasn't passed the sample "
+                                                   f"check in the last hour.", status_code=400)
     try:
         before = await ai_settings.choose(chosen_provider, chosen_model, adm.get("email", ""))
     except ValueError as exc:
@@ -3733,6 +3845,21 @@ async def apollosg_settings_save_model(request: Request):
         await _audit_log(adm.get("email", ""), "ai_model_change",
                          f"AI investigation model: {_selection_text(before)} → {ai_settings.label(chosen_provider)} · {chosen_model}")
     return RedirectResponse("/api/admin/apollosg-settings?saved=1", status_code=303)
+
+
+@router.post("/admin/apollosg-settings/ai-model/test")
+async def apollosg_settings_test_model(request: Request):
+    """Test this model: one safe sample check (services/higgins/model_test.py). Nothing is sent when it can't be used."""
+    adm = await _admin(request)
+    if not adm:
+        return JSONResponse({"ok": False, "message": "Sign in again to test a model."}, status_code=401)
+    from urllib.parse import parse_qs
+    form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
+    result = await model_test.run(form.get("provider", ""), form.get("model", ""))
+    await _audit_log(adm.get("email", ""), "ai_model_test",
+                     f"Tested {ai_settings.label(result['provider'])} · {result['model']}: {'passed' if result['ok'] else 'failed'}"
+                     + (" (simulated)" if result["simulated"] else ""))
+    return JSONResponse(result)
 
 
 @router.post("/admin/reset-stats")

@@ -146,8 +146,10 @@ class BlocklistEntry(BaseDocument):
 
 ThreatIndicatorStatus = Literal["active", "check_overdue", "expired", "withdrawn", "pending_review"]
 ThreatIndicatorReviewStatus = Literal["auto_verified", "manually_reviewed", "pending_human_review", "legacy_migrated"]
-ThreatIndicatorScope = Literal["hostname"]
-OriginalEvidenceScope = Literal["url", "hostname"]
+# hostname: a native blocking rule (Site Gate). The others come from the free threat feeds (services/threat_feeds.py)
+# and are matched in lookups only; they never become native rules.
+ThreatIndicatorScope = Literal["hostname", "url", "netblock", "email", "phone"]
+OriginalEvidenceScope = Literal["url", "hostname", "netblock", "email", "phone"]
 WithdrawalReason = Literal["source_delisted", "false_positive_confirmed", "expired_unverified", "admin_manual", "superseded"]
 RevalidationOutcome = Literal["confirmed", "source_delisted", "source_timeout", "source_error", "source_unavailable"]
 

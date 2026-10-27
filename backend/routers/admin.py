@@ -219,7 +219,7 @@ async def admin_add_threat_indicator(
 
     # Check for duplicates
     existing = await db.threat_indicators.find_one({
-        "hostname": hostname, "status": {"$in": ["active", "check_overdue", "pending_review"]}
+        "hostname": hostname, "scope": "hostname", "status": {"$in": ["active", "check_overdue", "pending_review"]}
     })
     if existing:
         raise HTTPException(

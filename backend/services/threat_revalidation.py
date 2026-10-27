@@ -224,6 +224,7 @@ async def _enforce_hard_expiry() -> int:
     ts = now_utc()
     result = await db.threat_indicators.update_many(
         {
+            "scope": "hostname",  # the free threat feeds' listings expire with their feed (services/threat_feeds.py)
             "status": {"$in": ["active", "check_overdue"]},
             "evidence_expiry_deadline": {"$lte": ts},
         },
@@ -271,6 +272,7 @@ async def revalidate_due_indicators() -> dict:
     # 1. Select due indicators
     cursor = db.threat_indicators.find(
         {
+            "scope": "hostname",  # the free threat feeds' listings are re-confirmed by their feed, not here
             "status": {"$in": ["active", "check_overdue"]},
             "next_scheduled_check": {"$lte": ts},
         },
@@ -338,7 +340,7 @@ async def migrate_blocklist_entries() -> int:
             continue
 
         # Skip if already migrated
-        existing = await db.threat_indicators.find_one({"hostname": hostname, "status": {"$ne": "withdrawn"}})
+        existing = await db.threat_indicators.find_one({"hostname": hostname, "scope": "hostname", "status": {"$ne": "withdrawn"}})
         if existing:
             continue
 

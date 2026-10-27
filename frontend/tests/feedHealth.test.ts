@@ -39,6 +39,8 @@ test("record counts distinguish 'never loaded' from zero", () => {
 test("content types are spelled out", () => {
   assert.equal(contentTypeLabel("live_alert"), "Live alerts");
   assert.equal(contentTypeLabel("official_advice"), "Official advice");
+  assert.equal(contentTypeLabel("threat_listing"), "Threat list");
+  assert.equal(contentTypeLabel("threat_knowledge"), "Threat knowledge");
   assert.equal(contentTypeLabel("something_new"), "Government feed");
 });
 

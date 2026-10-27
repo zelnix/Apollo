@@ -17,7 +17,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 const INFO: ScreenInfo = { title: "About Feed health", body: [
-  "ApolloSG reads official scam and cyber-security feeds from government sources. This screen shows whether each one is syncing.",
+  "ApolloSG reads official scam and cyber-security feeds from government sources, and free public threat lists. This screen shows whether each one is syncing.",
   "Healthy: the latest sync worked and it was in the last 24 hours. Stale: no successful sync in the last 24 hours. Failing: the latest sync attempt failed — the reason is shown under the feed.",
   "ApolloSG retries every feed on its own schedule. Pull down to refresh this screen.",
 ] };
@@ -101,7 +101,7 @@ export default function FeedHealthScreen() {
           </Card>
           {error ? <Body testID="feed-health-refresh-error">{`Couldn't refresh: ${error}`}</Body> : null}
           <View>
-            <SectionTitle>Government feeds</SectionTitle>
+            <SectionTitle>Government feeds and threat lists</SectionTitle>
             <Card testID="feed-health-list">
               {report.feeds.length === 0
                 ? <Body testID="feed-health-empty">No government feeds are switched on.</Body>

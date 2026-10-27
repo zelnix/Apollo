@@ -18,7 +18,9 @@ export const FEED_STATUS_LABEL: Record<FeedStatus, string> = { healthy: "Healthy
 const FEED_STATUS_TONE: Record<FeedStatus, Tone> = { healthy: "resting", stale: "growling", failing: "barking" };
 export function feedStatusTone(status: FeedStatus): Tone { return FEED_STATUS_TONE[status]; }
 
-const CONTENT_TYPE_LABEL: Record<string, string> = { live_alert: "Live alerts", official_advice: "Official advice" };
+const CONTENT_TYPE_LABEL: Record<string, string> = {
+  live_alert: "Live alerts", official_advice: "Official advice", threat_listing: "Threat list", threat_knowledge: "Threat knowledge",
+};
 export function contentTypeLabel(type: string): string { return CONTENT_TYPE_LABEL[type] ?? "Government feed"; }
 
 /** "just now", "5 minutes ago", "3 hours ago", "2 days ago"; `never` when there is no time. */

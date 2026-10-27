@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 from core.db import db, now_utc
 from services.triage import Outcome, TriageInvestigation, evaluate, legacy_outcome, run_with_retries
+from services.intel import answered, listed_by
 from services.triage.completeness import from_sources, incomplete_check
 
 _log = logging.getLogger("apollo.triage")
@@ -97,9 +98,9 @@ class TriageResult:
         for url, info in pe.get("safe_browsing", {}).get("urls", {}).items():
             if info.get("verdict") == "malicious":
                 threats = ", ".join(info.get("threat_types", []))
-                lines.append(f"  • URL {url}: LISTED as {threats} by Google Safe Browsing ({info.get('queried_at', '?')})")
+                lines.append(f"  • URL {url}: LISTED as {threats} by {listed_by(info.get('sources'))} ({info.get('queried_at', '?')})")
             elif info.get("verdict") == "clean":
-                lines.append(f"  • URL {url}: Not currently listed by Google Safe Browsing ({info.get('queried_at', '?')})")
+                lines.append(f"  • URL {url}: Not currently listed by {answered(info.get('sources'))} ({info.get('queried_at', '?')})")
 
         # Redirect chains
         for url, info in pe.get("redirects", {}).get("urls", {}).items():
@@ -151,9 +152,9 @@ def compact_evidence_for_magnum_di(provider_evidence: dict) -> str:
     for url, info in pe.get("safe_browsing", {}).get("urls", {}).items():
         if info.get("verdict") == "malicious":
             threats = ", ".join(info.get("threat_types", []))
-            lines.append(f"  • URL {url}: LISTED as {threats} by Google Safe Browsing ({info.get('queried_at', '?')})")
+            lines.append(f"  • URL {url}: LISTED as {threats} by {listed_by(info.get('sources'))} ({info.get('queried_at', '?')})")
         elif info.get("verdict") == "clean":
-            lines.append(f"  • URL {url}: Not currently listed by Google Safe Browsing ({info.get('queried_at', '?')})")
+            lines.append(f"  • URL {url}: Not currently listed by {answered(info.get('sources'))} ({info.get('queried_at', '?')})")
     for url, info in pe.get("redirects", {}).get("urls", {}).items():
         chain = info.get("chain", [])
         if len(chain) > 1:
@@ -795,7 +796,7 @@ def _link_evidence_from_providers(evidence: dict, provider_evidence: dict) -> di
                    or info.get("coverage") == "none"]
     reputation: dict = {}
     if malicious:
-        reputation = {"status": "ok", "verdict": "malicious", "source": "Google Safe Browsing",
+        reputation = {"status": "ok", "verdict": "malicious", "source": listed_by(sb[malicious[0]].get("sources")),
                       "threat_types": sb[malicious[0]].get("threat_types", [])}
     elif unavailable:
         info = sb[unavailable[0]]

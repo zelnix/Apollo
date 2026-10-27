@@ -39,7 +39,7 @@ def archive(monkeypatch):
 
     async def save_now(url): return state["save"]
     async def latest_copy(url): return state["latest"]
-    async def get(url, max_hops=3):
+    async def get(url, max_hops=3, **_options):
         state["reads"].append(url)
         return _archive_response(state["served"] or url, state["status"])
 

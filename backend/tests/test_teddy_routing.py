@@ -149,6 +149,12 @@ def _lookups(monkeypatch, *, verdict="clean", threats=(), age_days=4000):
 
     monkeypatch.setattr(official, "lookup_url", url)
     monkeypatch.setattr(official, "lookup_domain", domain)
+    # ASIC's real investor alert list names some placeholder numbers (0412 345 678): these cases are about other rules.
+    from services import threat_feeds
+
+    async def not_listed(_scope, _value):
+        return []
+    monkeypatch.setattr(threat_feeds, "listed", not_listed)
 
 
 def _grounded(lines: list[str], urls: list[tuple[str, str]]) -> tuple[str, dict]:

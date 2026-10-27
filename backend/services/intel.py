@@ -1,4 +1,5 @@
-"""Reputation intelligence: external providers (Google Safe Browsing), HMAC digest cache, redirect expansion.
+"""Reputation intelligence: external providers (Google Safe Browsing and the free threat lists in
+services/threat_feeds.py), HMAC digest cache, redirect expansion.
 
 Product decision: Apollo's internal blocklist (db.blocklist) is no longer used as an independent
 verdict source. External specialist providers are the authoritative intelligence sources.
@@ -150,6 +151,31 @@ async def safe_browsing_lookup(url: str) -> tuple[IntelSource, Optional[datetime
     return IntelSource(name="google_safe_browsing", status="clear", detail="No current Safe Browsing listing."), None
 
 
+# How each list is named to a person.
+SOURCE_LABELS = {"google_safe_browsing": "Google Safe Browsing", "apollo_blocklist": "Apollo's blocklist", "phishtank": "PhishTank",
+                 "openphish": "OpenPhish", "spamhaus_drop": "Spamhaus DROP", "asic_investor_alerts": "ASIC's investor alert list",
+                 "acma_blocked_gambling": "ACMA's blocked gambling websites list"}
+
+
+def label(name: str) -> str:
+    return SOURCE_LABELS.get(name, name.replace("_", " "))
+
+
+def _names(labels: list[str]) -> str:
+    labels = list(dict.fromkeys(labels))
+    return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1] if labels else ""
+
+
+def listed_by(sources: list[dict] | None, default: str = "Google Safe Browsing") -> str:
+    """The lists that list it ("PhishTank and Google Safe Browsing"), from a check's recorded sources."""
+    return _names([label(s.get("name") or "") for s in sources or [] if s.get("status") == "match"]) or default
+
+
+def answered(sources: list[dict] | None, default: str = "Google Safe Browsing") -> str:
+    """The lists that answered (listed or not), for a "not listed by …" statement."""
+    return _names([label(s.get("name") or "") for s in sources or [] if s.get("status") in ("match", "clear")]) or default
+
+
 def combine(sources: list[IntelSource]) -> tuple[Verdict, list[str], str]:
     threats = sorted({t for s in sources for t in s.threat_types})
     if any(s.status == "match" for s in sources):
@@ -247,10 +273,13 @@ async def run_intel_check(indicator_type: str, value: str) -> IntelCheckResponse
                 verdict=rc.verdict, threat_types=rc.threat_types, sources=[IntelSource(**s) for s in rc.sources],
                 indicator_digest=dg, checked_at=rc.checked_at, cached=True, coverage=rc.coverage,  # type: ignore[arg-type]
             )
-    # ── Intelligence sources: Apollo blocklist + external providers ──
+    # ── Intelligence sources: Apollo blocklist + external providers + the free threat lists ──
+    from services import threat_feeds
     bl_source = await blocklist_check(host)
-    sb_source, sb_expiry = await safe_browsing_lookup(url if indicator_type == "url" else f"http://{host}/")
-    sources = [bl_source, sb_source]
+    (sb_source, sb_expiry), feed_sources = await asyncio.gather(
+        safe_browsing_lookup(url if indicator_type == "url" else f"http://{host}/"),
+        threat_feeds.listing_sources(host, url if indicator_type == "url" else None))
+    sources = [bl_source, sb_source, *feed_sources]
     verdict, threats, coverage = combine(sources)
     expires = sb_expiry or (ts + timedelta(minutes=5 if verdict != "unknown" else 1))
     record = ReputationCache(

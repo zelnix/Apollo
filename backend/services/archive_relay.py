@@ -72,7 +72,8 @@ async def fetch(feed_url: str) -> tuple[httpx.Response, datetime]:
         raise ArchiveRelayError("archive_unavailable")
     if now - captured > MAX_COPY_AGE:
         raise ArchiveRelayError("archive_copy_too_old")
-    response = await public_get(f"{_ARCHIVE}/web/{captured.strftime('%Y%m%d%H%M%S')}id_/{feed_url}", max_hops=2)
+    # `id_` serves the source's original bytes with its original encoding (cyber.gov.au sends gzip), so gzip is accepted.
+    response = await public_get(f"{_ARCHIVE}/web/{captured.strftime('%Y%m%d%H%M%S')}id_/{feed_url}", max_hops=2, gzip_ok=True)
     if response.status_code != 200:
         raise ArchiveRelayError("archive_unavailable")
     served = capture_of(str(response.request.url), feed_url)  # the Archive may redirect to the nearest capture

@@ -1,3 +1,33 @@
+## ApolloSG Free Knowledge Base — Phases 1–2 done + Test this model (2026-10-27)
+**Owner's choices:** Test button first, then Phase 1–2 feeds; a provider without its key shows "key missing" and can't be
+saved; feeds refresh daily + admin "Refresh now"; ASIC and CVE/NVD added in this phase; check in after Phases 1–2.
+- **Test this model** (Admin → ApolloSG Settings): `services/higgins/model_test.py`, POST `/api/admin/apollosg-settings/ai-model/test`;
+  a new model is saved only after it passed in the last hour; no key → nothing sent, save blocked.
+- **10 free sources, no paid sources, no new infra** (`services/threat_feeds.py`):
+  listings → `threat_indicators` (scope url/netblock/email/phone; never native Site Gate rules): PhishTank, OpenPhish,
+  Spamhaus DROP v4+v6, ASIC investor alerts (websites + email/phone as one-way codes), ACMA blocked gambling.
+  Knowledge → `higgins_knowledge`: CISA KEV (+ NVD severity enrich), MITRE ATT&CK Mobile + Enterprise (kinds
+  `exploited_vulnerability`, `attack_technique`; found only by exact CVE/T-id). ACSC + Scamwatch stay in the existing
+  government feeds (`learning_feeds`); ACSC gzip via Archive relay fixed (`outbound.gunzip`, `gzip_ok`) and syncing again.
+- Provenance on every record (source, reference, publisher, licence/terms, first seen, last confirmed, expiry). Freshness:
+  daily (server.py `threat_feeds_loop`, hourly due-check), retry 2 h, delist on successful refresh, shrink guard (<50% refused),
+  out-of-date list = "not checked", never clear. Feed Health (app + `/api/feeds/health`) lists them (Threat list / Threat knowledge).
+- Link checks (`intel.run_intel_check`) report each list; TC FlyBy wording names the lists (`intel.listed_by/answered`);
+  ASIC naming an exact phone/email → decisive concern (`teddy/official._regulator_listing`).
+- **False-positive guard:** a listing on a restricted host (platform, free mail, organisation's own/official domain) counts only
+  for a specific page — never the home page or a one-segment address carrying its target in the query (google.com/url?q=…)
+  (`threat_feeds.restricted/names_a_page`). Found because PhishTank listed google.com/?… and google.com came back malicious.
+  ASIC website notes "(no longer works)" and stray spaces cleaned.
+- Admin → Knowledge Base → "Free threat feeds": health, current entries, last run, Refresh now (all) + per-feed Refresh
+  (POST `/api/admin/threat-feeds/refresh`, background, audit-logged, busy lock).
+- Rule book updated (link check, Stage 1 phone/email, established evidence, KB kinds + "Free threat lists" section); stamped.
+- Tests: new `tests/test_threat_feeds.py` (14); fixed fakes in test_p0_outbound_unit/test_archive_relay; test_teddy_routing
+  stubs `threat_feeds.listed` (ASIC's real list names placeholder 0412 345 678). Backend 1329 passed; frontend 1076/1076; tsc clean.
+  No testing agent (owner's rule).
+- NEXT: owner check-in → Phase 3 Official Organisation KB; Phase 4 privacy-safe observed intelligence; Phase 5 correlation/
+  freshness/provenance + Magnum DI. Claude/OpenAI still need the owner's keys.
+
+
 ## AI gateway: provider-neutral, Claude + OpenAI connected, Ask Higgins AI fallback removed (2026-10-27)
 **Owner's choices:** do all four steps; Claude and OpenAI use the owner's OWN keys (not the Emergent key). Keys were
 requested (ANTHROPIC_API_KEY, OPENAI_API_KEY) but the owner skipped the card — until they're added, Claude/OpenAI models

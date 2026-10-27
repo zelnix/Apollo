@@ -295,7 +295,7 @@ async def test_blocked_edge_rotates_fingerprint_and_sticks_to_winner(monkeypatch
     seen: list[int] = []
 
     @asynccontextmanager
-    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None):
+    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None, **_options):
         if method == "GET":
             seen.append(profile)
         status = 403 if profile == 0 else 200
@@ -321,7 +321,7 @@ async def test_transport_failure_falls_through_to_next_profile(monkeypatch):
     attempts: list[int] = []
 
     @asynccontextmanager
-    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None):
+    async def _fake_stream(method: str, _url: str, profile: int = 0, proxy: str | None = None, **_options):
         attempts.append(profile)
         if profile == 0:
             raise outbound.httpx.ReadTimeout("hung")

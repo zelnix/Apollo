@@ -7,6 +7,9 @@ Every entry keeps its source, link, authority tier, jurisdiction and dates, and 
 - scam_pattern       — established scam patterns as official sources describe them (teddy/patterns.py), with the
                        markers TC FlyBy compares submitted material against
 - researched         — trusted pages found and maintained through Tavily (services/apollo_kb.py), versioned
+- exploited_vulnerability, attack_technique — technical knowledge from the free feeds (services/threat_feeds.py):
+                       CISA's Known Exploited Vulnerabilities (with NVD severity) and MITRE ATT&CK. Found only by its
+                       exact id (a CVE or ATT&CK technique id), so it never stands in for everyday guidance.
 
 AI-written answers are NOT KB knowledge and are never used to answer anyone: Ask Higgins no longer asks a general AI
 model, and the answers it saved before that (moved to the reusable intelligence cache, services/reusable_intel.py)
@@ -189,12 +192,37 @@ async def _weights(coll) -> tuple[int, dict[str, int]]:
         return cached[1], cached[2]
     held: dict[str, int] = {}
     n = 0
-    async for doc in coll.find({"kind": {"$ne": "gemini_answer"}}, {"_id": 0, "title": 1, "body": 1}):
+    async for doc in coll.find({"kind": _NOT_GENERAL}, {"_id": 0, "title": 1, "body": 1}):
         n += 1
         for concept in set(concepts(f"{doc.get('title') or ''} {doc.get('body') or ''}")):
             held[concept] = held.get(concept, 0) + 1
     _WEIGHTS[coll.full_name] = (now_utc(), n, held)
     return n, held
+
+
+# Technical knowledge is answered only when asked for by its exact id; it takes no part in matching everyday questions.
+TECHNICAL_KINDS = ("exploited_vulnerability", "attack_technique")
+_NOT_GENERAL = {"$nin": ["gemini_answer", *TECHNICAL_KINDS]}
+_TECHNICAL_ID = re.compile(r"\b(CVE-\d{4}-\d{4,}|T\d{4}(?:\.\d{3})?)\b", re.I)
+
+
+async def by_id(text: str, limit: int = 2) -> list[dict]:
+    """Technical entries named by their exact id in the text: CVE-2024-3400, or an ATT&CK technique like T1660."""
+    ids = list(dict.fromkeys(match.upper() for match in _TECHNICAL_ID.findall(text or "")))[:limit]
+    if not ids:
+        return []
+    rows = await db.higgins_knowledge.find({"kind": {"$in": list(TECHNICAL_KINDS)}, "status": {"$ne": "historical"},
+                                            "source_reference": {"$in": ids}}, {"_id": 0, "sketch": 0}).to_list(limit * 2)
+    rows.sort(key=lambda row: (ids.index(row["source_reference"]), row.get("matrix") != "mobile"))  # Mobile first: ApolloSG is on phones
+    picked, seen = [], set()
+    for row in rows:
+        if row["source_reference"] not in seen:
+            seen.add(row["source_reference"])
+            picked.append(row)
+    picked = picked[:limit]
+    if picked:
+        await db.higgins_knowledge.update_many({"kb_id": {"$in": [row["kb_id"] for row in picked]}}, {"$inc": {"hits": 1}})
+    return picked
 
 
 def forget_weights() -> None:
@@ -351,11 +379,13 @@ async def search(question: str, limit: int = 2, *, collection=None) -> list[dict
     """KB entries that answer `question`, best first. Gemini's saved answers are never KB knowledge and never
     returned. `collection`: another collection with the same shape and text index (the benchmark's corpus)."""
     coll = db.higgins_knowledge if collection is None else collection
+    if collection is None and (named := await by_id(question, limit)):
+        return named
     query = concepts(question, query=True)
     if not query:
         return []
     try:
-        rows = await coll.find({"$text": {"$search": search_words(question)}, "kind": {"$ne": "gemini_answer"}},
+        rows = await coll.find({"$text": {"$search": search_words(question)}, "kind": _NOT_GENERAL},
                                {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001 — a missing index means no match, never a crash
         return []
@@ -392,7 +422,7 @@ async def related(text: str, limit: int = 2) -> list[dict]:
     if not query_terms:
         return []
     try:
-        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}, "kind": {"$ne": "gemini_answer"}},
+        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}, "kind": _NOT_GENERAL},
                                                {"_id": 0, "sketch": 0, "score": {"$meta": "textScore"}}
                                                ).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001

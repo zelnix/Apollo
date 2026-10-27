@@ -1,4 +1,5 @@
-"""Feed Health: sync status of every enabled government feed, judged against one 24-hour rule.
+"""Feed Health: sync status of every enabled government feed and free threat-intelligence feed (services/threat_feeds.py),
+judged against one 24-hour rule.
 
 healthy — the latest sync attempt succeeded and the last success is under 24 hours old
 stale   — no successful sync in the last 24 hours (including a feed that has never synced)
@@ -29,6 +30,8 @@ _DETAIL_MESSAGES = {
     "archive_unavailable": "The Internet Archive couldn't make or find a copy of this feed. ApolloSG will try again.",
     "archive_copy_too_old": "The newest Internet Archive copy of this feed is more than a day old.",
     "archive_wrong_capture": "The Internet Archive returned a copy of a different address, so ApolloSG didn't use it.",
+    "feed shrank unexpectedly": "The source sent far fewer entries than last time, so ApolloSG kept the list it already had rather than remove them.",
+    "too_many_redirects": "The source redirected ApolloSG too many times.",
 }
 _CODE_MESSAGES = {
     "SourceUnavailable": "This feed's government source is switched off or no longer recognised.",
@@ -88,6 +91,22 @@ async def snapshot() -> dict:
             # Always-relayed feeds, plus feeds whose last sync fell back to the Archive because the source refused us.
             "relay": feed.get("relay") or (state.get("relay_used") if state else None),
             "relayCopyAt": _aware(state.get("relay_copy_at")) if state else None,
+            "lastError": {"message": error_message(code, state.get("error_detail")), "code": code,
+                          "detail": state.get("error_detail"), "at": _aware(state.get("last_checked_at"))} if code else None,
+        })
+    from services import threat_feeds
+    for feed in threat_feeds.FEEDS:
+        state = states.get(feed.feed_id)
+        status = classify(state, now)
+        code = state.get("error") if status == "failing" else None
+        rows.append({
+            "feedId": feed.feed_id, "source": feed.publisher, "feedUrl": feed.url,
+            "contentType": threat_feeds.LISTING_CONTENT if feed.store == "indicators" else threat_feeds.KNOWLEDGE_CONTENT,
+            "status": status,
+            "lastSuccessAt": _aware(state.get("last_success_at")) if state else None,
+            "lastCheckedAt": _aware(state.get("last_checked_at")) if state else None,
+            "recordCount": state.get("item_count") if state else None,
+            "relay": None, "relayCopyAt": None,
             "lastError": {"message": error_message(code, state.get("error_detail")), "code": code,
                           "detail": state.get("error_detail"), "at": _aware(state.get("last_checked_at"))} if code else None,
         })

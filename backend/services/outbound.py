@@ -124,13 +124,14 @@ async def resolve_public(host: str, port: int) -> list[str]:
 
 
 @asynccontextmanager
-async def public_stream(method: str, url: str, profile: int = 0, proxy: str | None = None):
+async def public_stream(method: str, url: str, profile: int = 0, proxy: str | None = None, deadline: float = 12,
+                        accept: str | None = None):
     """One pinned hop. Caller must consume inside this context; total deadline includes queue/DNS."""
-    async with asyncio.timeout(12), _slots:
+    async with asyncio.timeout(deadline), _slots:
         target = parse_target(url)
         ips = await resolve_public(target.host, target.port or (443 if target.scheme == 'https' else 80))
         headers = {'Host': target.netloc.decode('ascii'), 'Accept-Encoding': 'identity',
-                   **HEADER_PROFILES[profile % len(HEADER_PROFILES)]}
+                   **HEADER_PROFILES[profile % len(HEADER_PROFILES)], **({'Accept': accept} if accept else {})}
         options: dict = {'timeout': httpx.Timeout(8.0, connect=4.0), 'follow_redirects': False,
                          'trust_env': False}
         if proxy:
@@ -145,8 +146,11 @@ async def public_stream(method: str, url: str, profile: int = 0, proxy: str | No
                 yield response
 
 
-async def bounded_body(response: httpx.Response, limit: int = MAX_BYTES) -> bytes:
-    if response.headers.get('content-encoding', 'identity').lower() not in ('', 'identity'):
+async def bounded_body(response: httpx.Response, limit: int = MAX_BYTES, gzip_ok: bool = False) -> bytes:
+    """The raw body, at most `limit` bytes. A gzip body is accepted only when the caller asks (gzip_ok) and is then
+    decompressed here, also bounded by `limit`; any other encoding is refused."""
+    encoding = response.headers.get('content-encoding', 'identity').lower()
+    if encoding not in ('', 'identity') and not (gzip_ok and encoding == 'gzip'):
         raise OutboundBlocked('encoded_body_not_supported')
     length = response.headers.get('content-length')
     if length and (not length.isdigit() or int(length) > limit):
@@ -156,16 +160,30 @@ async def bounded_body(response: httpx.Response, limit: int = MAX_BYTES) -> byte
         if len(data) + len(chunk) > limit:
             raise OutboundBlocked('body_too_large')
         data.extend(chunk)
-    return bytes(data)
+    return gunzip(bytes(data), limit) if encoding == 'gzip' else bytes(data)
 
 
-async def _fetch(url: str, max_hops: int, profile: int, proxy: str | None) -> httpx.Response:
-    async with asyncio.timeout(15):
+def gunzip(data: bytes, limit: int) -> bytes:
+    """Decompress gzip bytes, refusing anything that would expand past `limit` (a decompression bomb)."""
+    import zlib
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        out = inflater.decompress(data, limit + 1)
+    except zlib.error as exc:
+        raise OutboundBlocked('encoded_body_not_supported') from exc
+    if len(out) > limit or inflater.unconsumed_tail:
+        raise OutboundBlocked('body_too_large')
+    return out
+
+
+async def _fetch(url: str, max_hops: int, profile: int, proxy: str | None, limit: int = MAX_BYTES,
+                 deadline: float = 15, gzip_ok: bool = False, accept: str | None = None) -> httpx.Response:
+    async with asyncio.timeout(deadline):
         for hop in range(max_hops + 1):
             # Preflight every hop with headers only. A server may not implement HEAD (or may reject
             # it), in which case the bounded GET below is the explicit fallback. Redirect targets
             # are re-parsed and re-resolved before any request reaches them.
-            async with public_stream('HEAD', url, profile=profile, proxy=proxy) as preflight:
+            async with public_stream('HEAD', url, profile=profile, proxy=proxy, deadline=min(deadline, 12), accept=accept) as preflight:
                 if preflight.status_code in REDIRECTS:
                     if hop == max_hops or not preflight.headers.get('location'):
                         raise OutboundBlocked('too_many_redirects')
@@ -173,28 +191,33 @@ async def _fetch(url: str, max_hops: int, profile: int, proxy: str | None) -> ht
                     continue
                 if preflight.status_code not in (400, 403, 405):
                     # Validate advertised size/encoding without consuming a response body.
-                    await bounded_body(preflight)
-            async with public_stream('GET', url, profile=profile, proxy=proxy) as response:
+                    await bounded_body(preflight, limit, gzip_ok)
+            async with public_stream('GET', url, profile=profile, proxy=proxy, deadline=max(deadline - 3, 12), accept=accept) as response:
                 if response.status_code in REDIRECTS:
                     if hop == max_hops or not response.headers.get('location'):
                         raise OutboundBlocked('too_many_redirects')
                     url = urljoin(url, response.headers['location'])
                     continue
-                content = await bounded_body(response)
-                return httpx.Response(response.status_code, headers=response.headers, content=content,
+                content = await bounded_body(response, limit, gzip_ok)
+                # The body is already decoded, so the headers no longer describe an encoding.
+                headers = [(k, v) for k, v in response.headers.items() if k.lower() not in ('content-encoding', 'content-length')]
+                return httpx.Response(response.status_code, headers=headers, content=content,
                                       request=httpx.Request('GET', url))
     raise OutboundBlocked('fetch_failed')
 
 
-async def public_get(url: str, max_hops: int = 3) -> httpx.Response:
-    """Fetch a public URL, rotating client fingerprint (and optional egress proxy) past edge blocks."""
+async def public_get(url: str, max_hops: int = 3, *, limit: int = MAX_BYTES, deadline: float = 15,
+                     gzip_ok: bool = False, accept: str | None = None) -> httpx.Response:
+    """Fetch a public URL, rotating client fingerprint (and optional egress proxy) past edge blocks.
+    Bulk feeds pass a larger `limit` and `deadline`; `gzip_ok` accepts (and decodes) a gzip-encoded body; `accept`
+    sets the Accept header for an API that requires its own media type."""
     host = parse_target(url).host
     attempts = [(profile, proxy) for proxy in _proxies() for profile in _profile_order(host)]
     response = None
     failure: Exception | None = None
     for profile, proxy in attempts:
         try:
-            response = await _fetch(url, max_hops, profile, proxy)
+            response = await _fetch(url, max_hops, profile, proxy, limit, deadline, gzip_ok, accept)
         except httpx.HTTPError as exc:
             # Transport-level refusals (resets, hangs) are how some edges drop unwanted clients.
             failure = exc
