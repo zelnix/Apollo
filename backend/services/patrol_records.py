@@ -11,6 +11,7 @@ from typing import Any
 from core.config import URL_HMAC_SECRET
 from core.db import db, now_utc
 from core.models import PatrolEventIn
+from services.patrol_policy import SUMMARY_ADAPTER, refresh_summary
 from services.record_classification import classify_record, generate_higgins_briefing
 
 DISPLAY = {"resting": "resolved", "ears_up": "monitoring", "growling": "warning", "barking": "danger", "biting": "blocked", "sniffing": "monitoring"}
@@ -79,6 +80,10 @@ def _wire(row: dict[str, Any]) -> dict[str, Any]:
     evidence_provenance = stored_provenance if stored_provenance else (
         "local_device" if has_substantive_summary and row.get("source_type") != "server_projected" else "server_projected"
     )
+    # A stored privacy summary is shown in its current wording — never the older location wording it was written with.
+    if event_data.get("adapter_label") == SUMMARY_ADAPTER:
+        event_data = refresh_summary(event_data)
+        row = {**row, "event": event_data, "headline": event_data["headline"], "summary": event_data["what_happened"]}
     return {
         "recordId": row["record_id"], "logicalIssueKey": row["logical_issue_key"], "revision": row["revision"],
         "supersedes": row.get("supersedes"), "sourceEventId": row["source_event_id"], "sourceType": row["source_type"],

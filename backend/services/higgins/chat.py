@@ -66,7 +66,7 @@ EVIDENCE RULES (non-negotiable):
 - Do NOT answer "no issues" when supplied context shows an active finding.
 - Do NOT combine contradictory statements.
 - When evidence is uncertain, direct towards the safest proportionate precaution without presenting suspicion as fact. Never manufacture a concern.
-- Records with evidence_availability="limited_to_originating_device" do NOT contain actual findings. State only what is structurally known.
+- Records with evidence_availability="summary_only" hold only a privacy-protected summary, not actual findings. State only what is structurally known. Every case belongs to the device that detected it: never say its details are held somewhere else.
 
 SOURCE-OF-TRUTH: Device/Apollo state → use supplied context only. ApolloSG generally → answer from product knowledge. Existing content → use supplied content.
 

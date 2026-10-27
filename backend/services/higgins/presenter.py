@@ -274,8 +274,8 @@ def patrol_findings(items: list[dict[str, Any]]) -> dict[str, Any]:
     lines = []
     for item in items[:5]:
         line = f"{item.get('headline') or 'Finding'} — {STATE_TEXT.get(item.get('effectiveState'), item.get('effectiveState') or 'state not known')}."
-        if item.get("evidence_availability") == "limited_to_originating_device":
-            line += " The details of this one stay on the phone that found it."
+        if item.get("evidence_availability") == "summary_only":
+            line += " ApolloSG holds only a privacy-protected summary of this one."
         elif item.get("summary"):
             line += f" {item['summary']}"
         lines.append(line)
@@ -286,8 +286,8 @@ def patrol_record(item: dict[str, Any]) -> dict[str, Any]:
     """One Patrol finding, explained from its own record: what Apollo saw, its state, and what it confirmed."""
     state = STATE_TEXT.get(item.get("effectiveState"), item.get("effectiveState") or "state not known")
     parts = [f"{item.get('headline') or 'This finding'} — {state}."]
-    if item.get("evidence_availability") == "limited_to_originating_device":
-        parts.append("The details of this finding stay on the phone that found it, so I can't explain more than its state from here.")
+    if item.get("evidence_availability") == "summary_only":
+        parts.append("ApolloSG holds only a privacy-protected summary of this finding — the kind of check and its result — so I can't explain more than its state.")
     elif item.get("summary"):
         parts.append(f"What Apollo recorded:\n{item['summary']}")
     facts = item.get("structuredFacts") or {}

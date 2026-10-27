@@ -26,6 +26,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
+import type { MessageVia } from "@/src/domain/triage/messageEvidence";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { screenImage } from "@/src/domain/imagePrivacy";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
@@ -130,7 +131,7 @@ export default function CheckMessage() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string; sharedIntakeId?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string; sharedIntakeId?: string; receivedAt?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedText = shared?.text || shared?.webUrl || params.text || "";
   const sharedImage = shared?.files?.find((file) => (file.mimeType ?? "").startsWith("image/"))?.path || params.imageUri || "";
@@ -173,14 +174,21 @@ export default function CheckMessage() {
     return () => sub.remove();
   }, [loadRecentSms]);
 
-  const run = async (t = text, snd = sender) => {
+  // `via` is how the message reached ApolloSG — it sets the evidence level Higgins Triage records for it.
+  const run = async (t = text, snd = sender, via: MessageVia = "pasted", receivedAt: string | null = null) => {
     const safeText = redactUserSecrets(t);
     if (!safeText.trim()) return;
     if (safeText !== t) setText(safeText);
     setBusy("checking"); setError(null); setResult(null);
-    try { const outcome = await checkMessage(snd, safeText); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
+    try { const outcome = await checkMessage(snd, safeText, { via, receivedAt }); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
   };
-  useEffect(() => { if (sharedText && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedText), params.sender ? String(params.sender) : ""); } }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (sharedText && ready && setupDone && !autoRan.current) {
+      autoRan.current = true;
+      const fromInbox = params.source === "inbox_picker";
+      void run(String(sharedText), params.sender ? String(params.sender) : "", fromInbox ? "inbox" : "shared", fromInbox && params.receivedAt ? String(params.receivedAt) : null);
+    }
+  }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The phone reads the screenshot's text (credentials removed) and the ordinary message check runs on that
    *  text. The picture itself never leaves the phone; only Magnum DI's one investigation call may follow. */
@@ -200,7 +208,7 @@ export default function CheckMessage() {
       }
       const from = screening.detectedSender ?? "";
       setSender(from); setText(read); setManualOpen(true);
-      await run(read, from);
+      await run(read, from, "screenshot");
     } catch {
       setBusy("idle");
       setScreenshotError("Apollo couldn’t read that screenshot, so nothing was checked. Try another screenshot, or type or paste the message.");
@@ -248,7 +256,7 @@ export default function CheckMessage() {
   // UNIVERSAL CHECK RESULT — when the message check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
-    const model = buildMessageCheckResult({ analysis: a, event: result.event, sender, explanation: result.explanation, urlResults: result.urls, phones: result.phones });
+    const model = { ...buildMessageCheckResult({ analysis: a, event: result.event, sender, explanation: result.explanation, urlResults: result.urls, phones: result.phones }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the message I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const msgActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     msgActions.push({ testID: "message-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
@@ -319,7 +327,7 @@ export default function CheckMessage() {
   const checkRecentMessage = (msg: RecentSms) => {
     setSender(msg.address);
     setText(msg.body);
-    void run(msg.body, msg.address);
+    void run(msg.body, msg.address, "inbox", msg.date ? new Date(msg.date).toISOString() : null);
   };
 
   return (
@@ -533,7 +541,7 @@ export default function CheckMessage() {
           const m = simulation.texts.find((x) => x.id === id);
           if (!m) return;
           setSender(m.sender); setText(m.text);
-          void run(m.text, m.sender);
+          void run(m.text, m.sender, "simulated");
         }}
         onClose={() => setMessagePicker(false)}
         testID="message-source-picker"

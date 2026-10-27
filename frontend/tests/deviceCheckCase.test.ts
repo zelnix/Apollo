@@ -40,7 +40,7 @@ test("every check on a device shares one case key, so a recheck is not a new cas
   assert.deepEqual(cases.map((e) => e.event_id), ["e2"]);
 });
 
-test("a check on another device is its own case", () => {
+test("a check on a second device is its own case", () => {
   const mine = build("clear", ["All good."]);
   const other = deviceCheckEvent({
     eventId: "e3", deviceId: "d2", adapterLabel: "Apollo security module", platformLabel: "ios",

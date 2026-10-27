@@ -371,7 +371,7 @@ For each processing purpose, this table shows whether each data category is Perm
 1. **Never fabricate evidence.** Higgins cannot invent device observations, completed actions, or confirmed enforcement.
 2. **Never substitute generic summaries.** Original evidence with IDs, timestamps, and provenance must be retained.
 3. **Never infer completeness from populated text.** Coverage tracking must reflect actual examination.
-4. **Preserve original evidence on the originating device** where possible.
+4. **Preserve original evidence on the device that detected it** where possible.
 5. **Privacy processing must not suppress security indicators** unless they are also credential material.
 6. **Material limitations must be disclosed.** If evidence is unavailable or restricted, say so.
 

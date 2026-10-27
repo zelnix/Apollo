@@ -30,6 +30,6 @@ test("the pack lists the recorded facts and every source with what it returned",
 
 test("the pack is honest when nothing was recorded", () => {
   const pack = buildEvidencePack({ event, facts: [], sources: [] });
-  assert.match(pack, /No detail was recorded on this device/);
+  assert.match(pack, /No detail was recorded for this finding/);
   assert.match(pack, /No sources were recorded for this case/);
 });

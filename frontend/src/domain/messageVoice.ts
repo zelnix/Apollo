@@ -91,35 +91,36 @@ export function humanizeReason(reason: string | null | undefined, state: ApolloS
 }
 
 // --- The projected (synced) event text, in plain English, with no detail leaked (privacy preserved) --
-// Used both on the wire (privacy.ts) and when a synced-back event is displayed. It tells the user what
-// the check was, what Apollo found at a high level, and to open it on the originating phone for detail.
+// Used both on the wire (privacy.ts) and when a synced-back event is displayed. It tells the person what the check
+// was and what Apollo found at a high level. It never says where a copy is kept: the case is this device's own.
 export interface ProjectedVoice { headline: string; whatHappened: string; why: string; whatToDo: string }
+export const PRIVACY_SUMMARY_WHY = "ApolloSG's servers keep only this privacy-protected summary, not the content that was checked.";
 export function projectedEventVoice(category: EventCategory | string, state: ApolloState, verifiedBlock: boolean): ProjectedVoice {
   if (verifiedBlock) return {
     headline: "Apollo blocked a connection it had flagged",
     whatHappened: "Apollo blocked a connection on your device that it had flagged as a threat.",
     why: "Packet-backed enforcement evidence is attached.",
-    whatToDo: "No action needed — the block is confirmed. Open it on that phone to see the full record.",
+    whatToDo: "No action needed — the block is confirmed.",
   };
   const area = areaLabel(category);
   const headline = `ApolloSG ran ${area}`;
   if (state === "barking") return {
     headline,
-    whatHappened: `Apollo checked ${area} and found something that needs your attention. The full assessment is available on the device where it happened.`,
-    why: "Apollo's on-device check identified a concern. For your privacy, the detailed findings stay on this device.",
-    whatToDo: "Open this on the device where it happened and follow ApolloSG's recommended action.",
+    whatHappened: `Apollo checked ${area} and found something that needs your attention.`,
+    why: PRIVACY_SUMMARY_WHY,
+    whatToDo: "Don't tap links, reply, call back or pay until you've confirmed it through a contact you already trust.",
   };
   if (state === "growling" || state === "ears_up") return {
     headline,
-    whatHappened: `Apollo checked ${area} and found something worth a closer look. The full details are available on the device where it happened.`,
-    why: "Apollo's on-device check flagged this for review. For your privacy, the detailed findings stay on this device.",
-    whatToDo: "Open this on the device where it happened to review the full details.",
+    whatHappened: `Apollo checked ${area} and found something worth a closer look.`,
+    why: PRIVACY_SUMMARY_WHY,
+    whatToDo: "Treat it with care until you've confirmed it through a contact you already trust.",
   };
   return {
     headline,
-    whatHappened: `Apollo checked ${area} and found no concern. The full details are available on the device where it happened.`,
-    why: "For your privacy, the detailed security assessment stays on this device.",
-    whatToDo: "No action needed. Open it on the device where it happened to see the full details.",
+    whatHappened: `Apollo checked ${area} and found no concern.`,
+    why: PRIVACY_SUMMARY_WHY,
+    whatToDo: "No action needed. A past check doesn't confirm current safety.",
   };
 }
 
@@ -132,7 +133,7 @@ export function looksLikeInternalCode(text: string): boolean {
 
 /** @deprecated hasLegacyJargon removed per P1 directive — cosmetic UI masking must not replace
  *  root data fixes. The merge layer (ApolloContext) now preserves local findings so projected
- *  server text never overwrites real content on the originating device. Callers should show
+ *  server text never overwrites real content Apollo recorded for the case. Callers should show
  *  actual data or mark incomplete records honestly. Do not re-add. */
 
 // --- Live scrubber for Higgins' free-text replies (Scan Gate Chat) -----------------------------------
@@ -141,7 +142,7 @@ export function looksLikeInternalCode(text: string): boolean {
 // in dev it warns so the leak gets fixed at the source too.
 const CODE_REPLACEMENTS: Record<string, string> = {
   known_threat: "website safety", ears_up: "worth a look", user_started: "started by you",
-  server_projection_of_recorded_outcome: "synced from another device", recorded_outcome: "recorded outcome",
+  server_projection_of_recorded_outcome: "privacy-protected summary", recorded_outcome: "recorded outcome",
   action_needed: "action needed", no_concern_found_within_scope: "no concern found in the checks performed",
   concern_found: "concern found", off_by_choice: "turned off", not_activated: "not set up yet",
   permission_needed: "permission needed", setup_needed: "setup needed", temporarily_unavailable: "temporarily unavailable",

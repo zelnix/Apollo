@@ -16,7 +16,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { hasLocalEvidence, narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
+import { narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
+import { hasRecordedFindings } from "../src/domain/caseFacts.ts";
 import { normalizeHistoricalEvent } from "../src/domain/packetEvidence.ts";
 import { mergeLocalAndRemoteEvents } from "../src/domain/eventMerge.ts";
 import { isActive, STATE_RANK, resolveApolloState } from "../src/domain/stateMachine.ts";
@@ -90,13 +91,14 @@ describe("1. Original findings survive local/server synchronisation (production 
     assert.equal(events[0].event_id, "e-local-only");
   });
 
-  it("hasLocalEvidence uses structured field, not text matching", () => {
+  it("hasRecordedFindings uses what the record holds, not text matching", () => {
     const localEvt = makeEvent({ evidence_provenance: "local_device" });
     const serverEvt = makeServerEvent({ evidence_provenance: "server_projected" });
     const incompleteEvt = makeEvent({ evidence_provenance: "incomplete" });
-    assert.ok(hasLocalEvidence(localEvt));
-    assert.ok(!hasLocalEvidence(serverEvt));
-    assert.ok(!hasLocalEvidence(incompleteEvt));
+    assert.ok(hasRecordedFindings(localEvt));
+    assert.ok(!hasRecordedFindings(serverEvt), "the server's privacy summary alone carries no findings");
+    // An incomplete record still carries what Apollo recorded — it isn't somewhere else.
+    assert.ok(hasRecordedFindings(incompleteEvt));
   });
 });
 
@@ -208,7 +210,7 @@ describe("4. Higgins explanations are specific, evidence-backed, no generic fall
     const projected = makeServerEvent({ evidence_provenance: "server_projected" });
     const chunks = narrateEvent(projected);
     const whatChunk = chunks.find((c) => c.id === "what");
-    assert.match(whatChunk!.text, /only available on the device/, "Honest about missing evidence");
+    assert.match(whatChunk!.text, /privacy-protected summary/, "Honest about what the record holds");
     assert.ok(!whatChunk!.text.includes("impersonating"), "No fabricated content");
   });
 
@@ -223,7 +225,7 @@ describe("4. Higgins explanations are specific, evidence-backed, no generic fall
     } as any;
     const chunks = narrateIncident(plan);
     const evt2 = chunks.find((c) => c.id === "event-1");
-    assert.match(evt2!.text, /only on the device/, "Server-projected event narrated honestly");
+    assert.match(evt2!.text, /privacy-protected summary/, "Server-projected event narrated honestly");
   });
 
   it("humanizeReason converts code to honest sentence, passes prose through", () => {
@@ -324,6 +326,6 @@ describe("6. Privacy restrictions and native enforcement truth gates remain inta
       evidence_provenance: "server_projected",
       what_happened: "This page impersonates a bank (but came from server).",
     });
-    assert.ok(!hasLocalEvidence(serverWithRealishText), "Provenance field overrides text content");
+    assert.ok(!hasRecordedFindings(serverWithRealishText), "Provenance field overrides text content");
   });
 });

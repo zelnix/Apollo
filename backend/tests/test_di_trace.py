@@ -99,5 +99,5 @@ def test_a_limited_triage_is_plain_english_and_never_nothing_to_worry_about():
 
 def test_plain_codes_translates_lists_of_gap_codes():
     assert plain_codes("Coverage gap: EMAIL_HEADERS_UNAVAILABLE, BROWSER_VISIBILITY_UNAVAILABLE") == (
-        "Couldn't check: The technical sender information wasn't available. Apollo can't see inside the browser session on this device.")
+        "Couldn't check: The technical sender information wasn't available. ApolloSG can't observe the page itself: its content, or the website an installed web app or notification came from.")
     assert plain_codes("Nothing coded here.") == "Nothing coded here."

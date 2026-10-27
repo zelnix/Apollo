@@ -40,7 +40,66 @@ const CATALOGUE = {
       "original_not_provided": "ApolloSG received a copy of the email without its full headers",
       "not_recorded": "the receiving mail server didn't record those results in the email"
     },
-    "stale": "the live lookup failed ({failure}), so Apollo used the result of its last check"
+    "stale": "the live lookup failed ({failure}), so Apollo used the result of its last check",
+    "checkNames": {
+      "reputation": "Reputation check",
+      "final_destination": "Final destination",
+      "number_reputation": "Phone number reputation",
+      "sender_authentication": "Sender authentication"
+    },
+    "failureSentences": {
+      "timeout": "The service timed out.",
+      "offline": "There was no internet connection.",
+      "provider_unavailable": "The service couldn't be reached.",
+      "server_error": "The service had an error.",
+      "rate_limited": "The service was busy.",
+      "quota_exhausted": "The service's lookup allowance is used up for now.",
+      "auth_failure": "The lookup wasn't authorised.",
+      "forbidden": "The lookup wasn't allowed.",
+      "rejected": "The service couldn't accept the request.",
+      "malformed": "The service's answer couldn't be read.",
+      "not_configured": "This check isn't set up here.",
+      "no_data": "The service had no information.",
+      "nonexistent_domain": "The website's address doesn't exist.",
+      "connection_failure": "The website couldn't be reached.",
+      "unsafe_destination": "The link pointed somewhere Apollo won't connect to.",
+      "redirect_limit": "The link redirected too many times.",
+      "unparseable_link": "The link couldn't be read.",
+      "redirect_failure": "A redirect couldn't be followed.",
+      "original_not_provided": "ApolloSG didn't receive the full email headers.",
+      "not_recorded": "The receiving mail server didn't record those results in the email."
+    },
+    "noReasonRecorded": "No reason was recorded.",
+    "statusLabels": {
+      "unavailable": "didn't answer",
+      "unresolved": "couldn't be verified",
+      "stale": "used an earlier result",
+      "coverage_gap": "couldn't be checked"
+    },
+    "evidenceNames": {
+      "domain_age": "Domain registration age",
+      "phone_reputation": "Phone number reputation",
+      "breach": "Breach lookup",
+      "destinations": "Reputation of the places it connects to",
+      "reputation": "Reputation check",
+      "redirect": "Redirect chain",
+      "auth_results": "Sender authentication",
+      "scheme": "Page content",
+      "pwa_origin": "Website the installed web app came from",
+      "push_origin": "Website that sent the notification",
+      "calendar": "Calendar invitation",
+      "pdf_features": "PDF content",
+      "office_features": "Office document content",
+      "archive_entries": "Archive contents",
+      "archive_encrypted": "Archive contents",
+      "os_threat": "The phone's own threat scan",
+      "dns_change": "DNS settings",
+      "dns_server": "DNS settings",
+      "tls_validation": "Connection certificate",
+      "tls_identity": "Connection certificate",
+      "certificate_change": "Connection certificate",
+      "qr_payload": "QR code contents"
+    }
   },
   "evidenceProfiles": {
     "version": 1,
@@ -224,6 +283,12 @@ const CATALOGUE = {
             "label": "Captured from the notification",
             "received": "the message as your phone's notification showed it",
             "basis": "ApolloSG read the message from your phone's notification itself, so it knows which app posted it and when — not who really sent it."
+          },
+          "inbox": {
+            "rank": 3,
+            "label": "Read from your messages",
+            "received": "the message as your phone's messages app stored it",
+            "basis": "ApolloSG read the message from your phone's messages, so it knows the number or name it arrived from and when — not who really sent it."
           }
         },
         "capabilities": {
@@ -234,6 +299,43 @@ const CATALOGUE = {
           "links": "Links",
           "numbers": "Phone numbers",
           "attachments": "Attachments"
+        },
+        "via": {
+          "pasted": "Text you entered",
+          "screenshot": "Screenshot read on this phone",
+          "shared": "Shared from another app",
+          "captured": "Notification on this phone",
+          "inbox": "Your messages on this phone",
+          "simulated": "Preview sample message",
+          "recheck": "Re-check from the case"
+        },
+        "notes": {
+          "senderAsShown": "As shown in the message. A sender name or number can be faked.",
+          "senderStored": "As your phone stored it. A sender name or number can still be faked.",
+          "senderMissing": "ApolloSG wasn't told who sent it.",
+          "timeStored": "As your phone stored it.",
+          "timeMissing": "ApolloSG wasn't given when it arrived.",
+          "sourceKnown": "ApolloSG knows how it received this message.",
+          "screenshotText": "Read from the screenshot on this phone; text the picture didn't show couldn't be read.",
+          "provenance": "Messaging apps don't share who really sent a message, so ApolloSG can't verify it.",
+          "provenanceProvider": "{provider} shared its own rating of this sender. That's its rating, not proof of who sent it.",
+          "linksChecked": "Each link was checked with ApolloSG's lookups.",
+          "linksPartly": "{failed} of {total} links couldn't be checked: ApolloSG's lookups didn't answer.",
+          "noLinks": "The message has no links.",
+          "numbersChecked": "Each number was checked with ApolloSG's number-reputation lookup.",
+          "numbersPartly": "{failed} of {total} numbers couldn't be checked: the reputation lookup didn't answer.",
+          "noNumbers": "The message has no phone numbers.",
+          "attachments": "Only the text reached ApolloSG. Pictures or files sent with the message didn't."
+        },
+        "upgrade": "Evidence upgraded from {from} to {to}. Higgins Triage re-checked the message with it; the earlier result is kept in the case history.",
+        "recheck": "Higgins Triage re-checked the message. The earlier result is kept in the case history.",
+        "signals": {
+          "platform_switch": "It asks you to move the conversation to another app or number.",
+          "new_number": "The sender says they have a new number.",
+          "callback_number": "It gives a number to call ({number}). Use a number you already know instead.",
+          "links_unchecked": "ApolloSG couldn't check {count} of its links.",
+          "numbers_unchecked": "ApolloSG couldn't check {count} of its phone numbers.",
+          "brand_without_link": "It claims to be {brand} but gives no official way to check it."
         }
       },
       "call": {
@@ -256,6 +358,12 @@ const CATALOGUE = {
             "label": "Call screened by ApolloSG",
             "received": "the call itself, seen by ApolloSG's call screening",
             "basis": "ApolloSG's call screening saw this call arrive. The number shown can still be faked, and ApolloSG can't yet read the phone network's own caller verification."
+          },
+          "described": {
+            "rank": 1,
+            "label": "Described by you",
+            "received": "the call as you described it",
+            "basis": "ApolloSG only had what you told it about the call, so who really called could not be verified."
           }
         },
         "capabilities": {
@@ -266,6 +374,38 @@ const CATALOGUE = {
           "carrier": "Carrier and line type",
           "reputation": "Reputation",
           "spoofing_indicators": "Spoofing indicators"
+        },
+        "via": {
+          "described": "Call you described",
+          "entered": "Number you entered",
+          "screened": "ApolloSG's call screening",
+          "call_log": "Your call history",
+          "recheck": "Re-check from the case"
+        },
+        "notes": {
+          "numberShown": "The number shown for a call can be faked.",
+          "numberMissing": "You didn't give the number.",
+          "callerId": "ApolloSG can't yet read the phone network's own caller verification.",
+          "timeScreened": "Seen by ApolloSG's call screening on this phone.",
+          "timeMissing": "ApolloSG didn't see the call itself, only {what}.",
+          "screening": "ApolloSG's call screening on this phone saw the call arrive.",
+          "noScreening": "ApolloSG's call screening didn't see this call.",
+          "recorded": "Recorded by the number-reputation service, not verified by ApolloSG.",
+          "lookupFailed": "The number-reputation lookup didn't answer{reason}.",
+          "notLookedUp": "ApolloSG doesn't look the number up for a described call. Check the number to add this.",
+          "stale": "The lookup failed this time, so this is the last answer from {date}.",
+          "spoofing": "From the line type and reputation. A faked caller ID can't be ruled out."
+        },
+        "upgrade": "Evidence upgraded from {from} to {to}. Higgins Triage re-checked the number with it; the earlier result is kept in the case history.",
+        "recheck": "Higgins Triage re-checked the number. The earlier result is kept in the case history.",
+        "signals": {
+          "voip": "It's an internet (VOIP) number. These are easy to get and often used to fake caller ID.",
+          "recent_abuse": "Others have recently reported this number for abuse.",
+          "invalid": "It isn't a valid, active phone number.",
+          "carrier_warning": "You said your carrier warned about this call.",
+          "remote_ask": "The caller asked you to install an app, share your screen or give remote access.",
+          "secret_ask": "The caller asked for a code, password or card details.",
+          "brand_claim": "The caller said they were from {brand}. Anyone can say that on a call."
         }
       },
       "file": {
@@ -300,6 +440,36 @@ const CATALOGUE = {
           "macros": "Macros",
           "embedded_links": "Embedded links and scripts",
           "threat_indicators": "Threat indicators"
+        },
+        "via": {
+          "picked": "File chosen on this phone",
+          "shared": "Shared from another app",
+          "name_only": "File name you entered",
+          "simulated": "Preview sample file"
+        },
+        "notes": {
+          "byName": "Taken from the file's name. A name is only a claim.",
+          "byApp": "Supplied by the app it came from. Only a claim.",
+          "trueType": "Read from the file's first bytes on this phone.",
+          "notRead": "ApolloSG couldn't read the file's contents{reason}.",
+          "sha": "Calculated on this phone from the whole file. The file isn't uploaded.",
+          "shaNotWhole": "ApolloSG read only the start of the file, so it couldn't fingerprint it.",
+          "metadata": "ApolloSG doesn't read document metadata yet.",
+          "signature": "ApolloSG doesn't check a file's signatures or certificates yet.",
+          "macroFormat": "Its format can run macros. ApolloSG doesn't open them.",
+          "noMacroFormat": "ApolloSG doesn't look inside documents for macros.",
+          "links": "Only the part ApolloSG read was searched.",
+          "threats": "ApolloSG doesn't compare files with malware lists yet."
+        },
+        "signals": {
+          "type_mismatch": "Its name says {claimed}, but it's really {real}.",
+          "double_extension": "Its name hides a second extension: {name}.",
+          "hidden_characters": "Its name uses hidden characters to disguise its real extension.",
+          "executable": "It's a program or script, not a document.",
+          "installer": "It installs an app or changes device settings.",
+          "archive_password": "A password came with the archive. That's often used to get past scanners.",
+          "macros": "It can run macros when it's opened.",
+          "links_inside": "It has {count} link{plural} inside."
         }
       },
       "image": {
@@ -317,6 +487,22 @@ const CATALOGUE = {
           "metadata": "Image metadata",
           "source": "Where it came from",
           "embedded_identifiers": "Links, numbers and codes in it"
+        },
+        "via": {
+          "photo": "Photo taken on this phone",
+          "library": "Picture from your photos",
+          "shared": "Shared from another app"
+        },
+        "notes": {
+          "content": "Read on this phone. A picture shows what was on screen, not where it came from.",
+          "noText": "ApolloSG couldn't read any text in it.",
+          "metadata": "Removed on this phone before anything was sent. ApolloSG doesn't use it as evidence.",
+          "source": "ApolloSG knows how it received the picture, not where the picture came from.",
+          "identifiers": "Found in the picture's text and checked with ApolloSG's lookups."
+        },
+        "signals": {
+          "redacted": "It showed sensitive details, which ApolloSG blacked out before sending it.",
+          "flagged": "{count} of the links, numbers or codes in it looked suspicious."
         }
       },
       "qr": {
@@ -360,6 +546,32 @@ const CATALOGUE = {
           "version": "Version",
           "signing": "Signing information",
           "store_security": "Store and OS security information"
+        },
+        "via": {
+          "typed": "App details you entered",
+          "picked": "Installed app chosen on this phone",
+          "linked": "App from a check"
+        },
+        "notes": {
+          "entered": "As you entered it.",
+          "missing": "Not entered.",
+          "device": "Read from this phone.",
+          "installer": "Recorded by this phone's system.",
+          "permissions": "Requested by the app, as this phone's system records it.",
+          "permissionsTicked": "As you ticked them. ApolloSG couldn't read the app's real permissions.",
+          "notRead": "ApolloSG couldn't read this app's details from this phone.",
+          "signing": "Signing information isn't available to ApolloSG yet.",
+          "store": "ApolloSG can't read the app store's or the phone's own security checks.",
+          "version": "ApolloSG doesn't read the app's version yet."
+        },
+        "signals": {
+          "sideloaded": "It wasn't installed from an official app store.",
+          "remote_access": "It can see or control your screen.",
+          "accessibility": "It has accessibility access, which can read what's on your screen.",
+          "overlay": "It can draw over other apps.",
+          "notifications": "It can read your notifications, including codes sent by text.",
+          "brand_name": "Its name mentions {brand}. Check that's really who made it.",
+          "bad_destination": "It connects to {count} address{plural} with a malicious reputation."
         }
       }
     }
@@ -408,7 +620,7 @@ const CATALOGUE = {
     {
       "code": "BROWSER_VISIBILITY_UNAVAILABLE",
       "recoverable": false,
-      "plain": "Apollo can't see inside the browser session on this device."
+      "plain": "ApolloSG can't observe the page itself: its content, or the website an installed web app or notification came from."
     },
     {
       "code": "INSUFFICIENT_EVIDENCE",

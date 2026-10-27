@@ -5,11 +5,13 @@
  * It is imported by ApolloContext (production) and by regression tests (verification).
  *
  * Rules:
- * 1. Local content wins on the originating device (evidence_provenance === "local_device").
+ * 1. Local content wins whenever this device recorded it (any provenance except the server's own summary,
+ *    "server_projected"): a DNS block, native protection or incomplete record is never replaced by a summary.
  * 2. Server metadata is absorbed (patrol_record, investigation_case_id, etc.).
  * 3. Resolved/trusted events are never reopened unless the server carries genuinely new evidence
  *    (new enforcement_evidence.evidence_id not previously seen on this event).
- * 4. Events from other devices (no local version) take server data as-is.
+ * 4. A server record with no local version (e.g. after a reinstall) is taken as-is. It is still this device's
+ *    own case: records are per device, and server processing never changes where a case began.
  */
 import type { PatrolEvent } from "./types";
 import { STATE_RANK } from "./stateMachine.ts";
@@ -49,8 +51,8 @@ export function mergeLocalAndRemoteEvents(
     }
     const local = localById.get(remote.event_id);
     if (local) {
-      // Originating device: local content WINS. Absorb only server metadata.
-      const localIsDetailed = local.evidence_provenance === "local_device";
+      // Recorded on this device: local content WINS. Absorb only server metadata.
+      const localIsDetailed = (local.evidence_provenance ?? "server_projected") !== "server_projected";
 
       // Lifecycle guard: local resolution is preserved unless genuinely new evidence exists.
       const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
@@ -97,7 +99,9 @@ export function mergeLocalAndRemoteEvents(
         local_indicator: local.local_indicator ?? remote.local_indicator,
         claimed_brand: local.claimed_brand ?? remote.claimed_brand,
         scenario: local.scenario ?? remote.scenario,
-        evidence_provenance: localIsDetailed ? "local_device" : (remote.evidence_provenance ?? "server_projected"),
+        evidence_provenance: localIsDetailed ? local.evidence_provenance : (remote.evidence_provenance ?? "server_projected"),
+        // The case's origin never moves: the device that detected it.
+        device_id: local.device_id,
         // Absorb server lifecycle metadata.
         patrol_record: remote.patrol_record ?? local.patrol_record,
         investigation_case_id: remote.investigation_case_id ?? local.investigation_case_id,
@@ -113,7 +117,7 @@ export function mergeLocalAndRemoteEvents(
         supporting_references: (local.supporting_references?.length ? local.supporting_references : remote.supporting_references),
       });
     } else {
-      // No local version — from another device or post-reinstall. Take server as-is.
+      // No local version (e.g. after a reinstall): take the server's record as-is.
       merged.push(remote);
     }
     mergedIds.add(remote.event_id);

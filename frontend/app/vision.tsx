@@ -28,6 +28,9 @@ import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import type { ApolloState, PatrolEvent } from "@/src/domain/types";
+import { EvidenceProfileCard } from "@/src/components/EvidenceProfileCard";
+import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
+import { buildImageProfile, type ImageVia } from "@/src/domain/triage/imageEvidence";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 // ── Types ──
@@ -117,10 +120,13 @@ export default function VisionScreen() {
   /** Gate submission state: keeps gate open during upload, shows error on failure. */
   const [visionGateSubmission, setVisionGateSubmission] = useState<UploadSubmissionState>({ phase: "idle" });
   const lastVisionGateResult = React.useRef<PreparedImage | null>(null);
+  // How the picture reached ApolloSG and what screening found — the image's evidence profile.
+  const imageEvidence = React.useRef<{ via: ImageVia; screening: ScreeningResult | null }>({ via: "library", screening: null });
+  const [imageProfile, setImageProfile] = useState<EvidenceProfile | null>(null);
 
   // ── Shared: screen image then show privacy gate ──
 
-  const screenAndShow = useCallback(async (uri: string) => {
+  const screenAndShow = useCallback(async (uri: string, via: ImageVia) => {
     setStage("screening");
     setProgressMessage("Screening your image locally...");
     try {
@@ -130,6 +136,7 @@ export default function VisionScreen() {
         setStage("error");
         return;
       }
+      imageEvidence.current = { via, screening: screeningResult };
       setScreening(screeningResult);
       setShowPrivacyGate(true);
     } catch {
@@ -150,7 +157,7 @@ export default function VisionScreen() {
         quality: 0.9,
       });
       if (!picked.canceled && picked.assets?.[0]?.uri) {
-        await screenAndShow(picked.assets[0].uri);
+        await screenAndShow(picked.assets[0].uri, "photo");
       }
     } catch {
       setError("Camera is not available right now. Please try again.");
@@ -168,7 +175,7 @@ export default function VisionScreen() {
         quality: 0.9,
       });
       if (!picked.canceled && picked.assets?.[0]?.uri) {
-        await screenAndShow(picked.assets[0].uri);
+        await screenAndShow(picked.assets[0].uri, "library");
       }
     } catch {
       setError("Could not open photo library. Please try again.");
@@ -185,6 +192,12 @@ export default function VisionScreen() {
     );
     const now = new Date().toISOString();
     const indicatorHost = threatIndicators.find((f) => f.indicator)?.indicator ?? null;
+    const seen = imageEvidence.current;
+    const profile = buildImageProfile({
+      via: seen.via, textRead: !!seen.screening?.extractedText.trim(), identifiers: res.findings.length,
+      flagged: threatIndicators.length, redacted: !!seen.screening?.hasRedactions, at: now,
+    });
+    setImageProfile(profile);
 
     const event: PatrolEvent = {
       event_id: `vision_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -206,6 +219,7 @@ export default function VisionScreen() {
       background: false,
       claimed_brand: res.claimed_brand || null,
       trust_allowed: false,
+      evidence_profile: profile,
     };
 
     await upsertEvent(event);
@@ -281,6 +295,7 @@ export default function VisionScreen() {
     setStage("pick");
     setShowPrivacyGate(false);
     setScreening(null);
+    setImageProfile(null);
     setResult(null);
     setError(null);
   }, []);
@@ -452,6 +467,8 @@ export default function VisionScreen() {
                     A persistent investigation case could not be created. The analysis above is based on a quick check only and is not a verified Magnum DI investigation.
                   </Text>
                 </Card>
+
+                {imageProfile ? <EvidenceProfileCard profile={imageProfile} testID="vision-evidence-profile" /> : null}
 
                 {result.limitations.length > 0 ? (
                   <View style={s.resultSection} testID="vision-limitations">

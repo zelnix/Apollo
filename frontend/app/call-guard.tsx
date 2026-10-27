@@ -187,7 +187,7 @@ export default function CheckNumber() {
   // ── RESULT VIEW ──
   if (result) {
     const allReportLinks = [...REPORT_LINKS.AU, ...REPORT_LINKS.UK, ...REPORT_LINKS.US];
-    const model = buildCallRiskCheckResult({ result });
+    const model = { ...buildCallRiskCheckResult({ result }), evidenceProfile: result.evidence_profile ?? null };
     const warningEvidence = carrierWarning ? [{ label: "Your carrier’s warning", value: `You said your carrier showed “${CARRIER_WARNING_LABEL[carrierWarning]}” on this call.` }] : [];
     const enhancedModel = {
       ...model,

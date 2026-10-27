@@ -330,7 +330,7 @@ All modified domain files pass ESLint without issues.
 ### Event Merge Tests (Section 11A)
 | Test | Description | Result |
 |------|-------------|--------|
-| MERGE-01 | Local content wins on originating device | ✅ Pass |
+| MERGE-01 | Local content wins on the device that detected it | ✅ Pass |
 | MERGE-02 | Remote-only events added as-is | ✅ Pass |
 | MERGE-03 | Resolved local events not reopened by stale data | ✅ Pass |
 

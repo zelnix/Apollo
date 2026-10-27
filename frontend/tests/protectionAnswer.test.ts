@@ -20,7 +20,7 @@ const offGate = (id: string, title: string, tone: string, limitation: string | n
          resolved: { coverageState: "off", isAutomatic: false } });
 
 const unsupportedGate = (id: string, title: string) =>
-  gate({ id, title, statusLabel: "Not available on this device", tone: "neutral",
+  gate({ id, title, statusLabel: "Not supported here", tone: "neutral",
          capability: { automatic: { state: "unsupported", limitation: "This platform doesn't allow it." } },
          resolved: { coverageState: "unsupported", isAutomatic: false } });
 

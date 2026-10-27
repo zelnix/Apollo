@@ -118,6 +118,11 @@ WATCHED = (
     "frontend/src/domain/triage/emailOriginal.ts",
     "frontend/src/domain/triage/emailIntake.ts",
     "frontend/src/domain/triage/linkEvidence.ts",
+    "frontend/src/domain/triage/messageEvidence.ts",
+    "frontend/src/domain/triage/callEvidence.ts",
+    "frontend/src/domain/triage/fileEvidence.ts",
+    "frontend/src/domain/triage/appEvidence.ts",
+    "frontend/src/domain/triage/imageEvidence.ts",
     "frontend/src/store/originalEmail.ts",
     "backend/services/email_evidence.py",
     # Scam Alerts and the government feeds.

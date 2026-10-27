@@ -213,7 +213,7 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
 
   if (unavailable.length > 0) {
     lines.push(
-      `${unavailable.length} not available on this device.`
+      `${unavailable.length} not supported here.`
     );
   }
 

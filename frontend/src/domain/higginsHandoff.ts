@@ -1,5 +1,6 @@
 import * as Crypto from "expo-crypto";
 
+import { hasRecordedFindings } from "./caseFacts.ts";
 import { redactInvestigationSecrets as redactUserSecrets } from "./privacy";
 import { handoffFingerprint, reserveHandoff } from "./handoffDedupe";
 import { storeHandoff } from './handoffTransfer';
@@ -84,33 +85,33 @@ export function parseHigginsIssueContext(raw: string): HigginsIssueContext | nul
 }
 
 export function contextFromEvent(event: PatrolEvent, gate: HigginsGate, summary = event.headline): HigginsIssueContext {
-  // When the event's evidence is not from the local device (server-projected or incomplete),
-  // do NOT pass projected text as findings — that would let the LLM fabricate explanations
-  // from placeholder sentences. Instead, honestly tell the LLM what is and isn't available.
-  const hasLocalEvidence = event.evidence_provenance === "local_device";
+  // When the record holds only the privacy-protected summary ApolloSG's servers keep, do NOT pass that summary as
+  // findings — the LLM could fabricate explanations from it. Say honestly what is recorded, and nothing about where
+  // another copy might be: every case belongs to the device that detected it.
+  const recorded = hasRecordedFindings(event);
 
-  const findings: HigginsIssueContext["findings"] = hasLocalEvidence
+  const findings: HigginsIssueContext["findings"] = recorded
     ? [
         { summary: event.what_happened, provenance: event.verified_block ? "observed" : "inferred", status: event.verified_block ? "confirmed" : event.state === "barking" ? "warning" : "uncertain" },
         ...event.why.map((reason) => ({ summary: reason, provenance: "inferred" as const, status: "uncertain" as const })),
       ]
     : [
-        { summary: `The detailed evidence for this event is only available on the originating device. Evidence provenance: ${event.evidence_provenance ?? "unknown"}.`, provenance: "inferred", status: "uncertain" },
+        { summary: "ApolloSG holds only a privacy-protected summary of this check: the kind of check and its result, not the content that was checked.", provenance: "inferred", status: "uncertain" },
         { summary: `Event state: ${event.state}. Category: ${event.category}. Verified block: ${event.verified_block ? "yes" : "no"}.`, provenance: "inferred", status: "uncertain" },
       ];
 
-  const availableActions: HigginsIssueContext["available_actions"] = hasLocalEvidence
+  const availableActions: HigginsIssueContext["available_actions"] = recorded
     ? [{ label: "Use the next action on this result", instruction: event.what_to_do }]
-    : [{ label: "View on originating device", instruction: "Open this event on the device where the check happened to see the recommended action." }];
+    : [{ label: "Review this Threat Case", instruction: "Open this Threat Case to see everything ApolloSG recorded about it." }];
 
   return issueContext({
     gate,
-    issue_summary: hasLocalEvidence ? summary : `${gate} event (detailed evidence not available on this device)`,
+    issue_summary: recorded ? summary : `${gate} check (privacy-protected summary only)`,
     assessment_state: event.state,
     findings,
-    uncertainty: hasLocalEvidence
+    uncertainty: recorded
       ? (event.verified_block ? [] : ["No protective block was confirmed for this issue."])
-      : ["Detailed evidence is only on the originating device. Do not infer or fabricate findings from the event state alone."],
+      : ["Only a privacy-protected summary of this check is recorded. Do not infer or fabricate findings from the event state alone."],
     confirmed_protective_actions: event.verified_block ? ["Apollo confirmed an on-device protective block."] : [],
     user_reported_actions: event.recovery_kinds ?? [],
     available_actions: availableActions,

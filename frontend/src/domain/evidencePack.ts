@@ -2,7 +2,8 @@
 // for handing to a bank, the police or a family member. Facts only: no analysis, no interpretation,
 // and nothing that wasn't already recorded on the case.
 
-import type { CaseSource } from "./caseSources.ts";
+import { caseOrigin, completenessLabel, evidenceSourceLabel, privacyNote, processingLabels } from "./caseFacts.ts";
+import { sourceHeading, type CaseSource } from "./caseSources.ts";
 import { categoryLabel, formatDateTime, STATUS_LABELS, threatCaseId, threatCaseStatus } from "./threatCase.ts";
 import type { PatrolEvent } from "./types";
 
@@ -15,16 +16,24 @@ export function buildEvidencePack(input: { event: PatrolEvent; facts: string[]; 
   lines.push(`Type: ${categoryLabel(event.category, event.patrol_record?.recordClass)}`);
   lines.push(`Detected: ${formatDateTime(event.occurred_at) || event.occurred_at}`);
   if (event.resolved_at) lines.push(`Closed: ${formatDateTime(event.resolved_at)}`);
+  // Origin, evidence source, processing, completeness and privacy — five separate facts.
+  lines.push(`Origin: ${caseOrigin(event).label}`);
+  lines.push(`Evidence: ${evidenceSourceLabel(event)}`);
+  const processing = processingLabels(event);
+  if (processing.length) lines.push(`Checked by: ${processing.join(", ")}`);
+  lines.push(`Record: ${completenessLabel(event)}`);
+  const privacy = privacyNote(event);
+  if (privacy) lines.push(`Privacy: ${privacy}`);
 
   lines.push("", "WHAT APOLLO FOUND");
   if (facts.length > 0) for (const fact of facts) lines.push(`- ${fact}`);
-  else lines.push("- No detail was recorded on this device for this finding.");
+  else lines.push("- No detail was recorded for this finding.");
 
   lines.push("", "SOURCES APOLLO USED");
   if (sources.length > 0) {
     for (const source of sources) {
       const when = source.at ? ` (${formatDateTime(source.at)})` : "";
-      lines.push(`- ${source.name}${source.answered ? "" : " — didn't answer"}: ${source.returned}${when}`);
+      lines.push(`- ${sourceHeading(source)}: ${source.returned}${when}`);
       if (source.url) lines.push(`  ${source.url}`);
     }
   } else {

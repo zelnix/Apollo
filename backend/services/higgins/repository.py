@@ -570,7 +570,7 @@ async def purge_evidence_content(owner: str, case_id: str, evidence_id: str) -> 
 
 
 # ── Server retention removal ────────────────────────────────────────────
-# Completed investigations are stored on the originating device only.
+# Completed investigations are stored on the phone that detected the case, not on the server.
 # promote_to_saved(), enforce_storage_limit(), sweep_expired_reports(),
 # report_storage_used(), check_storage_before_save(), migrate_legacy_retention()
 # have been removed.  The server keeps temporary working data only while

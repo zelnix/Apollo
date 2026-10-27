@@ -136,6 +136,8 @@ export interface Reassessment {
 
 export interface PatrolEvent {
   event_id: string;
+  /** The case's origin: the device that detected it. Server processing, Magnum DI, syncing, privacy projection and
+   *  missing evidence never change it. A detection on a second device is that device's own case. */
   device_id: string;
   category: EventCategory;
   state: ApolloState;
@@ -151,12 +153,14 @@ export interface PatrolEvent {
   /** Safe public references supporting the local assessment. Raw submitted links are excluded. */
   supporting_references?: { label: string; url: string }[];
   verified_block: boolean;
-  /** How the event's content was obtained — used by every display surface to decide whether
-   *  narration uses real evidence or must honestly say the data is incomplete.
-   *  Set at creation time; never derived from text pattern matching.
-   *  - "local_device": created on this device with real, detailed findings.
-   *  - "server_projected": came from the server's privacy-projected summary.
-   *  - "incomplete": data is missing, unverifiable, or was downgraded by an enforcement truth gate. */
+  /** The evidence SOURCE only — what supplied the case's evidence. Set at creation time; never derived from text.
+   *  It is NOT the case's origin (every Threat Case begins on the device that detected it: `device_id`), NOT where any
+   *  copy is kept, and NOT how complete the record is — see src/domain/caseFacts.ts, which keeps those apart.
+   *  - "local_device": Apollo's own check on this device.
+   *  - "server_projected": ApolloSG's servers worked from, or keep, a privacy-protected representation of this case.
+   *    It never changes the case's origin; server analysis stays attached to this same case.
+   *  - "dns_observation" / "native_protection": Apollo's DNS filter / the device's built-in protection supplied it.
+   *  - "incomplete": part of the evidence wasn't recorded, or a claim was downgraded by an enforcement truth gate. */
   evidence_provenance?: "local_device" | "server_projected" | "incomplete" | "dns_observation" | "native_protection";
   adapter_label: string;
   occurred_at: string;

@@ -97,6 +97,13 @@ export function mergeProfiles(previous: EvidenceProfile | null | undefined, next
   return next.rank >= previous.rank ? { ...next, history } : { ...previous, history };
 }
 
+/** How strong this evidence is for its kind: its level's rank out of the strongest level that kind can have. */
+export function evidenceStrength(profile: Pick<EvidenceProfile, "type" | "rank">): { rank: number; max: number } {
+  const levels = PROFILE_WORDS.types[profile.type]?.levels ?? {};
+  const max = Math.max(1, ...Object.values(levels).map((l) => l.rank));
+  return { rank: Math.min(profile.rank, max), max };
+}
+
 /** The level changes worth telling the person about: each move to a stronger level. */
 export function upgrades(profile: EvidenceProfile | null | undefined): { from: LevelChange; to: LevelChange }[] {
   const out: { from: LevelChange; to: LevelChange }[] = [];

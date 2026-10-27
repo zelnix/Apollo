@@ -503,7 +503,7 @@ function getStatusExplanation(gate: GatePresentation): string {
     case "Action needed":
       return "This Gate was active but has encountered a problem and is not currently protecting. It needs your attention to resume.";
     case "Unavailable":
-      return "This Gate is not available on this device or platform. This may be due to operating system restrictions.";
+      return "This Gate isn't supported here. This may be due to operating system restrictions.";
     case "Unable to verify":
       return "Apollo cannot currently confirm whether this Gate is operating. It may still be working, but verification has not completed recently.";
     default:

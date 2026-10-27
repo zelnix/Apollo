@@ -90,7 +90,7 @@ test("the copied request and response name Magnum DI only — no provider, model
 
 test("Coverage Gap codes become plain English for the person", () => {
   assert.equal(plainTriageText("Coverage gap: EMAIL_HEADERS_UNAVAILABLE, BROWSER_VISIBILITY_UNAVAILABLE"),
-    "Couldn't check: The technical sender information wasn't available. Apollo can't see inside the browser session on this device.");
+    "Couldn't check: The technical sender information wasn't available. ApolloSG can't observe the page itself: its content, or the website an installed web app or notification came from.");
   assert.equal(plainTriageText("ApolloSG couldn't obtain enough evidence to decide: INSUFFICIENT_EVIDENCE"),
     "ApolloSG couldn't obtain enough evidence to decide: There wasn't enough evidence to decide either way.");
   assert.equal(plainTriageText("No codes here."), "No codes here.");

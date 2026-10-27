@@ -757,7 +757,7 @@ section("10A. State Machine Resolution");
 
 section("11A. Event Merge");
 
-// Local content wins on originating device
+// Local content wins on the device that recorded it
 (() => {
   const localEv = makeEvent({ event_id: "e1", state: "growling", category: "website", indicator_host: "example.com", occurred_at: new Date(Date.now() - 60000).toISOString() });
   (localEv as any).evidence_provenance = "local_device";

@@ -612,7 +612,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         await Sharing.shareAsync(result.uri, { mimeType: "application/pdf", dialogTitle: "Export Apollo Investigation Report", UTI: "com.adobe.pdf" });
         setPdfNote("PDF exported successfully.");
       } else if (Platform.OS === "web") { setPdfNote("PDF download is not available in the web preview. Use the Expo Go app on a device."); }
-      else { setPdfNote("Sharing is not available on this device."); }
+      else { setPdfNote("This phone can't share files from ApolloSG."); }
     } catch (e: unknown) { setPdfNote(e instanceof Error ? e.message : "PDF export failed."); }
     finally { setPdfExporting(false); }
   }, [state.caseData]);

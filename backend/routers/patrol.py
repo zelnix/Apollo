@@ -16,7 +16,7 @@ from core.db import db, now_utc
 from core.models import EnforcementEvidenceIn, PatrolEvent, PatrolEventIn, PatrolEventPatch, TrustEntry, TrustIn
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
-from services.patrol_policy import packet_verified, minimal_patrol, revalidate_stored_patrol
+from services.patrol_policy import packet_verified, minimal_patrol, refresh_summary, revalidate_stored_patrol
 from services import patrol_records
 
 router = APIRouter()
@@ -40,7 +40,7 @@ def _derive_verified_block(body: PatrolEventIn) -> bool:
          record reads (this is what stops the mock adapter, or a client pretending to be it, from
          ever producing a THREAT_BLOCKED-equivalent state).
       4. If the evidence names a device_id, it must match the event's own device_id — one device's
-         evidence can never authorise another device's block.
+         evidence can never authorise a block on a different device.
     Mirrors isVerifiedEnforcement() in frontend/src/security/PlatformCapabilityProfile.ts exactly.
     """
     return packet_verified(body)
@@ -197,7 +197,7 @@ async def upsert_event(body: PatrolEventIn):
 @router.get("/patrol/events", response_model=list[PatrolEvent])
 async def list_events(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=200, le=500)):
     docs = await db.patrol_events.find({"device_id": device_id, "deleted_at": None}).sort("occurred_at", -1).to_list(limit)
-    return [PatrolEvent.from_mongo(await revalidate_stored_patrol(d)) for d in docs]
+    return [PatrolEvent.from_mongo(refresh_summary(await revalidate_stored_patrol(d))) for d in docs]
 
 
 @router.get("/patrol/records")

@@ -22,6 +22,8 @@ import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
 import { buildPermissionFindings, confirmedResolved, type PermissionFinding } from "@/src/domain/appPermissionFindings";
 import { buildAppCheckResult } from "@/src/domain/appCheckResultAdapter";
+import { buildAppProfile } from "@/src/domain/triage/appEvidence";
+import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { saveAppReport } from "@/src/store/appReportStore";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
@@ -86,7 +88,7 @@ export default function CheckApp() {
   const [perms, setPerms] = useState<AppPermission[]>([]);
   const [ctx, setCtx] = useState({ promptedByCaller: false, promptedByMessageOrSite: false, intentional: false, accessGrantedNow: false });
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ submissionId: string; a: AppAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: AppAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> | null; profile: EvidenceProfile } | null>(null);
   const [permSheet, setPermSheet] = useState<AppPermission | null>(null);
   // Pick-from-installed-apps (Android): list launchable apps so the person doesn't have to type the name.
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -165,13 +167,19 @@ export default function CheckApp() {
         const bad = remote.hosts.filter((h) => h.verdict === "malicious").length;
         if (bad && a.state !== "barking") a = { ...a, state: "barking", title: "Dangerous destination observed", verdict: `${bad} destination${bad > 1 ? "s have" : " has"} a malicious reputation. This does not prove the app is malicious or that Apollo blocked its traffic.`, why: [...a.why, "Threat intelligence identified a destination associated with this app as malicious."], handoff: "network" };
       } catch { /* offline: on-device engine is authoritative */ }
+      // Higgins Triage's classification of what ApolloSG had for this app: what was entered, or what this phone said.
+      const profile = buildAppProfile({
+        via: pickedPackage ? "picked" : params.name ? "linked" : "typed", name: name.trim(), developer: developer.trim() || null,
+        source: observedSource, ticked: perms, device: sdk ?? null, analysis: a,
+        badDestinations: remote?.hosts.filter((h) => h.verdict === "malicious").length ?? 0,
+      });
       let event: PatrolEvent | null = null;
       const linked = recentLinked.find((e) => (ctx.promptedByCaller && e.category === "call") || (ctx.promptedByMessageOrSite && e.category !== "call")) ?? (a.remoteCapable || a.scenario === "A16" ? recentLinked[0] : null) ?? null;
       if (a.state !== "resting") {
-        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "app", state: a.state, status: "active", headline: `App: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null }, { kind: "app", fields: [{ label: "App", value: name.trim() }, ...(developer.trim() ? [{ label: "Developer", value: developer.trim() }] : []), { label: "Install source", value: observedSource }, ...(observedPerms.length ? [{ label: "Permissions", value: observedPerms.join(", ") }] : [])], data: sdk ?? null });
+        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "app", state: a.state, status: "active", headline: `App: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null, evidence_profile: profile }, { kind: "app", fields: [{ label: "App", value: name.trim() }, ...(developer.trim() ? [{ label: "Developer", value: developer.trim() }] : []), { label: "Install source", value: observedSource }, ...(observedPerms.length ? [{ label: "Permissions", value: observedPerms.join(", ") }] : [])], data: sdk ?? null });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
-      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked, sdk: sdk ?? null });
+      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked, sdk: sdk ?? null, profile });
     } finally { setBusy(false); }
   };
   const settingsFor = (a: AppAnalysis) => (a.permissionNotes.some((n) => n.id === "accessibility" && !n.expected) ? (["accessibility", "Settings → Accessibility"] as const) : (["apps", "Settings → Apps → the app"] as const));
@@ -213,7 +221,7 @@ export default function CheckApp() {
   // UNIVERSAL CHECK RESULT — when the app check has produced an outcome, the entire screen
   // becomes the shared Check Result with gate-specific actions.
   if (result && a) {
-    const model = buildAppCheckResult({ analysis: a, event: result.event, appName: appLabel, submissionId: result.submissionId });
+    const model = { ...buildAppCheckResult({ analysis: a, event: result.event, appName: appLabel, submissionId: result.submissionId }), evidenceProfile: result.event?.evidence_profile ?? result.profile };
     const askPrompt = `About the app I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const appActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     if (a.state !== "resting") {

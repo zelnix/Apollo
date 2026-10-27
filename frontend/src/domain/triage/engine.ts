@@ -21,7 +21,7 @@ const naBecause = (reason: string): Verdict => ({ result: "not_applicable", evid
 const gap = (code: string, ...evidence: string[]): Verdict => ({ result: "coverage_gap", evidence: evidence.filter(Boolean), gap: code });
 
 /** Why the browser-observation rules (BITM-01..04) can't execute in a phone app's context. */
-export const BROWSER_OBSERVATION_NA = "Not applicable here: this rule needs live observation inside the browser session (page and WebSocket traffic), which this device context cannot provide.";
+export const BROWSER_OBSERVATION_NA = "Not applicable here: this rule needs the page's live content and WebSocket traffic as a browser sees them, which ApolloSG can't observe from an app.";
 
 const sig = (ev: TriageEvidence, name: string): boolean => !!ev.signals?.[name];
 const prov = (ev: TriageEvidence, name: string): Record<string, any> => (ev[name] && typeof ev[name] === "object" ? ev[name] : {});
@@ -638,7 +638,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
       const predicate = REGISTRY[category]?.[definition.id];
       if (!predicate) {
         records.push({ ruleId: definition.id, title: definition.title, category, applicable: false, checked: false,
-          result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "evaluated on the server where this evidence lives" });
+          result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "runs on ApolloSG's servers, not in the phone's Triage" });
         continue;
       }
       let verdict: Verdict;

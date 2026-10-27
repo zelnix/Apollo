@@ -63,6 +63,35 @@ _CATEGORY_LABEL = {
 }
 
 
+SUMMARY_ADAPTER = 'ApolloSG on-device assessment'
+SUMMARY_WHY = "ApolloSG's servers keep only this privacy-protected summary, not the content that was checked."
+
+
+def summary_narrative(category, state, verified) -> dict:
+    """The fixed wording of the privacy-protected summary the server keeps of a device's check.
+
+    It says what was checked and the result at a high level. It never says where a copy is kept: every Threat Case
+    belongs to the device that detected it, and this summary is part of that same case."""
+    state_phrase = _STATE_PHRASE.get(state, "a result")
+    cat_label = _CATEGORY_LABEL.get(category, category)
+    return {
+        'headline': f'Apollo blocked a suspicious {cat_label}' if verified else f'Apollo flagged a {cat_label} for review',
+        'what_happened': (f'Apollo blocked a suspicious {cat_label} using its on-device filter.' if verified
+                          else f'Apollo checked a {cat_label} and found {state_phrase}.'),
+        'why': ['The connection was blocked based on verified threat intelligence.' if verified else SUMMARY_WHY],
+        'what_to_do': (f"Don't act on this {cat_label} — don't tap links, reply, call back or pay — until you've "
+                       "confirmed it through a contact you already trust." if state == 'barking'
+                       else 'A past check does not confirm current safety.'),
+    }
+
+
+def refresh_summary(doc: dict) -> dict:
+    """Show a stored privacy summary in the current wording (records written earlier carried location wording)."""
+    if not isinstance(doc, dict) or doc.get('adapter_label') != SUMMARY_ADAPTER:
+        return doc
+    return {**doc, **summary_narrative(doc.get('category'), doc.get('state'), doc.get('verified_block') is True)}
+
+
 def minimal_patrol(body, verified):
     payload = body.model_dump()
     payload.pop('investigation_case_id', None)  # association has its own owner-validated route
@@ -82,28 +111,11 @@ def minimal_patrol(body, verified):
             if getattr(e, key) is not None:
                 raise HTTPException(422, 'Evidence contains fields outside the minimal privacy boundary')
     # Never persist free-form local narratives from old clients either.
-    state_phrase = _STATE_PHRASE.get(body.state, "a result")
-    cat_label = _CATEGORY_LABEL.get(body.category, body.category)
     payload.update(
-        headline=f'Apollo blocked a suspicious {cat_label}' if verified else f'Apollo flagged a {cat_label} for review',
-        what_happened=(
-            f'Apollo blocked a suspicious {cat_label} using its on-device filter.'
-            if verified
-            else f'Apollo checked a {cat_label} and found {state_phrase}. The full details are stored securely on your device.'
-        ),
-        why=[
-            f'The connection was blocked based on verified threat intelligence.'
-            if verified
-            else f'ApolloSG\'s on-device check identified {state_phrase}. For your privacy, detailed findings stay on this device.'
-        ],
-        what_to_do=(
-            f'Do not interact with this {cat_label}. Open the Check tab on your device to see the full assessment and decide what to do.'
-            if body.state == 'barking'
-            else f'Open the Check tab on your device to review the full details. A past check does not confirm current safety.'
-        ),
+        **summary_narrative(body.category, body.state, verified),
         indicator_host=body.indicator_host if body.category != 'call' and domain_only(body.indicator_host) else None,
         claimed_brand=None, scenario=body.scenario if body.scenario and re.fullmatch(r'[A-Z]{1,3}\d{1,3}[a-z]?', body.scenario) else None,
-        adapter_label='ApolloSG on-device assessment', verified_block=verified,
+        adapter_label=SUMMARY_ADAPTER, verified_block=verified,
         supporting_references=safe_refs,
     )
     return payload

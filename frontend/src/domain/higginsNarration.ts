@@ -1,10 +1,12 @@
 // Higgins' narration — turns a Patrol event or an incident timeline into short spoken chunks, in order, so a person
 // who prefers listening hears the whole story: what happened, why Apollo reacted, what to do, step by step.
-// ARCHITECTURAL RULE: Higgins ONLY narrates real evidence. When the event carries privacy-projected
-// server text (not originating-device detail), Higgins says so honestly instead of inventing a narrative.
+// ARCHITECTURAL RULE: Higgins ONLY narrates real evidence. When the record holds only the privacy-protected summary
+// ApolloSG's servers keep, Higgins says what Apollo has and what it couldn't verify — never where another copy might be.
 // OPERATING STANDARD: Higgins is an authoritative cybersecurity expert. He investigates, assesses, directs
 // and guides. Narration uses decisive, protective language — never passive advice or vague suggestions.
+import { hasRecordedFindings, triageShortfalls } from "./caseFacts.ts";
 import { CATEGORY_LABEL, type IncidentPlan } from "./incidentPlan.ts";
+import { LIMITED_TODO } from "./triage/contract.ts";
 import { type PatrolEvent, STATE_LABEL, STATE_MEANING } from "./types.ts";
 
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -14,29 +16,24 @@ const strip = (h: string) => h.replace(/^(Email|App|Device|Account|Network|Messa
 
 export interface NarrationChunk { id: string; label: string; text: string }
 
-// ── Evidence completeness — structural check, not text matching ──
-// An event has usable evidence when it was created on the local device with real findings.
-// Server-projected or incomplete events must be narrated honestly — never as real evidence.
-// This uses the explicit `evidence_provenance` field, NOT sentence pattern matching.
-export function hasLocalEvidence(e: PatrolEvent): boolean {
-  return e.evidence_provenance === "local_device";
-}
+const SUMMARY_ONLY = "ApolloSG holds only a privacy-protected summary of this check: the kind of check and its result, not the content that was checked.";
+const CONCERN = new Set(["barking", "biting", "growling", "ears_up"]);
 
-/** One event, read in order: state → what happened → why → what to do (→ contained).
- *  When content is incomplete (not from this device), Higgins says so honestly.
+/** What to do when only the summary is recorded: caution for a concern, never an invented instruction. */
+const summaryTodo = (e: PatrolEvent) => CONCERN.has(e.state) && !e.verified_block
+  ? LIMITED_TODO : "Nothing in this summary needs action. A past check doesn't confirm current safety.";
+
+/** One event, read in order: state → what happened → why → what to do (→ what couldn't be verified → contained).
+ *  When the record holds only the privacy summary, Higgins says exactly that and adds nothing.
  *  When evidence exists, Higgins directs: tells the user exactly what to do. */
 export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
-  const incomplete = !hasLocalEvidence(e);
-  // Server-projected investigations with real findings should be narrated from their data,
-  // not dismissed as unavailable evidence.
-  const hasInvestigationData = !!e.investigation_case_id && !!(e.what_happened && e.what_happened.length > 30);
   const chunks: NarrationChunk[] = [
     { id: "state", label: "Apollo's finding", text: `Higgins here. Apollo found something. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
   ];
-  if (incomplete && !hasInvestigationData) {
-    chunks.push({ id: "what", label: "What happened", text: "The full evidence for this finding is only available on the device where it happened. I can't give you a specific instruction without seeing the evidence." });
-    chunks.push({ id: "why", label: "Why this matters", text: "The reason Apollo flagged this is recorded on the originating device." });
-    chunks.push({ id: "todo", label: "What to do", text: "Open this on the device where the check happened. I'll guide you through the next steps from there." });
+  if (!hasRecordedFindings(e)) {
+    chunks.push({ id: "what", label: "What happened", text: `${SUMMARY_ONLY} I can't give you a specific instruction from a summary.` });
+    chunks.push({ id: "why", label: "Why this matters", text: "The summary doesn't record Apollo's reasons, so I won't guess at them." });
+    chunks.push({ id: "todo", label: "What to do", text: summaryTodo(e) });
   } else {
     chunks.push({ id: "what", label: "What happened", text: `Here's what Apollo found: ${strip(e.headline)}. ${e.what_happened}` });
     if (e.why.length) {
@@ -46,6 +43,9 @@ export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
       chunks.push({ id: "why", label: "Assessment", text: "Apollo found no specific warning signs. No action needed on this one." });
     }
     chunks.push({ id: "todo", label: "What to do", text: `Here's what to do: ${e.what_to_do}` });
+    // What Apollo couldn't verify, with the recorded reason. It narrows the result; it isn't a concern itself.
+    const unverified = triageShortfalls(e.triage_investigation);
+    if (unverified.length) chunks.push({ id: "unverified", label: "What couldn't be verified", text: `Apollo couldn't verify everything: ${unverified.map((r) => `${r.name}, ${r.status}. ${r.reason}`).join(" ")}` });
   }
   if (e.status !== "active") chunks.push({ id: "done", label: "Handled", text: e.state === "biting" && e.verified_block ? "This threat is blocked and contained. Apollo stopped it. Nothing further is needed." : "This one is handled. Well done." });
   return chunks;
@@ -62,9 +62,8 @@ export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boole
   }];
   plan.timeline.forEach((e, i) => {
     const lead = i === 0 ? "It started" : i === n - 1 ? "The latest" : "Then";
-    const incomplete = !hasLocalEvidence(e);
-    if (incomplete) {
-      chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: The detailed evidence for this event is only on the device where it happened.${e.status !== "active" ? " That one is already handled." : " We'll need to check it there."}` });
+    if (!hasRecordedFindings(e)) {
+      chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: ApolloSG holds only a privacy-protected summary of this one — ${STATE_LABEL[e.state].toLowerCase()}.${e.status !== "active" ? " That one is already handled." : ""}` });
     } else {
       chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: ${strip(e.headline)}. ${e.what_happened}${e.status !== "active" ? " That one is already handled." : ""}` });
     }

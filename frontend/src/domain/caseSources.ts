@@ -5,8 +5,8 @@
 // A source that did not answer is reported as such; nothing is inferred and nothing is invented.
 
 import type { DeviceInvestigation } from "../investigation/deviceStore";
+import { triageShortfalls } from "./caseFacts.ts";
 import { investigatorName } from "./messageVoice.ts";
-import { gapPlainEnglish } from "./triage/contract.ts";
 import type { EmailEvidenceProfile } from "./triage/emailEvidence.ts";
 import type { PatrolEvent } from "./types";
 
@@ -20,24 +20,16 @@ export interface CaseSource {
   at: string | null;
   /** false when the source could not be read or did not answer. */
   answered: boolean;
+  /** How it fell short when it didn't answer ("couldn't be verified"); "didn't answer" when absent. */
+  status?: string;
   /** Present for external references so the UI can open them. */
   url?: string;
 }
 
-/** The part of the system a Coverage Gap refers to — so "didn't answer" names something real. */
-const GAP_SOURCE: Record<string, string> = {
-  PLATFORM_CAPABILITY_UNAVAILABLE: "This device's operating system",
-  PERMISSION_UNAVAILABLE: "A permission-gated device check",
-  INTELLIGENCE_PROVIDER_UNAVAILABLE: "Threat-reputation service",
-  NETWORK_CHECK_FAILED: "Network check",
-  CONTENT_NOT_ACCESSIBLE: "The content itself",
-  UNSUPPORTED_FILE_TYPE: "File inspection",
-  ENCRYPTED_CONTENT: "File inspection",
-  EMAIL_HEADERS_UNAVAILABLE: "Email technical headers",
-  BROWSER_VISIBILITY_UNAVAILABLE: "Browser session",
-  INSUFFICIENT_EVIDENCE: "Available evidence",
-  DETERMINISTIC_CHECK_ERROR: "A Triage check",
-};
+/** The heading for one source: its name, and how it fell short when it did. */
+export function sourceHeading(source: Pick<CaseSource, "name" | "answered" | "status">): string {
+  return source.answered ? source.name : `${source.name} — ${source.status ?? "didn't answer"}`;
+}
 
 const MECHANISM_SOURCE: Record<string, string> = {
   dns_sinkhole: "Apollo's DNS filter",
@@ -73,10 +65,14 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       answered: true,
     });
   } else if (event.evidence_provenance === "server_projected") {
+    // Server processing belongs to THIS case: it worked from (or keeps) a privacy-protected version of the evidence.
+    const analysed = !!(event.triage_investigation || event.investigation_case_id || event.patrol_record?.investigationCaseId);
     sources.push({
       id: "server",
       name: "ApolloSG's servers",
-      returned: "A privacy-projected summary of a finding recorded on another device",
+      returned: analysed
+        ? "Checked a privacy-protected copy of this case's evidence"
+        : "Keep a privacy-protected summary of this check — its kind and result, not the content that was checked",
       at: event.occurred_at,
       answered: true,
     });
@@ -95,8 +91,8 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
   } else if (event.evidence_provenance === "incomplete") {
     sources.push({
       id: "incomplete",
-      name: "Original evidence source",
-      returned: "Not available on this device",
+      name: "Original evidence",
+      returned: "Not part of this case's record",
       at: event.occurred_at,
       answered: false,
     });
@@ -118,8 +114,9 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
   //     sender authentication — credited to that server; ApolloSG reports it and never re-checks it.
   const profile = event.evidence_profile;
   if (profile) {
-    const label = profile.type === "email" ? "Email evidence" : profile.type === "link" ? "Link evidence" : "Evidence";
-    sources.push({ id: "evidence_profile", name: `${label} received: ${profile.label}`, returned: profile.basis, at: profile.at, answered: true });
+    const KIND: Record<string, string> = { email: "Email", link: "Link", message: "Message", call: "Call", file: "File", app: "App", image: "Image" };
+    const label = `${KIND[profile.type] ?? ""} evidence`.trim();
+    sources.push({ id: "evidence_profile", name: `${label.charAt(0).toUpperCase()}${label.slice(1)} received: ${profile.label}`, returned: profile.basis, at: profile.at, answered: true });
     const auth = profile.type === "email" ? (profile as EmailEvidenceProfile).auth : null;
     if (auth) {
       const server = auth.recordedBy === "unknown" ? "The receiving mail server" : auth.recordedBy;
@@ -148,15 +145,9 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       at: triage.evaluatedAt,
       answered: true,
     });
-    for (const gap of triage.coverageGaps) {
-      sources.push({
-        id: `gap:${gap.code}`,
-        name: GAP_SOURCE[gap.code] ?? "A check Apollo could not complete",
-        // Plain English only — the code and its technical detail are on the DI tab.
-        returned: gapPlainEnglish(gap.code),
-        at: triage.evaluatedAt,
-        answered: false,
-      });
+    // Every check that didn't finish: the actual check, and the reason recorded for it — never generic wording.
+    for (const row of triageShortfalls(triage)) {
+      sources.push({ id: row.id, name: row.name, returned: row.reason, at: row.at, answered: false, status: row.status });
     }
   }
 
@@ -179,8 +170,8 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
       id: "magnum",
       name: investigation ? `${investigatorName(investigation.answeredBy)} investigation` : "Investigation",
       returned: investigation
-        ? `${findings} finding${findings === 1 ? "" : "s"} returned, stored on this device`
-        : "Result not stored on this device",
+        ? `${findings} finding${findings === 1 ? "" : "s"} returned`
+        : event.investigation_completed_at ? "The result isn't part of this case's record" : "No result recorded yet",
       at: investigation?.completedAt ?? null,
       answered: !!investigation,
     });

@@ -21,6 +21,7 @@ import { buildCallCheckResult } from "@/src/domain/callCheckResultAdapter";
 import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type PatrolEvent } from "@/src/domain/types";
+import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
 import { useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -63,7 +64,7 @@ export default function CheckCall() {
   const [number, setNumber] = useState(params.number ? String(params.number) : "");
   const [transcript, setTranscript] = useState("");
   const [more, setMore] = useState(!!params.number);
-  const [result, setResult] = useState<{ analysis: CallAnalysis; event: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ analysis: CallAnalysis; event: PatrolEvent | null; profile?: EvidenceProfile | null } | null>(null);
   const [verify, setVerify] = useState(false);
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported("call_log");
@@ -86,7 +87,7 @@ export default function CheckCall() {
   // UNIVERSAL CHECK RESULT — when the manual check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
-    const model = buildCallCheckResult({ analysis: a, event: result.event, number, transcript });
+    const model = { ...buildCallCheckResult({ analysis: a, event: result.event, number, transcript }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the phone call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     if (a.state === "barking" || a.state === "growling") {

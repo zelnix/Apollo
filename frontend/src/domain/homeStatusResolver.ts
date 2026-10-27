@@ -319,9 +319,9 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
   // Scenario B: No known threat, platform limitations.
   if (coverage.platformLimited) {
     return {
-      explanation: `${base} Some protections are not available on this device.`,
+      explanation: `${base} Some protections aren't supported here.`,
       primaryAction: { label: "View protection coverage", route: "/(tabs)/protection" },
-      coverageNote: "Platform-limited: not all protections are available on this device.",
+      coverageNote: "Platform-limited: not every protection is supported here.",
     };
   }
 
@@ -446,7 +446,7 @@ function deriveProtectionPresentation(
 
   // Platform limited — no action needed for unsupported features.
   if (coverage.platformLimited) {
-    return { protectionStatus: "watching", coverageNote: "Some protections are not available on this device." };
+    return { protectionStatus: "watching", coverageNote: "Some protections aren't supported here." };
   }
 
   // Partial or unknown — not a problem unless something failed.

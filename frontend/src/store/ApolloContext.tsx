@@ -37,6 +37,8 @@ import { callTriageEvidence, emailTriageEvidence, linkTriageEvidence, messageTri
 import { buildEmailProfile, emailFindings, mergeEmailProfiles, sameEmail, upgradeSentence, type EmailEvidenceProfile, type EmailVia } from "@/src/domain/triage/emailEvidence";
 import { fill, mergeProfiles, upgrades, type EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
 import { buildLinkProfile, buildSiteGateProfile, LINK_WORDS, sameLink, type LinkVia } from "@/src/domain/triage/linkEvidence";
+import { buildMessageProfile, MESSAGE_WORDS, type MessageVia } from "@/src/domain/triage/messageEvidence";
+import { buildCallProfile, type CallVia } from "@/src/domain/triage/callEvidence";
 import { analysisSourceFor, headerEvidenceFor } from "@/src/domain/triage/emailIntake";
 import type { ParsedOriginal } from "@/src/domain/triage/emailOriginal";
 import { keepOriginalEmail } from "@/src/store/originalEmail";
@@ -150,7 +152,13 @@ export interface CheckOutcome {
 export interface LinkCheckOptions { via?: LinkVia; upgradeEventId?: string | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export type { MessageUrlResult };
-export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
+export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null;
+  /** Higgins Triage's classification of how the message reached ApolloSG. */
+  profile?: EvidenceProfile | null }
+/** How a message reached ApolloSG (sets its evidence level), and the case a re-check belongs to. */
+export interface MessageCheckOptions { via?: MessageVia; receivedAt?: string | null; upgradeEventId?: string | null }
+/** How a number came to be checked (sets its evidence level) — ApolloSG's call screening passes when it saw the call. */
+export interface NumberCheckOptions { deliberate?: boolean; carrierWarning?: CarrierWarning; via?: CallVia; screenedAt?: string | null }
 /** One email check: the deterministic analysis, the link reputation behind it, the single patrol
  *  record it filed, and the Magnum DI case id when Triage escalated (null when it did not). */
 export interface EmailOutcome {
@@ -188,6 +196,8 @@ export interface CallRiskResult {
   /** Set by checkNumberRisk when it already created a Magnum DI case for this number.
    *  Callers (e.g. call-guard manual flow) MUST poll this case instead of launching a second investigation. */
   investigation_case_id?: string | null;
+  /** Higgins Triage's classification of what ApolloSG had for this number (merged into its case when there is one). */
+  evidence_profile?: EvidenceProfile | null;
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -216,7 +226,7 @@ interface ApolloContextValue {
   trust: TrustEntry[];
   resolution: StateResolution;
   checkLink(input: string, scentId?: string, options?: LinkCheckOptions): Promise<CheckOutcome>;
-  checkMessage(sender: string, text: string): Promise<MessageOutcome>;
+  checkMessage(sender: string, text: string, options?: MessageCheckOptions): Promise<MessageOutcome>;
   /** Gate 1: Check Email — deterministic engine + link reputation + Triage. Files exactly one patrol
    *  record per check and opens at most one Magnum DI case (reused across correlated evidence). */
   checkEmail(input: EmailCheckInput): Promise<EmailOutcome>;
@@ -226,13 +236,13 @@ interface ApolloContextValue {
   scanGmailInbox(): Promise<{ checked: number; accepted: number }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
-  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null }>;
+  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null; profile: EvidenceProfile }>;
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
   /** `deliberate` marks a check the person asked for (Check a Number, a re-check) as opposed to the
    *  background screening of an incoming call. A deliberate check that Apollo cannot settle from its
    *  own sources is escalated to a Magnum DI investigation; background screening never is.
    *  `carrierWarning` is a warning the person says their carrier showed on this call: it always goes to Magnum DI. */
-  checkNumberRisk(number: string, country?: string, options?: { deliberate?: boolean; carrierWarning?: CarrierWarning }): Promise<CallRiskResult>;
+  checkNumberRisk(number: string, country?: string, options?: NumberCheckOptions): Promise<CallRiskResult>;
   /** `original` = the exact source investigated; saved unaltered on this device for the Evidence tab. */
   upsertEvent(event: PatrolEvent, original?: OriginalSourceInput): Promise<PatrolEvent>;
   reopenEvent(event: PatrolEvent): Promise<void>;
@@ -1026,7 +1036,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {    const analysis = analyseMessage(sender, text);
+  const checkMessage = useCallback(async (sender: string, text: string, options?: MessageCheckOptions): Promise<MessageOutcome> => {    const analysis = analyseMessage(sender, text);
     const remoteError: string | null = null;
     // ── Device Capabilities: the messaging app's own verdict, where it is shared with Apollo ──
     // Evidence belongs to the provider; it only triggers Apollo's existing investigation.
@@ -1039,8 +1049,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // signal — on its own it never sets the state of the case.
     const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${sender}\n${text}`), deviceId, deviceRegion());
     // The patrol record this check will file. Known before the investigation starts so the case can
-    // name it, which is what keeps one check to one case.
-    const eventId = Crypto.randomUUID();
+    // name it, which is what keeps one check to one case. A re-check from a case files into THAT case.
+    const previous = options?.upgradeEventId ? eventsRef.current.find((e) => e.event_id === options.upgradeEventId) ?? null : null;
+    const eventId = previous?.event_id ?? Crypto.randomUUID();
     let state = analysis.state; const why = [...(nativeFact ? [nativeClassificationWhyLine(nativeFact)] : []), ...analysis.why];
     // Email Guard / Text Guard: automatic pre-click assessment over every checked link plus
     // any display-text-vs-real-destination mismatch. This can only raise state to growling/barking.
@@ -1050,7 +1061,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     why.push(...phoneWhyLines(phones));
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
-    let investigationCaseId: string | null = null;
+    let investigationCaseId: string | null = previous?.investigation_case_id ?? null;
+    // Higgins Triage's classification of how the message reached ApolloSG. A re-check keeps the case's level.
+    const priorProfile = previous?.evidence_profile?.type === "message" ? previous.evidence_profile : null;
+    const profile = mergeProfiles(priorProfile, buildMessageProfile({
+      via: options?.via ?? "pasted", level: options?.via === "recheck" ? priorProfile?.level : undefined,
+      sender, receivedAt: options?.receivedAt ?? null,
+      provider: nativeFact ? { provider: nativeFact.provider, classification: nativeFact.classification } : null,
+      signals: analysis.signals, urls, phones,
+    }));
+    if (previous) why.unshift(MESSAGE_WORDS.recheck);
 
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
@@ -1060,7 +1080,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 
     // Patrol event: Apollo's deterministic reasons (local analysis + URL guard) drive the state.
-    if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triggersInvestigation(nativeFact)) {
+    if (!investigationCaseId && (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triggersInvestigation(nativeFact))) {
       // Tier 2: exactly ONE Magnum DI investigation per correlated case.
       if (existingCaseId) {
         investigationCaseId = existingCaseId;
@@ -1091,15 +1111,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
         : guardHeadline || (nativeFact ? `${nativeFact.provider} flagged this sender` : "");
       event = await upsertEvent({
+        ...(previous ?? {}),
         event_id: eventId, device_id: deviceId ?? "local", category: "message", state, status: "active",
         headline: apolloHeadline,
         what_happened: patrolSafeSummary(analysis.state !== "resting" ? analysis.verdict : (guard.why[0] ?? analysis.verdict)),
         why,
         what_to_do: analysis.recommendation,
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
-        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
+        occurred_at: previous?.occurred_at ?? new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
+        triage_history: previous ? [...(previous.triage_history ?? []), ...(previous.triage_investigation ? [previous.triage_investigation] : [])] : null,
+        evidence_profile: profile,
         evidence_phones: phones.length ? phones : null,
         ...(nativeFact ? { evidence_provenance: nativeClassificationProvenance(), source_metadata: nativeClassificationAttribution(nativeFact) } : {}),
       }, { kind: "text", fields: [
@@ -1109,7 +1132,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
-    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, phones, explanation: null, assessment: null, remoteError, event };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, phones, explanation: null, assessment: null, remoteError, event, profile };
   }, [correlationFor, deviceId, upsertEvent]);
 
   // ── Email check (Gate 1) ─────────────────────────────────────────────────
@@ -1351,6 +1374,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const { correlation, existingCaseId } = correlationFor({ indicator: input.number?.trim() || null, mechanics: ["remote_access", "scam_call"] });
     const triage = evaluateTriage(callTriageEvidence({ input, analysis, correlation }));
     reportTriageOutcome(triage);
+    // A described call: ApolloSG only has what the person told it.
+    const profile = buildCallProfile({ via: "described", number: input.number ?? null, reputation: null, asks: input.asks, brand: analysis.claimedBrand });
     if (analysis.state !== "resting" || triage.outcome !== "NO_THREAT_IDENTIFIED" || nativeFact) {
       // Tier 2 (Magnum DI) runs for a deterministic Possible Threat, AND when Triage could not
       // settle the call because a source it needed didn't answer — a call Apollo cannot settle
@@ -1389,6 +1414,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
+        evidence_profile: profile,
         ...(nativeFact ? { evidence_provenance: nativeClassificationProvenance(), source_metadata: nativeClassificationAttribution(nativeFact) } : {}),
       }, { kind: "call", fields: [
         ...(input.number?.trim() ? [{ label: "Number", value: input.number }] : []),
@@ -1396,10 +1422,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
         ...(input.asks.length ? [{ label: "Asked for", value: input.asks.join(", ") }] : []),
       ], text: input.transcript?.trim() ? input.transcript : null });
-      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
-      if (nativeFact) return { submissionId: event.event_id, analysis: { ...analysis, why: event.why }, event };
+      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event, profile };
+      if (nativeFact) return { submissionId: event.event_id, analysis: { ...analysis, why: event.why }, event, profile };
     }
-    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event, profile };
   }, [correlationFor, deviceId, upsertEvent]);
 
   // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see
@@ -1408,7 +1434,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // native mechanism can act on it next time, and files a growling/barking (never biting) Patrol
   // event — matching Check This Call's existing choice to keep the number itself local-only
   // (`local_indicator`, never synced — see syncEvent's strip above).
-  const checkNumberRisk = useCallback(async (number: string, country?: string, options?: { deliberate?: boolean; carrierWarning?: CarrierWarning }): Promise<CallRiskResult> => {
+  const checkNumberRisk = useCallback(async (number: string, country?: string, options?: NumberCheckOptions): Promise<CallRiskResult> => {
     const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
     // Auto-detect device region for local numbers without country code
     const region = country || Localization.getLocales()[0]?.regionCode;
@@ -1417,6 +1443,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const lookup = await lookupNumberRisk<CallRiskResult>(body as { device_id: string; number: string; country?: string });
     if (!lookup.value) throw lookup.error ?? new Error(lookupFailureMessage(lookup.failure ?? "offline"));
     const result = lookup.value;
+    // What ApolloSG had for this number: one it was asked about, or a call its screening saw arrive.
+    result.evidence_profile = buildCallProfile({
+      via: options?.via ?? (options?.deliberate ? "entered" : "screened"), number: result.number, reputation: result,
+      screenedAt: options?.screenedAt ?? null, carrierWarning: !!options?.carrierWarning,
+    });
     const numberCtx = { numberDecision: result.decision, reputationFailure: numberLookupFailure(result) };
     // Every number check reports its Triage outcome — allowed, risky and unknown alike — so the admin
     // "Limited by cause" share is measured over all of them, not only the ones that raised something.
@@ -1495,7 +1526,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
         investigation_case_id: investigationCaseId,
         triage_investigation: triage,
+        // The number's case keeps every level it has had (e.g. a screened call, then a re-check).
+        evidence_profile: mergeProfiles(existing?.evidence_profile?.type === "call" ? existing.evidence_profile : null, result.evidence_profile),
       };
+      result.evidence_profile = ev.evidence_profile;
       // Attach caller metadata from the risk check for display (country, carrier, line type).
       (ev as unknown as Record<string, unknown>).caller_meta = {
         country: result.country ?? null, carrier: result.carrier ?? null,

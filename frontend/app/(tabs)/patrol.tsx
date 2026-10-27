@@ -46,6 +46,8 @@ import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import type { PatrolEvent, SourceMetadata } from "@/src/domain/types";
 import { InfoButton, type ScreenInfo } from "@/src/components/InfoButton";
 import { SettledByBadge } from "@/src/components/SettledByBadge";
+import { EvidenceBadge } from "@/src/components/EvidenceBadge";
+import { evidenceStrength } from "@/src/domain/triage/evidenceProfile";
 import { AlertsButton } from "@/src/components/AlertsButton";
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { HeaderIconTile } from "@/src/components/HeaderIconTile";
@@ -57,6 +59,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 const THREATS_INFO: ScreenInfo = { title: "About Threats", body: [
   "Threats lists everything Apollo has detected or investigated for you: blocked links, suspicious messages, calls and investigation cases.",
   "Use the filter to see threats by status, and tap any threat to see its overview, the original evidence and its history.",
+  "Each threat shows the evidence ApolloSG received for it — from a screenshot or a name only up to an original file or something ApolloSG saw itself. Sort by “Strongest evidence” to see the best-evidenced cases first.",
   "The line under the title shows when ApolloSG last ran a check or discovered a threat.",
 ] };
 
@@ -108,7 +111,15 @@ const FILTERS: { key: FilterKey; label: string; matchStatuses: ThreatCaseStatus[
   { key: "no_threat", label: "No threat", matchStatuses: ["no_threat"] },
 ];
 
-type SortOrder = "latest" | "oldest";
+type SortOrder = "latest" | "oldest" | "strongest";
+const SORT_LABEL: Record<SortOrder, string> = { latest: "Latest first", oldest: "Oldest first", strongest: "Strongest evidence" };
+const NEXT_SORT: Record<SortOrder, SortOrder> = { latest: "oldest", oldest: "strongest", strongest: "latest" };
+/** A case's evidence strength as a share of the strongest its kind can have (0 when it has no profile). */
+const strengthOf = (e: PatrolEvent) => {
+  if (!e.evidence_profile) return 0;
+  const { rank, max } = evidenceStrength(e.evidence_profile);
+  return rank / max;
+};
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
@@ -192,6 +203,7 @@ function ThreatCard({ event, onPress }: { event: PatrolEvent; onPress: () => voi
         <Text style={s.cardTitle} numberOfLines={3}>{title}</Text>
         {subtitle ? <Text style={s.cardSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
+      {event.evidence_profile ? <EvidenceBadge profile={event.evidence_profile} testID={`threat-card-${event.event_id}-evidence`} /> : null}
       <SettledByBadge event={event} testID={`threat-card-${event.event_id}-settled`} />
       <View style={s.cardFooter}>
         <Text style={s.cardCaseId}>{threatCaseId(event)}</Text>
@@ -262,12 +274,13 @@ export default function ThreatsScreen() {
     list = [...list].sort((a, b) => {
       const ta = new Date(a.occurred_at).getTime();
       const tb = new Date(b.occurred_at).getTime();
+      if (sortOrder === "strongest") return strengthOf(b) - strengthOf(a) || tb - ta;
       return sortOrder === "latest" ? tb - ta : ta - tb;
     });
     return list;
   }, [threatCases, activeFilter, sortOrder]);
 
-  const toggleSort = () => setSortOrder((prev) => prev === "latest" ? "oldest" : "latest");
+  const toggleSort = () => setSortOrder((prev) => NEXT_SORT[prev]);
 
   return (
     <View style={s.root} testID="threats-screen">
@@ -322,8 +335,8 @@ export default function ThreatsScreen() {
           </Text>
           <ChevronDown size={16} color={colors.onSurface} />
         </Pressable>
-        <Pressable style={s.sortBtn} onPress={toggleSort} accessibilityRole="button" testID="threats-sort-btn">
-          <Text style={s.sortText}>{sortOrder === "latest" ? "Latest first" : "Oldest first"}</Text>
+        <Pressable style={s.sortBtn} onPress={toggleSort} accessibilityRole="button" accessibilityLabel={`Sort: ${SORT_LABEL[sortOrder]}. Tap to change.`} testID="threats-sort-btn">
+          <Text style={s.sortText}>{SORT_LABEL[sortOrder]}</Text>
           <ChevronDown size={16} color={colors.onSurface} />
         </Pressable>
       </View>

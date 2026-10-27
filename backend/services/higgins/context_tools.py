@@ -23,6 +23,11 @@ from services.higgins import repository as repo
 
 log = logging.getLogger("apollo.higgins.context")
 
+# What a record holding only the server's privacy-protected summary can say. Never where another copy might be:
+# every Threat Case belongs to the device that detected it.
+SUMMARY_ONLY = ("ApolloSG holds only a privacy-protected summary of this check: the kind of check and its result, "
+                "not the content that was checked.")
+
 
 # ── Authoritative context readers (unchanged) ────────────────────────────────
 
@@ -72,8 +77,8 @@ async def patrol(owner: str, *, one: bool = False) -> dict:
             "recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
             "effectiveState": effective_state, "effectiveReason": row["effectiveReason"],
             "headline": redact_investigation_secrets(row["headline"])[:200],
-            "summary": redact_investigation_secrets(summary_text)[:400] if not is_projected else "Detailed evidence is only available on the originating device.",
-            "evidence_availability": "full" if not is_projected else "limited_to_originating_device",
+            "summary": redact_investigation_secrets(summary_text)[:400] if not is_projected else SUMMARY_ONLY,
+            "evidence_availability": "full" if not is_projected else "summary_only",
             "evidence_provenance": provenance or ("local_device" if not is_projected else "server_projected"),
             "structuredFacts": structured_facts,
             "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),

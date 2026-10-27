@@ -5,8 +5,8 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { LIMITED_CAUTION, gapPlainEnglish, outcomeLabel, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
-import { incompletePlain } from "@/src/domain/triage/completeness";
+import { triageShortfalls } from "@/src/domain/caseFacts";
+import { LIMITED_CAUTION, outcomeLabel, recheckCanHelp, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
 import { spacing, useTheme } from "@/src/theme";
 
 const TONE: Record<string, "resting" | "growling" | "barking" | "neutral"> = {
@@ -26,6 +26,8 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
   const met = record.rules.filter((rule) => rule.result === "met");
   const canRecheck = recheckCanHelp(record);
   const incomplete = record.incompleteChecks ?? [];
+  // Each check that didn't finish, named, with the reason recorded for it.
+  const shortfalls = triageShortfalls(record);
   const meaning = record.outcome === "NO_THREAT_IDENTIFIED" && incomplete.length
     ? "Apollo found nothing threatening in the checks that completed, but not every check it needed finished."
     : MEANING[record.outcome];
@@ -49,20 +51,11 @@ export function TriageSummary({ record, onRecheck }: { record: TriageInvestigati
         ))}
       </View>
 
-      {record.coverageGaps.length > 0 && (
-        <View style={{ gap: spacing.xs }} testID="triage-coverage-gaps">
-          <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What couldn&apos;t be checked</Text>
-          {record.coverageGaps.map((gap) => (
-            <Body key={gap.code}>{`• ${gapPlainEnglish(gap.code)}`}</Body>
-          ))}
-        </View>
-      )}
-
-      {incomplete.length > 0 && (
+      {shortfalls.length > 0 && (
         <View style={{ gap: spacing.xs }} testID="triage-incomplete-checks">
-          <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What didn&apos;t complete</Text>
-          {incomplete.map((check, i) => (
-            <Body key={`${check.check}-${i}`}>{`• ${incompletePlain(check)}`}</Body>
+          <Text style={{ color: colors.onSurface, fontWeight: "600" }}>What couldn&apos;t be checked</Text>
+          {shortfalls.map((row) => (
+            <Body key={row.id} testID={`triage-shortfall-${row.id}`}>{`• ${row.name} — ${row.reason}`}</Body>
           ))}
         </View>
       )}

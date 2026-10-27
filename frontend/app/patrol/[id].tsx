@@ -43,7 +43,6 @@ import {
   STATUS_COLORS,
   riskLevel,
   categoryLabel,
-  sourceLabel,
   buildTimeline,
   formatDateTime,
   formatTime,
@@ -52,9 +51,9 @@ import {
 } from "@/src/domain/threatCase";
 import type { PatrolEvent, PatrolRecord, SourceMetadata, HigginsBriefing } from "@/src/domain/types";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
-import { hasLocalEvidence } from "@/src/domain/higginsNarration";
+import { caseOrigin, completenessLabel, evidenceSourceLabel, hasRecordedFindings, privacyNote, processingLabels } from "@/src/domain/caseFacts";
 import { subjectLabel } from "@/src/domain/threatSubject";
-import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
+import { buildCaseSources, sourceHeading, type CaseSource } from "@/src/domain/caseSources";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
@@ -333,7 +332,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
 
       {/* Patrol facts — only what the top card doesn't already say. */}
       <Card style={{ gap: 0 }} testID="tc-overview-facts">
-        <FactRow icon={MessageSquare} label="Source" value={sourceLabel(event)} isLast={!(event.category === "call" && event.local_indicator) && hasOutcome} />
+        <FactRow icon={MessageSquare} label="Source" value={evidenceSourceLabel(event)} isLast={!(event.category === "call" && event.local_indicator) && hasOutcome} />
         {event.category === "call" && event.local_indicator ? (
           <FactRow icon={Phone} label="Number" value={event.local_indicator} isLast={hasOutcome} />
         ) : null}
@@ -450,10 +449,10 @@ function RecheckCase({ event }: { event: PatrolEvent }) {
           return;
         }
         const from = original?.fields?.find((f) => /from|sender/i.test(f.label))?.value ?? event.source_metadata?.sender ?? "";
-        const outcome = await checkMessage(from, text);
+        const outcome = await checkMessage(from, text, { via: "recheck", upgradeEventId: event.event_id });
         openResult(outcome.event, "ApolloSG re-checked the message and found nothing to flag this time.");
       } else if (plan.kind === "number") {
-        const risk = await checkNumberRisk(plan.number, undefined, { deliberate: true });
+        const risk = await checkNumberRisk(plan.number, undefined, { deliberate: true, via: "recheck" });
         showToast(`Re-check complete: ${risk.higgins.headline}`, "neutral");
       }
     } catch (error) {
@@ -621,7 +620,7 @@ function SourcesSection({ sources }: { sources: CaseSource[] }) {
         {sources.map((src, i) => (
           <View key={src.id} style={s.evidenceOriginalContent} testID={`tc-evidence-source-${i}`}>
             <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>
-              {src.name}{src.answered ? "" : " — didn't answer"}
+              {sourceHeading(src)}
             </Text>
             <Text style={s.evidenceOriginalText} selectable>{src.returned}</Text>
             {src.url ? (
@@ -651,10 +650,11 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
   const briefing = record?.higginsBriefing;
   const isInvestigation = !!event.investigation_case_id;
   const subjectName = subjectLabel(event);
-  const localEvidence = hasLocalEvidence(event);
+  const recorded = hasRecordedFindings(event);
   // The recorded facts of the finding — what Apollo found, never why it matters. Sources: the
   // finding statement itself, Apollo's recorded signals, and evidence the deterministic Triage
-  // investigation actually captured. Deduplicated, no interpretation added.
+  // investigation actually captured. Deduplicated, no interpretation added. Checks that didn't finish
+  // aren't findings: they're listed under Sources, each with its recorded reason.
   const observedFacts = Array.from(new Set([
     (event.headline || "").trim(),
     ...(event.why ?? []).map((w) => w.trim()),
@@ -662,7 +662,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
       .filter((r) => r.result === "met")
       .flatMap((r) => r.evidence)
       .map((e) => plainTriageText(e.trim())),
-  ].filter((line) => !!line && !looksLikeInternalCode(line))));
+  ].filter((line) => !!line && !looksLikeInternalCode(line) && !/^(Couldn't check|Not completed):/.test(line))));
 
   // Load device investigation data for investigation-sourced cases
   const [inv, setInv] = useState<DeviceInvestigation | null>(null);
@@ -742,6 +742,9 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
         </View>
         ) : null}
 
+        <View style={s.evidenceSection}>
+          <View style={s.evidenceBody}><CaseFactsRows event={event} /></View>
+        </View>
         <SourcesSection sources={buildCaseSources({ event, investigation: inv })} />
         <EvidencePackButton event={event} facts={observedFacts} sources={buildCaseSources({ event, investigation: inv })} />
 
@@ -854,7 +857,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
           {/* What Apollo found — the recorded facts of the finding only. No analysis and no
               explanation: those belong on Overview. For cases with no sender/URL (device, app,
               network) these facts ARE the evidence. */}
-          {localEvidence && observedFacts.length > 0 ? (
+          {recorded && observedFacts.length > 0 ? (
             <View style={s.evidenceOriginalContent} testID="tc-evidence-found">
               <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>What Apollo found</Text>
               {observedFacts.map((line, i) => (
@@ -866,21 +869,7 @@ function EvidenceContent({ event }: { event: PatrolEvent }) {
             </View>
           ) : null}
           <EvidenceField label="Observed:" value={formatDateTime(event.occurred_at)} />
-          {!localEvidence ? (
-            <Text style={s.provenanceNote} testID="tc-evidence-not-local">
-              The full evidence for this finding is only available on the device where it happened.
-            </Text>
-          ) : null}
-
-          {event.evidence_provenance ? (
-            <Text style={s.provenanceNote}>
-              Source: {event.evidence_provenance === "local_device" ? "captured on this device"
-                : event.evidence_provenance === "server_projected" ? "from server analysis"
-                : event.evidence_provenance === "dns_observation" ? "DNS monitoring"
-                : event.evidence_provenance === "native_protection" ? `first flagged by ${event.source_metadata?.provider ?? "your device's own protection"}`
-                : "incomplete data"}
-            </Text>
-          ) : null}
+          <CaseFactsRows event={event} />
         </View>
       </View>
 
@@ -962,7 +951,7 @@ function InvestigatedEvidenceView({ inv, originalSource, imageEvidence, event, m
     return (
       <View style={s.evidenceOriginalContent}>
         <Text style={s.provenanceNote} testID="tc-evidence-unavailable">
-          Investigation evidence unavailable — the investigation data for this case was not saved on this device.
+          Investigation evidence unavailable — this case's record doesn't include the investigation data.
         </Text>
       </View>
     );
@@ -1046,6 +1035,23 @@ function InvestigatedEvidenceView({ inv, originalSource, imageEvidence, event, m
           ) : null}
         </View>
       ))}
+    </View>
+  );
+}
+
+/** Origin, evidence source, what checked it, how complete the record is, and any privacy step — five facts kept
+ *  apart. The origin is always the device that detected the case; nothing here says where another copy is. */
+function CaseFactsRows({ event }: { event: PatrolEvent }) {
+  const s = useStyles();
+  const processing = processingLabels(event);
+  const privacy = privacyNote(event);
+  return (
+    <View testID="tc-evidence-case-facts">
+      <EvidenceField label="Origin:" value={caseOrigin(event).label} />
+      <EvidenceField label="Evidence:" value={evidenceSourceLabel(event)} />
+      {processing.length ? <EvidenceField label="Checked:" value={processing.join(", ")} /> : null}
+      <EvidenceField label="Record:" value={completenessLabel(event)} />
+      {privacy ? <Text style={s.provenanceNote} testID="tc-evidence-privacy">{privacy}</Text> : null}
     </View>
   );
 }
@@ -1178,7 +1184,7 @@ export default function ThreatCaseScreen() {
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   const hasSubstantiveData = !!(event.what_happened && event.what_happened.length > 30);
   const hasBriefing = !!event.patrol_record?.higginsBriefing;
-  const isIncomplete = !hasLocalEvidence(event) && !hasInvestigation && !hasSubstantiveData && !hasBriefing;
+  const isIncomplete = !hasRecordedFindings(event) && !hasInvestigation && !hasSubstantiveData && !hasBriefing;
   const shownWhatToDo = !isIncomplete && event.what_to_do && !looksLikeInternalCode(event.what_to_do)
     ? event.what_to_do
     : event.patrol_record?.higginsBriefing?.action ?? "Review the investigation details for recommended next steps.";

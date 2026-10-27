@@ -11,7 +11,7 @@
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
 import { needsYou } from "./caseBriefing.ts";
-import { hasLocalEvidence } from "./higginsNarration.ts";
+import { hasRecordedFindings } from "./caseFacts.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver.ts";
 import type { StateResolution } from "./stateMachine";
@@ -35,9 +35,9 @@ export interface HomeVoice {
 
 /** The ONE sentence from a finding that says what Apollo actually found — no instructions, no
  *  settings paths, no what-to-do. Returns null when the event carries no such sentence, so callers
- *  fall back to naming the check instead of inventing detail. Local evidence only. */
+ *  fall back to naming the check instead of inventing detail. Recorded findings only. */
 export function findingSentence(event: PatrolEvent): string | null {
-  if (!hasLocalEvidence(event)) return null;
+  if (!hasRecordedFindings(event)) return null;
   // Web addresses read as their website before anything is split or capped.
   const text = domainOnly((event.what_happened || "").trim());
   if (!text) return null;
@@ -198,7 +198,7 @@ export function buildHomeVoice(input: {
     if (drivingEvent) {
       const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
       const rawSubject = domainOnly((drivingEvent.headline || drivingEvent.what_happened || "").trim());
-      const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
+      const subject = hasRecordedFindings(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
         ? `ApolloSG ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
         : `ApolloSG ${verb} — Magnum DI is investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
@@ -227,7 +227,7 @@ export function buildHomeVoice(input: {
   if (state === "biting" && drivingEvent?.verified_block) {
     const rawWhat = domainOnly((drivingEvent.what_happened || drivingEvent.headline || "").trim());
     const subject = threatSubject(drivingEvent);
-    const what = hasLocalEvidence(drivingEvent) && rawWhat
+    const what = hasRecordedFindings(drivingEvent) && rawWhat
       ? rawWhat
       : subject ? subjectDescriptor(subject) : "a threat";
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a protection check";

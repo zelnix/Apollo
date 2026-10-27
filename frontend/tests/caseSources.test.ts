@@ -22,7 +22,7 @@ test("an on-device finding reports the device as the source and what it recorded
   assert.equal(sources[0].answered, true);
 });
 
-test("Triage is reported with its counts, says Magnum DI was not engaged, and gaps name the source in plain English", () => {
+test("Triage is reported with its counts, says Magnum DI was not engaged, and gaps name the check with its recorded reason", () => {
   const sources = buildCaseSources({
     event: ev({
       evidence_provenance: "local_device",
@@ -38,7 +38,9 @@ test("Triage is reported with its counts, says Magnum DI was not engaged, and ga
   const triage = sources.find((s) => s.id === "triage")!;
   assert.equal(triage.returned, "2 of 3 applicable checks completed, 1 matched. Magnum DI was not engaged.");
   const gap = sources.find((s) => s.id.startsWith("gap:"))!;
-  assert.equal(gap.name, "Threat-reputation service");
+  assert.equal(gap.name, "Reputation check");
+  assert.equal(gap.status, "couldn't be checked");
+  // Nothing more specific was recorded, so the gap's own code is all it can say — never an invented reason.
   assert.equal(gap.returned, "A reputation service didn't answer in time.");
   assert.equal(gap.answered, false);
   assert.ok(sources.every((s) => !/\bAI\b|[A-Z]+_[A-Z]+/.test(s.returned)));
@@ -66,9 +68,11 @@ test("a DNS detection names the list that matched", () => {
   assert.match(sources[0].returned, /paypal-secure\.top/);
 });
 
-test("an investigation whose result isn't stored locally is reported honestly", () => {
-  const sources = buildCaseSources({ event: ev({ evidence_provenance: "local_device", investigation_case_id: "case-1" }), investigation: null });
-  const magnum = sources.find((s) => s.id === "magnum")!;
-  assert.equal(magnum.returned, "Result not stored on this device");
+test("an investigation whose result isn't in the case record is reported honestly", () => {
+  const pending = buildCaseSources({ event: ev({ evidence_provenance: "local_device", investigation_case_id: "case-1" }), investigation: null });
+  const magnum = pending.find((s) => s.id === "magnum")!;
+  assert.equal(magnum.returned, "No result recorded yet");
   assert.equal(magnum.answered, false);
+  const answered = buildCaseSources({ event: ev({ evidence_provenance: "local_device", investigation_case_id: "case-1", investigation_completed_at: "2026-06-10T09:05:00.000Z" }), investigation: null });
+  assert.equal(answered.find((s) => s.id === "magnum")!.returned, "The result isn't part of this case's record");
 });

@@ -1,5 +1,5 @@
-// Gate 6 — Check This File. Reads only the file's first bytes (signature) and a text sample locally;
-// nothing is uploaded. URLs found inside are handed to Gate 3.
+// Gate 6 — Check This File. Reads the file on this phone: its signature and a text sample, and the whole file
+// (at most 10 MB) to fingerprint it with SHA-256. Nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
 import * as FS from "expo-file-system/legacy";
@@ -19,6 +19,9 @@ import { buildFileCheckResult } from "@/src/domain/fileCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
 import { FILE_SIZE_LIMIT, FILE_SAMPLE_BYTES, inspectSample, type Inspection } from '@/src/domain/fileInspection';
+import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
+import { buildFileProfile, type FileVia } from "@/src/domain/triage/fileEvidence";
+import { sha256Hex } from "@/src/store/originalEmail";
 import { type PatrolEvent } from "@/src/domain/types";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
@@ -50,7 +53,9 @@ const useStyles = makeStyles((c) => ({
 }));
 
 type FileAsset = { uri: string; name: string; mimeType?: string | null; size?: number };
-type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean; owned: boolean };
+/** What the check could read of the file — the file's evidence profile is built from it. */
+type FileRead = { via: FileVia; inspected: boolean; inspectionError?: string | null; sha256?: string | null };
+type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean; owned: boolean; read: FileRead };
 
 export default function CheckFile() {
   const s = useStyles();
@@ -61,7 +66,7 @@ export default function CheckFile() {
   const [source, setSource] = useState<FileSource>("unknown");
   const [pw, setPw] = useState<boolean | null>(null);
   const [nameOnly, setNameOnly] = useState("");
-  const [result, setResult] = useState<{ submissionId: string; a: FileAnalysis; event: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: FileAnalysis; event: PatrolEvent | null; profile: EvidenceProfile } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [filePicker, setFilePicker] = useState(false);
@@ -81,12 +86,15 @@ export default function CheckFile() {
   // Navigation into Ask/Higgins intentionally does not dispose the picker copy. The shared case upload owns it until
   // durable publication (or the bounded expiry sweep), making backgrounding/navigation safe.
 
-  const finish = async (a: FileAnalysis) => {
+  const finish = async (a: FileAnalysis, file: { name: string; size?: number; mime?: string | null; passwordInMessage?: boolean }, read: FileRead) => {
+    // Higgins Triage's classification of what ApolloSG could read of the file (name only → fingerprinted).
+    const profile = buildFileProfile({ via: read.via, name: file.name, size: file.size ?? null, mime: file.mime ?? null, analysis: a,
+      inspected: read.inspected, inspectionError: read.inspectionError ?? null, sha256: read.sha256 ?? null, passwordInMessage: file.passwordInMessage });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
-      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario });
+      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario, evidence_profile: profile });
     }
-    setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event });
+    setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, profile });
     void markCheckDone("file");
   };
   const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string; sharedIntakeId?: string }>();
@@ -102,12 +110,12 @@ export default function CheckFile() {
       const size = sim.content.length;
       if (Platform.OS === "web") {
         const blob = new Blob([sim.content], { type: sim.mime });
-        await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false);
+        await analyseAsset({ uri: URL.createObjectURL(blob), name: sim.name, mimeType: sim.mime, size }, "unknown", false, "simulated");
         return;
       }
       const targetUri = (FS.cacheDirectory ?? "") + sim.name;
       await FS.writeAsStringAsync(targetUri, sim.content, { encoding: FS.EncodingType.UTF8 });
-      await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true);
+      await analyseAsset({ uri: targetUri, name: sim.name, mimeType: sim.mime, size }, "unknown", true, "simulated");
     } catch (error) {
       setPickerError(error instanceof Error ? error.message : "ApolloSG could not prepare the simulated file.");
     }
@@ -125,8 +133,8 @@ export default function CheckFile() {
     } catch (error) { setPickerError(error instanceof Error ? error.message : "ApolloSG could not open the file picker. Try again."); }
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
-  useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
-  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false) => {
+  useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false, "shared"); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false, via: FileVia = "picked") => {
     setBusy(true);
     try {
       // ── Hard size gate: reject oversized files BEFORE inspection ──
@@ -134,29 +142,33 @@ export default function CheckFile() {
         throw new Error(`This file is ${Math.round(asset.size / (1024 * 1024))} MB — ApolloSG's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
       }
       let inspected: Inspection = { headBytes: null, textSample: null };
+      // The whole file is read on this phone (at most 10 MB) so it can be fingerprinted (SHA-256); nothing is uploaded.
+      let sha256: string | null = null;
       try {
         if (Platform.OS === "web") {
           const response = await fetch(asset.uri);
           const bytes = new Uint8Array(await response.arrayBuffer());
           if (!bytes.length || bytes.length > FILE_SIZE_LIMIT) throw new Error(`File is empty or exceeds the ${FILE_SIZE_LIMIT / (1024 * 1024)} MB limit.`);
           inspected = inspectSample(bytes);
+          sha256 = await sha256Hex(bytes).catch(() => null);
         } else {
           // Native: read bytes via legacy expo-file-system
           const info = await FS.getInfoAsync(asset.uri);
           const fileSize = info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
           if (fileSize <= 0 || fileSize > FILE_SIZE_LIMIT) throw new Error(`File is empty or exceeds the ${FILE_SIZE_LIMIT / (1024 * 1024)} MB limit.`);
-          const readLen = Math.min(FILE_SAMPLE_BYTES, fileSize);
-          const b64 = await FS.readAsStringAsync(asset.uri, { encoding: FS.EncodingType.Base64, length: readLen, position: 0 });
+          const b64 = await FS.readAsStringAsync(asset.uri, { encoding: FS.EncodingType.Base64 });
           const bin = atob(b64);
           const bytes = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          inspected = inspectSample(bytes);
+          inspected = inspectSample(bytes.subarray(0, FILE_SAMPLE_BYTES));
+          sha256 = await sha256Hex(bytes).catch(() => null);
         }
       } catch (innerErr) {
         // Re-throw size limit errors so they surface to the user
         if (innerErr instanceof Error && innerErr.message.includes("limit")) throw innerErr;
         inspected.inspectionError = 'This build could not read the file contents.';
       }
+      const read: FileRead = { via, inspected: !!inspected.headBytes && inspected.headBytes.length >= 4 && !inspected.inspectionError, inspectionError: inspected.inspectionError ?? null, sha256 };
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
       // The real, still-live handle is kept (never blanked) — Higgins needs it if the person later asks for a deeper,
       // explicitly-authorised cloud check. Filenames/size/mime travel as METADATA describing the file, never as a
@@ -166,14 +178,14 @@ export default function CheckFile() {
       const extension = asset.name.toLowerCase().split(".").pop() ?? "";
       const needsPassword = ["zip", "rar", "7z"].includes(preliminary.realType) || ["zip", "rar", "7z"].includes(extension);
       const needsSource = (preliminary.state === "barking" || ["F01", "F03", "F04", "F13"].includes(preliminary.scenario)) && assetSource === "unknown";
-      if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown", owned });
-      else await finish(preliminary);
+      if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown", owned, read });
+      else await finish(preliminary, { name: asset.name, size: asset.size, mime: asset.mimeType ?? null }, read);
     } catch (e) { setPickerError(e instanceof Error ? e.message : "ApolloSG couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
   };
   const completePending = async () => {
     if (!pending || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)) return;
     setBusy(true);
-    try { await finish(analyseFile({ name: pending.asset.name, size: pending.asset.size, mime: pending.asset.mimeType ?? null, ...pending.inspected, source, passwordInMessage: pw === true })); setPending(null); }
+    try { await finish(analyseFile({ name: pending.asset.name, size: pending.asset.size, mime: pending.asset.mimeType ?? null, ...pending.inspected, source, passwordInMessage: pw === true }), { name: pending.asset.name, size: pending.asset.size, mime: pending.asset.mimeType ?? null, passwordInMessage: pw === true }, pending.read); setPending(null); }
     catch (error) { setPickerError(error instanceof Error ? error.message : "ApolloSG couldn't finish this file check. Retry."); }
     finally { setBusy(false); }
   };
@@ -185,7 +197,7 @@ export default function CheckFile() {
   // UNIVERSAL CHECK RESULT — when the file check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
-    const model = buildFileCheckResult({ analysis: a, event: result.event, fileName: selected?.asset.name ?? (nameOnly || "file"), submissionId: result.submissionId });
+    const model = { ...buildFileCheckResult({ analysis: a, event: result.event, fileName: selected?.asset.name ?? (nameOnly || "file"), submissionId: result.submissionId }), evidenceProfile: result.event?.evidence_profile ?? result.profile };
     const askPrompt = `About the file I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const fileActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     if (a.handoff === "app") {
@@ -228,7 +240,7 @@ export default function CheckFile() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check a file"
-          info={{ title: "About file checking", body: ["Upload or describe a file and Apollo will check it for known threats, suspicious patterns and malware indicators.", "ApolloSG uses hash-based reputation checks and content analysis. Files are not stored after the assessment is complete."] }}
+          info={{ title: "About file checking", body: ["Choose or describe a file and Apollo will check it for disguised programs, risky formats, macros and links inside.", "ApolloSG reads the file on this phone — its real type from its first bytes, a sample of its contents, and a SHA-256 fingerprint of the whole file. Nothing is uploaded."] }}
           testID="file"
         />
       </View>
@@ -236,7 +248,7 @@ export default function CheckFile() {
         <SourceHero
           testID="file-hero"
           title="Pick a file from this phone"
-          caption="Apollo reads the file's signature and a sample of its contents on this device. Nothing is uploaded."
+          caption="Apollo reads the file on this device — its signature, a sample of its contents and a fingerprint of the whole file. Nothing is uploaded."
           actions={[{
             testID: "file-pick",
             label: busy ? "Inspecting file…" : "Choose a file",
@@ -250,7 +262,7 @@ export default function CheckFile() {
             {pending?.needsSource && !pending.sourceAnswered ? <Card testID="file-source-followup" style={{ gap: spacing.sm }}><SectionTitle>One detail could change the advice</SectionTitle><Body>Where did this file come from? Choose “Not sure” if the source is unknown.</Body><View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id && pending.sourceAnswered }} aria-checked={source === o.id && pending.sourceAnswered} onPress={() => { setSource(o.id); setPending((current) => current ? { ...current, sourceAnswered: true } : current); }} style={[s.chip, source === o.id && pending.sourceAnswered && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
             {pending?.needsPassword && (!pending.needsSource || pending.sourceAnswered) ? <Card testID="file-password-followup" style={{ gap: spacing.sm }}><SectionTitle>One more detail</SectionTitle><View style={s.passwordRow}><Text style={[s.why, { flex: 1, flexShrink: 1 }]}>A password for this archive was supplied with it</Text><Switch style={{ flexShrink: 0 }} testID="file-pw" value={pw === true} onValueChange={(value) => setPw(value)} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View><Body testID="file-password-answer">{pw === null ? "Not answered yet" : pw ? "You reported that a password was supplied." : "You reported that no password was supplied."}</Body>{pw === null ? <Button testID="file-pw-no" variant="secondary" label="No password was supplied" onPress={() => setPw(false)} /> : null}</Card> : null}
             {pending ? <Button testID="file-finish-check" label={busy ? "Finishing check…" : "Finish file check"} onPress={() => void completePending()} disabled={busy || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)} /> : null}
-        {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }))} disabled={!nameOnly.trim()} /></> : null}
+        {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }), { name: nameOnly.trim() }, { via: "name_only", inspected: false })} disabled={!nameOnly.trim()} /></> : null}
       </KeyboardAwareScrollView>
       <SourcePickerSheet
         visible={filePicker}

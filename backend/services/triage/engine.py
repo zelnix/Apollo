@@ -21,8 +21,8 @@ Verdict = tuple[RuleResult, list[str], Optional[str]]
 NA: Verdict = (RuleResult.NOT_APPLICABLE, [], None)
 
 # Why the browser-observation rules (BITM-01..04) can't execute in a phone app's context.
-BROWSER_OBSERVATION_NA = ("Not applicable here: this rule needs live observation inside the browser session "
-                          "(page and WebSocket traffic), which this device context cannot provide.")
+BROWSER_OBSERVATION_NA = ("Not applicable here: this rule needs the page's live content and WebSocket traffic "
+                          "as a browser sees them, which ApolloSG can't observe from an app.")
 
 
 def na_because(reason: str) -> Verdict:
@@ -801,7 +801,7 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
             predicate = _REGISTRY.get(category, {}).get(definition["id"])
             if predicate is None:
                 records.append(RuleRecord(definition["id"], RuleResult.NOT_APPLICABLE,
-                                          detail="evaluated on the device where this evidence lives"))
+                                          detail="runs in Higgins Triage on the phone, not on ApolloSG's servers"))
                 continue
             try:
                 result, used, gap_code = predicate(evidence)

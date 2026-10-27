@@ -22,7 +22,7 @@ import { AppState } from "react-native";
 interface CallGuardDeps {
   deviceId: string | null;
   lowPower: boolean;
-  checkNumberRisk: (number: string) => Promise<{ decision: string; number: string }>;
+  checkNumberRisk: (number: string, country?: string, options?: { via?: "screened"; screenedAt?: string | null }) => Promise<{ decision: string; number: string }>;
   getPendingCallLookups: () => Promise<{ status: string; items: Array<{ number: string; seenAtMs: number }>; detail?: string }>;
   acknowledgeCallLookups: (numbers: string[]) => Promise<unknown>;
   retryCallLookups: (numbers: string[]) => Promise<unknown>;
@@ -70,8 +70,10 @@ export function useCallGuardPipeline(deps: CallGuardDeps) {
           if (cancelled || !item?.number) continue;
           const callerTrusted = await isTrustedCaller(item.number);
 
+          // ApolloSG's call screening saw this call arrive — that is the evidence level of the number's case.
+          const screened = { via: "screened" as const, screenedAt: item.seenAtMs ? new Date(item.seenAtMs).toISOString() : null };
           try {
-            const riskResult = await checkNumberRisk(item.number);
+            const riskResult = await checkNumberRisk(item.number, undefined, screened);
             acknowledged.push(item.number);
             if (callerTrusted && riskResult && (riskResult.decision === "allow" || riskResult.decision === "unknown")) {
               continue;
@@ -83,7 +85,7 @@ export function useCallGuardPipeline(deps: CallGuardDeps) {
           } catch {
             try {
               await new Promise((r) => setTimeout(r, 2000));
-              const retryResult = await checkNumberRisk(item.number);
+              const retryResult = await checkNumberRisk(item.number, undefined, screened);
               acknowledged.push(item.number);
               if (callerTrusted && retryResult && (retryResult.decision === "allow" || retryResult.decision === "unknown")) continue;
             } catch {

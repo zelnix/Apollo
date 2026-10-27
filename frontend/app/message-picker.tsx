@@ -71,7 +71,7 @@ export default function MessagePicker() {
   };
 
   // Return exactly the selected incoming message (sender + full body) to Text Gate — never a whole thread.
-  const check = (msg: RecentSms) => router.replace({ pathname: "/message", params: { text: msg.body ?? "", sender: msg.address ?? "", source: "inbox_picker" } });
+  const check = (msg: RecentSms) => router.replace({ pathname: "/message", params: { text: msg.body ?? "", sender: msg.address ?? "", source: "inbox_picker", receivedAt: msg.date ? new Date(msg.date).toISOString() : "" } });
 
   const shown = filterConversations(conversations, query);
 

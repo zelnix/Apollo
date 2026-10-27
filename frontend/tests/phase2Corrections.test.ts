@@ -43,7 +43,7 @@ describe("Higgins navigation — limited coverage routes to the Protection tab",
       const voice = limitedVoice(capabilities);
       assert.equal(voice.ctaRoute, "/(tabs)/protection");
       assert.equal(voice.ctaLabel, "View protection coverage");
-      assert.ok(voice.text.includes("not available on this device"),
+      assert.ok(voice.text.includes("aren't supported here"),
         "Text must explain coverage is reduced, not claim protection is failing");
       assert.doesNotMatch(voice.text, /failing|broken|compromised/i);
     });

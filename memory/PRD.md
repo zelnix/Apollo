@@ -1,3 +1,19 @@
+## Threat Case origin rule finished and verified (2026-10-27)
+**Owner's choices:** finish + verify, then stop and report. **Google sensitive-data scan (DLP) is DROPPED — owner no longer wants it.**
+- Every Threat Case shows "Origin: Detected on this device" (`caseFacts.caseOrigin`); evidence source, processing,
+  completeness and privacy kept apart (`caseFacts.ts`). `hasLocalEvidence` replaced by `hasRecordedFindings` everywhere.
+- Fix found while running the new tests: `evidenceName()` picked the evidence name in catalogue order, so PWA-01 was named
+  "Reputation check" and its row was dropped as a duplicate. It now uses the rule's own evidence order.
+- Removed the remaining banned phrases: protection screens now say "not supported here" (Protection tab, Gate details,
+  Home status), plus comments/docs (types.ts, caseFacts.ts, routers/patrol.py, two docs, a GuardDog SDK comment) and the
+  rule book ("never a vague catch-all"; re-stamped). Only the test guard patterns themselves still contain the phrases.
+- Tests: `frontend/tests/caseOrigin.test.ts` (6) + `backend/tests/test_case_origin.py` (5) pass. `developerCorrectionRegression`
+  T17 fixture now uses a summary-only record (its made-up provenance relied on the old rule). Frontend tests/*.test.ts all
+  pass (1068); backend full suite 1315 passed. `src/tests/detection-regression.test.ts` can't run under plain node
+  (no file extensions on its imports; this was already the case before). Preview: message check → Threat Case page shows the origin line and none of the banned phrases.
+- Still pending from the owner: Stage 9 native device test (needs a phone build from Publish).
+
+
 ## Evidence received: email finished (Check Results), then websites and links (2026-10-27)
 **Owner's choices:** go ahead with the Check Results work; then "Start websites and links right away". No testing agent.
 - **Email Check Results (`app/email.tsx`):** the result shows the Evidence received card (`check-result-evidence-profile` /

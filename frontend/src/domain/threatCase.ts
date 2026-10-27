@@ -156,25 +156,6 @@ export function categoryLabel(cat: string, recordClass?: string | null): string 
   }
 }
 
-// ── Source label (detection mechanism) ───────────────────────────────────────
-
-export function sourceLabel(event: PatrolEvent): string {
-  switch (event.evidence_provenance) {
-    case "local_device": return "On-device detection";
-    case "dns_observation": return "DNS monitoring";
-    case "server_projected": return "Server analysis";
-    case "native_protection": return `${event.source_metadata?.provider ?? "Your device"}'s own protection`;
-    default:
-      switch (event.category) {
-        case "email": return "Email app";
-        case "message": return "Message app";
-        case "call": return "Phone app";
-        case "website": case "link": return "Browser / DNS";
-        default: return "Apollo detection";
-      }
-  }
-}
-
 // ── Timeline events ─────────────────────────────────────────────────────────
 
 export interface TimelineEntry {
@@ -312,7 +293,7 @@ export function buildTimeline(
       timestamp: investigation.completedAt ?? null,
       title: investigation.completedAt || conclusion ? `${investigatorName(investigation.answeredBy)} answered` : "Waiting for the investigation",
       description: conclusion
-        ? `${conclusion}${findingCount ? ` ${findingCount} finding${findingCount === 1 ? "" : "s"} recorded on this device.` : ""}`
+        ? `${conclusion}${findingCount ? ` ${findingCount} finding${findingCount === 1 ? "" : "s"} recorded.` : ""}`
         : "The investigation hasn't answered yet.",
       dotColor: "#059669",
       iconId: "findings",

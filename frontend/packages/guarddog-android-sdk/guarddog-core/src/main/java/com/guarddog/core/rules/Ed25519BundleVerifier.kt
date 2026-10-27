@@ -36,7 +36,7 @@ object Ed25519BundleVerifier {
         data class Invalid(val reason: String) : VerifyResult()
         /** No signature field present — unsigned bundle (backward compat). */
         object Unsigned : VerifyResult()
-        /** Verification could not be performed (Ed25519 not available on this device). */
+        /** Verification could not be performed (Ed25519 isn't supported here). */
         data class Unavailable(val reason: String) : VerifyResult()
     }
 

@@ -16,7 +16,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { narrateEvent, narrateIncident, hasLocalEvidence } from "../src/domain/higginsNarration.ts";
+import { narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
+import { hasRecordedFindings } from "../src/domain/caseFacts.ts";
 import { buildHomeVoice, affectedCapabilities, joinNames } from "../src/domain/higginsHomeVoice.ts";
 import { projectedEventVoice, humanizeReason } from "../src/domain/messageVoice.ts";
 import { normalizeHistoricalEvent } from "../src/domain/packetEvidence.ts";
@@ -212,7 +213,7 @@ describe("5. Unverified outcomes are never reported as completed", () => {
     const chunks = narrateEvent(serverEvent);
     const whatChunk = chunks.find(c => c.id === "what");
     assert.ok(whatChunk, "Must produce a 'what' chunk");
-    assert.match(whatChunk!.text, /only available on the device/, "Honestly states evidence limitation");
+    assert.match(whatChunk!.text, /privacy-protected summary/, "Honestly states evidence limitation");
     assert.ok(!whatChunk!.text.includes("impersonating"), "Does not narrate server-projected text as evidence");
   });
 });
@@ -273,14 +274,14 @@ describe("7. Benign observations do not generate unnecessary warnings", () => {
 
 // ── Test 8: LLM privacy boundary strips credentials and minimises personal data ──
 describe("8. LLM privacy and evidence boundary", () => {
-  it("hasLocalEvidence returns false for server_projected events", () => {
+  it("hasRecordedFindings is false for the server's privacy summary alone", () => {
     const projected = makeServerEvent();
-    assert.equal(hasLocalEvidence(projected), false, "Server projected events have no local evidence");
+    assert.equal(hasRecordedFindings(projected), false, "A privacy summary carries no findings");
   });
 
-  it("hasLocalEvidence returns true for local_device events", () => {
+  it("hasRecordedFindings is true for local_device events", () => {
     const local = makeEvent();
-    assert.equal(hasLocalEvidence(local), true, "Local events have local evidence");
+    assert.equal(hasRecordedFindings(local), true, "Local events carry their findings");
   });
 
   it("projectedEventVoice produces privacy-safe text without personal details", () => {
@@ -300,7 +301,7 @@ describe("8. LLM privacy and evidence boundary", () => {
     const chunks = narrateEvent(serverWithRealText);
     const whatChunk = chunks.find(c => c.id === "what");
     assert.ok(!whatChunk!.text.includes("impersonates"), "Provenance field overrides text content");
-    assert.match(whatChunk!.text, /only available on the device/, "Uses honest limitation message");
+    assert.match(whatChunk!.text, /privacy-protected summary/, "Uses honest limitation message");
   });
 });
 
