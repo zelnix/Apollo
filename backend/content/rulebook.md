@@ -4,11 +4,13 @@ How a check moves through ApolloSG, the rules each part follows, when a check is
 
 _Last reviewed against the code: 2026-10-27._
 
+_Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers). Status: awaiting owner review. The code has not yet been audited against revision 2. The review date above belongs to revision 1; where the code differs, revision 2 states the intended rule._
+
 This is the only copy. Whenever a rule or process changes, this book is updated in the same change. An automatic check stops the change until it is.
 
 **The path of every check**
 
-Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → ApolloSG KB → one targeted search) → settled, *or* → **Magnum DI** (one AI call) → **Higgins** explains the result.
+Apollo detection (the gate) → *only if Possible Threat* → one investigation case → **Higgins Triage** → **TC FlyBy** (official sources → ApolloSG KB → one targeted search) → settled, *or*, when unresolved evidence could materially change the outcome or the protective action → **Magnum DI** (one inference attempt, plus one permitted retry: at most two provider calls) → **Higgins** explains the result.
 
 Each check creates exactly one entry in the Threats list. The phone's first detection and the later investigation update the same card.
 
@@ -27,19 +29,35 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 **Process**
 1. **First look on the phone.** Fixed rules give the check one of six states: Checking, Patrolling, Sniffing, Growling, Barking or Biting.
 2. **Specialist lookups, gathered once.** These are Google Safe Browsing and Apollo's blocklist, the domain registration record (RDAP), redirect expansion, IPQualityScore (links and phone numbers), direct-download detection, official scam advisories and breach data. TC FlyBy and Magnum DI reuse these results; they never repeat them.
-3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule is listed under its gate below.
+3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule has one class (see Rule classes) and is listed under its gate below, grouped by class.
 4. **Retries.** A temporary failure gets up to 3 attempts. This covers a provider not answering, a network failure, content that couldn't be opened, or a check error. Permanent limits are never retried. On the phone, link and number reputation lookups follow the same policy within a time budget, and identical lookups already running are shared, never sent twice. An authorisation failure or rejected input is not retried. If every attempt fails, the lookup is recorded as unavailable, with how it failed. It is never counted as a pass, and the attempts appear in the DI.
 5. **Rules that can't run here.** A rule that needs something this context can never provide is **not applicable**, not a coverage gap. The DI still lists it, with the reason. Example: BITM-01 to BITM-04 need the page's live content and WebSocket traffic as a browser sees them, which ApolloSG can't observe from an app. A coverage gap means a check that should have run, but didn't.
 6. **Limited by cause.** Every Triage outcome reports its cause codes (no content): reputation timeout, authorisation failure, lookup allowance used up, provider unavailable, genuine insufficient evidence, a moderate number-risk result, a rule execution error, and so on. Every number check reports its outcome, whether the number was allowed, risky or unknown. The admin Triage page counts them for real phones separately from previews and test devices, with the checks that didn't complete listed for every outcome.
 7. **Checks that didn't complete.** A check Apollo needed but couldn't finish is recorded with how it failed: it timed out, there was no connection, the service couldn't be reached or had an error, the lookup allowance is used up, the lookup wasn't authorised, the service had no information, the website's address doesn't exist, and so on. This covers a reputation source that didn't answer, a link whose final destination couldn't be verified, and a phone number scored only from Apollo's last check. The wording follows the kind of check and how it failed, never the provider. It is never shown as a completed check.
 
+**Rule classes**
+
+Every rule has exactly one class. Only DETECT and CORRELATE rules are threat-producing, and "a rule is met" in the outcomes below always means a threat-producing rule.
+
+| Class | What it does | Can it make a Possible Threat? |
+|---|---|---|
+| **DETECT** | Finds a threat in the item itself, from evidence this check holds: a request for a code or password, a disguised program, a lookalike domain with a login form, an authoritative malicious listing. | Yes, but only when every piece of evidence the rule requires is present (observed, or recorded by an authoritative source) and every corroboration it names is established. |
+| **CORRELATE** | Connects the item with other recorded events into a known scam sequence, such as a suspicious call, then a remote-access app, then a permission change. | Yes, but only when every event it links is recorded and the relationship the rule names (the same sender, link, app or case, in the stated order) is established. Two events close together in time are never enough. |
+| **ROUTE** | Hands part of the item to the gate whose rules judge it: the address in a QR code, a link in a message, email, file, calendar invitation or notification, an attachment, a captive-portal page. | Never by itself. The routed part is judged by its own gate's rules. When one of those threat-producing rules is met, that rule is the one recorded as met, and the original item's case cites it. |
+| **COVERAGE** | Records what could and couldn't be examined: coverage gaps, rules that can't run here, checks that didn't complete, evidence levels, contents that couldn't be inspected. | Never. It can stop "No threat identified" and make a result Limited. It never creates or strengthens a threat, and never weakens real threat evidence. |
+| **ENFORCE** | Acts on what is already established: Site Gate's blocking, the Call Gate's reject requests and "Suspected scam" labels, the person's own block and trust choices, and Biting. | Never. It decides no threat itself, and Biting still needs a real, fresh block on this device (see Rules below). |
+
+- Steps 4 to 7 above, the evidence levels and the coverage-gap codes are COVERAGE. Site Gate, the Call Gate's screening and labels, and the Biting rule are ENFORCE.
+- A weak or unknown qualifier in a rule's title ("unrated", "newly registered") never satisfies the rule on its own. The rule is met only when the strong evidence it also requires (a credential or payment lure, brand impersonation, a login or payment form) is present.
+- A lookup that failed or didn't answer never supplies a rule's evidence. It is a coverage gap.
+
 **Gate outcomes**
 | Outcome | When |
 |---|---|
-| **Possible threat** | At least one rule is met. This opens **one** investigation case. |
-| **Limited / unable to determine** | No rule was met, but evidence was missing (a coverage gap), or concerning signs didn't meet a rule. No case is opened, and the person is told what Apollo couldn't see, in plain English, and to treat the item with caution. A Limited result is never shown as safe or as nothing to worry about. |
-| **No threat found by available checks** | No rule was met and no coverage gap stands, but a check Apollo needed didn't complete. The result names each check that didn't complete and how it failed. It is never shown as the unqualified "No threat identified". |
-| **No threat identified** | No rule was met and every applicable check completed. |
+| **Possible threat** | At least one threat-producing rule (DETECT or CORRELATE) is met, with every piece of evidence it requires present and every corroboration it names established. A ROUTE, COVERAGE or ENFORCE rule never makes a Possible Threat on its own. This opens **one** investigation case. |
+| **Limited / unable to determine** | No threat-producing rule was met, but evidence was missing (a coverage gap), or concerning signs didn't meet a rule. No case is opened, and the person is told what Apollo couldn't see, in plain English, and to treat the item with caution. A Limited result is never shown as safe or as nothing to worry about. |
+| **No threat found by available checks** | No threat-producing rule was met and no coverage gap stands, but a check Apollo needed didn't complete. The result names each check that didn't complete and how it failed. It is never shown as the unqualified "No threat identified". |
+| **No threat identified** | No threat-producing rule was met and every applicable check completed. |
 
 **Rules**
 - Missing evidence is a coverage gap. It can block "no threat", but it never creates a threat and never weakens real threat evidence.
@@ -65,7 +83,7 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 - ApolloSG's Safari content blocker blocks verified threat websites once the person turns it on under Settings › Safari › Extensions.
 - It covers websites opened in Safari, and Safari views inside other apps. Not covered: Chrome, Firefox and other browsers, in-app browsers that don't use Safari, and non-browser apps.
 
-The Site Gate has no catalogue rules of its own. It blocks only websites already verified as dangerous; a link the person checks is judged by the Link Gate rules.
+The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blocks only websites already verified as dangerous and decides no threat itself; a link the person checks is judged by the Link Gate rules.
 
 **Evidence received:** a website Site Gate stopped is classified "Connection seen by Site Gate": the connection attempt is ApolloSG's own observation (Verified by ApolloSG), and the block is Verified when the operating system confirmed the drop, or Recorded when it reported a stopped flow. "It saw where the connection was going, not the page itself" — the full link, redirects, certificate and hosting are Couldn't be verified. A re-check from the case can raise it to "Destination followed".
 
@@ -77,7 +95,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - The link is checked exactly as given: Apollo's blocklist and Google Safe Browsing, then up to 5 redirects followed to the final address. When the final destination can't be verified (more than 5 redirects, an address that doesn't exist, a website that can't be reached, a timeout), the link is judged as given and the final-destination check is recorded as not completed, with how it failed.
 - The domain's registration record (RDAP) is fetched alongside it. It adds detail but never decides the result.
 - Every link Apollo checks, in a message, an email or on its own, gets the same check.
-- **QR codes:** the address inside is checked as a link. The QR code itself is never a threat.
+- **QR codes:** the address inside is checked as a link. QR-01 is a ROUTE rule: it hands the address to the Link Gate rules and never makes a Possible Threat by itself. A QR check is a Possible Threat only when a threat-producing rule is met for the address (QR-02, QR-03 or any other Link Gate rule). The QR code itself is never a threat.
 - A link the person checks themselves opens an investigation, which TC FlyBy and Magnum DI pick up as usual.
 - **Trusted links:** trust covers only the exact link the person chose. Removing it ends the trust.
 - **Never a threat on their own:** an http link, a bare IP address, punycode, an unusual port, a risky TLD, a link shortener, a long link, deep subdomains, encoded characters, a newly registered domain, a QR code itself, and data or blob links.
@@ -86,12 +104,14 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Link as given:** none of ApolloSG's lookups answered. "ApolloSG only had the link itself — none of its lookups answered, so nothing about the site could be verified." Every lookup row is Couldn't be verified, with how it failed.
 - **Link checked:** the lookups answered but the link couldn't be followed to where it finally leads (the final-destination check didn't complete).
 - **Destination followed:** followed by ApolloSG's server (never opened on the phone) to its final destination and checked there.
-- **What could be examined:** Original URL (observed) · Redirect chain and Final destination (observed when followed) · Domain registration (recorded by the domain's registry, not verified by ApolloSG) · Reputation (recorded by the lists that answered: "Listed as … by N of M lists" or "No match on N lists that answered"; a clean answer isn't proof a site is safe) · TLS certificate and Hosting and DNS (ApolloSG doesn't inspect these).
+- **What could be examined:** Original URL (observed) · Redirect chain and Final destination (observed when followed) · Domain registration (recorded by the domain's registry, not verified by ApolloSG) · Reputation (recorded by the lists that answered: "Listed as … by N of M lists" or "No known threat listing found on the N lists that answered"; no known threat listing is never proof a site is safe) · TLS certificate and Hosting and DNS (ApolloSG doesn't inspect these).
 - **Investigation signals — not proof of fraud:** the address's own structure as the on-device analyser reads it (bare IP, hidden username, punycode, http, unusual port, risky TLD, shortener — dropped once followed —, deep subdomains, many hyphens, encoded characters, brand lookalike, brand in the path, credential lure), a redirect to a different site, a newly registered domain, and a destination that couldn't be followed.
 - **Where it came from** is recorded: Link you entered · Shared from another app · QR code · Link from a message or email · Re-check from the case.
 - **Re-check from the case:** the same link is re-triaged in that case. The case keeps its first detection time and every earlier level and Triage result; a move to a stronger level shows "Evidence upgraded from … to …". A re-check that got less far than the earlier check never replaces it: "The re-check couldn't get as far as the earlier check (…), so this case keeps its earlier result." A case that already has an investigation keeps it; one without starts Magnum DI only if the re-check is a Possible Threat.
 
 **Link Gate rules (21)**
+
+**DETECT** (19)
 - **LINK-01** · Authoritative reputation reports the destination as malicious
 - **LINK-02** · An observed redirect destination is confirmed malicious
 - **LINK-03** · Local URL engine reaches malicious through deception-gated rules
@@ -103,8 +123,6 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **LINK-09** · Brand presented in the link or path while the destination is unrelated, with a sensitive action
 - **LINK-10** · Newly registered domain with a credential, payment, security-code or identity form
 - **LINK-11** · Multiple URL-risk indicators reach the suspicious threshold and intelligence cannot resolve them
-- **LINK-12** · Suspicious URL evidence correlates with another suspicious event
-- **QR-01** · QR code contains a URL — the destination is triaged as a link
 - **QR-02** · QR destination with brand or domain deception
 - **QR-03** · QR destination with a credential or payment lure and a suspicious, unrated or newly registered destination
 - **DATA-01** · data: or blob: content collecting credentials in a deceptive brand context
@@ -114,19 +132,27 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **BITM-04** · MFA or security-code interaction on an unrelated authentication origin with observable relay evidence
 - **BITM-05** · Destination matches authoritative intelligence for active BitM/AiTM phishing infrastructure
 
+**CORRELATE** (1)
+- **LINK-12** · Suspicious URL evidence correlates with another suspicious event
+
+**ROUTE** (1)
+- **QR-01** · QR code contains a URL — the destination is triaged as a link
+
 ### Text Gate {#text-gate}
 
 **Job:** check messages for scams.
 - **Android:** optional, through notification access. Apollo reads each new text-message notification from the phone's default messaging app as it arrives, never the message inbox or history. Notifications from other apps, such as WhatsApp, Telegram and Messenger, are not read.
 - Store builds of ApolloSG never ask to read text messages or the call log.
 - **iPhone:** Apple gives apps no way to read Messages. The person can paste a message, use a screenshot, or share it to ApolloSG where the app offers Share.
-- Every message goes through the same checks as a pasted one: the Text Gate rules below, plus the Link Gate check for each link.
+- Every message goes through the same checks as a pasted one: the Text Gate rules below, plus the Link Gate check for each link (MSG-12 is the ROUTE rule that hands each link over).
 - **Numbers in a message** get a reputation lookup. A lookup that fails is recorded as a check that didn't complete. On its own it never makes an ordinary message Limited: only a callback lure (a supplied number with a claimed charge or a claimed organisation) depends on that number's reputation.
 - **Callback scams:** a supplied number (including 1800, 1300 and 13 numbers written without a leading 0) with call or contact wording, together with an unexpected charge or payment, meets CB-01. An unexpected charge is an explicit "unauthorised charge", "unrecognised transaction" or "suspicious transaction", or a claim that the person was charged, debited or billed (or a payment of a dollar amount) with dispute wording ("if this wasn't you") or urgency.
 - **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, and a job, investment or romance discussion without scam mechanics.
 - **Message evidence levels** (Higgins Triage, on the phone): Pasted text and Screenshot (who sent it and when couldn't be verified) · Shared from an app · Read from your messages (the number or name it arrived from and when, as the phone stored them) · Captured from the notification. Who really sent a message is never verified — messaging apps don't share it — unless a provider shared its own rating, which is recorded as that provider's rating. Links and numbers are recorded as checked, partly checked ("1 of 2 links couldn't be checked") or not checked; pictures or files sent with a message never reach ApolloSG. Signals (not proof): moving to another app or number, a "new number", a callback number, links or numbers that couldn't be checked. A re-check from the case keeps the case's level and history.
 
 **Text Gate rules (30)**
+
+**DETECT** (29)
 - **MSG-01** · OTP, MFA or security code requested
 - **MSG-02** · Password, PIN or login credential requested
 - **MSG-03** · Banking or card credentials requested
@@ -138,7 +164,6 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **MSG-09** · Extortion
 - **MSG-10** · Advance-fee mechanics
 - **MSG-11** · Fake-payment mechanics
-- **MSG-12** · Malicious or deceptive link in the message
 - **MSG-13** · Family or new-number impersonation with a money, credential or code request
 - **MSG-14** · Brand impersonation with a consequential action and inconsistent contact or destination
 - **MSG-15** · Guaranteed-return or investment approach with payment or crypto transfer
@@ -158,6 +183,9 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **CB-02** · Urgent cancellation, refund or security lure with a suspicious callback number
 - **CB-03** · Callback number reputation is clean but strong impersonation evidence remains
 
+**ROUTE** (1)
+- **MSG-12** · Malicious or deceptive link in the message
+
 ### Call Gate {#call-gate}
 
 **Job:** screen incoming calls from risky numbers.
@@ -168,7 +196,7 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - Works only when the person makes ApolloSG the phone's caller ID & spam app. Android then hands ApolloSG each incoming call before it rings, usually only from numbers that aren't in the person's contacts.
 - Apollo never listens to a call and never reads the call log. It sees only the one incoming number.
 - It compares that number with three lists kept on the phone: numbers the person blocked, numbers they allowed, and numbers this phone looked up earlier and found high-risk.
-- An allowed number always rings. For a blocked or high-risk number, ApolloSG asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting.
+- An allowed number always rings. For a blocked or high-risk number, ApolloSG asks Android to reject the call. Android gives no receipt, so this is recorded as a request, never as a confirmed block. Calls never reach Biting. This screening is ENFORCE: it acts only on the person's own lists and on high-risk lookups this phone already recorded, and decides no threat itself.
 - Every other call rings normally. ApolloSG never delays or silences a call on a guess, and if screening fails the call rings.
 - A number with no local signal is queued (up to 20) and looked up the next time ApolloSG is open. Android allows only a few seconds to answer, which is too short for the lookup.
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
@@ -181,6 +209,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 **Never a threat on their own:** an unknown caller, a number that isn't in contacts, and a number's reputation without matching behaviour.
 
 **Call Gate rules (16)**
+
+**DETECT** (15)
 - **CALL-01** · OTP or security code requested
 - **CALL-02** · Password or PIN requested
 - **CALL-03** · Banking or card credentials requested
@@ -196,6 +226,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **CALL-13** · Claimed authority with a sensitive action and suspicious behaviour
 - **CALL-14** · Unexpected refund or payment manipulation
 - **CALL-15** · Reputation evidence with matching scam behaviour
+
+**CORRELATE** (1)
 - **CALL-16** · Call followed by a remote-access app, permission or device change forms a coherent sequence
 
 ### Email Gate {#email-gate}
@@ -224,6 +256,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **What travels with an investigation:** only Higgins Triage's findings — level, each capability's status, the recorded results and who recorded them, domains, counts, attachment types/sizes/fingerprints, signal names and the original's fingerprint. A case still under investigation receives better evidence the same way; a finished investigation keeps it on the phone only.
 
 **Email Gate rules (19)**
+
+**DETECT** (16)
 - **EMAIL-01** · Claimed brand with sender-domain mismatch and a consequential action
 - **EMAIL-02** · Freemail or unrelated domain impersonates a brand with a sensitive request
 - **EMAIL-03** · Account or security alert with an off-domain, lookalike or deceptive link
@@ -232,17 +266,19 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **EMAIL-06** · Invoice or payment request with changed bank details
 - **EMAIL-07** · Executive or BEC impersonation with an unusual financial request and sender anomaly
 - **EMAIL-08** · Material From/Reply-To mismatch with a consequential action
-- **EMAIL-09** · An embedded link produces a link-triage Possible Threat
-- **EMAIL-10** · An attachment produces a file-triage Possible Threat
 - **EMAIL-11** · Authentication failure with a consequential request or anomaly
 - **EMAIL-12** · Authenticated legitimate sender with changed payment details, malicious link, unusual credential request or dangerous attachment
 - **EMAIL-13** · Multiple moderate email anomalies form a coherent scam pattern
-- **CAL-01** · External or unverified calendar invitation with a malicious or deceptive link
 - **CAL-02** · Calendar invitation with a suspicious financial or account lure and a callback number
 - **CAL-03** · Calendar invitation with a credential or payment collection destination
 - **FORM-01** · Legitimate form service requesting a password, MFA or security code
 - **FORM-02** · Legitimate form host collecting banking or card credentials in a suspicious originating context
 - **FORM-03** · Legitimate form host collecting sensitive identity with impersonation or account-security lure
+
+**ROUTE** (3)
+- **EMAIL-09** · An embedded link produces a link-triage Possible Threat
+- **EMAIL-10** · An attachment produces a file-triage Possible Threat
+- **CAL-01** · External or unverified calendar invitation with a malicious or deceptive link
 
 ### Account Gate {#account-gate}
 
@@ -256,6 +292,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - "No breach found" is never called proof that the account is safe.
 
 **Account Gate rules (1)**
+
+**DETECT** (1)
 - **BREACH-01** · Confirmed exposed credential evidence alongside current credential-harvesting or takeover activity
 
 ### File Gate {#file-gate}
@@ -265,13 +303,16 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Trust the file, not its name.** The phone compares the file's real type with its name, and looks for double extensions, right-to-left name tricks, archives, app packages, profiles, certificates and links inside.
 - Files can be up to 10 MB. The phone reads the start of the file and a text sample, and the whole file to fingerprint it (SHA-256); nothing is uploaded for this first look.
 - **File evidence levels:** File name only (a name is only a claim) · Contents read (true type from its first bytes) · Contents read and fingerprinted (SHA-256 of the whole file, on the phone). The declared type is recorded as a claim; metadata, signatures and certificates, malware-list matches and macros inside documents are not inspected (a macro-enabled format is observed from its type). Signals (not proof): a name that says one type while the file is a program, script, installer, profile or certificate; a hidden second extension; hidden right-to-left characters; programs, installers, macro formats, an archive password sent with it, links inside.
-- Links inside a file are checked as links.
+- Links inside a file are checked as links. FILE-10 and FQR-01 are ROUTE rules: a link or QR code found in a file or image is judged by the Link Gate rules, and never makes a Possible Threat by itself.
+- **Contents that can't be inspected** (an encrypted archive without its password) are recorded as a coverage gap (ARCH-03, COVERAGE), never as a threat. A suspicious sender or lure that came with the archive is judged by the Text Gate or Email Gate rules, and a dangerous payload found once the archive can be opened by ARCH-01 or ARCH-02.
 - If the file is sent for an investigation, the server decides its type from its own bytes, not its name, and records any mismatch.
 - ApolloSG only ever cleans up the copy its own picker made. A shared original is never touched.
 - **Never a threat on their own:** encryption or password protection, ordinary file characteristics, and a QR code itself.
 - ApolloSG never calls a file 100% safe, and unknown never means malicious.
 
 **File Gate rules (19)**
+
+**DETECT** (15)
 - **FILE-01** · Executable or script disguised as a document or image
 - **FILE-02** · Dangerous double extension
 - **FILE-03** · Right-to-left filename deception
@@ -281,16 +322,22 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **FILE-07** · Unexpected configuration profile
 - **FILE-08** · Unexpected trust certificate
 - **FILE-09** · Macro-enabled document with suspicious provenance
-- **FILE-10** · Embedded malicious or deceptive URL
 - **FILE-11** · Dangerous PDF JavaScript, launch or embedded content
 - **FILE-12** · Dangerous Office macro, external template or embedded object
 - **FILE-13** · Archive contains an executable, script or dangerous nested content
 - **FILE-14** · Archive contains path traversal or deceptive filenames
 - **FILE-15** · Actual type materially contradicts the claimed type
 - **ARCH-01** · Password-protected archive with the password supplied in the originating message and a dangerous payload
+
+**CORRELATE** (1)
 - **ARCH-02** · Password supplied separately but correlated to the same case with a dangerous payload
-- **ARCH-03** · Password-protected archive with a suspicious sender or lure and contents that cannot be inspected
+
+**ROUTE** (2)
+- **FILE-10** · Embedded malicious or deceptive URL
 - **FQR-01** · QR code detected in a file or image — destination is triaged as a link
+
+**COVERAGE** (1)
+- **ARCH-03** · Password-protected archive with a suspicious sender or lure and contents that cannot be inspected
 
 ### App Gate {#app-gate}
 
@@ -305,8 +352,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Images** (Show ApolloSG a picture): one level, "Image" — a picture shows what was on screen, not where it came from. Its text is read on the phone; its metadata is removed on the phone before anything is sent and never used as evidence; links, numbers and codes found in it are checked. Signals: sensitive details blacked out before sending, flagged identifiers.
 
 **App Gate rules (14)**
-- **APP-01** · Remote-access app or activity follows a suspicious call, message or site
-- **APP-02** · Sideload follows a suspicious link or message
+
+**DETECT** (10)
 - **APP-03** · Sideloaded app impersonates a known brand
 - **APP-04** · Sideloaded app impersonates update, security or system software
 - **APP-05** · App communicates with a confirmed malicious destination
@@ -315,9 +362,13 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **APP-08** · Unexpected screen sharing with suspicious provenance or Threat Scent
 - **APP-09** · Unexpected install-app capability with suspicious provenance or Threat Scent
 - **APP-10** · Multiple high-impact permissions with suspicious installation provenance
-- **APP-11** · Install, then sensitive permission change, then suspicious network activity forms a coherent sequence
 - **PWA-01** · PWA installation originates from a deceptive or known-malicious site
 - **PWA-02** · Newly registered or unrated PWA origin with brand impersonation and login, payment or account interaction
+
+**CORRELATE** (4)
+- **APP-01** · Remote-access app or activity follows a suspicious call, message or site
+- **APP-02** · Sideload follows a suspicious link or message
+- **APP-11** · Install, then sensitive permission change, then suspicious network activity forms a coherent sequence
 - **PWA-03** · PWA installation immediately follows a correlated scam message, email or link
 
 ### Device Gate {#device-gate}
@@ -339,7 +390,14 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Never a threat on their own:** expected management or device administration, expected accessibility access, ApolloSG or a trusted VPN, developer options, a custom DNS or DoH provider, notification permission, and signals the platform can't provide.
 
 **Device Gate rules (15)**
+
+**DETECT** (4)
 - **DEV-01** · Trusted OS security facility reports malware or a threat
+- **DNS-02** · DNS server matches authoritative malicious infrastructure
+- **PUSH-01** · Browser notification from a deceptive origin with a fake security or financial warning and an action lure
+- **PUSH-02** · Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination
+
+**CORRELATE** (10)
 - **DEV-02** · Remote-access activation correlates with suspicious activity
 - **DEV-03** · Unexpected management or profile change with suspicious activity
 - **DEV-04** · Unexpected trusted certificate with suspicious activity
@@ -349,10 +407,9 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **DEV-08** · Multiple device-security changes form a coherent high-risk sequence
 - **DEV-09** · System-integrity indicators with supporting compromise evidence
 - **DNS-01** · DNS, Private DNS or DoH configuration unexpectedly changed with correlated suspicious activity
-- **DNS-02** · DNS server matches authoritative malicious infrastructure
 - **DNS-03** · DNS change with a preceding suspicious app installation or permission event
-- **PUSH-01** · Browser notification from a deceptive origin with a fake security or financial warning and an action lure
-- **PUSH-02** · Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination
+
+**ROUTE** (1)
 - **PUSH-03** · Web-push notification leads to a malicious or deceptive URL
 
 ### Internet Gate {#internet-gate}
@@ -365,15 +422,21 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Never a threat on their own:** public Wi-Fi, open or WEP Wi-Fi, an unknown Wi-Fi network, a lookalike network name, a captive portal, a trusted home or work connection, and a mobile data connection.
 
 **Internet Gate rules (9)**
+
+**DETECT** (4)
 - **NET-01** · Confirmed malicious destination observed
-- **NET-02** · Captive-portal destination triggers a link Possible Threat
-- **NET-03** · Unexpected VPN change with suspicious app or device activity
-- **NET-04** · Network behaviour correlates with an existing suspicious incident
-- **NET-05** · App, site or device sequence communicates with malicious infrastructure
 - **TLS-01** · HTTPS certificate validation fails unexpectedly during a sensitive interaction in a suspicious network context
 - **TLS-02** · Unexpected self-signed or untrusted certificate presented for a legitimate sensitive service
 - **TLS-03** · Certificate identity does not match the requested legitimate domain
+
+**CORRELATE** (4)
+- **NET-03** · Unexpected VPN change with suspicious app or device activity
+- **NET-04** · Network behaviour correlates with an existing suspicious incident
+- **NET-05** · App, site or device sequence communicates with malicious infrastructure
 - **TLS-04** · Newly introduced trusted root certificate with correlated suspicious network behaviour
+
+**ROUTE** (1)
+- **NET-02** · Captive-portal destination triggers a link Possible Threat
 
 ### Linked events across gates {#linked-events}
 
@@ -381,6 +444,8 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **Never a threat on its own:** two events happening close together in time.
 
 **Linked-event rules (9)**
+
+**CORRELATE** (9)
 - **CORR-01** · Suspicious call requesting remote access, then remote-access install, then accessibility or screen-sharing permission
 - **CORR-02** · Message, then deceptive link, then APK or PWA installation
 - **CORR-03** · Email, then changed bank details, then instant-payment request
@@ -445,29 +510,35 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 
 ### TC FlyBy {#tc-flyby}
 
-**Job:** a fast, low-cost investigation that takes the cheapest reliable route. It runs once per case; a Magnum DI retry reuses its record and repeats no lookups.
+**Job:** a fast, low-cost investigation that takes the cheapest reliable route. It runs once per case; Magnum DI's permitted retry reuses its record and repeats no lookups.
+
+**Weak signals, warning signs and verified checks**
+- **Weak signals:** a redirect to another site, a newly registered domain, a direct download, and a third-party reputation warning (an IPQualityScore flag on a link or a number, or a warning the search finds from a source that isn't official). Alone or together they never make a case Concerning. They are recorded as signals, and they count only as the independent corroboration that an impersonation or another warning sign needs.
+- **Warning signs:** a real lookalike sign, the organisation's name in front of a shared link service, a register entry that doesn't match the name in the material, an ABN or ACN that fails its check-digit test, a risky claim cited to Scamwatch, and the material's text found copied elsewhere. Those marked as needing corroboration count only once something corroborates them.
+- **Verified checks:** a positive verification (an official domain, the organisation's own domains, an official contact, a register entry that matches) settles the one check it answers, never the whole case. The rest of the material is still checked: what it asks for, where a payment, reply or call goes, and anything else it links to. A verified link never cancels a concern found elsewhere in the material.
+- **Negative reputation results** are worded "no known threat listing found". That is never "clear" and never proof that something is safe.
 
 #### Stage 1: official and direct sources (no AI, 8 s per lookup)
 - **Link**
-  - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **settles it as clear**.
-  - Redirects to another site → warning sign. Moving within the same site, or between one organisation's own domains, isn't. The final destination is checked too.
-  - Listed by Safe Browsing or Apollo's blocklist → **decisive concern**. Not listed → clear.
-  - Registered less than 90 days ago, or flagged as new → warning sign.
-  - Flagged by IPQualityScore (phishing, malware or suspicious) → warning sign.
-  - Downloads a file directly → warning sign.
+  - On ApolloSG's official-domain register (government and regulator domains, plus organisations' own domains) → **verified as official**. This settles the link's domain check only, not the case.
+  - Redirects to another site → weak signal. Moving within the same site, or between one organisation's own domains, isn't. The final destination is checked too.
+  - Listed by Safe Browsing or Apollo's blocklist → **decisive concern**. Not listed → **no known threat listing found**, never proof the link is safe.
+  - Registered less than 90 days ago, or flagged as new → weak signal.
+  - Flagged by IPQualityScore (phishing, malware or suspicious) → weak signal (a third-party reputation warning).
+  - Downloads a file directly → weak signal.
   - Named in an official scam advisory → **decisive concern**.
   - A lookup that fails is recorded as "couldn't be checked", never as safe.
 - **Impersonation**
   - Not being the organisation's main domain is never, on its own, a sign of impersonation.
-  - Every link and address uses the organisation's own domains → clear. These are its published domains and sub-sites (pages.ebay.com.au), and, for a global organisation, its exact name on a country ending (ebay.com.au), as its country sites are.
+  - Every link and address uses the organisation's own domains → **verified as the organisation's own**, which settles the impersonation check only. These are its published domains and sub-sites (pages.ebay.com.au), and, for a global organisation, its exact name on a country ending (ebay.com.au), as its country sites are.
   - A real lookalike sign → a warning sign on its own: the name with words added (commbank-notice.net, signin-ebay.com.au), a look-alike spelling (paypa1.com), the name in front of someone else's address (ebay.com.secure-login.example), or the name on another ending (commbank.co).
   - The name in front of a link-sharing or website service anyone can use (ebay.onelink.me) → a warning sign on its own.
   - The name is only *mentioned* beside an address that doesn't carry it → can't be confirmed either way; needs corroboration.
-- **Phone:** an IPQualityScore fraud score of 85 or more, or recent abuse → warning sign.
-- **Email:** an official domain → clear. A free personal account (Gmail and similar) while an organisation is named → warning sign, but it needs corroboration.
-- **ABN/ACN:** checked with the official check-digit test. A fail is a warning sign and settles the check.
+- **Phone:** an IPQualityScore fraud score of 85 or more, or recent abuse → weak signal (a third-party reputation warning).
+- **Email:** an official domain → **verified as official**, which settles the email address check only. A free personal account (Gmail and similar) while an organisation is named → warning sign, but it needs corroboration.
+- **ABN/ACN:** checked with the official check-digit test. A fail is a warning sign and settles the check. A pass shows only that the number is well formed, never who holds it.
 
-**Stops here only for a decisive concern → Confirmed scam or threat.**
+**TC FlyBy's stages end here only for a decisive concern → Confirmed scam or threat.** The deciding test still applies.
 
 #### Stage 2: ApolloSG Knowledge Base (no AI)
 - **Scam patterns.** There are 8 patterns from Scamwatch: family "new number" ("Hi Mum"), organisation phishing, delivery/toll, government threat, unexpected money or prize, job/paid task, investment returns, and remote access/tech support.
@@ -479,40 +550,43 @@ The Site Gate has no catalogue rules of its own. It blocks only websites already
 - **General question.** An answer found in the KB settles it.
 - **Limits.** Only sourced, current KB entries are used. Saved AI answers and historical pages are never used. KB content is general knowledge, never evidence about the sender.
 
-**Still stops only for a confirmed threat, or an answered general question.**
+**The stages still end early only for a confirmed threat, or an answered general question.** The deciding test still applies.
 
 #### Stage 3: one targeted web search
 - Only open checks with a question get here: at most 6 questions in **one** call, with Google Search, to the same model as this investigation's Magnum DI, so TC FlyBy is never on a stronger model.
 - ApolloSG's earlier lookups are checked first (see Reusable intelligence). A current, sourced answer about the same link, number, email address, company, ABN, ACN or licence is reused and not asked again; only what is still open goes in the call. Something found counts as current for 7 days, "nothing found" for 1 day. Lookups about the material itself (a quoted phrase, a person, a claim) are never saved or reused.
 - The model is told to look facts up and never to judge whether something is a scam.
-- An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as clear.
+- An answer counts only if a real web page backs it. If no page backs it, the answer is unsourced and not used. "No record found" is recorded as missing, never as verified and never as proof of safety.
 - How answers are treated:
   - A warning from an **official** source that names the exact link, number, email or company → **decisive → Confirmed**.
-  - Any other warning → a concern, but not decisive.
-  - "Official contact" → clear.
+  - Any other warning → a third-party warning: a weak signal, never decisive and never Concerning on its own.
+  - "Official contact" → **verified as an official contact**, which settles that check only.
   - "Copied elsewhere" → warning sign.
 - **Register entry for an ABN, ACN or licence:**
-  - Matches the name in the material → clear.
+  - Matches the name in the material → **verified**, which settles the register check only.
   - A related but different name → conflict, sent to Magnum DI.
   - No match → warning sign.
 - A failed search is recorded as unavailable and passed on.
+- **ABN, ACN and licence numbers:** the exact number goes only into the register question that verifies it (who holds it, and is it current). The other questions in the call carry it as a label, never the number (see Privacy and redaction).
 
 #### The deciding test
-*"Could deeper investigation change Apollo's finding or what Higgins tells the person?"* If not, TC FlyBy settles the case. "Unable to determine" is a valid finished result.
+*"Could unresolved evidence materially change Apollo's outcome or the protective action Higgins recommends?"* If not, TC FlyBy settles the case. If it could, the case goes to Magnum DI, even when TC FlyBy has already reached a concern outcome. "Unable to determine" is a valid finished result.
 
-**How the outcome is chosen (first that applies):**
+**How TC FlyBy's outcome is chosen (first that applies):**
 1. **Confirmed scam or threat:** a decisive concern was found.
 2. **Likely scam:** a full pattern match that nothing contradicts. A contradiction is an impersonation pattern where every link and address is the organisation's own.
-3. **Concerning:** corroborated impersonation. An organisation is named, a link isn't one of its own domains, and an independent fact about that same link backs it up (new domain, flagged, a redirect to another site, or a download).
+3. **Concerning:** corroborated impersonation. An organisation is named, a link isn't one of its own domains, and an independent fact about that same link backs it up (a weak signal: a new domain, a third-party flag, a redirect to another site, or a download).
 4. **Concerning:** the opening of the family pattern, with no ask yet.
-5. **Concerning:** any established warning sign. A name mentioned beside another organisation's address counts only once something corroborates it.
-6. If none of these applies, check the Magnum DI triggers below.
-7. **No scam indicators found:** only when everything was checked. There are no gaps and no failed lookups, and every link is either an official domain, or not listed *and* of established registration.
-8. Otherwise: **Unable to determine**.
+5. **Concerning:** an established warning sign. Weak signals never count here, alone or together. A name mentioned beside another organisation's address counts only once something corroborates it.
+6. **No scam indicators found:** only when everything was checked. There are no gaps and no failed lookups, and every link is either verified as official, or has no known threat listing *and* an established registration.
+7. Otherwise: **Unable to determine**, with any weak signals listed.
 
-Concerning, Likely scam and Confirmed lead to the same protective action, so Magnum DI is never called just to move a case between them.
+**Then the Magnum DI triggers below are checked, whatever the outcome.** A trigger sends the case to Magnum DI only when what it leaves unresolved could materially change the outcome or the protective action. Otherwise TC FlyBy settles the case with its outcome.
+- **The outcome changes materially** when the unresolved evidence could decide whether there is a concern at all: a case with no concern outcome could reach one, or an Unable to determine could be resolved. An established concern is never lowered (see Magnum DI).
+- **The protective action changes materially** when the unresolved evidence could call for a different or additional step, for example contacting the bank because a payment may be involved, removing an app because remote access may be involved, or changing a password because credentials may be involved.
+- Concerning, Likely scam and Confirmed lead to the same protective action, so Magnum DI is never called only to move a case between them.
 
-#### Triggers for Magnum DI (only when no concern outcome was reached)
+#### Triggers for Magnum DI (whether or not a concern outcome was reached)
 | Capability | Trigger |
 |---|---|
 | **Reading** | Content Triage couldn't extract but Magnum DI can read: an image with no readable text, a scanned page, or the pictures on a page. |
@@ -521,14 +595,15 @@ Concerning, Likely scam and Confirmed lead to the same protective action, so Mag
 | General question | Neither the KB nor the search could answer it. |
 | Safety net | TC FlyBy's own result fails Apollo's validation, so Magnum DI takes the whole case with search on. |
 
-The type of input, its category or uncertainty alone never sends a case to Magnum DI.
+A trigger counts only under the deciding test above. The type of input, its category or uncertainty alone never sends a case to Magnum DI. Example: a text already Concerning because of a lookalike link, with a picture TC FlyBy couldn't read that may hold a bank-transfer request, goes to Magnum DI (Reading). The same text without the picture is settled by TC FlyBy as Concerning, because nothing unresolved could change what the person should do.
 
 **What Magnum DI receives:**
 - the person's question, once
 - TC FlyBy's brief ("For Magnum DI to settle — only these"), with the facts that bear on each issue and any partial pattern match
-- the evidence each issue needs
+- TC FlyBy's outcome, when it reached one, as an established finding
+- the evidence each issue needs, with any exact ABN, ACN or licence number as a label beside the register check's result (see Privacy and redaction)
 - anything TC FlyBy didn't examine
-- any pre-gathered results Teddy had no reader for
+- any pre-gathered results TC FlyBy had no reader for
 
 What TC FlyBy already settled, and the raw lookups behind it, are not sent again.
 
@@ -536,16 +611,16 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 
 ### Magnum DI {#magnum-di}
 
-**Job:** a deep investigation, only when it could change the answer.
+**Job:** a deep investigation, only when unresolved evidence could materially change the outcome or the protective action (see the deciding test).
 
 **Process**
-1. It runs only when TC FlyBy hands it issues. On later turns it runs only when the person answers Magnum DI's own question.
+1. It runs only when TC FlyBy hands it issues under the deciding test, whether or not TC FlyBy reached a concern outcome. On later turns it runs only when the person answers Magnum DI's own question.
 2. **Size limit.** If the written evidence is over 10,000 words, nothing is sent, and the person is told the word count.
-3. **One AI call** to the model an admin picked for Magnum DI (the low-cost model until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
-   - There is one retry after 4 seconds, only for a temporary failure or an invalid answer. Configuration errors are never retried.
-   - The limit of 2 calls per job is enforced on the job record.
-   - If both calls fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
-4. There is no system prompt; the response shape and the outcome definitions travel in the schema. There are no tool rounds, no escalation to a bigger model and no second call to present the answer.
+3. **One inference attempt, plus one permitted retry: at most two provider calls.** The attempt goes to the model an admin picked for Magnum DI (the low-cost model until an admin changes it). The model is fixed when the investigation starts, so a change applies from the next investigation.
+   - **The permitted retry:** there is one retry after 4 seconds, only when the inference attempt failed temporarily or returned an invalid answer. Configuration errors are never retried.
+   - **Two provider calls at most:** the inference attempt and its retry. The limit of 2 calls per job is enforced on the job record.
+   - If the inference attempt and its retry both fail, the person sees "Please resubmit in about 5 minutes". Everything submitted is kept, and Resubmit is one tap once the 5 minutes are up. There is no automatic resume.
+4. There is no system prompt; the response shape and the outcome definitions travel in the schema. There are no tool rounds, no escalation to a bigger model and no further provider call to present the answer.
 5. **The answer contains:**
    - overview and explanation
    - assessment and outcome
@@ -574,7 +649,7 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 - **A question to the person**, as free text, yes/no or multiple choice, always with the reason it's needed. The case waits, and the answer continues the investigation as a new turn.
 - **A fresh device reading, a setting to open or a permission to grant**, only when the phone advertises that capability.
 
-It can't override what is already established, and it isn't called to move a case between concern outcomes.
+It can't override what is already established. When TC FlyBy reached a concern outcome, Magnum DI can keep or raise it and add or change protective steps, but never lower it. It is never called only to move a case between concern outcomes.
 
 ### Higgins (explanation) {#higgins-explanation}
 
@@ -818,7 +893,7 @@ Every finished result can show one plain sentence naming the rule that settled i
 | FLYBY-PATTERN | Known scam, every step | TC FlyBy | A full match with a known scam pattern in ApolloSG's knowledge base, and nothing contradicts it. |
 | FLYBY-IMPERSONATION | Corroborated impersonation | TC FlyBy | An organisation is named, a link isn't its website, and a separate check on that link backs this up. |
 | FLYBY-OPENING | Known scam opening | TC FlyBy | The message opens like the family "new number" scam but hasn't asked for anything yet. |
-| FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found real warning signs, but not enough to call it a scam. |
+| FLYBY-SIGNS | Established warning signs | TC FlyBy | The checks found an established warning sign (weak signals alone never count), but not enough to call it a scam. |
 | FLYBY-CLEAR | Nothing found, everything checked | TC FlyBy | Every planned check ran over everything sent and none found a scam indicator. |
 | FLYBY-UNKNOWN | Can't establish more | TC FlyBy | The checks couldn't establish more, and a deeper look couldn't change what to do. |
 | FLYBY-ANSWERED | Question answered from a source | TC FlyBy | A general question answered by ApolloSG's knowledge base or a sourced search. |
@@ -836,7 +911,7 @@ When Magnum DI was needed for more than one reason, the sentence names them toge
 |---|---|
 | **Confirmed scam or threat** | An authoritative source names this exact link, number, address or company as a scam or threat. |
 | **Likely scam** | The evidence and an established scam pattern point to a scam, without proof about this particular sender. |
-| **Concerning** | Real warning signs, but not enough to call it a scam. |
+| **Concerning** | An established warning sign or a corroborated impersonation, but not enough to call it a scam. Weak signals alone never make a case Concerning. |
 | **Unable to determine** | The available evidence can't establish more. |
 | **No scam indicators found** | The checks performed found nothing. This is **not** proof it's safe, and it is never described as safe. |
 
@@ -970,7 +1045,8 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - Secrets are stripped once more from the whole request, and a field that holds a credential is dropped.
 - A field that holds unrelated personal data is sent as "[personal data withheld]", unless the request is an investigation the person asked for.
 - Long tracking links are shortened: tracking parameters (utm, gclid, fbclid and similar) are removed, other values over 80 characters are cut, and any link over 200 characters is cut. The domain and path are always kept.
-- Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, passport and social security numbers.
+- Research and public-advisory requests also have personal identifiers replaced with labels: email addresses, phone numbers, card and account numbers, BSBs, TFNs, Medicare, ABN, ACN and licence numbers, passport and social security numbers.
+- **ABN, ACN and licence numbers:** an exact number may be sent only to the approved lookup that verifies it: TC FlyBy's register question about that number (who holds it, and is it current). Every other AI or research request (Magnum DI, Higgins' general question, every other search question and KB research) carries it redacted as a label (an ABN becomes "[business number]"), with the register check's result where there is one.
 - The original evidence is never changed; only the copy being sent is.
 
 **Pictures**
@@ -1156,7 +1232,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 **When something goes wrong**
 - Higgins can't answer: "Higgins couldn't answer right now. No investigation was started.", with Try again.
 - A general-knowledge answer comes back unreadable: Higgins says so, and nothing is made up in its place.
-- **A stopped investigation** (both Magnum DI calls failed): once it can be resubmitted, one quiet note shows above the conversation. The note goes when the case is resubmitted, answered, removed, dismissed or past its expiry. There is no pop-up anywhere else.
+- **A stopped investigation** (Magnum DI's inference attempt and its permitted retry both failed): once it can be resubmitted, one quiet note shows above the conversation. The note goes when the case is resubmitted, answered, removed, dismissed or past its expiry. There is no pop-up anywhere else.
 
 ### Scam Alerts and government feeds {#scam-alerts}
 
@@ -1187,7 +1263,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 
 - Gate and Higgins Triage: 0 AI calls.
 - TC FlyBy: at most 1 low-cost search call per case (max 6 questions); a lookup still current from an earlier case is reused, not asked again.
-- Magnum DI: 1 call, plus 1 retry only if that call fails, 2 at most.
+- Magnum DI: one inference attempt, plus one permitted retry only if that attempt fails or returns an invalid answer; at most two provider calls.
 - Higgins: 0 calls, except one call for a general question nothing else answers, reused for the same question while current. Plain English and its Fidelity Check: 0 calls.
 - Models: Magnum DI and Ask Higgins each call the model an admin picked for them on the admin portal, the low-cost model until an admin changes it. Only models that can do that feature's job can be picked, and TC FlyBy always uses Magnum DI's model. Every change is kept in the admin audit log.
 

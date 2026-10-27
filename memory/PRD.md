@@ -1,3 +1,23 @@
+## Rule book revision 2: Rule Book review corrections (2026-10-27) — AWAITING OWNER REVIEW, NOT COMPLETE
+**Owner's rules:** rule book only, no implementation code; don't mark complete on tests; owner reviews first, THEN audit the code.
+- Only `backend/content/rulebook.md` changed (script `/tmp/rulebook_r2.py`, backup of r1 `/tmp/rulebook_r1_backup.md`). NOT re-stamped.
+  JSON export: `/app/memory/ApolloSG_rule_book_revision_2.json` (also admin portal → Rule book → Download JSON).
+  Its `inStepWithCode: true` only means no watched code file changed since the r1 stamp; the r2 status line says it is unaudited.
+- Changes: Rule classes (DETECT/CORRELATE/ROUTE/COVERAGE/ENFORCE) table + every gate's rules grouped by class; Possible
+  Threat = threat-producing rule (DETECT/CORRELATE) with all required evidence/corroboration; ROUTE = QR-01, FQR-01, MSG-12,
+  EMAIL-09, EMAIL-10, CAL-01, FILE-10, PUSH-03, NET-02; COVERAGE = ARCH-03; TC FlyBy weak signals (redirect, new domain,
+  download, IPQS link/number flag, non-official search warning) never Concerning alone or together; "clear" → "no known threat
+  listing found" / "verified … settles that check only"; deciding test = unresolved evidence that could materially change the
+  outcome or protective action, even after concern (Magnum can keep/raise, never lower); ABN/ACN/licence only in the register
+  question, labels elsewhere; "Teddy" → TC FlyBy; Magnum = one inference attempt + one permitted retry, max two provider calls.
+- Open decisions flagged to owner: LINK-11, CORR-08, QR-03/PWA-02 "unrated", "copied elsewhere" as a warning sign,
+  CB-03 catalogue title still says "clean" (catalogue change needed in the audit).
+- Tests (information only): backend test_rulebook 25/25; frontend ruleBook.test.ts 11/12 — "each gate lists its rules one
+  per line" expects Link Gate as one 21-item list; now split by class (update in the audit).
+- NEXT (only after owner approves r2): audit triage engines/catalogue, TC FlyBy decide/outcomes, Magnum coordinator/jobs,
+  llm_boundary ABN handling against r2; then re-stamp.
+
+
 ## Threat Case origin rule finished and verified (2026-10-27)
 **Owner's choices:** finish + verify, then stop and report. **Google sensitive-data scan (DLP) is DROPPED — owner no longer wants it.**
 - Every Threat Case shows "Origin: Detected on this device" (`caseFacts.caseOrigin`); evidence source, processing,
