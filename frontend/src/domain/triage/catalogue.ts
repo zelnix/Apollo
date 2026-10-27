@@ -3,7 +3,7 @@
 // tests/triage.test.ts fails if this drifts from the backend file.
 
 const CATALOGUE = {
-  "version": 3,
+  "version": 4,
   "updated": "2026-06",
   "outcomes": [
     "NO_THREAT_IDENTIFIED",
@@ -647,6 +647,7 @@ const CATALOGUE = {
     {
       "id": "LINK-01",
       "category": "link",
+      "class": "DETECT",
       "title": "Authoritative reputation reports the destination as malicious",
       "evidence": [
         "reputation"
@@ -656,6 +657,7 @@ const CATALOGUE = {
     {
       "id": "LINK-02",
       "category": "link",
+      "class": "DETECT",
       "title": "An observed redirect destination is confirmed malicious",
       "evidence": [
         "redirect",
@@ -666,6 +668,7 @@ const CATALOGUE = {
     {
       "id": "LINK-03",
       "category": "link",
+      "class": "DETECT",
       "title": "Local URL engine reaches malicious through deception-gated rules",
       "evidence": [
         "local_level",
@@ -675,6 +678,7 @@ const CATALOGUE = {
     {
       "id": "LINK-04",
       "category": "link",
+      "class": "DETECT",
       "title": "Known deterministic threat indicator match",
       "evidence": [
         "indicator_match"
@@ -683,6 +687,7 @@ const CATALOGUE = {
     {
       "id": "LINK-05",
       "category": "link",
+      "class": "DETECT",
       "title": "Brand-lookalike domain with credential, login, payment or account interaction",
       "evidence": [
         "local_signals",
@@ -692,6 +697,7 @@ const CATALOGUE = {
     {
       "id": "LINK-06",
       "category": "link",
+      "class": "DETECT",
       "title": "Credentials embedded in the URL",
       "evidence": [
         "credentials_in_url"
@@ -700,6 +706,7 @@ const CATALOGUE = {
     {
       "id": "LINK-07",
       "category": "link",
+      "class": "DETECT",
       "title": "Credential lure with an unrelated or deceptive destination",
       "evidence": [
         "credential_interaction",
@@ -709,6 +716,7 @@ const CATALOGUE = {
     {
       "id": "LINK-08",
       "category": "link",
+      "class": "DETECT",
       "title": "Displayed link materially differs from the actual destination",
       "evidence": [
         "displayed_host",
@@ -718,6 +726,7 @@ const CATALOGUE = {
     {
       "id": "LINK-09",
       "category": "link",
+      "class": "DETECT",
       "title": "Brand presented in the link or path while the destination is unrelated, with a sensitive action",
       "evidence": [
         "local_signals",
@@ -727,6 +736,7 @@ const CATALOGUE = {
     {
       "id": "LINK-10",
       "category": "link",
+      "class": "DETECT",
       "title": "Newly registered domain with a credential, payment, security-code or identity form",
       "evidence": [
         "domain_age",
@@ -737,6 +747,7 @@ const CATALOGUE = {
     {
       "id": "LINK-11",
       "category": "link",
+      "class": "COVERAGE",
       "title": "Multiple URL-risk indicators reach the suspicious threshold and intelligence cannot resolve them",
       "evidence": [
         "local_level",
@@ -747,6 +758,7 @@ const CATALOGUE = {
     {
       "id": "LINK-12",
       "category": "link",
+      "class": "CORRELATE",
       "title": "Suspicious URL evidence correlates with another suspicious event",
       "evidence": [
         "correlation"
@@ -755,6 +767,7 @@ const CATALOGUE = {
     {
       "id": "QR-01",
       "category": "link",
+      "class": "ROUTE",
       "title": "QR code contains a URL — the destination is triaged as a link",
       "evidence": [
         "qr_payload"
@@ -763,6 +776,7 @@ const CATALOGUE = {
     {
       "id": "QR-02",
       "category": "link",
+      "class": "DETECT",
       "title": "QR destination with brand or domain deception",
       "evidence": [
         "qr_payload",
@@ -772,6 +786,7 @@ const CATALOGUE = {
     {
       "id": "QR-03",
       "category": "link",
+      "class": "DETECT",
       "title": "QR destination with a credential or payment lure and a suspicious, unrated or newly registered destination",
       "evidence": [
         "qr_payload",
@@ -783,6 +798,7 @@ const CATALOGUE = {
     {
       "id": "DATA-01",
       "category": "link",
+      "class": "DETECT",
       "title": "data: or blob: content collecting credentials in a deceptive brand context",
       "evidence": [
         "scheme",
@@ -794,6 +810,7 @@ const CATALOGUE = {
     {
       "id": "BITM-01",
       "category": "link",
+      "class": "DETECT",
       "title": "Sensitive credential interaction with observable real-time relay and an inconsistent destination",
       "evidence": [
         "credential_interaction",
@@ -807,6 +824,7 @@ const CATALOGUE = {
     {
       "id": "BITM-02",
       "category": "link",
+      "class": "DETECT",
       "title": "Brand authentication presented through an unauthorised origin with relay or strong deception",
       "evidence": [
         "auth_origin",
@@ -819,6 +837,7 @@ const CATALOGUE = {
     {
       "id": "BITM-03",
       "category": "link",
+      "class": "DETECT",
       "title": "Message, email, QR or call leads to a site presenting another brand's authentication with relay behaviour",
       "evidence": [
         "correlation",
@@ -831,6 +850,7 @@ const CATALOGUE = {
     {
       "id": "BITM-04",
       "category": "link",
+      "class": "DETECT",
       "title": "MFA or security-code interaction on an unrelated authentication origin with observable relay evidence",
       "evidence": [
         "code_interaction",
@@ -843,6 +863,7 @@ const CATALOGUE = {
     {
       "id": "BITM-05",
       "category": "link",
+      "class": "DETECT",
       "title": "Destination matches authoritative intelligence for active BitM/AiTM phishing infrastructure",
       "evidence": [
         "reputation"
@@ -852,6 +873,7 @@ const CATALOGUE = {
     {
       "id": "MSG-01",
       "category": "message",
+      "class": "DETECT",
       "title": "OTP, MFA or security code requested",
       "evidence": [
         "signals.code_request"
@@ -860,6 +882,7 @@ const CATALOGUE = {
     {
       "id": "MSG-02",
       "category": "message",
+      "class": "DETECT",
       "title": "Password, PIN or login credential requested",
       "evidence": [
         "signals.login_request",
@@ -869,6 +892,7 @@ const CATALOGUE = {
     {
       "id": "MSG-03",
       "category": "message",
+      "class": "DETECT",
       "title": "Banking or card credentials requested",
       "evidence": [
         "signals.identity_request"
@@ -877,6 +901,7 @@ const CATALOGUE = {
     {
       "id": "MSG-04",
       "category": "message",
+      "class": "DETECT",
       "title": "Transfer to a safe or protected account requested",
       "evidence": [
         "signals.safe_account"
@@ -885,6 +910,7 @@ const CATALOGUE = {
     {
       "id": "MSG-05",
       "category": "message",
+      "class": "DETECT",
       "title": "Gift-card payment requested",
       "evidence": [
         "signals.gift_cards"
@@ -893,6 +919,7 @@ const CATALOGUE = {
     {
       "id": "MSG-06",
       "category": "message",
+      "class": "DETECT",
       "title": "Remote access or screen sharing requested in a suspicious context",
       "evidence": [
         "signals.remote_access"
@@ -901,6 +928,7 @@ const CATALOGUE = {
     {
       "id": "MSG-07",
       "category": "message",
+      "class": "DETECT",
       "title": "App or software installation requested in a suspicious context",
       "evidence": [
         "signals.remote_access",
@@ -910,6 +938,7 @@ const CATALOGUE = {
     {
       "id": "MSG-08",
       "category": "message",
+      "class": "DETECT",
       "title": "Government or authority impersonation with payment, credential, code or threat",
       "evidence": [
         "signals.brand_kind",
@@ -920,6 +949,7 @@ const CATALOGUE = {
     {
       "id": "MSG-09",
       "category": "message",
+      "class": "DETECT",
       "title": "Extortion",
       "evidence": [
         "signals.extortion"
@@ -928,6 +958,7 @@ const CATALOGUE = {
     {
       "id": "MSG-10",
       "category": "message",
+      "class": "DETECT",
       "title": "Advance-fee mechanics",
       "evidence": [
         "signals.advance_fee"
@@ -936,6 +967,7 @@ const CATALOGUE = {
     {
       "id": "MSG-11",
       "category": "message",
+      "class": "DETECT",
       "title": "Fake-payment mechanics",
       "evidence": [
         "signals.fake_payment"
@@ -944,6 +976,7 @@ const CATALOGUE = {
     {
       "id": "MSG-12",
       "category": "message",
+      "class": "ROUTE",
       "title": "Malicious or deceptive link in the message",
       "evidence": [
         "link_outcome"
@@ -952,6 +985,7 @@ const CATALOGUE = {
     {
       "id": "MSG-13",
       "category": "message",
+      "class": "DETECT",
       "title": "Family or new-number impersonation with a money, credential or code request",
       "evidence": [
         "signals.family_claim",
@@ -962,6 +996,7 @@ const CATALOGUE = {
     {
       "id": "MSG-14",
       "category": "message",
+      "class": "DETECT",
       "title": "Brand impersonation with a consequential action and inconsistent contact or destination",
       "evidence": [
         "signals.claimed_brand",
@@ -971,6 +1006,7 @@ const CATALOGUE = {
     {
       "id": "MSG-15",
       "category": "message",
+      "class": "DETECT",
       "title": "Guaranteed-return or investment approach with payment or crypto transfer",
       "evidence": [
         "signals.guaranteed_returns",
@@ -980,6 +1016,7 @@ const CATALOGUE = {
     {
       "id": "MSG-16",
       "category": "message",
+      "class": "DETECT",
       "title": "Job offer with advance payment, crypto, gift cards or credential harvesting",
       "evidence": [
         "signals.job_offer",
@@ -989,6 +1026,7 @@ const CATALOGUE = {
     {
       "id": "MSG-17",
       "category": "message",
+      "class": "DETECT",
       "title": "Romance interaction with a suspicious financial request",
       "evidence": [
         "signals.romance_escalation"
@@ -997,6 +1035,7 @@ const CATALOGUE = {
     {
       "id": "MSG-18",
       "category": "message",
+      "class": "DETECT",
       "title": "Sensitive identity request with impersonation or anomaly",
       "evidence": [
         "signals.identity_request",
@@ -1006,6 +1045,7 @@ const CATALOGUE = {
     {
       "id": "MSG-19",
       "category": "message",
+      "class": "DETECT",
       "title": "Platform switching combined with another scam mechanic",
       "evidence": [
         "signals.platform_switch"
@@ -1014,6 +1054,7 @@ const CATALOGUE = {
     {
       "id": "MSG-20",
       "category": "message",
+      "class": "DETECT",
       "title": "Urgency or threat with a consequential action and a supporting anomaly",
       "evidence": [
         "signals.urgency",
@@ -1023,6 +1064,7 @@ const CATALOGUE = {
     {
       "id": "MSG-21",
       "category": "message",
+      "class": "DETECT",
       "title": "Claimed or uncertain identity with a consequential action and another deterministic anomaly",
       "evidence": [
         "signals.unknown_sender",
@@ -1032,6 +1074,7 @@ const CATALOGUE = {
     {
       "id": "MSG-22",
       "category": "message",
+      "class": "DETECT",
       "title": "Multiple moderate scam indicators form a coherent scam pattern",
       "evidence": [
         "signals"
@@ -1040,6 +1083,7 @@ const CATALOGUE = {
     {
       "id": "PAY-01",
       "category": "message",
+      "class": "DETECT",
       "title": "Instant-payment request with authority, family or business impersonation",
       "evidence": [
         "signals.instant_payment",
@@ -1049,6 +1093,7 @@ const CATALOGUE = {
     {
       "id": "PAY-02",
       "category": "message",
+      "class": "DETECT",
       "title": "Instant-payment request with urgency or threat and a sender anomaly",
       "evidence": [
         "signals.instant_payment",
@@ -1058,6 +1103,7 @@ const CATALOGUE = {
     {
       "id": "PAY-03",
       "category": "message",
+      "class": "DETECT",
       "title": "Unexpected change of payment destination with an immediate-payment request",
       "evidence": [
         "signals.instant_payment",
@@ -1067,6 +1113,7 @@ const CATALOGUE = {
     {
       "id": "FWD-01",
       "category": "message",
+      "class": "DETECT",
       "title": "Instruction to enter a forwarding service code in a suspicious account or authority context",
       "evidence": [
         "signals.forwarding_code",
@@ -1076,6 +1123,7 @@ const CATALOGUE = {
     {
       "id": "FWD-02",
       "category": "message",
+      "class": "DETECT",
       "title": "Instruction designed to redirect calls, messages or security codes to another number",
       "evidence": [
         "signals.forwarding_intent"
@@ -1084,6 +1132,7 @@ const CATALOGUE = {
     {
       "id": "CB-01",
       "category": "message",
+      "class": "DETECT",
       "title": "Claimed charge or account problem with a supplied callback number inconsistent with the claimed organisation",
       "evidence": [
         "signals.callback_request",
@@ -1093,6 +1142,7 @@ const CATALOGUE = {
     {
       "id": "CB-02",
       "category": "message",
+      "class": "DETECT",
       "title": "Urgent cancellation, refund or security lure with a suspicious callback number",
       "evidence": [
         "signals.callback_request",
@@ -1102,7 +1152,8 @@ const CATALOGUE = {
     {
       "id": "CB-03",
       "category": "message",
-      "title": "Callback number reputation is clean but strong impersonation evidence remains",
+      "class": "DETECT",
+      "title": "Callback number has no known threat listing but strong impersonation evidence remains",
       "evidence": [
         "signals.callback_request",
         "phone_reputation"
@@ -1112,6 +1163,7 @@ const CATALOGUE = {
     {
       "id": "CALL-01",
       "category": "call",
+      "class": "DETECT",
       "title": "OTP or security code requested",
       "evidence": [
         "asks.code"
@@ -1120,6 +1172,7 @@ const CATALOGUE = {
     {
       "id": "CALL-02",
       "category": "call",
+      "class": "DETECT",
       "title": "Password or PIN requested",
       "evidence": [
         "asks.password"
@@ -1128,6 +1181,7 @@ const CATALOGUE = {
     {
       "id": "CALL-03",
       "category": "call",
+      "class": "DETECT",
       "title": "Banking or card credentials requested",
       "evidence": [
         "asks.bankdetails"
@@ -1136,6 +1190,7 @@ const CATALOGUE = {
     {
       "id": "CALL-04",
       "category": "call",
+      "class": "DETECT",
       "title": "Safe-account transfer requested",
       "evidence": [
         "asks.transfer",
@@ -1145,6 +1200,7 @@ const CATALOGUE = {
     {
       "id": "CALL-05",
       "category": "call",
+      "class": "DETECT",
       "title": "Gift-card payment requested",
       "evidence": [
         "asks.giftcards"
@@ -1153,6 +1209,7 @@ const CATALOGUE = {
     {
       "id": "CALL-06",
       "category": "call",
+      "class": "DETECT",
       "title": "Suspicious cryptocurrency transfer requested",
       "evidence": [
         "asks.crypto"
@@ -1161,6 +1218,7 @@ const CATALOGUE = {
     {
       "id": "CALL-07",
       "category": "call",
+      "class": "DETECT",
       "title": "Remote access or screen sharing requested",
       "evidence": [
         "asks.remote",
@@ -1170,6 +1228,7 @@ const CATALOGUE = {
     {
       "id": "CALL-08",
       "category": "call",
+      "class": "DETECT",
       "title": "Software or app installation requested",
       "evidence": [
         "asks.install"
@@ -1178,6 +1237,7 @@ const CATALOGUE = {
     {
       "id": "CALL-09",
       "category": "call",
+      "class": "DETECT",
       "title": "Call or SMS forwarding instruction",
       "evidence": [
         "asks.forwarding"
@@ -1186,6 +1246,7 @@ const CATALOGUE = {
     {
       "id": "CALL-10",
       "category": "call",
+      "class": "DETECT",
       "title": "Government or authority payment threat",
       "evidence": [
         "claim",
@@ -1195,6 +1256,7 @@ const CATALOGUE = {
     {
       "id": "CALL-11",
       "category": "call",
+      "class": "DETECT",
       "title": "Unsolicited technical support seeking device access",
       "evidence": [
         "claim",
@@ -1204,6 +1266,7 @@ const CATALOGUE = {
     {
       "id": "CALL-12",
       "category": "call",
+      "class": "DETECT",
       "title": "Suspicious investment solicitation with a consequential financial action",
       "evidence": [
         "claim",
@@ -1213,6 +1276,7 @@ const CATALOGUE = {
     {
       "id": "CALL-13",
       "category": "call",
+      "class": "DETECT",
       "title": "Claimed authority with a sensitive action and suspicious behaviour",
       "evidence": [
         "claim",
@@ -1222,6 +1286,7 @@ const CATALOGUE = {
     {
       "id": "CALL-14",
       "category": "call",
+      "class": "DETECT",
       "title": "Unexpected refund or payment manipulation",
       "evidence": [
         "asks.refund"
@@ -1230,6 +1295,7 @@ const CATALOGUE = {
     {
       "id": "CALL-15",
       "category": "call",
+      "class": "DETECT",
       "title": "Reputation evidence with matching scam behaviour",
       "evidence": [
         "phone_reputation",
@@ -1240,6 +1306,7 @@ const CATALOGUE = {
     {
       "id": "CALL-16",
       "category": "call",
+      "class": "CORRELATE",
       "title": "Call followed by a remote-access app, permission or device change forms a coherent sequence",
       "evidence": [
         "correlation"
@@ -1248,6 +1315,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-01",
       "category": "email",
+      "class": "DETECT",
       "title": "Claimed brand with sender-domain mismatch and a consequential action",
       "evidence": [
         "sender_domain",
@@ -1257,6 +1325,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-02",
       "category": "email",
+      "class": "DETECT",
       "title": "Freemail or unrelated domain impersonates a brand with a sensitive request",
       "evidence": [
         "sender_domain",
@@ -1266,6 +1335,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-03",
       "category": "email",
+      "class": "DETECT",
       "title": "Account or security alert with an off-domain, lookalike or deceptive link",
       "evidence": [
         "link_domains",
@@ -1275,6 +1345,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-04",
       "category": "email",
+      "class": "DETECT",
       "title": "Credential request",
       "evidence": [
         "findings"
@@ -1283,6 +1354,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-05",
       "category": "email",
+      "class": "DETECT",
       "title": "OTP or security-code request",
       "evidence": [
         "findings"
@@ -1291,6 +1363,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-06",
       "category": "email",
+      "class": "DETECT",
       "title": "Invoice or payment request with changed bank details",
       "evidence": [
         "findings"
@@ -1299,6 +1372,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-07",
       "category": "email",
+      "class": "DETECT",
       "title": "Executive or BEC impersonation with an unusual financial request and sender anomaly",
       "evidence": [
         "findings",
@@ -1308,6 +1382,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-08",
       "category": "email",
+      "class": "DETECT",
       "title": "Material From/Reply-To mismatch with a consequential action",
       "evidence": [
         "reply_to",
@@ -1317,6 +1392,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-09",
       "category": "email",
+      "class": "ROUTE",
       "title": "An embedded link produces a link-triage Possible Threat",
       "evidence": [
         "link_outcome"
@@ -1325,6 +1401,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-10",
       "category": "email",
+      "class": "ROUTE",
       "title": "An attachment produces a file-triage Possible Threat",
       "evidence": [
         "attachment_outcome"
@@ -1333,6 +1410,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-11",
       "category": "email",
+      "class": "DETECT",
       "title": "Authentication failure with a consequential request or anomaly",
       "evidence": [
         "auth_results"
@@ -1342,6 +1420,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-12",
       "category": "email",
+      "class": "DETECT",
       "title": "Authenticated legitimate sender with changed payment details, malicious link, unusual credential request or dangerous attachment",
       "evidence": [
         "auth_results",
@@ -1351,6 +1430,7 @@ const CATALOGUE = {
     {
       "id": "EMAIL-13",
       "category": "email",
+      "class": "DETECT",
       "title": "Multiple moderate email anomalies form a coherent scam pattern",
       "evidence": [
         "findings"
@@ -1359,6 +1439,7 @@ const CATALOGUE = {
     {
       "id": "CAL-01",
       "category": "email",
+      "class": "ROUTE",
       "title": "External or unverified calendar invitation with a malicious or deceptive link",
       "evidence": [
         "calendar",
@@ -1370,6 +1451,7 @@ const CATALOGUE = {
     {
       "id": "CAL-02",
       "category": "email",
+      "class": "DETECT",
       "title": "Calendar invitation with a suspicious financial or account lure and a callback number",
       "evidence": [
         "calendar",
@@ -1381,6 +1463,7 @@ const CATALOGUE = {
     {
       "id": "CAL-03",
       "category": "email",
+      "class": "DETECT",
       "title": "Calendar invitation with a credential or payment collection destination",
       "evidence": [
         "calendar",
@@ -1392,6 +1475,7 @@ const CATALOGUE = {
     {
       "id": "FORM-01",
       "category": "email",
+      "class": "DETECT",
       "title": "Legitimate form service requesting a password, MFA or security code",
       "evidence": [
         "form_host",
@@ -1401,6 +1485,7 @@ const CATALOGUE = {
     {
       "id": "FORM-02",
       "category": "email",
+      "class": "DETECT",
       "title": "Legitimate form host collecting banking or card credentials in a suspicious originating context",
       "evidence": [
         "form_host",
@@ -1410,6 +1495,7 @@ const CATALOGUE = {
     {
       "id": "FORM-03",
       "category": "email",
+      "class": "DETECT",
       "title": "Legitimate form host collecting sensitive identity with impersonation or account-security lure",
       "evidence": [
         "form_host",
@@ -1419,6 +1505,7 @@ const CATALOGUE = {
     {
       "id": "BREACH-01",
       "category": "account",
+      "class": "DETECT",
       "title": "Confirmed exposed credential evidence alongside current credential-harvesting or takeover activity",
       "evidence": [
         "breach",
@@ -1429,6 +1516,7 @@ const CATALOGUE = {
     {
       "id": "APP-01",
       "category": "app",
+      "class": "CORRELATE",
       "title": "Remote-access app or activity follows a suspicious call, message or site",
       "evidence": [
         "correlation",
@@ -1438,6 +1526,7 @@ const CATALOGUE = {
     {
       "id": "APP-02",
       "category": "app",
+      "class": "CORRELATE",
       "title": "Sideload follows a suspicious link or message",
       "evidence": [
         "provenance",
@@ -1447,6 +1536,7 @@ const CATALOGUE = {
     {
       "id": "APP-03",
       "category": "app",
+      "class": "DETECT",
       "title": "Sideloaded app impersonates a known brand",
       "evidence": [
         "provenance",
@@ -1456,6 +1546,7 @@ const CATALOGUE = {
     {
       "id": "APP-04",
       "category": "app",
+      "class": "DETECT",
       "title": "Sideloaded app impersonates update, security or system software",
       "evidence": [
         "provenance",
@@ -1465,6 +1556,7 @@ const CATALOGUE = {
     {
       "id": "APP-05",
       "category": "app",
+      "class": "DETECT",
       "title": "App communicates with a confirmed malicious destination",
       "evidence": [
         "destinations",
@@ -1475,6 +1567,7 @@ const CATALOGUE = {
     {
       "id": "APP-06",
       "category": "app",
+      "class": "DETECT",
       "title": "Unexpected accessibility access with suspicious provenance or Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1484,6 +1577,7 @@ const CATALOGUE = {
     {
       "id": "APP-07",
       "category": "app",
+      "class": "DETECT",
       "title": "Unexpected device-admin with suspicious provenance or Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1493,6 +1587,7 @@ const CATALOGUE = {
     {
       "id": "APP-08",
       "category": "app",
+      "class": "DETECT",
       "title": "Unexpected screen sharing with suspicious provenance or Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1502,6 +1597,7 @@ const CATALOGUE = {
     {
       "id": "APP-09",
       "category": "app",
+      "class": "DETECT",
       "title": "Unexpected install-app capability with suspicious provenance or Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1511,6 +1607,7 @@ const CATALOGUE = {
     {
       "id": "APP-10",
       "category": "app",
+      "class": "DETECT",
       "title": "Multiple high-impact permissions with suspicious installation provenance",
       "evidence": [
         "app_capabilities",
@@ -1520,6 +1617,7 @@ const CATALOGUE = {
     {
       "id": "APP-11",
       "category": "app",
+      "class": "CORRELATE",
       "title": "Install, then sensitive permission change, then suspicious network activity forms a coherent sequence",
       "evidence": [
         "correlation"
@@ -1528,6 +1626,7 @@ const CATALOGUE = {
     {
       "id": "PWA-01",
       "category": "app",
+      "class": "DETECT",
       "title": "PWA installation originates from a deceptive or known-malicious site",
       "evidence": [
         "pwa_origin",
@@ -1539,6 +1638,7 @@ const CATALOGUE = {
     {
       "id": "PWA-02",
       "category": "app",
+      "class": "DETECT",
       "title": "Newly registered or unrated PWA origin with brand impersonation and login, payment or account interaction",
       "evidence": [
         "pwa_origin",
@@ -1551,6 +1651,7 @@ const CATALOGUE = {
     {
       "id": "PWA-03",
       "category": "app",
+      "class": "CORRELATE",
       "title": "PWA installation immediately follows a correlated scam message, email or link",
       "evidence": [
         "pwa_origin",
@@ -1562,6 +1663,7 @@ const CATALOGUE = {
     {
       "id": "FILE-01",
       "category": "file",
+      "class": "DETECT",
       "title": "Executable or script disguised as a document or image",
       "evidence": [
         "declared_type",
@@ -1571,6 +1673,7 @@ const CATALOGUE = {
     {
       "id": "FILE-02",
       "category": "file",
+      "class": "DETECT",
       "title": "Dangerous double extension",
       "evidence": [
         "filename"
@@ -1579,6 +1682,7 @@ const CATALOGUE = {
     {
       "id": "FILE-03",
       "category": "file",
+      "class": "DETECT",
       "title": "Right-to-left filename deception",
       "evidence": [
         "filename"
@@ -1587,6 +1691,7 @@ const CATALOGUE = {
     {
       "id": "FILE-04",
       "category": "file",
+      "class": "DETECT",
       "title": "Unexpected executable or script",
       "evidence": [
         "extension",
@@ -1596,6 +1701,7 @@ const CATALOGUE = {
     {
       "id": "FILE-05",
       "category": "file",
+      "class": "DETECT",
       "title": "Suspicious APK",
       "evidence": [
         "extension",
@@ -1605,6 +1711,7 @@ const CATALOGUE = {
     {
       "id": "FILE-06",
       "category": "file",
+      "class": "DETECT",
       "title": "APK impersonates a brand or update",
       "evidence": [
         "extension",
@@ -1614,6 +1721,7 @@ const CATALOGUE = {
     {
       "id": "FILE-07",
       "category": "file",
+      "class": "DETECT",
       "title": "Unexpected configuration profile",
       "evidence": [
         "extension"
@@ -1622,6 +1730,7 @@ const CATALOGUE = {
     {
       "id": "FILE-08",
       "category": "file",
+      "class": "DETECT",
       "title": "Unexpected trust certificate",
       "evidence": [
         "extension"
@@ -1630,6 +1739,7 @@ const CATALOGUE = {
     {
       "id": "FILE-09",
       "category": "file",
+      "class": "DETECT",
       "title": "Macro-enabled document with suspicious provenance",
       "evidence": [
         "extension",
@@ -1639,6 +1749,7 @@ const CATALOGUE = {
     {
       "id": "FILE-10",
       "category": "file",
+      "class": "ROUTE",
       "title": "Embedded malicious or deceptive URL",
       "evidence": [
         "embedded_urls",
@@ -1648,6 +1759,7 @@ const CATALOGUE = {
     {
       "id": "FILE-11",
       "category": "file",
+      "class": "DETECT",
       "title": "Dangerous PDF JavaScript, launch or embedded content",
       "evidence": [
         "pdf_features"
@@ -1657,6 +1769,7 @@ const CATALOGUE = {
     {
       "id": "FILE-12",
       "category": "file",
+      "class": "DETECT",
       "title": "Dangerous Office macro, external template or embedded object",
       "evidence": [
         "office_features"
@@ -1666,6 +1779,7 @@ const CATALOGUE = {
     {
       "id": "FILE-13",
       "category": "file",
+      "class": "DETECT",
       "title": "Archive contains an executable, script or dangerous nested content",
       "evidence": [
         "archive_entries"
@@ -1675,6 +1789,7 @@ const CATALOGUE = {
     {
       "id": "FILE-14",
       "category": "file",
+      "class": "DETECT",
       "title": "Archive contains path traversal or deceptive filenames",
       "evidence": [
         "archive_entries"
@@ -1684,6 +1799,7 @@ const CATALOGUE = {
     {
       "id": "FILE-15",
       "category": "file",
+      "class": "DETECT",
       "title": "Actual type materially contradicts the claimed type",
       "evidence": [
         "declared_type",
@@ -1693,6 +1809,7 @@ const CATALOGUE = {
     {
       "id": "ARCH-01",
       "category": "file",
+      "class": "DETECT",
       "title": "Password-protected archive with the password supplied in the originating message and a dangerous payload",
       "evidence": [
         "archive_encrypted",
@@ -1703,6 +1820,7 @@ const CATALOGUE = {
     {
       "id": "ARCH-02",
       "category": "file",
+      "class": "CORRELATE",
       "title": "Password supplied separately but correlated to the same case with a dangerous payload",
       "evidence": [
         "archive_encrypted",
@@ -1713,6 +1831,7 @@ const CATALOGUE = {
     {
       "id": "ARCH-03",
       "category": "file",
+      "class": "COVERAGE",
       "title": "Password-protected archive with a suspicious sender or lure and contents that cannot be inspected",
       "evidence": [
         "archive_encrypted",
@@ -1723,6 +1842,7 @@ const CATALOGUE = {
     {
       "id": "FQR-01",
       "category": "file",
+      "class": "ROUTE",
       "title": "QR code detected in a file or image — destination is triaged as a link",
       "evidence": [
         "qr_payload"
@@ -1731,6 +1851,7 @@ const CATALOGUE = {
     {
       "id": "DEV-01",
       "category": "device",
+      "class": "DETECT",
       "title": "Trusted OS security facility reports malware or a threat",
       "evidence": [
         "os_threat"
@@ -1741,6 +1862,7 @@ const CATALOGUE = {
     {
       "id": "DEV-02",
       "category": "device",
+      "class": "CORRELATE",
       "title": "Remote-access activation correlates with suspicious activity",
       "evidence": [
         "remote_access_active",
@@ -1750,6 +1872,7 @@ const CATALOGUE = {
     {
       "id": "DEV-03",
       "category": "device",
+      "class": "CORRELATE",
       "title": "Unexpected management or profile change with suspicious activity",
       "evidence": [
         "management_change",
@@ -1759,6 +1882,7 @@ const CATALOGUE = {
     {
       "id": "DEV-04",
       "category": "device",
+      "class": "CORRELATE",
       "title": "Unexpected trusted certificate with suspicious activity",
       "evidence": [
         "certificate_change",
@@ -1768,6 +1892,7 @@ const CATALOGUE = {
     {
       "id": "DEV-05",
       "category": "device",
+      "class": "CORRELATE",
       "title": "New app with unexpected accessibility and relevant Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1777,6 +1902,7 @@ const CATALOGUE = {
     {
       "id": "DEV-06",
       "category": "device",
+      "class": "CORRELATE",
       "title": "New app with unexpected device-admin and relevant Threat Scent",
       "evidence": [
         "app_capabilities",
@@ -1786,6 +1912,7 @@ const CATALOGUE = {
     {
       "id": "DEV-07",
       "category": "device",
+      "class": "CORRELATE",
       "title": "Suspicious VPN installation or change with suspicious app or scam activity",
       "evidence": [
         "vpn_change",
@@ -1795,6 +1922,7 @@ const CATALOGUE = {
     {
       "id": "DEV-08",
       "category": "device",
+      "class": "CORRELATE",
       "title": "Multiple device-security changes form a coherent high-risk sequence",
       "evidence": [
         "device_changes"
@@ -1803,6 +1931,7 @@ const CATALOGUE = {
     {
       "id": "DEV-09",
       "category": "device",
+      "class": "CORRELATE",
       "title": "System-integrity indicators with supporting compromise evidence",
       "evidence": [
         "integrity",
@@ -1812,6 +1941,7 @@ const CATALOGUE = {
     {
       "id": "DNS-01",
       "category": "device",
+      "class": "CORRELATE",
       "title": "DNS, Private DNS or DoH configuration unexpectedly changed with correlated suspicious activity",
       "evidence": [
         "dns_change",
@@ -1823,6 +1953,7 @@ const CATALOGUE = {
     {
       "id": "DNS-02",
       "category": "device",
+      "class": "DETECT",
       "title": "DNS server matches authoritative malicious infrastructure",
       "evidence": [
         "dns_server",
@@ -1834,6 +1965,7 @@ const CATALOGUE = {
     {
       "id": "DNS-03",
       "category": "device",
+      "class": "CORRELATE",
       "title": "DNS change with a preceding suspicious app installation or permission event",
       "evidence": [
         "dns_change",
@@ -1845,6 +1977,7 @@ const CATALOGUE = {
     {
       "id": "PUSH-01",
       "category": "device",
+      "class": "DETECT",
       "title": "Browser notification from a deceptive origin with a fake security or financial warning and an action lure",
       "evidence": [
         "push_origin",
@@ -1856,6 +1989,7 @@ const CATALOGUE = {
     {
       "id": "PUSH-02",
       "category": "device",
+      "class": "DETECT",
       "title": "Notification impersonates ApolloSG, the OS, a bank or a known service with an inconsistent destination",
       "evidence": [
         "push_origin",
@@ -1867,6 +2001,7 @@ const CATALOGUE = {
     {
       "id": "PUSH-03",
       "category": "device",
+      "class": "ROUTE",
       "title": "Web-push notification leads to a malicious or deceptive URL",
       "evidence": [
         "push_origin",
@@ -1878,6 +2013,7 @@ const CATALOGUE = {
     {
       "id": "NET-01",
       "category": "network",
+      "class": "DETECT",
       "title": "Confirmed malicious destination observed",
       "evidence": [
         "destinations",
@@ -1888,6 +2024,7 @@ const CATALOGUE = {
     {
       "id": "NET-02",
       "category": "network",
+      "class": "ROUTE",
       "title": "Captive-portal destination triggers a link Possible Threat",
       "evidence": [
         "captive_url",
@@ -1897,6 +2034,7 @@ const CATALOGUE = {
     {
       "id": "NET-03",
       "category": "network",
+      "class": "CORRELATE",
       "title": "Unexpected VPN change with suspicious app or device activity",
       "evidence": [
         "vpn_change",
@@ -1906,6 +2044,7 @@ const CATALOGUE = {
     {
       "id": "NET-04",
       "category": "network",
+      "class": "CORRELATE",
       "title": "Network behaviour correlates with an existing suspicious incident",
       "evidence": [
         "correlation"
@@ -1914,6 +2053,7 @@ const CATALOGUE = {
     {
       "id": "NET-05",
       "category": "network",
+      "class": "CORRELATE",
       "title": "App, site or device sequence communicates with malicious infrastructure",
       "evidence": [
         "destinations",
@@ -1923,6 +2063,7 @@ const CATALOGUE = {
     {
       "id": "TLS-01",
       "category": "network",
+      "class": "DETECT",
       "title": "HTTPS certificate validation fails unexpectedly during a sensitive interaction in a suspicious network context",
       "evidence": [
         "tls_validation",
@@ -1934,6 +2075,7 @@ const CATALOGUE = {
     {
       "id": "TLS-02",
       "category": "network",
+      "class": "DETECT",
       "title": "Unexpected self-signed or untrusted certificate presented for a legitimate sensitive service",
       "evidence": [
         "tls_validation"
@@ -1944,6 +2086,7 @@ const CATALOGUE = {
     {
       "id": "TLS-03",
       "category": "network",
+      "class": "DETECT",
       "title": "Certificate identity does not match the requested legitimate domain",
       "evidence": [
         "tls_identity"
@@ -1954,6 +2097,7 @@ const CATALOGUE = {
     {
       "id": "TLS-04",
       "category": "network",
+      "class": "CORRELATE",
       "title": "Newly introduced trusted root certificate with correlated suspicious network behaviour",
       "evidence": [
         "certificate_change",
@@ -1965,6 +2109,7 @@ const CATALOGUE = {
     {
       "id": "CORR-01",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Suspicious call requesting remote access, then remote-access install, then accessibility or screen-sharing permission",
       "evidence": [
         "correlation"
@@ -1973,6 +2118,7 @@ const CATALOGUE = {
     {
       "id": "CORR-02",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Message, then deceptive link, then APK or PWA installation",
       "evidence": [
         "correlation"
@@ -1981,6 +2127,7 @@ const CATALOGUE = {
     {
       "id": "CORR-03",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Email, then changed bank details, then instant-payment request",
       "evidence": [
         "correlation"
@@ -1989,6 +2136,7 @@ const CATALOGUE = {
     {
       "id": "CORR-04",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Email or QR, then deceptive authentication site, then BitM/AiTM indicators",
       "evidence": [
         "correlation"
@@ -1997,6 +2145,7 @@ const CATALOGUE = {
     {
       "id": "CORR-05",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Callback lure followed by a suspicious call with matching claimed identity",
       "evidence": [
         "correlation"
@@ -2005,6 +2154,7 @@ const CATALOGUE = {
     {
       "id": "CORR-06",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Suspicious app installation followed by a DNS, VPN or accessibility change",
       "evidence": [
         "correlation"
@@ -2013,6 +2163,7 @@ const CATALOGUE = {
     {
       "id": "CORR-07",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Website or download, then executable, then malicious destination",
       "evidence": [
         "correlation"
@@ -2021,6 +2172,7 @@ const CATALOGUE = {
     {
       "id": "CORR-08",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Password-protected archive with the password supplied in the originating message or email",
       "evidence": [
         "correlation"
@@ -2029,6 +2181,7 @@ const CATALOGUE = {
     {
       "id": "CORR-09",
       "category": "correlation",
+      "class": "CORRELATE",
       "title": "Scam site, then notification permission, then a later deceptive web-push lure",
       "evidence": [
         "correlation"
@@ -2106,6 +2259,17 @@ const CATALOGUE = {
     ],
     "correlation": [
       "time proximity"
+    ]
+  },
+  "ruleClasses": {
+    "threatProducing": [
+      "DETECT",
+      "CORRELATE"
+    ],
+    "neverAThreatOnTheirOwn": [
+      "ROUTE",
+      "COVERAGE",
+      "ENFORCE"
     ]
   }
 } as const;

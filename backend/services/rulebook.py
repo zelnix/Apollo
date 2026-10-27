@@ -181,6 +181,43 @@ SETTLING_RULES: dict[str, tuple[str, str]] = {
     "MAGNUM-SAFETY-NET": ("Magnum DI", "Safety net"),
 }
 
+# ── EXPLAIN rules: Higgins' explanation rules ───────────────────────────────
+# id → (rule book section, rule, the code that applies it as "module:name"). EXPLAIN rules present or explain a
+# result and never change it. The book lists every one under its section, word for word; the Fidelity Check's
+# failure codes (explain/fidelity.CODES) and the settling rules above are EXPLAIN rules too.
+EXPLAIN_RULES: dict[str, tuple[str, str, str]] = {
+    "HIG-01": ("higgins-explanation", "A follow-up on a finished investigation is answered from its record, with no AI, and the case is never reopened",
+               "services.higgins.presenter:investigation_follow_up"),
+    "HIG-02": ("higgins-explanation", "Something to check goes to the investigation pipeline", "services.higgins.pipeline_submit:submit_to_investigation_pipeline"),
+    "HIG-03": ("higgins-explanation", "A scam alert the person opened is shown in the source's own words", "services.higgins.presenter:scam_alert_explanation"),
+    "HIG-04": ("higgins-explanation", "A Learn article is shown in its own words", "services.higgins.presenter:learn_article"),
+    "HIG-05": ("higgins-explanation", "Patrol records, the phone's live state, recent investigations and ApolloSG product knowledge are shown as they are",
+               "services.higgins.chat:_from_apollo"),
+    "HIG-06": ("higgins-explanation", "ApolloSG's KB is quoted with publisher and link, labelled as general knowledge", "services.higgins.knowledge:present"),
+    "HIG-07": ("higgins-explanation", "An off-topic question gets a fixed reply, word for word", "services.higgins.presenter:OUT_OF_SCOPE"),
+    "HIG-08": ("higgins-explanation", "A general scam-safety question nothing else answers gets one AI call with the question alone",
+               "services.higgins.chat:reply"),
+    "HIG-09": ("higgins-explanation", "The phone's live reading is the truth: Higgins never contradicts it, guesses past it or invents a concern",
+               "services.higgins.presenter:device_state"),
+    "HIG-10": ("higgins-explanation", "Answering Magnum DI's pending question continues that investigation, and isn't treated as a follow-up",
+               "services.higgins.coordinator:run_turn"),
+    "HIG-11": ("higgins-explanation", "Plain Australian English, no internal codes, 2–4 short paragraphs", "services.higgins.chat:SYSTEM"),
+    "PER-01": ("plain-english-renderer", "The evidence lock: no fact, identifier, certainty, severity, step or attribution is added, dropped or changed",
+               "services.higgins.explain.fidelity:check"),
+    "PER-02": ("plain-english-renderer", "The facts come only from the validated result and the case's own records", "services.higgins.explain.facts:build"),
+    "PER-03": ("plain-english-renderer", "Identifiers survive word for word", "services.higgins.explain.facts:ENTITY_PATTERNS"),
+    "PER-04": ("plain-english-renderer", "The draft follows the fixed order", "services.higgins.explain.render:render"),
+    "PER-05": ("plain-english-renderer", "How serious is one fixed line for the attention level", "services.higgins.explain.words:SEVERITY"),
+    "PER-06": ("plain-english-renderer", "Every finding is labelled with who established it and how firmly", "services.higgins.explain.words:BASIS"),
+    "PER-07": ("plain-english-renderer", "Markdown is removed, and a link keeps its address", "services.higgins.explain.facts:strip_markdown"),
+    "PER-08": ("plain-english-renderer", "Formal words are swapped only from the fixed list", "services.higgins.explain.words:PLAIN_SWAPS"),
+    "PER-09": ("plain-english-renderer", "Each point is said once, and every finding is always listed", "services.higgins.explain.render:repeats"),
+    "PER-10": ("plain-english-renderer", "Jargon is explained once per result, in Apollo's fixed words", "services.higgins.explain.words:GLOSSARY"),
+    "FID-01": ("fidelity-check", "The plain English is shown only when nothing was lost, added or changed", "services.higgins.explain:explain_case"),
+    "FID-02": ("fidelity-check", "At most 2 checks run on each result: plain, then repaired, then Apollo's own wording", "services.higgins.explain:MAX_ATTEMPTS"),
+    "FID-03": ("fidelity-check", "A renderer error never fails an investigation, and Apollo's own wording is shown", "services.higgins.explain:renderer_error"),
+}
+
 _MAGNUM_WHY = {
     "MAGNUM-READING": "part of what you sent (a picture or scanned page) had to be read directly",
     "MAGNUM-REASONING": "the message asks you to send money, details or access through a route no official source has verified",

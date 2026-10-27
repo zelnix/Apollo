@@ -1,16 +1,20 @@
 // Higgins Triage — shared investigation contract (mirror of backend services/triage/contract.py).
-// Three outcomes only. A Coverage Gap can prevent NO THREAT but can never create POSSIBLE THREAT,
-// and never downgrades threat evidence Apollo actually has. Triage makes ZERO Gemini calls.
+// Three outcomes only. Only a threat-producing rule (DETECT or CORRELATE) can create POSSIBLE THREAT. A ROUTE rule
+// hands part of the item to another gate and is recorded as "routed"; a Coverage Gap can prevent NO THREAT but can
+// never create POSSIBLE THREAT, and never downgrades threat evidence Apollo actually has. ZERO Gemini calls.
 
 import catalogue from "./catalogue.ts";
 import { AVAILABLE_CHECKS, type IncompleteCheck } from "./completeness.ts";
 
 export type TriageOutcome = "NO_THREAT_IDENTIFIED" | "POSSIBLE_THREAT_IDENTIFIED" | "LIMITED_UNABLE_TO_DETERMINE";
-export type RuleResult = "met" | "not_met" | "not_applicable" | "coverage_gap";
+export type RuleResult = "met" | "not_met" | "not_applicable" | "coverage_gap" | "routed";
+/** DETECT and CORRELATE are threat-producing; ROUTE, COVERAGE and ENFORCE never make a Possible Threat on their own. */
+export type RuleClass = "DETECT" | "CORRELATE" | "ROUTE" | "COVERAGE" | "ENFORCE";
 
 export interface CatalogueRule {
   id: string;
   category: string;
+  class: RuleClass;
   title: string;
   evidence?: string[];
   platformDependent?: boolean;
@@ -24,6 +28,8 @@ export interface RuleRecord {
   ruleId: string;
   title: string;
   category: string;
+  /** The rule's class (absent on records from before rule classes). */
+  class?: RuleClass;
   applicable: boolean;
   checked: boolean;
   result: RuleResult;
@@ -56,6 +62,8 @@ export interface TriageInvestigationRecord {
   rulesApplicable: string[];
   rulesChecked: string[];
   rulesMet: string[];
+  /** ROUTE rules that handed part of the item to another gate (absent on records from before rule classes). */
+  rulesRouted?: string[];
   rules: RuleRecord[];
   coverageGaps: CoverageGapRecord[];
   /** Checks Apollo needed but couldn't finish (see completeness.ts). Absent on records from before this existed. */
@@ -72,6 +80,9 @@ export interface TriageInvestigationRecord {
 export const CATALOGUE_VERSION: number = (catalogue as unknown as { version: number }).version;
 export const RULES: CatalogueRule[] = (catalogue as unknown as { rules: CatalogueRule[] }).rules;
 export const RULES_BY_ID: Record<string, CatalogueRule> = Object.fromEntries(RULES.map((r) => [r.id, r]));
+const THREAT_PRODUCING = new Set<string>((catalogue as unknown as { ruleClasses: { threatProducing: string[] } }).ruleClasses.threatProducing);
+/** Only DETECT and CORRELATE rules can make a Possible Threat. */
+export const threatProducing = (ruleId: string): boolean => THREAT_PRODUCING.has(RULES_BY_ID[ruleId]?.class);
 export const RULES_BY_CATEGORY: Record<string, CatalogueRule[]> = RULES.reduce((acc, r) => {
   (acc[r.category] ||= []).push(r);
   return acc;

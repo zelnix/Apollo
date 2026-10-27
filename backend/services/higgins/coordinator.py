@@ -187,6 +187,9 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     rows = await repo.list_evidence(owner, case["case_id"])
     first_turn = not case.get("response_revision") and not payload.get("answerToQuestionId")
     search_on = True
+    # What Magnum DI's result can't go below: TC FlyBy's concern, established or provisional (teddy/decide.floor).
+    stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing.teddy.floor": 1}) or {}
+    floor = ((stored.get("routing") or {}).get("teddy") or {}).get("floor")
 
     # Too much written evidence for one investigation. Apollo sends NOTHING rather than quietly
     # shortening, sampling or dropping any of it, and no evidence is marked as examined — so this is
@@ -205,7 +208,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                 return committed
             await teddy.discard_response(owner, case)
             fly_by = await teddy.investigate(owner, case, job, payload["message"], rows, progress)
-        rows, search_on = fly_by.rows, fly_by.magnum_search
+        rows, search_on, floor = fly_by.rows, fly_by.magnum_search, fly_by.floor
         evidence_parts, pending_marks, evidence_words = await ev.model_parts(owner, case, rows)
     else:
         evidence_parts, pending_marks = _parts, _marks
@@ -253,7 +256,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     data = _json_object(result.text)
     if data is not None:
         response, errors = validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids, capability_ids=capability_ids,
-                                    pending_question=None, provider_complete=result.finish_reason == "STOP", material_gaps=_material_gaps(all_rows))
+                                    pending_question=None, provider_complete=result.finish_reason == "STOP", material_gaps=_material_gaps(all_rows),
+                                    floor=floor)
 
     # An unvalidated answer is NOT an investigation result. Apollo never reshapes raw provider text
     # into findings, an assessment or a completion state — that would manufacture a conclusion Magnum DI

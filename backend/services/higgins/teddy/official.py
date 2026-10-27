@@ -22,7 +22,9 @@ LOOKUP_SECONDS = 8.0
 def fact(text: str, signal: str, *, decisive: bool = False, kind: str = "live_evidence", source: dict | None = None,
          topic: str | None = None) -> dict:
     """One statement Teddy established. `kind` keeps live evidence apart from Apollo knowledge (never a finding).
-    `signal`: concern | anomaly | clear | neutral | missing (looked up, not established) | context (knowledge)."""
+    `signal`: concern | anomaly (a warning sign) | weak (a weak signal: alone or together never Concerning, only the
+    corroboration a warning sign or impersonation needs) | clear | neutral | missing (looked up, not established) |
+    context (knowledge)."""
     return {"text": text, "signal": signal, "decisive": decisive, "class": kind, "source": source, "topic": topic}
 
 
@@ -141,7 +143,7 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
             # Moving within the same site (or between one organisation's own domains) is how sites work, not a warning sign.
             same = brand_domains.same_organisation(_host_of(url), _host_of(targets[-1]))
             check.facts.append(fact(f"The link {url[:120]} redirects to {targets[-1][:120]}" + (", on the same site." if same else "."),
-                                    "neutral" if same else "anomaly", topic="redirect",
+                                    "neutral" if same else "weak", topic="redirect",
                                     source=source_ref("Apollo redirect expansion", authority="independent", basis="HTTP redirect chain recorded by Apollo")))
         for target in targets:
             sb = pg["safe_browsing"].get(target)
@@ -176,18 +178,18 @@ async def _link(check: Check, pg: dict, plan_: Plan) -> None:
         when = record["registeredAt"][:10]
         young = record.get("newlyRegistered") or (age is not None and age < 90)
         check.facts.append(fact(f"{domain} was registered on {when}" + (f" ({age} days before this check)." if age is not None and age < 365 else "."),
-                                "anomaly" if young else "neutral", topic="registration",
+                                "weak" if young else "neutral", topic="registration",
                                 source=source_ref("Domain registry (RDAP)", url=f"https://rdap.org/domain/{domain}", authority="official",
                                                basis="The registry's RDAP registration record")))
     for url, info in pg["ipqs_urls"].items():
         if host in url.lower() and info.get("status") == "ok":
             flags = [name for name in ("phishing", "malware", "suspicious") if info.get(name)]
             if flags:
-                check.facts.append(fact(f"IPQualityScore flags {host} as {', '.join(flags)} (risk score {info.get('risk_score', '?')}/100).", "anomaly",
+                check.facts.append(fact(f"IPQualityScore flags {host} as {', '.join(flags)} (risk score {info.get('risk_score', '?')}/100).", "weak",
                                         source=source_ref("IPQualityScore", authority="independent", basis="Commercial URL reputation lookup")))
     for item in pg["downloads"]:
         if host in (item.get("url") or "").lower():
-            check.facts.append(fact(f"The link downloads a file directly ({item.get('filename', 'a file')}).", "anomaly",
+            check.facts.append(fact(f"The link downloads a file directly ({item.get('filename', 'a file')}).", "weak",
                                     source=source_ref("ApolloSG download-link detection", authority="independent", basis="Static link analysis")))
     for match in pg["advisories"] + plan_.advisories:
         if (match.get("matched_on") or "") == f"domain: {host}" or (match.get("matched_on") or "") == f"domain: {domain}":
@@ -245,7 +247,7 @@ def _phone(check: Check, pg: dict) -> None:
         risky = (info.get("fraud_score") or 0) >= 85 or info.get("recent_abuse")
         check.facts.append(fact(f"IPQualityScore gives {check.subject} a fraud score of {info.get('fraud_score', '?')}/100"
                                 + ("; recent abuse is reported" if info.get("recent_abuse") else "") + f" (carrier: {info.get('carrier', 'unknown')}).",
-                                "anomaly" if risky else "neutral",
+                                "weak" if risky else "neutral",
                                 source=source_ref("IPQualityScore", authority="independent", basis="Commercial phone reputation lookup")))
 
 

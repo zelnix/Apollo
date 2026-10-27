@@ -28,7 +28,7 @@ from services import reusable_intel as intel
 from services import sufficiency
 from services.higgins import knowledge
 from services.higgins import provider
-from services.higgins.llm_boundary import Purpose
+from services.higgins.llm_boundary import Purpose, redact_registration_numbers
 from services.higgins.teddy.triage import Check
 
 MAX_QUESTIONS = 6
@@ -51,8 +51,15 @@ INSTRUCTION = (
 )
 
 
+REGISTER_CHECKS = ("abn", "acn", "licence")
+
+
 def prompt(checks: list[Check]) -> str:
-    lines = [QUESTION_LINE.format(n=n, statuses=", ".join(c.statuses), subject=c.subject[:120], question=c.question)
+    """One line per question. An exact ABN, ACN or licence number appears only in the register question that verifies
+    it; every other question carries it as a label (rule book, Privacy and redaction)."""
+    def own(c: Check, text: str) -> str:
+        return text if c.kind in REGISTER_CHECKS else redact_registration_numbers(text)
+    lines = [QUESTION_LINE.format(n=n, statuses=", ".join(c.statuses), subject=own(c, c.subject[:120]), question=own(c, c.question))
              for n, c in enumerate(checks, start=1)]
     return INSTRUCTION + "\n" + "\n".join(lines)
 

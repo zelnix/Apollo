@@ -230,7 +230,7 @@ function DecisionTrace({ steps }: { steps: TraceStep[] }) {
 
 // ── Apollo deterministic rules ───────────────────────────────────────────────
 
-const RESULT_LABEL: Record<string, string> = { met: "MET", not_met: "NOT MET", coverage_gap: "COVERAGE GAP", not_applicable: "NOT APPLICABLE" };
+const RESULT_LABEL: Record<string, string> = { met: "MET", not_met: "NOT MET", coverage_gap: "COVERAGE GAP", not_applicable: "NOT APPLICABLE", routed: "ROUTED" };
 
 function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null; trace: DiTrace | null }) {
   const s = useStyles();

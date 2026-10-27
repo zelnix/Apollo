@@ -4,7 +4,7 @@ How a check moves through ApolloSG, the rules each part follows, when a check is
 
 _Last reviewed against the code: 2026-10-27._
 
-_Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers), with the second-round corrections the same day (LINK-11, CORR-08, text copied elsewhere, Magnum DI correcting a provisional concern). Status: awaiting owner review. The code has not yet been audited against revision 2. The review date above belongs to revision 1; where the code differs, revision 2 states the intended rule._
+_Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers), with the second-round corrections the same day (LINK-11, CORR-08, text copied elsewhere, Magnum DI correcting a provisional concern). Status: approved by the owner, then the code was audited against it and brought into line the same day: both engines decide from each rule's class, so ROUTE and COVERAGE rules no longer make a Possible Threat; CORR-08 needs a harmful payload; a failed lookup never supplies a rule's evidence; TC FlyBy treats weak signals as weak; Magnum DI can't go below TC FlyBy's concern without resolving evidence; and ABN, ACN and licence numbers reach only their register question. The EXPLAIN class was added for Higgins' explanation rules, and each one was checked against the code._
 
 This is the only copy. Whenever a rule or process changes, this book is updated in the same change. An automatic check stops the change until it is.
 
@@ -37,17 +37,18 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 
 **Rule classes**
 
-Every rule has exactly one class. Only DETECT and CORRELATE rules are threat-producing, and "a rule is met" in the outcomes below always means a threat-producing rule.
+Every rule has exactly one class. Only DETECT and CORRELATE rules are threat-producing, and "a rule is met" in the outcomes below always means a threat-producing rule. Every gate rule's class is recorded in the gate catalogue, and both engines (on the phone and on ApolloSG's server) decide the outcome from it.
 
 | Class | What it does | Can it make a Possible Threat? |
 |---|---|---|
 | **DETECT** | Finds a threat in the item itself, from evidence this check holds: a request for a code or password, a disguised program, a lookalike domain with a login form, an authoritative malicious listing. | Yes, but only when every piece of evidence the rule requires is present (observed, or recorded by an authoritative source) and every corroboration it names is established. |
 | **CORRELATE** | Connects the item with other recorded events into a known scam sequence, such as a suspicious call, then a remote-access app, then a permission change. | Yes, but only when every event it links is recorded and the relationship the rule names (the same sender, link, app or case, in the stated order) is established. Two events close together in time are never enough. |
-| **ROUTE** | Hands part of the item to the gate whose rules judge it: the address in a QR code, a link in a message, email, file, calendar invitation or notification, an attachment, a captive-portal page. | Never by itself. The routed part is judged by its own gate's rules. When one of those threat-producing rules is met, that rule is the one recorded as met, and the original item's case cites it. |
+| **ROUTE** | Hands part of the item to the gate whose rules judge it: the address in a QR code, a link in a message, email, file, calendar invitation or notification, an attachment, a captive-portal page. | Never by itself. A ROUTE rule is recorded as **Routed**, never as Met. The routed part is judged by its own gate's rules. When one of those threat-producing rules is met, that rule is the one recorded as met, and the original item's case cites it. |
 | **COVERAGE** | Records what could and couldn't be examined: coverage gaps, rules that can't run here, checks that didn't complete, evidence levels, contents that couldn't be inspected. | Never. It can stop "No threat identified" and make a result Limited. It never creates or strengthens a threat, and never weakens real threat evidence. |
 | **ENFORCE** | Acts on what is already established: Site Gate's blocking, the Call Gate's reject requests and "Suspected scam" labels, the person's own block and trust choices, and Biting. | Never. It decides no threat itself, and Biting still needs a real, fresh block on this device (see Rules below). |
+| **EXPLAIN** | Presents or explains a result without changing it: the order Higgins answers in, the Plain-English Renderer, the Fidelity Check and the settling sentence. These are Higgins' rules, not gate rules, and each is listed under its own section in Investigation process. | Never. It changes how a result is presented, never what it means, and it never opens, raises or lowers a case. |
 
-- Steps 4 to 7 above, the evidence levels and the coverage-gap codes are COVERAGE. Site Gate, the Call Gate's screening and labels, and the Biting rule are ENFORCE.
+- Steps 4 to 7 above, the evidence levels and the coverage-gap codes are COVERAGE. Site Gate, the Call Gate's screening and labels, and the Biting rule are ENFORCE. Higgins' explanation rules (HIG, PER and FID), the Fidelity Check's failure codes and the settling rules are EXPLAIN.
 - A weak or unknown qualifier in a rule's title ("unrated", "newly registered") never satisfies the rule on its own. The rule is met only when the strong evidence it also requires (a credential or payment lure, brand impersonation, a login or payment form) is present.
 - A lookup that failed or didn't answer never supplies a rule's evidence. It is a coverage gap.
 
@@ -184,7 +185,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - **FWD-02** · Instruction designed to redirect calls, messages or security codes to another number
 - **CB-01** · Claimed charge or account problem with a supplied callback number inconsistent with the claimed organisation
 - **CB-02** · Urgent cancellation, refund or security lure with a suspicious callback number
-- **CB-03** · Callback number reputation is clean but strong impersonation evidence remains
+- **CB-03** · Callback number has no known threat listing but strong impersonation evidence remains
 
 **ROUTE** (1)
 - **MSG-12** · Malicious or deceptive link in the message
@@ -589,6 +590,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - **The outcome changes materially** when the unresolved evidence could decide whether there is a concern at all: a case with no concern outcome could reach one, an Unable to determine could be resolved, or a provisional concern could prove to be a false positive. Established threat evidence is never overridden (see Magnum DI).
 - **The protective action changes materially** when the unresolved evidence could call for a different or additional step, for example contacting the bank because a payment may be involved, removing an app because remote access may be involved, or changing a password because credentials may be involved.
 - Concerning, Likely scam and Confirmed lead to the same protective action, so Magnum DI is never called only to move a case between them.
+- **Once a concern outcome is reached,** the request is already known, so reasoning about it can't change what to do. What can still count is content TC FlyBy couldn't read (Reading), and, for a provisional concern, a contradiction about the very facts the concern rests on (Relating). A concern resting on established threat evidence goes to Magnum DI only for Reading.
 
 #### Triggers for Magnum DI (whether or not a concern outcome was reached)
 | Capability | Trigger |
@@ -604,7 +606,7 @@ A trigger counts only under the deciding test above. The type of input, its cate
 **What Magnum DI receives:**
 - the person's question, once
 - TC FlyBy's brief ("For Magnum DI to settle — only these"), with the facts that bear on each issue and any partial pattern match
-- TC FlyBy's outcome, when it reached one, marked as resting on established threat evidence or as provisional
+- TC FlyBy's outcome, when it reached one, marked as resting on established threat evidence or as provisional, with each finding it rests on labelled (E1, E2… for established threat evidence, P1, P2… for a provisional concern)
 - the evidence each issue needs, with any exact ABN, ACN or licence number as a label beside the register check's result (see Privacy and redaction)
 - anything TC FlyBy didn't examine
 - any pre-gathered results TC FlyBy had no reader for
@@ -645,7 +647,7 @@ What TC FlyBy already settled, and the raw lookups behind it, are not sent again
 - Every action needs a label and an instruction. "Action needed" or "urgent" needs at least one action and a reason. If there are actions, a recommended one must be set.
 - "Waiting for the person" needs a question, and a question needs that status.
 - "Complete" only when all material evidence was examined; otherwise "partial".
-- A result can never contradict established threat evidence. A result below TC FlyBy's provisional concern must name the provisional finding it corrects and cite the evidence that resolves it.
+- A result can never contradict established threat evidence. A material that asks for a password, PIN, one-time code or card details can't end below Concerning. A result below TC FlyBy's provisional concern must name the provisional finding it corrects (its label, such as P1, among the finding's superseded findings) and cite the evidence that resolves it.
 - The AI tool must have finished normally.
 
 If the answer fails, the check fails honestly. The raw reply is kept only in the technical details.
@@ -664,24 +666,29 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 
 **Job:** explains and guides. Higgins never investigates. It may change how a result is presented, never what it means.
 
-**Order before any AI is used**
-1. **A follow-up on a finished investigation** is answered from its record, with no AI, and the case is never reopened.
-   - It covers: checking again, what wasn't established, sources, evidence, confidence, what to watch for, why it's suspicious, what it means, what to do, and what was found.
-   - Anything new (a link, email or phone number) is named as not covered: "start a new check".
-   - A general question about that kind of scam is answered from the KB, labelled as general knowledge and kept apart from the case.
-   - The answer credits whoever settled the check: TC FlyBy or Magnum DI.
-2. **Something to check** → goes to the pipeline. What counts as something to check is set out under Ask Higgins below.
-3. **A scam alert** the person opened → shown in the source's own words.
-4. **A Learn article** → shown in its own words.
-5. **Patrol records, the phone's live state, recent investigations or ApolloSG product knowledge** → shown as they are.
-6. **ApolloSG's KB** → quoted with publisher and link, labelled as general knowledge.
-7. **Off-topic** → a fixed reply, word for word: "I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
-8. **A general scam-safety question nothing else answers** → **one** AI call with the question alone (no device state, history or case). The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
+**Order before any AI is used.** HIG-01 to HIG-08 are tried in this order, and the first that applies answers.
 
-**Rules**
-- The phone's live reading is the truth. Higgins never contradicts it, guesses past it or invents a concern.
-- Answering Magnum DI's pending question continues that investigation; it isn't treated as a follow-up.
-- Plain Australian English, no internal codes, 2–4 short paragraphs.
+**Higgins explanation rules (11)**
+
+**EXPLAIN** (11)
+- **HIG-01** · A follow-up on a finished investigation is answered from its record, with no AI, and the case is never reopened
+  - It covers: checking again, what wasn't established, sources, evidence, confidence, what to watch for, why it's suspicious, what it means, what to do, and what was found.
+  - Anything new (a link, email or phone number) is named as not covered: "start a new check".
+  - A general question about that kind of scam is answered from the KB, labelled as general knowledge and kept apart from the case.
+  - The answer credits whoever settled the check: TC FlyBy or Magnum DI.
+- **HIG-02** · Something to check goes to the investigation pipeline
+  - What counts as something to check is set out under Ask Higgins below.
+- **HIG-03** · A scam alert the person opened is shown in the source's own words
+- **HIG-04** · A Learn article is shown in its own words
+- **HIG-05** · Patrol records, the phone's live state, recent investigations and ApolloSG product knowledge are shown as they are
+- **HIG-06** · ApolloSG's KB is quoted with publisher and link, labelled as general knowledge
+- **HIG-07** · An off-topic question gets a fixed reply, word for word
+  - "I specialise in helping you stay safe from scams and cyber threats through ApolloSG. For that question, a general assistant would be a better fit. Is there anything security-related I can help with?"
+- **HIG-08** · A general scam-safety question nothing else answers gets one AI call with the question alone
+  - No device state, history or case is sent. The answer is saved as reusable intelligence, never as KB knowledge, and the same question is answered from it while it is current, with no new call (see Reusable intelligence).
+- **HIG-09** · The phone's live reading is the truth: Higgins never contradicts it, guesses past it or invents a concern
+- **HIG-10** · Answering Magnum DI's pending question continues that investigation, and isn't treated as a follow-up
+- **HIG-11** · Plain Australian English, no internal codes, 2–4 short paragraphs
 
 #### Plain English and the Fidelity Check
 Every finished TC FlyBy or Magnum DI result is explained in plain English by the **Higgins Plain-English Renderer** and checked by the **Fidelity Check** before it is shown. Both have their own sections below.
@@ -728,6 +735,20 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English by the
 | The investigator's reading | TC FlyBy's reading of the evidence, not seen directly / Magnum DI's reading of the evidence, not seen directly |
 
 How firmly: **High confidence**, **Medium confidence**, **Low confidence**.
+
+**Plain-English Renderer rules (10)**
+
+**EXPLAIN** (10)
+- **PER-01** · The evidence lock: no fact, identifier, certainty, severity, step or attribution is added, dropped or changed
+- **PER-02** · The facts come only from the validated result and the case's own records
+- **PER-03** · Identifiers survive word for word
+- **PER-04** · The draft follows the fixed order
+- **PER-05** · How serious is one fixed line for the attention level
+- **PER-06** · Every finding is labelled with who established it and how firmly
+- **PER-07** · Markdown is removed, and a link keeps its address
+- **PER-08** · Formal words are swapped only from the fixed list
+- **PER-09** · Each point is said once, and every finding is always listed
+- **PER-10** · Jargon is explained once per result, in Apollo's fixed words
 
 **What the renderer may change, and only this**
 - **Markdown** is removed: headings, bold, italics, code marks and bullets. A link keeps its address in brackets.
@@ -825,7 +846,14 @@ How firmly: **High confidence**, **Medium confidence**, **Low confidence**.
 
 **Job:** compares Higgins' plain English with the facts before anything is shown. It passes only when nothing was lost, added or changed. It is deterministic: no AI is used and it costs nothing. A failure names only the kind of problem and the part where it happened, never anything from the case.
 
-**The rules.** The check passes only when none of these is found:
+**Fidelity Check rules (3)**
+
+**EXPLAIN** (3)
+- **FID-01** · The plain English is shown only when nothing was lost, added or changed
+- **FID-02** · At most 2 checks run on each result: plain, then repaired, then Apollo's own wording
+- **FID-03** · A renderer error never fails an investigation, and Apollo's own wording is shown
+
+**The failure codes.** Each failure code below is an EXPLAIN rule (33). The check passes only when none of these is found:
 
 | Code | Fails when |
 |---|---|
@@ -894,7 +922,7 @@ A renderer error never fails an investigation. It is recorded as RENDERER_ERROR 
 
 ### Settling rules: the reason shown on each result {#settling-rules}
 
-Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
+Every finished result can show one plain sentence naming the rule that settled it, in the form **"Settled by TC FlyBy — Known scam, every step: …"**. Each settling rule is an EXPLAIN rule (13): it names what settled the result and never changes it. People can turn the sentence off in Settings → App. Staff see the same sentence on each case in the admin portal. The sentence never repeats anything from what the person sent.
 
 | Rule ID | Rule | Settled by | When it applies |
 |---|---|---|---|

@@ -43,7 +43,9 @@ PREGATHERED_ITEM_ID = "apollo-triage-intelligence"   # what Higgins Triage gathe
 CHECKS_ITEM_ID = "teddy-di-checks"                   # TC FlyBy's full check record, with provenance
 BRIEF_ITEM_ID = "teddy-di-brief"                     # the slice Magnum DI receives
 _CORPORATE = re.compile(r"\b(pty|ltd|limited|inc|llc|plc|the|group|holdings)\b\.?", re.I)
-_SEARCH_SIGNAL = {"WARNING": "concern", "OFFICIAL": "clear", "FOUND_ELSEWHERE": "anomaly"}
+# A warning only an official source naming this exact value makes decisive; any other warning is a third-party
+# warning, and text found copied elsewhere is supporting evidence only: both are weak signals.
+_SEARCH_SIGNAL = {"WARNING": "weak", "OFFICIAL": "clear", "FOUND_ELSEWHERE": "weak"}
 
 
 @dataclass
@@ -53,6 +55,8 @@ class TeddyOutcome:
     response: dict | None = None
     rows: list[dict] = field(default_factory=list)       # what Magnum DI receives when it is needed
     magnum_search: bool = False
+    #: What Magnum DI's result can't go below (decide.floor): TC FlyBy's concern, established or provisional.
+    floor: dict | None = None
     usage: dict = field(default_factory=dict)
     simulated: bool = False
     model: str | None = None
@@ -240,7 +244,7 @@ def _apply(check: Check, answer: dict, plan_: Plan) -> None:
         return
     decisive = (status == "WARNING" and check.kind in ("link", "phone", "email", "company")
                 and any(s.get("authority") == "official" for s in sources) and _names(check, answer.get("fact", "")))
-    check.facts.append(fact(answer.get("fact", ""), _SEARCH_SIGNAL.get(status, "neutral"), decisive=decisive, source=src))
+    check.facts.append(fact(answer.get("fact", ""), "concern" if decisive else _SEARCH_SIGNAL.get(status, "neutral"), decisive=decisive, source=src))
     check.status = "resolved"
     if check.kind in ("abn", "acn", "licence") and plan_.entities.companies:
         named = plan_.entities.companies
@@ -377,7 +381,7 @@ async def investigate(owner: str, case: dict, job: dict, question: str, rows: li
     issues = record.get("issues")
     needed = None if issues is None else {e for i in issues for e in i["evidenceIds"]}
     rows_ = await _magnum_rows(owner, case, record["items"]["brief"], needed, set(record.get("settled") or []))
-    return TeddyOutcome(False, "magnum_di", rows=rows_, magnum_search=record["magnumSearch"], **common)
+    return TeddyOutcome(False, "magnum_di", rows=rows_, magnum_search=record["magnumSearch"], floor=record.get("floor"), **common)
 
 
 async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict], progress) -> dict:
@@ -391,11 +395,12 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     await official.run(plan_, case.get("triage_provider_evidence"), combined)
     decision, issues = deciding.evaluate(plan_, texts, final=False)
     searched = {"calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False, "model": None, "status": "skipped"}
-    if not decision:
+    # A decisive concern ends TC FlyBy's stages, whether it settles the case or hands Magnum DI what it couldn't read.
+    if not decision and not deciding.decisive(plan_):
         await progress("observe", "TC FlyBy is checking ApolloSG's knowledge base.")
         await _kb_stage(plan_, combined)
         decision, issues = deciding.evaluate(plan_, texts, final=False)
-    if not decision:
+    if not decision and not deciding.decisive(plan_):
         open_checks = [c for c in plan_.checks if c.question and c.status == "open"]
         if open_checks:
             await progress("research", "TC FlyBy is running a few targeted searches.")
@@ -407,6 +412,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         decision, issues = deciding.evaluate(plan_, texts, final=True)
     _settle(plan_, issues)
     magnum_search = False if decision else deciding.magnum_needs_search(plan_, issues)
+    floor = None if decision else deciding.floor(plan_, deciding.provisional(plan_))
 
     await _register_sources(owner, case_id, plan_.checks)
     unread_sections = official.unread_sections(case.get("triage_provider_evidence"))
@@ -427,7 +433,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         response = report.compose(decision, plan_, texts, checks_id)
     brief_id = None
     if not decision:
-        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern),
+        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern, floor),
                                "TC FlyBy brief for Magnum DI")
 
     # Material Teddy read in full, and the images whose content it read through the text extracted from them.
@@ -437,9 +443,10 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
               "general": plan_.general, "gaps": plan_.gaps}, "checks": [c.wire() for c in plan_.checks], "pattern": plan_.pattern,
               "decision": {"answeredBy": decision.answered_by, "outcome": decision.outcome, "basis": decision.basis} if decision else None,
               "issues": [i.wire() for i in issues], "settled": sorted(settled),
-              "response": response, "magnumSearch": magnum_search, "search": {k: v for k, v in searched.items() if k != "answers"},
+              "response": response, "magnumSearch": magnum_search, "floor": floor, "search": {k: v for k, v in searched.items() if k != "answers"},
               "items": {"checks": checks_id, "brief": brief_id}}
     summary = _summary(plan_, decision, issues, magnum_search, searched)
+    summary["floor"] = floor
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {
         "teddy_ciphertext": repo.enc_json(record), "routing.teddy": summary, "routing.answeredBy": summary["answeredBy"]}})
     return record
@@ -456,7 +463,7 @@ async def discard_response(owner: str, case: dict) -> None:
     checks = [Check.from_wire(c) for c in record["checks"]]
     whole = [{"capability": "reasoning", "evidenceIds": [], "checkId": None,
               "text": "TC FlyBy's own result didn't pass Apollo's validation, so investigate the whole case."}]
-    brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"))
+    brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"), record.get("floor"))
     record["items"]["brief"] = await _item(owner, case, BRIEF_ITEM_ID, brief, "TC FlyBy brief for Magnum DI")
     record.update(response=None, decision=None, magnumSearch=True, issues=None)
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {

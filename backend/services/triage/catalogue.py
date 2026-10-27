@@ -13,6 +13,8 @@ RULES: dict[str, dict] = {row["id"]: row for row in CATALOGUE["rules"]}
 GAP_CODES: dict[str, dict] = {row["code"]: row for row in CATALOGUE["coverageGapCodes"]}
 RETRY_ATTEMPTS: int = CATALOGUE["retryPolicy"]["attempts"]
 RETRYABLE_GAPS: set[str] = set(CATALOGUE["retryPolicy"]["appliesTo"])
+#: Only these rule classes can make a Possible Threat (DETECT, CORRELATE). ROUTE, COVERAGE and ENFORCE never can.
+THREAT_PRODUCING: frozenset[str] = frozenset(CATALOGUE["ruleClasses"]["threatProducing"])
 
 RULES_BY_CATEGORY: dict[str, list[dict]] = {}
 for _row in CATALOGUE["rules"]:
@@ -21,6 +23,10 @@ for _row in CATALOGUE["rules"]:
 
 def rule(rule_id: str) -> dict:
     return RULES[rule_id]
+
+
+def threat_producing(rule_id: str) -> bool:
+    return RULES[rule_id]["class"] in THREAT_PRODUCING
 
 
 def gap_recoverable(code: str) -> bool:

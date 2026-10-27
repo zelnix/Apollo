@@ -860,6 +860,17 @@ def alleged_charge(blob: str) -> bool:
                                                   and bool(_CHARGE_DISPUTE.search(blob) or _URGENCY.search(blob)))
 
 
+def _attachment_triage(names: list[str]) -> dict:
+    """Each attachment judged by the File Gate rules (by its name: the server never receives the file here)."""
+    from services.triage import evaluate
+    rules_met: list[str] = []
+    for name in names:
+        if "." in name and ("." + name.rsplit(".", 1)[-1].lower()) in _RISKY_ATTACHMENT_EXT:
+            result = evaluate({"source_type": "file", "filename": name, "provenance": "email", "expected": False})
+            rules_met += [r.rule_id for r in result.met_rules if r.rule_id not in rules_met]
+    return {"outcome": Outcome.POSSIBLE_THREAT.value if rules_met else (Outcome.NO_THREAT.value if names else None), "rules_met": rules_met}
+
+
 def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
                    correlation: Optional[dict] = None) -> dict:
     """Build the shared Triage evidence dict from server-side intake evidence."""
@@ -880,9 +891,7 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
 
     credential_request = any(word in blob for word in _CREDENTIAL_WORDS) or "credential" in finding_blob
     code_request = any(word in blob for word in ("verification code", "security code", "one-time", "otp", "2fa"))
-    attachments = [str(name) for name in (evidence.get("attachment_names") or [])]
-    risky_attachment = any(("." + name.rsplit(".", 1)[-1].lower()) in _RISKY_ATTACHMENT_EXT
-                          for name in attachments if "." in name)
+    attachment = _attachment_triage([str(name) for name in (evidence.get("attachment_names") or [])])
 
     shared: dict = {
         "source_type": source_type,
@@ -902,8 +911,12 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
         "payment_change": "changed" in finding_blob and "bank" in finding_blob,
         "consequential_action": credential_request or code_request or any(
             word in blob for word in ("pay", "transfer", "invoice", "refund", "confirm your")),
-        "attachment_outcome": Outcome.POSSIBLE_THREAT.value if risky_attachment else None,
+        # ROUTE rules (EMAIL-09, EMAIL-10, MSG-12): each part is judged by its own gate, and the threat-producing rules
+        # met there are the ones the case cites. A malicious listing is LINK-01; an attachment is judged by the File Gate.
+        "attachment_outcome": attachment["outcome"],
+        "attachment_rules_met": attachment["rules_met"],
         "link_outcome": Outcome.POSSIBLE_THREAT.value if providers["reputation"].get("verdict") == "malicious" else None,
+        "link_rules_met": ["LINK-01"] if providers["reputation"].get("verdict") == "malicious" else [],
         "correlation": correlation or {},
         **providers,
     }

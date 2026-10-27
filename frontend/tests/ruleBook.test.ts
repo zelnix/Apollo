@@ -124,11 +124,23 @@ test("the book opens in five parts, each holding closed sections with their own 
   for (const group of groups) assert.ok(!group.blocks.some((b) => b.kind === "rule"), `stray rule in ${group.title}`);
 });
 
-test("each gate lists its rules one per line, code first", () => {
+test("each gate lists its rules one per line, code first, grouped by class", () => {
   const { groups } = sectionsOf(parseRuleBook(BOOK));
-  const link = groups[0].sections.find((s) => s.id === "link-gate")!;
-  const list = link.blocks.find((b) => b.kind === "list" && plainText(b.items[0].spans).startsWith("LINK-01 · "));
-  assert.ok(list && list.kind === "list" && list.items.length === 21);
+  const ruleItems = (id: string) => {
+    const section = groups.flatMap((g) => g.sections).find((s) => s.id === id)!;
+    const items = section.blocks.flatMap((b) => (b.kind === "list" ? b.items.map((i) => plainText(i.spans)) : []))
+      .filter((t) => /^[A-Z]+-\d+ · /.test(t));
+    const classes = section.blocks.flatMap((b) => (b.kind === "paragraph" ? [plainText(b.spans)] : []))
+      .filter((t) => /^(DETECT|CORRELATE|ROUTE|COVERAGE|ENFORCE|EXPLAIN) \(\d+\)$/.test(t));
+    return { items, classes };
+  };
+  const link = ruleItems("link-gate");
+  assert.equal(link.items.length, 21);
+  assert.ok(link.items[0].startsWith("LINK-01 · "));
+  assert.deepEqual(link.classes, ["DETECT (18)", "CORRELATE (1)", "ROUTE (1)", "COVERAGE (1)"]);
+  const higgins = ruleItems("higgins-explanation");
+  assert.deepEqual(higgins.classes, ["EXPLAIN (11)"]);
+  assert.deepEqual(higgins.items.map((t) => t.split(" · ")[0]), Array.from({ length: 11 }, (_, n) => `HIG-${String(n + 1).padStart(2, "0")}`));
   assert.ok(!/(Call|Text|Site|Website) Guard/.test(BOOK), "Gate is the one name");
 });
 

@@ -2,6 +2,11 @@
 
 Callers normalise their evidence into the shared evidence dict and pass it here.
 Each rule reports: applicable / checked, evidence evaluated, result and any Coverage Gap.
+
+Rule classes (catalogue `class`, rule book "Rule classes"): only DETECT and CORRELATE rules are threat-producing.
+A ROUTE rule hands part of the item to the gate whose rules judge it and is recorded as routed; when that gate's
+threat-producing rule was met, that rule is the one recorded as met, and this item's record cites it. A COVERAGE
+rule only records what couldn't be examined. Neither ever makes a Possible Threat on its own.
 """
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
-from services.triage.catalogue import RETRY_ATTEMPTS, RULES, RULES_BY_CATEGORY, gap_plain
+from services.triage.catalogue import RETRY_ATTEMPTS, RULES, RULES_BY_CATEGORY, gap_plain, threat_producing
 from services.triage.completeness import AVAILABLE_CHECKS, incomplete_plain
 from services.triage.contract import CoverageGap, Outcome, RetryRecord, RuleRecord, RuleResult, TriageInvestigation
 
@@ -40,6 +45,28 @@ def unmet(*evidence: str) -> Verdict:
 
 def gap(code: str, *evidence: str) -> Verdict:
     return (RuleResult.COVERAGE_GAP, [e for e in evidence if e], code)
+
+
+#: What each ROUTE rule hands over, and the gate that judges it. The routed part's own triage is supplied as
+#: `<part>_outcome` and, when it was a Possible Threat, the threat-producing rules it met as `<part>_rules_met`.
+#: QR-01 routes the QR address to the Link Gate rules, which run in the same evaluation.
+ROUTED_PART: dict[str, Optional[str]] = {"QR-01": None, "MSG-12": "link", "EMAIL-09": "link", "EMAIL-10": "attachment",
+                                         "CAL-01": "link", "FILE-10": "link", "FQR-01": "link", "PUSH-03": "link", "NET-02": "link"}
+_JUDGED_BY = {"link": "the Link Gate", "attachment": "the File Gate"}
+
+
+def routed(*evidence: str) -> Verdict:
+    return (RuleResult.ROUTED, [e for e in evidence if e], None)
+
+
+def route(part: str, label: str) -> Callable[[dict], Verdict]:
+    """A ROUTE rule: hands `part` to the gate whose rules judge it. Never a Possible Threat by itself."""
+    def check(ev: dict) -> Verdict:
+        outcome = ev.get(f"{part}_outcome")
+        if outcome is None:
+            return NA
+        return routed(f"{label} handed to {_JUDGED_BY[part]}, which found: {outcome}")
+    return check
 
 
 def _b(ev: dict, path: str) -> Any:
@@ -175,7 +202,7 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
     def qr_link(ev: dict) -> Verdict:
         if not ev.get("qr_payload"):
             return NA
-        return met("QR payload contains a URL — triaged as a link") if ev.get("qr_is_url") else unmet("QR payload is not a URL")
+        return routed("QR payload contains a URL — judged by the Link Gate rules") if ev.get("qr_is_url") else unmet("QR payload is not a URL")
 
     def qr_deception(ev: dict) -> Verdict:
         if not ev.get("qr_payload"):
@@ -187,10 +214,15 @@ def _link_rules() -> dict[str, Callable[[dict], Verdict]]:
             return NA
         age = _provider(ev, "domain_age")
         rep = _provider(ev, "reputation")
-        unrated = rep.get("verdict") == "unknown" or rep.get("status") in ("unavailable", "not_configured")
-        if ev.get("credential_interaction") and (age.get("newly_registered") or unrated or ev.get("local_level") in ("suspicious", "malicious")):
+        # Unrated only when the lookup answered without a rating: a lookup that failed never supplies evidence.
+        unrated = rep.get("status") not in ("unavailable", "not_configured", "error") and rep.get("verdict") == "unknown"
+        if not ev.get("credential_interaction"):
+            return unmet("QR destination has no credential or payment lure")
+        if age.get("newly_registered") or unrated or ev.get("local_level") in ("suspicious", "malicious"):
             return met("QR destination credential/payment lure", "destination suspicious, unrated or newly registered")
-        return unmet("QR destination has no credential lure with a suspicious destination")
+        if rep.get("status") in ("unavailable", "not_configured", "error"):
+            return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "QR destination reputation unavailable")
+        return unmet("QR destination has a credential lure but no suspicious, unrated or newly registered destination")
 
     def data_scheme(ev: dict) -> Verdict:
         if ev.get("scheme") not in ("data", "blob"):
@@ -274,12 +306,6 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
             return met("government/authority impersonation", "payment, credential, code or threat")
         return unmet("authority claim without a consequential demand")
 
-    def bad_link(ev: dict) -> Verdict:
-        outcome = ev.get("link_outcome")
-        if outcome is None:
-            return NA
-        return met("an embedded link reached a deterministic Possible Threat") if outcome == Outcome.POSSIBLE_THREAT.value else unmet(f"embedded link triage: {outcome}")
-
     def family(ev: dict) -> Verdict:
         if not _sig(ev, "family_claim") and not _sig(ev, "new_number"):
             return unmet("no family or new-number impersonation")
@@ -340,8 +366,10 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
             if kind == "clean_reputation":
                 # Without a claimed charge or brand this rule can't be met whatever the number's reputation says,
                 # so a failed lookup can't change it — it is not a coverage gap.
-                if not (_sig(ev, "alleged_charge") or _b(ev, "signals.claimed_brand")):
-                    return unmet("callback number without a claimed charge or brand impersonation")
+                # A brand mention alone is weak: the impersonation must be strong (a claimed charge, or a claimed
+                # organisation whose contact or destination doesn't match it).
+                if not (_sig(ev, "alleged_charge") or (_b(ev, "signals.claimed_brand") and ev.get("brand_mismatch"))):
+                    return unmet("callback number without strong impersonation evidence")
                 rep = _provider(ev, "phone_reputation")
                 if rep.get("status") in ("unavailable", "not_configured", "error"):
                     return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "callback number reputation unavailable")
@@ -362,7 +390,7 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
         "MSG-09": flag("extortion", "extortion"),
         "MSG-10": flag("advance_fee", "advance-fee mechanics"),
         "MSG-11": flag("fake_payment", "fake-payment mechanics"),
-        "MSG-12": bad_link,
+        "MSG-12": route("each link in the message", "Each link in the message"),
         "MSG-13": family,
         "MSG-14": brand_impersonation,
         "MSG-15": flag("guaranteed_returns", "guaranteed-return approach", needs=("payment_request", "crypto", "money_request")),
@@ -495,18 +523,6 @@ def _email_rules() -> dict[str, Callable[[dict], Verdict]]:
             return met("material From/Reply-To mismatch", "consequential action")
         return unmet("no material From/Reply-To mismatch")
 
-    def link_outcome(ev: dict) -> Verdict:
-        outcome = ev.get("link_outcome")
-        if outcome is None:
-            return NA
-        return met("an embedded link reached Possible Threat") if outcome == Outcome.POSSIBLE_THREAT.value else unmet(f"link triage: {outcome}")
-
-    def attachment_outcome(ev: dict) -> Verdict:
-        outcome = ev.get("attachment_outcome")
-        if outcome is None:
-            return NA
-        return met("an attachment reached Possible Threat") if outcome == Outcome.POSSIBLE_THREAT.value else unmet(f"attachment triage: {outcome}")
-
     def auth_failure(ev: dict) -> Verdict:
         auth = _provider(ev, "auth_results")
         if not auth:
@@ -541,8 +557,8 @@ def _email_rules() -> dict[str, Callable[[dict], Verdict]]:
                 return NA
             if cal.get("status") in ("unavailable", "error"):
                 return gap("CONTENT_NOT_ACCESSIBLE", "calendar/.ics content could not be inspected")
-            if kind == "link" and ev.get("link_outcome") == Outcome.POSSIBLE_THREAT.value:
-                return met("external calendar invitation", "malicious or deceptive link")
+            if kind == "link":
+                return route("link", "The invitation's link")(ev)
             if kind == "callback" and _sig(ev, "callback_request"):
                 return met("calendar invitation", "financial/account lure with a callback number")
             if kind == "credential" and ev.get("credential_interaction"):
@@ -582,7 +598,7 @@ def _email_rules() -> dict[str, Callable[[dict], Verdict]]:
         "EMAIL-05": finding("verification code", "security code", "one-time", "otp"),
         "EMAIL-06": finding("bank details", "changed account", "invoice", "remittance"),
         "EMAIL-07": finding("urgent transfer", "chief executive", "ceo", "wire transfer"),
-        "EMAIL-08": reply_to, "EMAIL-09": link_outcome, "EMAIL-10": attachment_outcome,
+        "EMAIL-08": reply_to, "EMAIL-09": route("link", "Each embedded link"), "EMAIL-10": route("attachment", "Each attachment"),
         "EMAIL-11": auth_failure, "EMAIL-12": authenticated_anomaly, "EMAIL-13": coherent,
         "CAL-01": calendar("link"), "CAL-02": calendar("callback"), "CAL-03": calendar("credential"),
         "FORM-01": form("credential"), "FORM-02": form("banking"), "FORM-03": form("identity"),
@@ -595,6 +611,16 @@ def _email_rules() -> dict[str, Callable[[dict], Verdict]]:
 _RISKY_EXT = {".exe", ".scr", ".bat", ".cmd", ".com", ".pif", ".js", ".vbs", ".wsf", ".msi", ".dll",
               ".hta", ".ps1", ".reg", ".lnk", ".iso", ".img", ".cab", ".jar", ".apk"}
 _MACRO_EXT = {".docm", ".xlsm", ".pptm", ".dotm", ".xlam"}
+_PROFILE_EXT = {".mobileconfig", ".plist", ".cer", ".crt", ".pem", ".p12", ".pfx"}
+
+
+def harmful_payload(entries: list[str]) -> list[str]:
+    """Archive entries that are a harmful or suspicious payload: a program, script, installer or app package, a
+    profile or certificate, a macro-enabled document, or a disguised or path-traversing name."""
+    def ext(name: str) -> str:
+        return ("." + name.lower().rsplit(".", 1)[-1]) if "." in name else ""
+    return [e for e in entries if ext(e) in _RISKY_EXT | _MACRO_EXT | _PROFILE_EXT
+            or e.startswith("/") or ".." in e or "\u202e" in e]
 
 
 def _file_rules() -> dict[str, Callable[[dict], Verdict]]:
@@ -634,7 +660,8 @@ def _file_rules() -> dict[str, Callable[[dict], Verdict]]:
         def check(ev: dict) -> Verdict:
             if ext_of(ev) != ".apk":
                 return unmet("file is not an APK")
-            if kind == "suspicious" and (ev.get("provenance") in ("sideload", "unknown", "message", "link") or not ev.get("expected")):
+            # An unknown provenance is not a suspicious one: unknown is never unsafe.
+            if kind == "suspicious" and (ev.get("provenance") in ("sideload", "message", "link") or not ev.get("expected")):
                 return met("suspicious APK provenance")
             if kind == "brand" and ev.get("brand_mismatch"):
                 return met("APK impersonates a brand or update")
@@ -647,13 +674,15 @@ def _file_rules() -> dict[str, Callable[[dict], Verdict]]:
                 return unmet(f"file is not {label}")
             if needs_provenance and ev.get("provenance") in ("store", "expected", None) and ev.get("expected"):
                 return unmet(f"{label} with expected provenance")
+            if not needs_provenance and ev.get("expected"):
+                return unmet(f"{label} the person expected")
             return met(f"{label} ({ext_of(ev)})")
         return check
 
     def embedded_url(ev: dict) -> Verdict:
         if ev.get("embedded_urls") is None:
             return NA
-        return met("embedded malicious or deceptive URL") if ev.get("link_outcome") == Outcome.POSSIBLE_THREAT.value else unmet("embedded URLs raised no deterministic threat")
+        return route("link", "Each link inside the file")(ev)
 
     def features(key: str, label: str, code: str) -> Callable[[dict], Verdict]:
         def check(ev: dict) -> Verdict:
@@ -675,7 +704,10 @@ def _file_rules() -> dict[str, Callable[[dict], Verdict]]:
                 if kind in ("entries", "traversal"):
                     return gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected")
                 if kind == "unreadable":
-                    return met("password-protected archive", "suspicious sender or lure", "contents not inspectable") if (ev.get("suspicious_source") or _correlated(ev)) else gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected")
+                    # ARCH-03 is COVERAGE: contents that can't be inspected are a coverage gap, never a threat. A suspicious
+                    # sender or lure that came with it is judged by the Text Gate or Email Gate rules.
+                    lure = " (it came with a suspicious sender or lure)" if (ev.get("suspicious_source") or _correlated(ev)) else ""
+                    return gap("ENCRYPTED_CONTENT", f"archive contents are encrypted and could not be inspected{lure}")
                 if kind in ("password_in_message", "password_correlated"):
                     return unmet("archive contents not available to evaluate")
             entries = [str(e) for e in (data.get("entries") or [])]
@@ -696,7 +728,7 @@ def _file_rules() -> dict[str, Callable[[dict], Verdict]]:
     def qr(ev: dict) -> Verdict:
         if not ev.get("qr_payload"):
             return NA
-        return met("QR code detected — destination triaged as a link") if ev.get("link_outcome") == Outcome.POSSIBLE_THREAT.value else unmet("QR destination raised no deterministic threat")
+        return route("link", "The QR code's address")(ev)
 
     return {
         "FILE-01": disguised, "FILE-02": double_ext, "FILE-03": rtl, "FILE-04": unexpected_exec,
@@ -741,7 +773,19 @@ def _correlation_rules() -> dict[str, Callable[[dict], Verdict]]:
             corr = _provider(ev, "correlation")
             if not corr.get("related"):
                 return NA
-            return met(f"correlated sequence: {RULES[rule_id]['title']}") if _correlated(ev, *mechanics[rule_id]) else unmet("no compatible correlated mechanic with supporting evidence")
+            if not _correlated(ev, *mechanics[rule_id]):
+                return unmet("no compatible correlated mechanic with supporting evidence")
+            if rule_id == "CORR-08":
+                # CORR-08 needs payload evidence: the archive's contents must show a harmful or suspicious payload.
+                data = _provider(ev, "archive")
+                entries = [str(e) for e in (data.get("entries") or [])]
+                if data.get("encrypted") and not entries:
+                    return gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected")
+                payload = harmful_payload(entries)
+                if not payload:
+                    return unmet("password supplied with the archive, but its contents show no harmful payload")
+                return met(f"correlated sequence: {RULES[rule_id]['title']}", f"harmful payload: {', '.join(payload[:3])}")
+            return met(f"correlated sequence: {RULES[rule_id]['title']}")
         return check
 
     return {rule_id: check_for(rule_id) for rule_id in mechanics}
@@ -812,6 +856,8 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
                 continue
             records.append(RuleRecord(definition["id"], result, evidence=used, gap_code=gap_code))
 
+    _cite_routed(records, evidence)
+
     gaps: dict[str, CoverageGap] = {}
     for record in records:
         if record.result is RuleResult.COVERAGE_GAP and record.gap_code:
@@ -823,7 +869,8 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
             entry.failure = entry.failure or _failure_for(record.rule_id, evidence)
     incomplete = [dict(c) for c in (evidence.get("incomplete_checks") or []) if isinstance(c, dict) and c.get("check")]
 
-    met_records = [r for r in records if r.result is RuleResult.MET]
+    # Only a threat-producing rule (DETECT or CORRELATE) makes a Possible Threat.
+    met_records = [r for r in records if r.result is RuleResult.MET and threat_producing(r.rule_id)]
     if met_records:
         outcome = Outcome.POSSIBLE_THREAT
         reason = met_records[0].title + (f" (+{len(met_records) - 1} more deterministic rule(s) met)" if len(met_records) > 1 else "")
@@ -858,6 +905,27 @@ def evaluate(evidence: dict, *, investigation_id: Optional[str] = None,
         evaluated_at=datetime.now(timezone.utc),
         gemini_calls=0,
     )
+
+
+def _cite_routed(records: list[RuleRecord], evidence: dict) -> None:
+    """A ROUTE rule's part was a Possible Threat at its own gate: the threat-producing rules met there are the ones
+    recorded as met, and this item's record cites them."""
+    for record in [r for r in records if r.result is RuleResult.ROUTED]:
+        part = ROUTED_PART.get(record.rule_id)
+        if not part or evidence.get(f"{part}_outcome") != Outcome.POSSIBLE_THREAT.value:
+            continue
+        for rule_id in evidence.get(f"{part}_rules_met") or []:
+            if rule_id not in RULES or not threat_producing(rule_id):
+                continue
+            existing = next((i for i, r in enumerate(records) if r.rule_id == rule_id), None)
+            if existing is not None and records[existing].result is RuleResult.MET:
+                continue
+            cited = RuleRecord(rule_id, RuleResult.MET, evidence=[f"met at {_JUDGED_BY[part]} for the part handed over by {record.rule_id}"],
+                               detail=f"cited from {record.rule_id}")
+            if existing is None:
+                records.append(cited)
+            else:
+                records[existing] = cited
 
 
 def _failure_for(rule_id: str, evidence: dict) -> Optional[str]:

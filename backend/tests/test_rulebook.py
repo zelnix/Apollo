@@ -287,13 +287,52 @@ PARTS = ["protection-gates", "investigation-process", "privacy-and-data", "devic
 def test_every_gate_rule_is_listed_under_its_gate_word_for_word():
     assert {rule["category"] for rule in RULES.values()} == set(GATE_SECTIONS), "a new rule category needs its own gate section"
     listed = re.findall(r"^- \*\*([A-Z]+-\d+)\*\* · ", BOOK, re.M)
-    assert sorted(listed) == sorted(RULES), "every catalogue rule is listed exactly once, and nothing else is listed as one"
+    assert sorted(listed) == sorted([*RULES, *rulebook.EXPLAIN_RULES]), \
+        "every catalogue rule and every EXPLAIN rule is listed exactly once, and nothing else is listed as one"
     for category, (anchor, label) in GATE_SECTIONS.items():
         section = _section(anchor)
         rows = [rule for rule in CATALOGUE["rules"] if rule["category"] == category]
         assert f"**{label} ({len(rows)})**" in section, f"{anchor}: the count over its rules"
         for rule in rows:
             assert f"\n- **{rule['id']}** · {rule['title']}\n" in section + "\n", f"{anchor}: {rule['id']} word for word"
+
+
+def test_every_gate_rule_is_listed_under_its_class():
+    classes = ("DETECT", "CORRELATE", "ROUTE", "COVERAGE", "ENFORCE")
+    assert {rule["class"] for rule in RULES.values()} <= set(classes), "every gate rule has one of the gate classes"
+    assert set(CATALOGUE["ruleClasses"]["threatProducing"]) == {"DETECT", "CORRELATE"}
+    for category, (anchor, _) in GATE_SECTIONS.items():
+        section = _section(anchor)
+        for cls in classes:
+            rows = [rule for rule in CATALOGUE["rules"] if rule["category"] == category and rule["class"] == cls]
+            if not rows:
+                assert f"\n**{cls}** (" not in section, f"{anchor}: no {cls} rules, so no {cls} heading"
+                continue
+            block = section.split(f"\n**{cls}** ({len(rows)})\n", 1)
+            assert len(block) == 2, f"{anchor}: the {cls} heading with its count"
+            listed = re.findall(r"^- \*\*([A-Z]+-\d+)\*\* · ", block[1].split("\n\n", 1)[0], re.M)
+            assert listed == [rule["id"] for rule in rows], f"{anchor}: the {cls} rules, in catalogue order"
+
+
+def test_every_explain_rule_is_listed_under_its_section_and_applied_by_the_code():
+    import importlib
+    from services.higgins.explain import fidelity
+    for section_id, label in (("higgins-explanation", "Higgins explanation rules"), ("plain-english-renderer", "Plain-English Renderer rules"),
+                              ("fidelity-check", "Fidelity Check rules")):
+        rows = [(rule_id, title) for rule_id, (anchor, title, _) in rulebook.EXPLAIN_RULES.items() if anchor == section_id]
+        section = _section(section_id)
+        assert f"**{label} ({len(rows)})**\n\n**EXPLAIN** ({len(rows)})\n" in section, section_id
+        for rule_id, title in rows:
+            assert f"\n- **{rule_id}** · {title}\n" in section, f"{section_id}: {rule_id} word for word"
+    for rule_id, (_, _, where) in rulebook.EXPLAIN_RULES.items():
+        module, name = where.split(":")
+        assert hasattr(importlib.import_module(module), name), f"{rule_id}: {where} applies it"
+    assert f"Each failure code below is an EXPLAIN rule ({len(fidelity.CODES)})" in _section("fidelity-check")
+    assert f"Each settling rule is an EXPLAIN rule ({len(rulebook.SETTLING_RULES)})" in _section("settling-rules")
+    assert "| **EXPLAIN** | " in _section("gate-decisions")
+    # FID-02: the number of checks is the code's.
+    from services.higgins.explain import MAX_ATTEMPTS
+    assert f"At most {MAX_ATTEMPTS} checks run on each result" in rulebook.EXPLAIN_RULES["FID-02"][1]
 
 
 def test_the_book_is_in_five_parts_with_every_gate_under_protection_gates():

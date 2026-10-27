@@ -10,6 +10,8 @@ Structural rules:
 - DIRECT: Action-needed/urgent attention requires at least one action with a non-empty instruction
 - GUIDE: When actions exist, recommendedActionIndex must be set; instructions must be actionable
 - VERIFY: Completion 'complete' requires all material evidence examined; fabricated evidence rejected
+- FLOOR: a result never contradicts established threat evidence; it goes below TC FlyBy's provisional concern only
+  with a finding that cites the evidence resolving it and names the provisional finding (supersedesFindingIds)
 
 Findings that make the same point are merged before the response is returned, so the same fact is
 never stated twice in one result.
@@ -26,6 +28,26 @@ from services.higgins import outcomes
 from services.higgins.contracts import ActionProposal, Finding, HigginsResponse, ModelFinding, ModelResponse, Question
 
 CAPABILITY_ACTIONS = {"open_settings", "request_permission", "recheck"}
+# How far each outcome goes. Concerning, Likely scam and Confirmed are the concern outcomes.
+_RANK = {"no_scam_indicators": 0, "unable_to_determine": 0, "concerning": 1, "likely_scam": 2, "confirmed_threat": 3}
+
+
+def floor_errors(model: ModelResponse, floor: Optional[dict]) -> list[str]:
+    """Established threat evidence is never overridden; a provisional concern is lowered only with resolving evidence."""
+    if not floor or not model.outcome:
+        return []
+    got, errors = _RANK[model.outcome], []
+    outcome, minimum = floor.get("outcome"), floor.get("minimum")
+    if outcome and floor.get("established") and got < _RANK[outcome]:
+        errors.append(f"outcome '{model.outcome}' contradicts established threat evidence (TC FlyBy: '{outcome}'); it can't be lowered")
+    if minimum and got < _RANK[minimum]:
+        errors.append(f"outcome '{model.outcome}' contradicts established threat evidence: the material asks for a secret, so the outcome can't be below '{minimum}'")
+    if outcome and not floor.get("established") and got < _RANK[outcome]:
+        provisional = {f["id"] for f in floor.get("findings") or [] if f["id"].startswith("P")}
+        if not any(set(f.supersedes_finding_ids) & provisional and (f.evidence_ids or f.source_ids) for f in model.findings):
+            errors.append(f"outcome '{model.outcome}' is below TC FlyBy's provisional '{outcome}': add the finding that corrects it, citing the "
+                          f"evidence that resolves it, with the provisional finding's id ({', '.join(sorted(provisional)) or 'P1'}) in supersedesFindingIds")
+    return errors
 
 # ── Finding de-duplication ───────────────────────────────────────────────────
 # Two findings that make the same point are one finding. The person reads the result once, so the
@@ -104,7 +126,8 @@ def _same_identity(a: tuple[frozenset[str], str, str], b: tuple[frozenset[str], 
 
 
 def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: set[str], capability_ids: set[str],
-             pending_question: Optional[dict], provider_complete: bool, material_gaps: Optional[set[str]] = None) -> tuple[Optional[HigginsResponse], list[str]]:
+             pending_question: Optional[dict], provider_complete: bool, material_gaps: Optional[set[str]] = None,
+             floor: Optional[dict] = None) -> tuple[Optional[HigginsResponse], list[str]]:
     errors: list[str] = []
     try:
         model = ModelResponse.model_validate(data)
@@ -134,6 +157,7 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         errors.append("assessment 'no_concern_found_within_scope' is contradicted by attention 'action_needed'/'urgent'; reconcile the assessment with the attention level")
     if model.outcome and model.assessment != outcomes.ASSESSMENT[model.outcome]:
         errors.append(f"outcome '{model.outcome}' requires assessment '{outcomes.ASSESSMENT[model.outcome]}'; reconcile the outcome with the assessment")
+    errors += floor_errors(model, floor)
 
     # ── DIRECT: actionable concerns must have specific instructions ──
     for idx, action in enumerate(model.actions):

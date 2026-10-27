@@ -201,10 +201,30 @@ def enforce_boundary(purpose: Purpose, payload: Any, *, evidence_pii: set[str] |
     return payload
 
 
+# ABN, ACN and licence numbers: an exact number goes only to TC FlyBy's register question about that number (its search
+# call, where every other question already carries the number as a label: teddy/search.prompt). Every other AI or
+# research request carries it as a label.
+_REGISTRATION_NUMBERS = (
+    (re.compile(r"\bABN[\s:#.]*(?:\d[\s-]?){10}\d\b", re.I), "[business number]"),
+    (re.compile(r"\bACN[\s:#.]*(?:\d[\s-]?){8}\d\b", re.I), "[company number]"),
+    (re.compile(r"\b(?:AFSL|AFS\s+licen[cs]e|Australian\s+financial\s+services\s+licen[cs]e|ACL|Australian\s+credit\s+licen[cs]e)"
+                r"(?:\s*(?:no\.?|number|#))?[\s:#]*\d{5,7}\b", re.I), "[licence number]"),
+)
+
+
+def redact_registration_numbers(text: str) -> str:
+    """An ABN, ACN or AFSL/ACL licence number becomes its label ("[business number]", …)."""
+    for pattern, label in _REGISTRATION_NUMBERS:
+        text = pattern.sub(label, text)
+    return text
+
+
 def _enforce_text(purpose: Purpose, text: str, *, evidence_pii: set[str] | None = None) -> str:
     """Strip credentials from all text, compress long URLs. For research and advisory analysis, also minimise personal identifiers."""
     cleaned = strip_credentials(text)
     cleaned = compress_urls(cleaned)
+    if purpose is not Purpose.TEDDY_SEARCH:
+        cleaned = redact_registration_numbers(cleaned)
     if purpose in (Purpose.RESEARCH, Purpose.PUBLIC_ADVISORY_ANALYSIS):
         # Research and advisory queries should contain only public identifiers, not personal data.
         # Public advisories may contain third-party PII (victim details, witness names).

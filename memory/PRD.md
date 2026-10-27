@@ -1,4 +1,23 @@
-## Rule book revision 2: Rule Book review corrections (2026-10-27) — AWAITING OWNER REVIEW, NOT COMPLETE
+## Rule book revision 2 approved; implementation audit done; EXPLAIN class added (2026-10-27)
+**Owner's choices:** add a new EXPLAIN class; audit all rules (incl. Higgins explanation code); fix everything straight
+away; but any Higgins explanation that says more than the evidence supports → LIST for owner review, don't change.
+- Code brought into line with r2 (both engines): every catalogue rule has `class`; only DETECT/CORRELATE make a Possible
+  Threat (`threat_producing` / `threatProducing`); ROUTE rules (QR-01, FQR-01, MSG-12, EMAIL-09/10, CAL-01, FILE-10,
+  PUSH-03, NET-02) record `routed` and cite the routed part's met rules (`*_rules_met`); ARCH-03 COVERAGE → gap only;
+  CORR-08 needs a harmful payload; QR-03/PWA-02 "unrated" only when the lookup answered; TC FlyBy weak signals
+  (`signal: "weak"`) never Concerning; Magnum floor (`decide.floor`, E1/P1 labels, `validation.floor_errors`); ABN/ACN/
+  licence numbers only in their register question (`llm_boundary.redact_registration_numbers`, `search.prompt`).
+- CB-03 title → "Callback number has no known threat listing but strong impersonation evidence remains" (catalogue JSON +
+  catalogue.ts + rule book).
+- **EXPLAIN class:** Rule classes table row; HIG-01..11 (Higgins explanation order + rules, nested details kept),
+  PER-01..10 (renderer), FID-01..03 (Fidelity Check); the 33 failure codes and 13 settling rules are EXPLAIN too.
+  Code registry `services/rulebook.EXPLAIN_RULES` (id → section, title, "module:name" that applies it).
+  Tests: `test_every_gate_rule_is_listed_under_its_class`, `test_every_explain_rule_is_listed_under_its_section_and_applied_by_the_code`;
+  frontend ruleBook.test.ts gate/EXPLAIN grouping. Rule book status line now "approved … audited"; re-stamped.
+- Wording for owner review (NOT changed): `/app/memory/higgins_wording_review.md` (7 items).
+- Tests: backend test_rulebook 27/27, full suite passes; frontend 1067/1067; tsc clean. No testing agent (owner's rule).
+
+## Rule book revision 2: Rule Book review corrections (2026-10-27) — superseded by the entry above (approved + audited)
 **Owner's rules:** rule book only, no implementation code; don't mark complete on tests; owner reviews first, THEN audit the code.
 - Only `backend/content/rulebook.md` changed (script `/tmp/rulebook_r2.py`, backup of r1 `/tmp/rulebook_r1_backup.md`). NOT re-stamped.
   JSON export: `/app/memory/ApolloSG_rule_book_revision_2.json` (also admin portal → Rule book → Download JSON).

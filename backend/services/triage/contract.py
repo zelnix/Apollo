@@ -1,7 +1,8 @@
 """Triage investigation contract — identical shape on device and server.
 
-Three outcomes only. A Coverage Gap can prevent NO THREAT but can never create
-POSSIBLE THREAT, and never downgrades threat evidence Apollo actually has.
+Three outcomes only. Only a threat-producing rule (DETECT or CORRELATE) can create POSSIBLE THREAT. A ROUTE
+rule hands part of the item to another gate and is recorded as routed; a Coverage Gap can prevent NO THREAT but
+can never create POSSIBLE THREAT, and never downgrades threat evidence Apollo actually has.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from services.triage.catalogue import VERSION, gap_plain, gap_recoverable, rule
+from services.triage.catalogue import VERSION, gap_plain, gap_recoverable, rule, threat_producing
 
 
 class Outcome(str, Enum):
@@ -24,6 +25,8 @@ class RuleResult(str, Enum):
     NOT_MET = "not_met"
     NOT_APPLICABLE = "not_applicable"
     COVERAGE_GAP = "coverage_gap"
+    #: A ROUTE rule handed part of the item to the gate whose rules judge it. Never a Possible Threat by itself.
+    ROUTED = "routed"
 
 
 #: Legacy triage verdicts (pre-2-tier model) mapped for history display only. The original
@@ -50,8 +53,9 @@ class RuleRecord:
 
     def wire(self) -> dict:
         return {"ruleId": self.rule_id, "title": self.title, "category": rule(self.rule_id)["category"],
+                "class": rule(self.rule_id)["class"],
                 "applicable": self.result is not RuleResult.NOT_APPLICABLE,
-                "checked": self.result in (RuleResult.MET, RuleResult.NOT_MET),
+                "checked": self.result in (RuleResult.MET, RuleResult.NOT_MET, RuleResult.ROUTED),
                 "result": self.result.value, "evidence": self.evidence,
                 "coverageGap": self.gap_code, "detail": self.detail}
 
@@ -106,7 +110,8 @@ class TriageInvestigation:
 
     @property
     def met_rules(self) -> list[RuleRecord]:
-        return [r for r in self.rules if r.result is RuleResult.MET]
+        """The threat-producing rules met. A ROUTE, COVERAGE or ENFORCE rule is never one of them."""
+        return [r for r in self.rules if r.result is RuleResult.MET and threat_producing(r.rule_id)]
 
     @property
     def recoverable(self) -> bool:
@@ -121,8 +126,9 @@ class TriageInvestigation:
             "outcome": self.outcome.value,
             "reason": self.reason,
             "rulesApplicable": [r.rule_id for r in self.rules if r.result is not RuleResult.NOT_APPLICABLE],
-            "rulesChecked": [r.rule_id for r in self.rules if r.result in (RuleResult.MET, RuleResult.NOT_MET)],
+            "rulesChecked": [r.rule_id for r in self.rules if r.result in (RuleResult.MET, RuleResult.NOT_MET, RuleResult.ROUTED)],
             "rulesMet": [r.rule_id for r in self.met_rules],
+            "rulesRouted": [r.rule_id for r in self.rules if r.result is RuleResult.ROUTED],
             "rules": [r.wire() for r in self.rules],
             "coverageGaps": [g.wire() for g in self.coverage_gaps],
             "incompleteChecks": self.incomplete_checks,

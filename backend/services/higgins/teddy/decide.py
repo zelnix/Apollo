@@ -20,14 +20,28 @@ capabilities, and the only situations in which they can change the result:
                 when the request still goes somewhere unverified.
 
 Within the concern outcomes (Concerning, Likely scam, Confirmed scam or threat) Higgins' action is the same
-protective one, so Magnum DI is never called to move a case between them.
+protective one, so Magnum DI is never called to move a case between them. The triggers are still checked when a
+concern outcome was reached: unread content could hold a request that calls for a different or additional step
+(or show a provisional concern was a false positive), and a contradiction about the very facts a provisional concern
+rests on could reverse it. Established threat evidence is never overridden.
+
+Weak signals (a redirect to another site, a newly registered domain, a direct download, a third-party reputation
+warning, text found copied elsewhere) never make a case Concerning, alone or together. They count only as the
+independent corroboration an impersonation or another warning sign needs.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from services.higgins.brand_domains import registrable
 from services.higgins.teddy.triage import CONSEQUENTIAL, Check, Plan, digits
+
+#: Signals that are warning signs (with "concern"). "weak" signals are never a warning sign by themselves.
+WARNING = ("concern", "anomaly")
+#: What may corroborate an impersonation: a warning sign or a weak signal about the same link.
+CORROBORATES = ("concern", "anomaly", "weak")
+_SECRET_ASK = re.compile(r"password|passcode|\bpin\b|one[- ]time|otp|verification\s+code|security\s+code|code\s+(?:we|you)|card\s+(?:number|details)|cvv", re.I)
 
 
 @dataclass
@@ -68,7 +82,7 @@ def corroborated_impersonation(plan_: Plan) -> list[dict]:
                   if f.get("topic") in ("impersonation", "lookalike", "shared_service")]
     places = {registrable(f["place"]) for f in mismatched if f.get("place")}
     support = [f for c in plan_.checks if c.kind == "link" and registrable(c.subject) in places
-               for f in c.facts if f["class"] == "live_evidence" and f["signal"] in ("anomaly", "concern")]
+               for f in c.facts if f["class"] == "live_evidence" and f["signal"] in CORROBORATES]
     return mismatched + support if support else []
 
 
@@ -79,10 +93,12 @@ def official_routes(plan_: Plan) -> bool:
 
 
 def signals(plan_: Plan) -> list[tuple[Check, dict]]:
-    """Warning signs the evidence establishes, whatever the input was. A name merely mentioned beside another
-    organisation's address counts once something independent backs it up."""
+    """Warning signs the evidence establishes, whatever the input was. Weak signals never count, alone or together.
+    A name merely mentioned beside another organisation's address counts once something independent backs it up. A
+    register entry under a related but different name is a conflict for Magnum DI, not a warning sign."""
     corroborated = bool(corroborated_impersonation(plan_))
-    return [(c, f) for c, f in _live(plan_) if f["signal"] in ("concern", "anomaly") and (corroborated or not _ambiguous(f))]
+    return [(c, f) for c, f in _live(plan_) if f["signal"] in WARNING and f.get("topic") != "name_relation"
+            and (corroborated or not _ambiguous(f))]
 
 
 def _route(checks: list[Check]) -> str:
@@ -144,8 +160,51 @@ def _ids_with(texts: dict[str, str], needles: list[str]) -> list[str]:
     return [eid for eid, text in texts.items() if any(n in text.lower() for n in low)] or list(texts)[:2]
 
 
-def magnum_issues(plan_: Plan, texts: dict[str, str]) -> list[Issue]:
-    """With nothing established that settles the case: what Magnum DI's extra capabilities could still change."""
+def resting_on(plan_: Plan, found: Decision) -> list[tuple[str | None, str]]:
+    """(check id, finding) for each finding TC FlyBy's concern outcome rests on."""
+    if found.basis == "threat":
+        return [(c.id, f["text"]) for c, f in _live(plan_) if f["signal"] == "concern" and f["decisive"]]
+    if found.basis == "pattern":
+        p = plan_.pattern
+        check = next((c.id for c in plan_.checks if c.kind == "scam_pattern"), None)
+        return [(check, f"It {label}: “{quote}”.") for label, quote in [*p["found"], *([p["ask"]] if p["ask"] else [])]]
+    if found.basis == "impersonation":
+        ids = {id(f): c.id for c in plan_.checks for f in c.facts}
+        return [(ids.get(id(f)), f["text"]) for f in corroborated_impersonation(plan_)]
+    return [(c.id, f["text"]) for c, f in signals(plan_)]
+
+
+def floor(plan_: Plan, found: Decision | None) -> dict | None:
+    """What Magnum DI's result can't go below. A concern resting on established threat evidence (a decisive concern)
+    is never lowered; a provisional one is lowered only by a finding that cites the evidence resolving it and names the
+    provisional finding (its id) in supersedesFindingIds. A request for a password, PIN, one-time code or card details
+    is established threat evidence in itself: the outcome can't be below Concerning."""
+    asks = [r["quote"] for r in plan_.entities.requests if r["type"] == "credentials" and _SECRET_ASK.search(r["quote"])]
+    if not found and not asks:
+        return None
+    established = bool(found and found.basis == "threat")
+    prefix = "E" if established else "P"
+    findings = [{"id": f"{prefix}{n}", "text": text} for n, (_, text) in enumerate(resting_on(plan_, found), start=1)] if found else []
+    findings += [{"id": f"E{len(findings) + n}", "text": f"It asks for a secret: “{quote}”."} for n, quote in enumerate(asks[:2], start=1)]
+    return {"outcome": found.outcome if found else None, "established": established,
+            "minimum": "concerning" if asks else None, "findings": findings}
+
+
+def magnum_issues(plan_: Plan, texts: dict[str, str], found: Decision | None = None) -> list[Issue]:
+    """What Magnum DI's extra capabilities could still change. With a concern outcome reached, only what could
+    change it or the protective action counts: content TC FlyBy couldn't read, and (for a provisional concern) a
+    contradiction about the very facts the concern rests on. The concern's request is already known, so reasoning
+    about it can't change what to do."""
+    issues = _all_issues(plan_, texts)
+    if not found:
+        return issues
+    if found.basis == "threat":
+        return [i for i in issues if i.capability == "reading"]
+    rests = {check for check, _ in resting_on(plan_, found) if check}
+    return [i for i in issues if i.capability == "reading" or (i.capability == "relating" and i.check_id in rests)]
+
+
+def _all_issues(plan_: Plan, texts: dict[str, str]) -> list[Issue]:
     issues = [Issue("reading", f"Read {g['item']} directly — {g['what']}.", [g["evidenceId"]]) for g in plan_.gaps if g.get("magnum")]
     requests = unverified_requests(plan_)
     if plan_.has_message and requests:
@@ -159,8 +218,9 @@ def magnum_issues(plan_: Plan, texts: dict[str, str]) -> list[Issue]:
     for c in plan_.checks:
         if c.open_issue.startswith("Conflict"):
             issues.append(Issue("relating", c.open_issue, _ids_with(texts, plan_.entities.companies + [c.subject]), c.id))
+    corroborated = bool(corroborated_impersonation(plan_))
     for c, f in _live(plan_):
-        if _ambiguous(f) and f["signal"] == "anomaly":
+        if _ambiguous(f) and f["signal"] == "anomaly" and not corroborated:
             issues.append(Issue("relating", f"Whether the material genuinely comes from the organisation it names: {f['text']}",
                                 _ids_with(texts, [f.get("place") or c.subject]), c.id))
     p = plan_.pattern
@@ -177,6 +237,8 @@ def _complete(plan_: Plan) -> bool:
     established registration."""
     if plan_.gaps or any(c.status == "unavailable" for c in plan_.checks):
         return False
+    if any(f["signal"] == "weak" for _, f in _live(plan_)):
+        return False   # a weak signal is something found: "No scam indicators found" needs nothing found
     for c in plan_.checks:
         if c.kind != "link" or any(f["decisive"] and f["signal"] == "clear" for f in c.facts):
             continue
@@ -192,7 +254,9 @@ def evaluate(plan_: Plan, texts: dict[str, str], *, final: bool) -> tuple[Decisi
     every other outcome waits until the checks Higgins Triage planned have run."""
     found = provisional(plan_)
     if found and found.outcome == "confirmed_threat":
-        return found, []
+        # TC FlyBy's stages end here; the deciding test still applies to what it couldn't read.
+        issues = magnum_issues(plan_, texts, found)
+        return (None, issues) if issues else (found, [])
     if plan_.general:
         check = plan_.checks[0]
         if check.status == "resolved":
@@ -200,15 +264,21 @@ def evaluate(plan_: Plan, texts: dict[str, str], *, final: bool) -> tuple[Decisi
         return None, ([Issue("reasoning", f"Answer the general question: {check.subject}", list(texts), check.id)] if final else [])
     if not final:
         return None, []
-    if found:
-        return found, []           # a concern outcome: the protective action stands whatever Magnum DI found
-    issues = magnum_issues(plan_, texts)
+    issues = magnum_issues(plan_, texts, found)
     if issues:
         return None, issues
+    if found:
+        return found, []           # a concern outcome nothing unresolved could change: the protective action stands
     route = _route(plan_.checks)
     if _complete(plan_):
         return Decision(route, "no_scam_indicators", "clear"), []
     return Decision(route, "unable_to_determine", "unknown"), []
+
+
+def decisive(plan_: Plan) -> bool:
+    """A decisive concern was found: TC FlyBy's stages end (the deciding test still applies)."""
+    found = provisional(plan_)
+    return bool(found and found.outcome == "confirmed_threat")
 
 
 def magnum_needs_search(plan_: Plan, issues: list[Issue]) -> bool:

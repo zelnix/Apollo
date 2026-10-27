@@ -89,6 +89,11 @@ export async function fetchMessageUrlIntel(
 }
 
 /** The deterministic link finding Triage reads. Null when the material carries no links. */
+/** The threat-producing Link Gate rules the links met: a malicious listing is LINK-01 (authoritative reputation). */
+export function linkTriageRulesMet(urls: MessageUrlResult[]): string[] {
+  return urls.some((u) => u.verdict === "malicious") ? ["LINK-01"] : [];
+}
+
 export function linkTriageOutcome(urls: MessageUrlResult[]): "POSSIBLE_THREAT_IDENTIFIED" | "LIMITED_UNABLE_TO_DETERMINE" | "NO_THREAT_IDENTIFIED" | null {
   if (urls.some((u) => u.verdict === "malicious")) return "POSSIBLE_THREAT_IDENTIFIED";
   if (urls.some((u) => u.coverage === "unavailable")) return "LIMITED_UNABLE_TO_DETERMINE";

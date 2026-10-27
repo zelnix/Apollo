@@ -273,14 +273,16 @@ async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_searc
     assert response is not None and response["outcome"] and case["routing"]["outcome"] == response["outcome"]
 
 
-async def test_a_newly_registered_link_is_concerning_at_teddy_without_magnum(monkeypatch):
-    """No fixed list sends a message to Magnum DI: an established warning sign settles what to do."""
+async def test_a_newly_registered_link_is_a_weak_signal_never_concerning(monkeypatch):
+    """No fixed list sends a message to Magnum DI, and a newly registered domain is a weak signal: alone it never makes
+    a case Concerning. It is recorded, and the case is Unable to determine (rule book, TC FlyBy weak signals)."""
     calls = _gateway(monkeypatch)
     _lookups(monkeypatch, age_days=6)
     _owner, case, response, _ = await _case([("text", "Hi, it's Sarah from the conference. Here are the slides you asked for: https://slides-deck.net/deck")])
     assert calls == [], "Magnum DI couldn't change the finding or what to do"
-    assert response["outcome"] == "concerning" and "registered on 2026-06-01" in response["overview"]
-    assert case["routing"]["teddy"]["issues"] == [] and case["routing"]["teddy"]["basis"] == "signals"
+    assert response["outcome"] == "unable_to_determine"
+    assert any("registered on 2026-06-01" in f["text"] for f in response["findings"]), "the weak signal is listed"
+    assert case["routing"]["teddy"]["issues"] == [] and case["routing"]["teddy"]["basis"] == "unknown"
 
 
 async def test_a_plain_message_asking_nothing_is_settled_without_magnum(monkeypatch):
@@ -474,8 +476,9 @@ async def test_a_bare_link_ends_concerning_or_unable_to_determine_without_gemini
     calls = _gateway(monkeypatch)
     _lookups(monkeypatch, age_days=6)
     _owner, case, response, _ = await _case([("url", "https://fresh-deals.shop/promo")], message="Is this link safe?")
-    assert calls == [] and response["outcome"] == "concerning" and response["assessment"] == "concern_found"
-    assert "registered on 2026-06-01" in response["overview"]
+    # A newly registered domain is a weak signal: recorded, never Concerning on its own.
+    assert calls == [] and response["outcome"] == "unable_to_determine" and response["assessment"] == "uncertain"
+    assert any("registered on 2026-06-01" in f["text"] for f in response["findings"])
     calls.clear()   # now nothing can be checked: every lookup and the search are unavailable
     from services.higgins.teddy import search as teddy_search
 

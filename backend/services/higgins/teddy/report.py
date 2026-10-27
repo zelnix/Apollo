@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 from services.higgins import outcomes
-from services.higgins.teddy.decide import Decision, corroborated_impersonation
+from services.higgins.teddy.decide import WARNING, Decision, corroborated_impersonation, signals
 from services.higgins.teddy.triage import Check, Plan
 
 ROUTE_LABEL = {"teddy_official": "official source checks", "teddy_kb": "ApolloSG's knowledge base", "teddy_search": "a targeted web search"}
@@ -28,6 +28,12 @@ def _action(label: str, instruction: str) -> dict:
 
 def _live(checks: list[Check]) -> list[tuple[Check, dict]]:
     return [(c, f) for c in checks for f in c.facts if f.get("class") == "live_evidence" and f["signal"] != "missing"]
+
+
+def _signs(checks: list[Check]) -> list[tuple[Check, dict]]:
+    """Warning signs first, then the weak signals (recorded, never a concern on their own)."""
+    live = _live(checks)
+    return [(c, f) for c, f in live if f["signal"] in WARNING] + [(c, f) for c, f in live if f["signal"] == "weak"]
 
 
 def _knowledge(checks: list[Check]) -> list[dict]:
@@ -98,8 +104,7 @@ def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_it
     lead_check, lead = decisive[0]
     brand = plan_.entities.brands[0][0] if plan_.entities.brands else None
     findings = [_finding(f, _evidence(c, material, teddy_item), "high") for c, f in decisive]
-    findings += [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks)
-                 if f["signal"] in ("anomaly", "concern") and not f["decisive"]]
+    findings += [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _signs(checks) if not f["decisive"]]
     kinds = {c.kind for c, _ in decisive}
     actions: list[dict] = []
     if "link" in kinds:
@@ -186,7 +191,7 @@ def pattern_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
     quoted = [*p["found"], *([p["ask"]] if p["ask"] else [])]
     found = [{"text": f"It {label}: “{quote}”.", "basis": "observation", "confidence": "high", "evidenceIds": items, "sourceIds": [],
               "supersedesFindingIds": []} for label, quote in quoted]
-    found += [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks) if f["signal"] in ("anomaly", "concern")]
+    found += [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _signs(checks)]
     kb_sources = sorted({s for c in checks if c.kind == "scam_pattern" for f in c.facts for s in f.get("sourceIds", [])})
     advice = p["advice"]
     if outcome == "likely_scam":
@@ -235,7 +240,8 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
 def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
     """Warning signs the evidence established, with nothing that proves a scam: Concerning. Deeper analysis
     couldn't change what to do — be careful and check independently."""
-    facts = [(c, f) for c, f in _live(checks) if f["signal"] in ("anomaly", "concern")]
+    warning = signals(plan_)
+    facts = warning + [(c, f) for c, f in _signs(checks) if (c, f) not in warning]
     subject = _subject(plan_)
     link = plan_.link_only or any(c.kind == "link" for c, _ in facts)
     actions = ([_action("Don't enter details", "Don't enter passwords, codes or card details on this page."), _action("Go there directly", _CHECK_FIRST)]
@@ -320,12 +326,14 @@ def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[
     }
 
 
-def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict, pattern: dict | None = None) -> str:
+def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict, pattern: dict | None = None,
+                 floor: dict | None = None) -> str:
     """Only what Magnum DI needs: the issues the deciding test sent it, the facts that bear on them, and what is still missing.
     Resolved, uneventful checks are named in one line so Magnum DI doesn't redo them; Apollo KB text isn't sent
     (a scam-pattern check is named in one line, as general knowledge)."""
     signals = [f"- {f['text']}" + (f" (source: {f['source']['publisher']})" if f.get("source") else "")
-               for c in checks for f in c.facts if f.get("class") == "live_evidence" and f["signal"] in ("concern", "anomaly")]
+               + (" (weak signal: never a concern on its own)" if f["signal"] == "weak" else "")
+               for c, f in _signs(checks)]
     missing = [f"- {f['text']}" for c in checks for f in c.facts if f["signal"] == "missing"]
     missing += [f"- {c.subject}: lookup unavailable" for c in checks if c.status == "unavailable"]
     clean = sorted({f"{c.kind} {c.subject}" for c in checks for f in c.facts if f.get("class") == "live_evidence" and f["signal"] == "clear"})
@@ -343,6 +351,15 @@ def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict,
         how = {"full": "matches", "opening": "matches the opening of", "partial": "partly matches"}[pattern["stage"]]
         parts.append(f"ApolloSG KB pattern check (general knowledge, not evidence about this case): the material {how} the "
                      f"{pattern['name']} described by {pattern['publisher']}.")
+    if floor and floor.get("outcome"):
+        how = ("resting on established threat evidence, which Magnum DI can't contradict or lower" if floor["established"] else
+               "provisional: Magnum DI may confirm it, raise it, or correct it downward only with evidence that resolves it. "
+               "A finding that corrects it cites that evidence and lists the provisional finding's id in supersedesFindingIds")
+        parts.append(f"TC FlyBy's outcome: {outcomes.LABELS[floor['outcome']]} — {how}:\n"
+                     + "\n".join(f"- {f['id']}: {f['text']}" for f in floor["findings"] if not f["text"].startswith("It asks for a secret")))
+    if floor and floor.get("minimum"):
+        parts.append("Established threat evidence (Magnum DI can't contradict it; the outcome can't be below "
+                     f"{outcomes.LABELS[floor['minimum']]}):\n" + "\n".join(f"- {f['id']}: {f['text']}" for f in floor["findings"] if f["text"].startswith("It asks for a secret")))
     if issues:
         parts.append("For Magnum DI to settle — only these; everything above is already established:\n"
                      + "\n".join(f"- ({i['capability']}) {i['text']}" for i in issues))

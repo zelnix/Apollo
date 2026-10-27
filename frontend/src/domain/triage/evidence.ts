@@ -98,6 +98,8 @@ export function messageTriageEvidence(args: {
   // both gates feed the one message adapter.
   analysis: Pick<MessageAnalysis, "signals" | "verdict" | "why">;
   linkOutcome?: TriageOutcome | null;
+  /** The threat-producing Link Gate rules the message's links met (MSG-12 routes them; the case cites these). */
+  linkRulesMet?: string[];
   phoneReputation?: { status: string; verdict?: string; fraud_score?: number; failure?: string | null } | null;
   /** Checks the message needed that didn't complete: its numbers' and links' reputation lookups. */
   incompleteChecks?: IncompleteCheck[];
@@ -140,6 +142,7 @@ export function messageTriageEvidence(args: {
     },
     brand_mismatch: !!s.claimedBrand && args.linkOutcome === "POSSIBLE_THREAT_IDENTIFIED",
     link_outcome: args.linkOutcome ?? null,
+    link_rules_met: args.linkRulesMet ?? [],
     phone_reputation: args.phoneReputation ?? {},
     incomplete_checks: args.incompleteChecks ?? [],
     visibility: DEVICE_VISIBILITY,

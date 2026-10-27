@@ -23,7 +23,7 @@ import { markCheckDone } from "@/src/store/checkCompletion";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import { analyseEmail, parseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
-import { fetchMessageUrlIntel, linkTriageOutcome, lookupFailureMessage, lookupUrlIntel, type MessageUrlResult } from "@/src/domain/urlIntel";
+import { fetchMessageUrlIntel, linkTriageOutcome, linkTriageRulesMet, lookupFailureMessage, lookupUrlIntel, type MessageUrlResult } from "@/src/domain/urlIntel";
 import { urlIncompleteChecks } from "@/src/domain/triage/completeness";
 import { fetchEvidencePhoneIntel, lookupNumberRisk } from "@/src/domain/phoneIntel";
 import { reportTriageOutcome } from "@/src/api/triageTelemetry";
@@ -1075,7 +1075,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
+    const triage = evaluateTriage(messageTriageEvidence({ analysis, linkOutcome, linkRulesMet: linkTriageRulesMet(urls), correlation, phoneReputation: phoneTriageReputation(phones),
       incompleteChecks: [...urlIncompleteChecks(urls), ...phoneIncompleteChecks(phones)] }));
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 
@@ -1191,7 +1191,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Triage Investigation (Tier 1, deterministic, 0 Gemini calls) ───────
     const linkOutcome = linkTriageOutcome(urls);
     const { correlation, existingCaseId } = correlationFor({ indicator: firstHost, mechanics: ["scam_message", "deceptive_link"] });
-    const triage = evaluateTriage(emailTriageEvidence({ analysis, profile, linkOutcome, correlation, phoneReputation: phoneTriageReputation(phones),
+    const triage = evaluateTriage(emailTriageEvidence({ analysis, profile, linkOutcome, linkRulesMet: linkTriageRulesMet(urls), correlation, phoneReputation: phoneTriageReputation(phones),
       incompleteChecks: [...urlIncompleteChecks(urls), ...phoneIncompleteChecks(phones)] }));
     reportTriageOutcome(triage, { reputationFailure: phones.find((p) => p.decision === "unknown")?.lookupFailure });
 

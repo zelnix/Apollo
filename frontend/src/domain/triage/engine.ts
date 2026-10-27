@@ -2,9 +2,12 @@
 // Mirrors backend services/triage/engine.py: same catalogue, same rule IDs, same record format.
 // Device-sourced evidence (links, messages, calls, apps, files, device, network) is evaluated here,
 // closest to where the evidence actually lives.
+// Rule classes: only DETECT and CORRELATE rules are threat-producing. A ROUTE rule hands part of the item to the gate
+// whose rules judge it (recorded as "routed"); when that gate's threat-producing rule was met, that rule is the one
+// recorded as met and this item's record cites it. COVERAGE rules only record what couldn't be examined.
 
 import {
-  CATALOGUE_VERSION, RULES_BY_CATEGORY, RULES_BY_ID, gapIsRecoverable, gapPlainEnglish,
+  CATALOGUE_VERSION, RULES_BY_CATEGORY, RULES_BY_ID, gapIsRecoverable, gapPlainEnglish, threatProducing,
   type CoverageGapRecord, type RetryRecord, type RuleRecord, type RuleResult,
   type TriageInvestigationRecord, type TriageOutcome,
 } from "./contract.ts";
@@ -19,6 +22,19 @@ const na: Verdict = { result: "not_applicable", evidence: [] };
 /** Not applicable, with the reason — so the DI shows the rule was considered and why it couldn't run here. */
 const naBecause = (reason: string): Verdict => ({ result: "not_applicable", evidence: [reason] });
 const gap = (code: string, ...evidence: string[]): Verdict => ({ result: "coverage_gap", evidence: evidence.filter(Boolean), gap: code });
+const routed = (...evidence: string[]): Verdict => ({ result: "routed", evidence: evidence.filter(Boolean) });
+
+/** What each ROUTE rule hands over. The routed part's own triage is supplied as `<part>_outcome` and, when it was a
+ *  Possible Threat, the threat-producing rules it met as `<part>_rules_met`. QR-01 routes the QR address to the
+ *  Link Gate rules, which run in the same evaluation. */
+export const ROUTED_PART: Record<string, "link" | "attachment" | null> = {
+  "QR-01": null, "MSG-12": "link", "EMAIL-09": "link", "EMAIL-10": "attachment", "CAL-01": "link",
+  "FILE-10": "link", "FQR-01": "link", "PUSH-03": "link", "NET-02": "link",
+};
+const JUDGED_BY = { link: "the Link Gate", attachment: "the File Gate" } as const;
+/** A ROUTE rule: hands `part` to the gate whose rules judge it. Never a Possible Threat by itself. */
+const route = (part: "link" | "attachment", label: string) => (ev: TriageEvidence): Verdict =>
+  (ev[`${part}_outcome`] == null ? na : routed(`${label} handed to ${JUDGED_BY[part]}, which found: ${ev[`${part}_outcome`]}`));
 
 /** Why the browser-observation rules (BITM-01..04) can't execute in a phone app's context. */
 export const BROWSER_OBSERVATION_NA = "Not applicable here: this rule needs the page's live content and WebSocket traffic as a browser sees them, which ApolloSG can't observe from an app.";
@@ -109,16 +125,21 @@ const LINK: Record<string, (ev: TriageEvidence) => Verdict> = {
   },
   "LINK-12": (ev) => (!ev.local_level || ev.local_level === "clean" ? unmet("no suspicious URL evidence to correlate")
     : correlated(ev) ? met("suspicious URL evidence correlates with another event") : unmet("no compatible correlated evidence")),
-  "QR-01": (ev) => (!ev.qr_payload ? na : ev.qr_is_url ? met("QR payload contains a URL — triaged as a link") : unmet("QR payload is not a URL")),
+  "QR-01": (ev) => (!ev.qr_payload ? na : ev.qr_is_url ? routed("QR payload contains a URL — judged by the Link Gate rules") : unmet("QR payload is not a URL")),
   "QR-02": (ev) => (!ev.qr_payload ? na : ev.brand_mismatch ? met("QR destination with brand or domain deception") : unmet("QR destination shows no brand deception")),
   "QR-03": (ev) => {
     if (!ev.qr_payload) return na;
     const age = prov(ev, "domain_age");
     const rep = prov(ev, "reputation");
-    const unrated = rep.verdict === "unknown" || ["unavailable", "not_configured"].includes(rep.status);
-    return ev.credential_interaction && (age.newly_registered || unrated || ["suspicious", "malicious"].includes(ev.local_level))
-      ? met("QR destination credential/payment lure", "destination suspicious, unrated or newly registered")
-      : unmet("QR destination has no credential lure with a suspicious destination");
+    const failed = ["unavailable", "not_configured", "error"].includes(rep.status);
+    // Unrated only when the lookup answered without a rating: a lookup that failed never supplies evidence.
+    const unrated = !failed && rep.verdict === "unknown";
+    if (!ev.credential_interaction) return unmet("QR destination has no credential or payment lure");
+    if (age.newly_registered || unrated || ["suspicious", "malicious"].includes(ev.local_level)) {
+      return met("QR destination credential/payment lure", "destination suspicious, unrated or newly registered");
+    }
+    return failed ? gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "QR destination reputation unavailable")
+      : unmet("QR destination has a credential lure but no suspicious, unrated or newly registered destination");
   },
   "DATA-01": (ev) => {
     if (!["data", "blob"].includes(ev.scheme)) return na;
@@ -195,8 +216,7 @@ const MESSAGE: Record<string, (ev: TriageEvidence) => Verdict> = {
   "MSG-09": flag("extortion", "extortion"),
   "MSG-10": flag("advance_fee", "advance-fee mechanics"),
   "MSG-11": flag("fake_payment", "fake-payment mechanics"),
-  "MSG-12": (ev) => (ev.link_outcome == null ? na
-    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("an embedded link reached a deterministic Possible Threat") : unmet(`embedded link triage: ${ev.link_outcome}`)),
+  "MSG-12": route("link", "Each link in the message"),
   "MSG-13": (ev) => {
     if (!sig(ev, "family_claim") && !sig(ev, "new_number")) return unmet("no family or new-number impersonation");
     return ["money_request", "code_request", "identity_request"].some((s) => sig(ev, s))
@@ -256,7 +276,9 @@ const MESSAGE: Record<string, (ev: TriageEvidence) => Verdict> = {
     if (!sig(ev, "callback_request")) return unmet("no supplied callback number");
     // Without a claimed charge or brand this rule can't be met whatever the number's reputation says,
     // so a failed lookup can't change it — it is not a coverage gap.
-    if (!sig(ev, "alleged_charge") && !ev.signals?.claimed_brand) return unmet("callback number without a claimed charge or brand impersonation");
+    // A brand mention alone is weak: the impersonation must be strong (a claimed charge, or a claimed organisation
+    // whose contact or destination doesn't match it).
+    if (!sig(ev, "alleged_charge") && !(ev.signals?.claimed_brand && ev.brand_mismatch)) return unmet("callback number without strong impersonation evidence");
     const rep = prov(ev, "phone_reputation");
     if (["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "callback number reputation unavailable");
     return rep.verdict === "clean"
@@ -329,11 +351,14 @@ const CALL: Record<string, (ev: TriageEvidence) => Verdict> = {
 
 // ── Apps ────────────────────────────────────────────────────────────────────
 
+/** Where an app or file came from that is suspicious. An unknown provenance is not one: unknown is never unsafe. */
+const SUSPICIOUS_PROVENANCE = ["sideload", "message", "link"];
+
 const capability = (name: string, label: string) => (ev: TriageEvidence): Verdict => {
   const caps: string[] = ev.app_capabilities ?? [];
   if (!caps.length) return na;
   if (!caps.includes(name)) return unmet(`no unexpected ${label}`);
-  const suspicious = ["sideload", "unknown", "message", "link"].includes(ev.provenance) || correlated(ev);
+  const suspicious = SUSPICIOUS_PROVENANCE.includes(ev.provenance) || correlated(ev);
   return suspicious ? met(`unexpected ${label}`, "suspicious provenance or Threat Scent") : unmet(`${label} with expected provenance`);
 };
 
@@ -360,7 +385,7 @@ const APP: Record<string, (ev: TriageEvidence) => Verdict> = {
   "APP-10": (ev) => {
     const caps: string[] = ev.app_capabilities ?? [];
     const highImpact = caps.filter((c) => ["accessibility", "device_admin", "screen_capture", "install_packages", "sms", "notification_listener"].includes(c));
-    return highImpact.length >= 2 && ["sideload", "unknown", "message", "link"].includes(ev.provenance)
+    return highImpact.length >= 2 && SUSPICIOUS_PROVENANCE.includes(ev.provenance)
       ? met(`multiple high-impact permissions (${highImpact.join(", ")})`, "suspicious installation provenance")
       : unmet("no high-impact permission cluster with suspicious provenance");
   },
@@ -376,7 +401,10 @@ const APP: Record<string, (ev: TriageEvidence) => Verdict> = {
     if (!ev.pwa_origin) return na;
     if (!ev.visibility?.browser) return gap("BROWSER_VISIBILITY_UNAVAILABLE", "PWA origin is not observable on this platform");
     const age = prov(ev, "domain_age");
-    return (age.newly_registered || prov(ev, "reputation").verdict === "unknown") && ev.brand_mismatch && ev.credential_interaction
+    const rep = prov(ev, "reputation");
+    // Unrated only when the lookup answered without a rating: a lookup that failed never supplies evidence.
+    const unrated = !["unavailable", "not_configured", "error"].includes(rep.status) && rep.verdict === "unknown";
+    return (age.newly_registered || unrated) && ev.brand_mismatch && ev.credential_interaction
       ? met("newly registered or unrated PWA origin", "brand impersonation", "login/payment interaction")
       : unmet("PWA installation alone is not a threat");
   },
@@ -392,6 +420,7 @@ const APP: Record<string, (ev: TriageEvidence) => Verdict> = {
 const RISKY_EXT = new Set([".exe", ".scr", ".bat", ".cmd", ".com", ".pif", ".js", ".vbs", ".wsf", ".msi",
   ".dll", ".hta", ".ps1", ".reg", ".lnk", ".iso", ".img", ".cab", ".jar", ".apk"]);
 const MACRO_EXT = new Set([".docm", ".xlsm", ".pptm", ".dotm", ".xlam"]);
+const PROFILE_EXT = new Set([".mobileconfig", ".plist", ".cer", ".crt", ".pem", ".p12", ".pfx"]);
 const extOf = (ev: TriageEvidence): string => {
   const name = String(ev.filename ?? "").toLowerCase();
   return name.includes(".") ? `.${name.split(".").pop()}` : "";
@@ -411,9 +440,10 @@ const archive = (kind: string) => (ev: TriageEvidence): Verdict => {
   if (data.encrypted && !entries.length) {
     if (kind === "entries" || kind === "traversal") return gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected");
     if (kind === "unreadable") {
-      return ev.suspicious_source || correlated(ev)
-        ? met("password-protected archive", "suspicious sender or lure", "contents not inspectable")
-        : gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected");
+      // ARCH-03 is COVERAGE: contents that can't be inspected are a coverage gap, never a threat. A suspicious sender
+      // or lure that came with it is judged by the Text Gate or Email Gate rules.
+      const lure = ev.suspicious_source || correlated(ev) ? " (it came with a suspicious sender or lure)" : "";
+      return gap("ENCRYPTED_CONTENT", `archive contents are encrypted and could not be inspected${lure}`);
     }
     return unmet("archive contents not available to evaluate");
   }
@@ -441,14 +471,15 @@ const FILE: Record<string, (ev: TriageEvidence) => Verdict> = {
   "FILE-04": (ev) => (!RISKY_EXT.has(extOf(ev)) ? unmet("file is not an executable or script")
     : ev.expected ? unmet("executable was expected by the person") : met(`unexpected executable/script (${extOf(ev)})`)),
   "FILE-05": (ev) => (extOf(ev) !== ".apk" ? unmet("file is not an APK")
-    : ["sideload", "unknown", "message", "link"].includes(ev.provenance) || !ev.expected ? met("suspicious APK provenance") : unmet("APK with expected provenance")),
+    : SUSPICIOUS_PROVENANCE.includes(ev.provenance) || !ev.expected ? met("suspicious APK provenance") : unmet("APK with expected provenance")),
   "FILE-06": (ev) => (extOf(ev) === ".apk" && ev.brand_mismatch ? met("APK impersonates a brand or update") : unmet("no APK brand deception")),
-  "FILE-07": (ev) => ([".mobileconfig", ".plist"].includes(extOf(ev)) ? met(`a configuration profile (${extOf(ev)})`) : unmet("file is not a configuration profile")),
-  "FILE-08": (ev) => ([".cer", ".crt", ".pem", ".p12", ".pfx"].includes(extOf(ev)) ? met(`a trust certificate (${extOf(ev)})`) : unmet("file is not a trust certificate")),
+  "FILE-07": (ev) => (![".mobileconfig", ".plist"].includes(extOf(ev)) ? unmet("file is not a configuration profile")
+    : ev.expected ? unmet("a configuration profile the person expected") : met(`a configuration profile (${extOf(ev)})`)),
+  "FILE-08": (ev) => (![".cer", ".crt", ".pem", ".p12", ".pfx"].includes(extOf(ev)) ? unmet("file is not a trust certificate")
+    : ev.expected ? unmet("a trust certificate the person expected") : met(`a trust certificate (${extOf(ev)})`)),
   "FILE-09": (ev) => (!MACRO_EXT.has(extOf(ev)) ? unmet("file is not a macro-enabled document")
     : ev.expected && ["store", "expected"].includes(ev.provenance) ? unmet("macro document with expected provenance") : met(`a macro-enabled document (${extOf(ev)})`)),
-  "FILE-10": (ev) => (ev.embedded_urls == null ? na
-    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("embedded malicious or deceptive URL") : unmet("embedded URLs raised no deterministic threat")),
+  "FILE-10": (ev) => (ev.embedded_urls == null ? na : route("link", "Each link inside the file")(ev)),
   "FILE-11": (ev) => {
     const data = prov(ev, "pdf_features");
     if (!Object.keys(data).length) return na;
@@ -467,8 +498,7 @@ const FILE: Record<string, (ev: TriageEvidence) => Verdict> = {
   "ARCH-01": archive("password_in_message"),
   "ARCH-02": archive("password_correlated"),
   "ARCH-03": archive("unreadable"),
-  "FQR-01": (ev) => (!ev.qr_payload ? na
-    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("QR code detected — destination triaged as a link") : unmet("QR destination raised no deterministic threat")),
+  "FQR-01": (ev) => (!ev.qr_payload ? na : route("link", "The QR code's address")(ev)),
 };
 
 // ── Device & Internet ───────────────────────────────────────────────────────
@@ -500,14 +530,20 @@ const DEVICE: Record<string, (ev: TriageEvidence) => Verdict> = {
   "DEV-07": (ev) => (ev.vpn_change && !ev.vpn_trusted
     ? (correlated(ev) ? met("suspicious VPN change", "correlated suspicious app or scam activity") : unmet("VPN change without correlated suspicious activity"))
     : unmet("no suspicious VPN installation or change")),
-  "DEV-08": (ev) => ((ev.device_changes ?? []).length >= 2 ? met(`multiple device-security changes: ${(ev.device_changes ?? []).slice(0, 4).join(", ")}`) : unmet("no coherent high-risk sequence of device changes")),
+  // CORRELATE: several changes close together are never enough on their own — the sequence must be established.
+  "DEV-08": (ev) => ((ev.device_changes ?? []).length >= 2 && correlated(ev)
+    ? met(`multiple device-security changes: ${(ev.device_changes ?? []).slice(0, 4).join(", ")}`, "correlated suspicious activity")
+    : unmet("no coherent high-risk sequence of device changes")),
   "DEV-09": (ev) => (ev.integrity === "compromised"
     ? (correlated(ev) ? met("system-integrity indicators", "supporting compromise evidence") : unmet("integrity indicators without supporting compromise evidence"))
     : unmet("no system-integrity indicators")),
   "DNS-01": platformSignal("dns", "private DNS state", "PLATFORM_CAPABILITY_UNAVAILABLE",
     (ev) => (ev.dns_change && correlated(ev) ? met("unexpected DNS/DoH change", "correlated suspicious activity") : unmet("custom DNS alone is not a threat"))),
-  "DNS-02": platformSignal("dns", "private DNS state", "PLATFORM_CAPABILITY_UNAVAILABLE",
-    (ev) => (ev.dns_server && prov(ev, "reputation").verdict === "malicious" ? met("DNS server matches malicious infrastructure") : unmet("DNS server not listed as malicious"))),
+  "DNS-02": platformSignal("dns", "private DNS state", "PLATFORM_CAPABILITY_UNAVAILABLE", (ev) => {
+    const rep = prov(ev, "reputation");
+    if (ev.dns_server && ["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "DNS server reputation unavailable");
+    return ev.dns_server && rep.verdict === "malicious" ? met("DNS server matches malicious infrastructure") : unmet("DNS server not listed as malicious");
+  }),
   "DNS-03": platformSignal("dns", "private DNS state", "PLATFORM_CAPABILITY_UNAVAILABLE",
     (ev) => (ev.dns_change && correlated(ev, "app_install", "permission_change") ? met("DNS change", "preceding suspicious app or permission event") : unmet("custom DNS alone is not a threat"))),
   "PUSH-01": platformSignal("push", "browser notification origin", "BROWSER_VISIBILITY_UNAVAILABLE",
@@ -515,7 +551,7 @@ const DEVICE: Record<string, (ev: TriageEvidence) => Verdict> = {
   "PUSH-02": platformSignal("push", "browser notification origin", "BROWSER_VISIBILITY_UNAVAILABLE",
     (ev) => (ev.push_origin && ev.brand_mismatch ? met("notification impersonates a known service", "inconsistent destination") : unmet("notification permission alone is not a threat"))),
   "PUSH-03": platformSignal("push", "browser notification origin", "BROWSER_VISIBILITY_UNAVAILABLE",
-    (ev) => (ev.push_origin && ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("web-push notification leads to a malicious or deceptive URL") : unmet("notification permission alone is not a threat"))),
+    (ev) => (!ev.push_origin ? unmet("notification permission alone is not a threat") : route("link", "The notification's link")(ev))),
 };
 
 const NETWORK: Record<string, (ev: TriageEvidence) => Verdict> = {
@@ -525,8 +561,7 @@ const NETWORK: Record<string, (ev: TriageEvidence) => Verdict> = {
     if (["unavailable", "not_configured", "error"].includes(rep.status)) return gap("INTELLIGENCE_PROVIDER_UNAVAILABLE", "destination reputation unavailable");
     return rep.verdict === "malicious" ? met("confirmed malicious destination observed") : unmet("no malicious destination observed");
   },
-  "NET-02": (ev) => (!ev.captive_url ? na
-    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("captive-portal destination reached a link Possible Threat") : unmet("captive portal alone is not a threat")),
+  "NET-02": (ev) => (!ev.captive_url ? na : route("link", "The sign-in page's address")(ev)),
   "NET-03": (ev) => (ev.vpn_change && !ev.vpn_trusted
     ? (correlated(ev) ? met("unexpected VPN change", "suspicious app or device activity") : unmet("VPN change without correlated suspicious activity"))
     : unmet("no unexpected VPN change")),
@@ -560,8 +595,7 @@ const EMAIL: Record<string, (ev: TriageEvidence) => Verdict> = {
       ? met("material From/Reply-To mismatch", "consequential action")
       : unmet("no material From/Reply-To mismatch with a consequential action");
   },
-  "EMAIL-09": (ev) => (ev.link_outcome == null ? na
-    : ev.link_outcome === "POSSIBLE_THREAT_IDENTIFIED" ? met("an embedded link reached Possible Threat") : unmet(`link triage: ${ev.link_outcome}`)),
+  "EMAIL-09": route("link", "Each embedded link"),
   "EMAIL-11": (ev) => {
     const auth = prov(ev, "auth_results");
     if (!Object.keys(auth).length) return naBecause((ev.evidence_rank ?? 0) >= 3 ? EMAIL_AUTH_NOT_RECORDED : EMAIL_AUTH_NEEDS_ORIGINAL);
@@ -597,10 +631,30 @@ const CORR_MECHANICS: Record<string, string[]> = {
   "CORR-09": ["web_push"],
 };
 
+/** Archive entries that are a harmful or suspicious payload: a program, script, installer or app package, a profile
+ *  or certificate, a macro-enabled document, or a disguised or path-traversing name. */
+export function harmfulPayload(entries: string[]): string[] {
+  return entries.filter((e) => {
+    const ext = e.includes(".") ? `.${e.toLowerCase().split(".").pop()}` : "";
+    return RISKY_EXT.has(ext) || MACRO_EXT.has(ext) || PROFILE_EXT.has(ext) || e.startsWith("/") || e.includes("..") || e.includes("\u202e");
+  });
+}
+
 const CORRELATION: Record<string, (ev: TriageEvidence) => Verdict> = Object.fromEntries(
   Object.entries(CORR_MECHANICS).map(([id, mechanics]) => [id, (ev: TriageEvidence): Verdict => {
     if (!((prov(ev, "correlation").related as unknown[]) ?? []).length) return na;
-    return correlated(ev, ...mechanics) ? met(`correlated sequence: ${RULES_BY_ID[id].title}`) : unmet("no compatible correlated mechanic with supporting evidence");
+    if (!correlated(ev, ...mechanics)) return unmet("no compatible correlated mechanic with supporting evidence");
+    if (id === "CORR-08") {
+      // CORR-08 needs payload evidence: the archive's contents must show a harmful or suspicious payload.
+      const data = prov(ev, "archive");
+      const entries: string[] = data.entries ?? [];
+      if (data.encrypted && !entries.length) return gap("ENCRYPTED_CONTENT", "archive contents are encrypted and could not be inspected");
+      const payload = harmfulPayload(entries);
+      return payload.length
+        ? met(`correlated sequence: ${RULES_BY_ID[id].title}`, `harmful payload: ${payload.slice(0, 3).join(", ")}`)
+        : unmet("password supplied with the archive, but its contents show no harmful payload");
+    }
+    return met(`correlated sequence: ${RULES_BY_ID[id].title}`);
   }]),
 );
 
@@ -637,7 +691,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     for (const definition of RULES_BY_CATEGORY[category] ?? []) {
       const predicate = REGISTRY[category]?.[definition.id];
       if (!predicate) {
-        records.push({ ruleId: definition.id, title: definition.title, category, applicable: false, checked: false,
+        records.push({ ruleId: definition.id, title: definition.title, category, class: definition.class, applicable: false, checked: false,
           result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "runs on ApolloSG's servers, not in the phone's Triage" });
         continue;
       }
@@ -648,13 +702,15 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
         verdict = gap("DETERMINISTIC_CHECK_ERROR", error instanceof Error ? error.name : "unknown error");
       }
       records.push({
-        ruleId: definition.id, title: definition.title, category,
+        ruleId: definition.id, title: definition.title, category, class: definition.class,
         applicable: verdict.result !== "not_applicable",
-        checked: verdict.result === "met" || verdict.result === "not_met",
+        checked: verdict.result === "met" || verdict.result === "not_met" || verdict.result === "routed",
         result: verdict.result, evidence: verdict.evidence, coverageGap: verdict.gap ?? null, detail: "",
       });
     }
   }
+
+  citeRouted(records, evidence);
 
   const gaps = new Map<string, CoverageGapRecord>();
   for (const record of records) {
@@ -671,7 +727,8 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     .filter((c: unknown): c is IncompleteCheck => !!c && typeof c === "object" && !!(c as IncompleteCheck).check)
     .map((c: IncompleteCheck) => ({ ...c }));
 
-  const metRules = records.filter((r) => r.result === "met");
+  // Only a threat-producing rule (DETECT or CORRELATE) makes a Possible Threat.
+  const metRules = records.filter((r) => r.result === "met" && threatProducing(r.ruleId));
   let outcome: TriageOutcome;
   let reason: string;
   if (metRules.length) {
@@ -708,6 +765,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     rulesApplicable: records.filter((r) => r.applicable).map((r) => r.ruleId),
     rulesChecked: records.filter((r) => r.checked).map((r) => r.ruleId),
     rulesMet: metRules.map((r) => r.ruleId),
+    rulesRouted: records.filter((r) => r.result === "routed").map((r) => r.ruleId),
     rules: records,
     coverageGaps,
     incompleteChecks: incomplete,
@@ -718,6 +776,25 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
     geminiCalls: 0,
     evaluatedAt: new Date().toISOString(),
   };
+}
+
+/** A ROUTE rule's part was a Possible Threat at its own gate: the threat-producing rules met there are the ones
+ *  recorded as met, and this item's record cites them. */
+function citeRouted(records: RuleRecord[], evidence: TriageEvidence): void {
+  for (const record of records.filter((r) => r.result === "routed")) {
+    const part = ROUTED_PART[record.ruleId];
+    if (!part || evidence[`${part}_outcome`] !== "POSSIBLE_THREAT_IDENTIFIED") continue;
+    for (const ruleId of (evidence[`${part}_rules_met`] as string[] | undefined) ?? []) {
+      const definition = RULES_BY_ID[ruleId];
+      if (!definition || !threatProducing(ruleId)) continue;
+      const index = records.findIndex((r) => r.ruleId === ruleId);
+      if (index >= 0 && records[index].result === "met") continue;
+      const cited: RuleRecord = { ruleId, title: definition.title, category: definition.category, class: definition.class,
+        applicable: true, checked: true, result: "met", evidence: [`met at ${JUDGED_BY[part]} for the part handed over by ${record.ruleId}`],
+        coverageGap: null, detail: `cited from ${record.ruleId}` };
+      if (index >= 0) records[index] = cited; else records.push(cited);
+    }
+  }
 }
 
 /** The failure kind recorded on the first evidence item this rule reads (catalogue `evidence`), if any. */
