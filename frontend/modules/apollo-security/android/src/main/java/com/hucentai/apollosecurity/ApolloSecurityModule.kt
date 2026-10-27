@@ -212,6 +212,11 @@ class ApolloSecurityModule : Module() {
         .toString()
     }
 
+    // Google's test phones (Firebase Test Lab, used by Play's pre-launch reports) set this system setting to "true".
+    AsyncFunction("isGoogleTestLab") {
+      Settings.System.getString(ctx.contentResolver, "firebase.test.lab") == "true"
+    }
+
     // Phase A — Apps & Device (AppDeviceSdk contract). Real signals within package-visibility limits; see AppDeviceSignals.
     AsyncFunction("getAppDeviceCapabilities") { AppDeviceSignals(ctx).capabilitiesJson() }
     AsyncFunction("getInstalledAppAssessment") { nameOrPackage: String -> AppDeviceSignals(ctx).appAssessmentJson(nameOrPackage) }

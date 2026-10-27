@@ -93,7 +93,6 @@ async def devices():
         await db.patrol_records.delete_many({"owner_id": device})
 
 
-@pytest.mark.anyio
 async def test_an_independent_detection_on_a_second_device_is_its_own_threat_case(devices):
     first_device, second_device = devices
     event_id = str(uuid.uuid4())  # the same event id, scent and indicator on both devices

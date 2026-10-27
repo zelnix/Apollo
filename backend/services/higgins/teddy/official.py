@@ -268,8 +268,34 @@ async def _regulator_listing(check: Check, scope: str, what: str) -> bool:
     return True
 
 
-async def _phone(check: Check, pg: dict) -> None:
+def _directory_source(url: str | None, basis: str) -> dict:
+    from services import org_directory
+    return source_ref(org_directory.PUBLISHER, url=url, authority="official", basis=basis)
+
+
+def _contacts(items: list[dict]) -> str:
+    return ", ".join(f"{c['value']}" + (f" ({c['label']})" if c.get("label") else "") for c in items)
+
+
+async def _phone(check: Check, pg: dict, plan_: Plan | None = None) -> None:
+    from services import org_directory
     await _regulator_listing(check, "phone", "phone number")
+    claimed = plan_.entities.brands[0][0] if plan_ and plan_.entities.brands else None
+    verdict = org_directory.number_verdict(check.subject, claimed)
+    if verdict and verdict["status"] == "published":
+        check.facts.append(fact(f"{check.subject} is {verdict['name']}'s published {verdict['label'] or 'contact number'}.", "clear",
+                                topic="official_contact",
+                                source=_directory_source(verdict.get("source_url"), f"Found on {verdict['name']}'s own contact page")))
+        if check.status == "open":
+            check.status, check.route = "resolved", "official_source"
+    elif verdict:
+        # The owner's rule: a number presented as a listed organisation's that isn't one of its published numbers is a
+        # warning sign that needs corroboration (organisations have many numbers).
+        check.facts.append(fact(f"The material names {verdict['name']}, but {check.subject} is not one of {verdict['name']}'s published numbers. "
+                                f"{verdict['name']}'s published {'number is' if len(verdict['use_instead']) == 1 else 'numbers are'} "
+                                f"{_contacts(verdict['use_instead'])}.", "anomaly", topic="unlisted_contact",
+                                source=_directory_source((verdict["use_instead"][0] or {}).get("source_url"),
+                                                         f"{verdict['name']}'s published numbers on its own pages")))
     info = next((v for k, v in pg["ipqs_phones"].items() if k and check.subject and k[-8:] in check.subject.replace(" ", "")), None)
     if info and info.get("status") == "ok":
         risky = (info.get("fraud_score") or 0) >= 85 or info.get("recent_abuse")
@@ -280,10 +306,16 @@ async def _phone(check: Check, pg: dict) -> None:
 
 
 async def _email(check: Check, plan_: Plan) -> None:
+    from services import org_directory
     await _regulator_listing(check, "email", "email address")
     domain = check.subject.split("@")[-1].lower()
     owner = official_domain(domain)
-    if owner:
+    published = org_directory.email_verdict(check.subject)
+    if published:
+        check.facts.append(fact(f"{check.subject} is {published['name']}'s published {published['label'] or 'address'}.", "clear",
+                                topic="official_contact",
+                                source=_directory_source(published.get("source_url"), f"Found on {published['name']}'s own pages")))
+    elif owner:
         check.facts.append(fact(f"{check.subject} uses {domain}, {owner[0]}'s official domain.", "clear",
                                 source=source_ref("ApolloSG official-domain register", basis=owner[1])))
     elif domain in FREE_MAIL and plan_.entities.brands:
@@ -315,7 +347,7 @@ async def run(plan_: Plan, pre_gathered: dict | None, text: str) -> None:
         elif check.kind == "impersonation":
             _impersonation(check, plan_)
         elif check.kind == "phone":
-            await _phone(check, pg)
+            await _phone(check, pg, plan_)
         elif check.kind == "email":
             await _email(check, plan_)
         elif check.kind in ("abn", "acn"):

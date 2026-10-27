@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -30,7 +30,36 @@ async def intel_status():
 
 @router.post("/intel/check", response_model=IntelCheckResponse)
 async def intel_check(body: IntelCheckRequest):
-    return await assess_indicator(body.indicator_type, body.value, body.expand)
+    from services import org_directory
+    result = await assess_indicator(body.indicator_type, body.value, body.expand)
+    official = org_directory.site_verdict(org_directory.host_of(body.value))
+    return result.model_copy(update={"official": official}) if official else result
+
+
+Contact = Annotated[str, Field(min_length=1, max_length=320)]
+
+
+class OfficialContactsIn(BaseModel):
+    """The websites, numbers and addresses in material being checked, and the organisation it names (if any)."""
+    claimed_org: Optional[str] = Field(default=None, max_length=60)
+    sites: list[Contact] = Field(default_factory=list, max_length=20)
+    phones: list[Contact] = Field(default_factory=list, max_length=20)
+    emails: list[Contact] = Field(default_factory=list, max_length=20)
+
+
+@router.post("/official/contacts")
+async def official_contacts(body: OfficialContactsIn):
+    """The Official Organisation Directory's verdict on each contact: an organisation's own, or not the official contact
+    of the organisation the material names, with the one to use instead. Nothing is fetched or stored."""
+    from services import org_directory
+    return {"verdicts": org_directory.verdicts(body.claimed_org, body.sites, body.phones, body.emails)}
+
+
+@router.get("/official/names")
+async def official_names():
+    """The organisations on the Official Organisation Directory and the names people use for them (reference data)."""
+    from services import org_directory
+    return {"organisations": org_directory.names()}
 
 
 class FeedbackIn(BaseModel):

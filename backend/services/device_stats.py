@@ -14,6 +14,22 @@ log = logging.getLogger(__name__)
 COUNTERS = ("tc_flyby", "magnum_di", "ask_higgins", "device_checks")
 READS = {"learn_read": "learn_read", "scam_alert_read": "scam_alerts_read"}
 
+# One of Google's test phones (Play pre-launch reports): reported by the phone itself, or marked by an admin.
+TEST_LAB = "google_test_lab"
+# A real phone: the ApolloSG app on Android or iOS, using the phone's own protection (not a test or script
+# registration, whose adapter is mock/unsupported/standard), and not one of Google's test phones.
+REAL_PHONES = {"platform": {"$in": ["android", "ios"]}, "adapter_mode": {"$in": ["android", "ios", "native"]},
+               "test_device": None}
+
+
+def record_type(device: dict) -> str:
+    """How the admin Devices list labels a record."""
+    if device.get("test_device") == TEST_LAB:
+        return "Google test phone"
+    if device.get("platform") in ("android", "ios") and device.get("adapter_mode") in ("android", "ios", "native") and not device.get("test_device"):
+        return "Phone"
+    return "Web" if device.get("platform") == "web" and device.get("adapter_mode") == "web" else "Test or script"
+
 
 async def bump(device_id: str, counter: str) -> None:
     """Adds one to a count. Never fails the feature that was used: a missed count is only logged."""
@@ -44,11 +60,11 @@ def counts(device: dict) -> dict[str, int]:
     return out
 
 
-async def totals() -> dict[str, int]:
-    """Every device's counts added up."""
+async def totals(match: Optional[dict] = None) -> dict[str, int]:
+    """The counts of every device (or of those matching `match`) added up."""
     group: dict = {"_id": None}
     group.update({name: {"$sum": {"$ifNull": [f"$stats.{name}", 0]}} for name in COUNTERS})
     group.update({name: {"$sum": {"$size": {"$ifNull": [f"$stats.{name}", []]}}} for name in READS.values()})
-    rows = await db.devices.aggregate([{"$match": {"stats": {"$exists": True}}}, {"$group": group}]).to_list(1)
+    rows = await db.devices.aggregate([{"$match": {**(match or {}), "stats": {"$exists": True}}}, {"$group": group}]).to_list(1)
     row = rows[0] if rows else {}
     return {name: int(row.get(name) or 0) for name in (*COUNTERS, *READS.values())}

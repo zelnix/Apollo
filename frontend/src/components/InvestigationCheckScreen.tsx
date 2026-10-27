@@ -17,6 +17,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
 import { EvidenceProfileCard } from "./EvidenceProfileCard";
+import { OfficialContactsCard } from "./OfficialContactsCard";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -129,6 +130,8 @@ export function InvestigationCheckScreen({
           caseId={caseId}
           kind={kind}
         />
+
+        <OfficialContactsCard verdicts={result.official} testID="investigation-check-official" />
 
         {result.evidenceProfile ? (
           <EvidenceProfileCard profile={result.evidenceProfile} onAddOriginal={onAddOriginal} busy={addingOriginal} notice={evidenceNotice} testID="investigation-check-evidence-profile" />

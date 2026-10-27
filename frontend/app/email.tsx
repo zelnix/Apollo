@@ -59,6 +59,7 @@ import { simulation } from "@/src/simulation";
 import { SourceHero } from "@/src/components/SourceHero";
 import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { recordCheck } from "@/src/store/checkHistoryStore";
+import type { OfficialVerdict } from "@/src/domain/officialContacts";
 import {
   listEmailAccounts,
   addEmailAccount,
@@ -224,6 +225,8 @@ export default function CheckEmail() {
     profile: EmailEvidenceProfile;
     /** What just changed with the evidence: an upgrade, or an original that didn't match. */
     notice: string | null;
+    /** The Official Organisation Directory's verdict on its contacts (null: the lookup didn't answer). */
+    official?: OfficialVerdict[] | null;
     explanation: null;
     assessment: null;
   } | null>(null);
@@ -510,6 +513,7 @@ export default function CheckEmail() {
     setResult({
       submissionId: outcome.submissionId, a, event: outcome.event, urls: outcome.urls, phones: outcome.phones,
       caseId: outcome.investigationCaseId, profile: outcome.profile, notice: meta.notice ?? null, explanation: null, assessment: null,
+      official: outcome.official,
     });
     void recordEmailCheck({
       id: outcome.submissionId,
@@ -614,6 +618,7 @@ export default function CheckEmail() {
       phones: result.phones,
       explanation: result.explanation,
       profile: result.profile,
+      official: result.official,
     });
     const askPrompt = `About the email I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const emailActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];

@@ -73,7 +73,8 @@ async def call_risk_check(body: CallRiskRequest):
     before a lookup credit is spent; a failed lookup falls back to the last known score, marked stale."""
     result = await check_phone_risk(body.number, body.country)
     observation = _reputation_observation(result)
-    response = result.model_copy(update={"assessment": observation})
+    from services import org_directory
+    response = result.model_copy(update={"assessment": observation, "official": org_directory.number_verdict(body.number, body.claimed_org)})
     # Ingest flagged numbers into the Live Caller ID reputation database.
     try:
         from services.caller_id_db import ingest_from_risk_check

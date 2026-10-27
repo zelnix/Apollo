@@ -21,6 +21,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
 import { EvidenceProfileCard } from "./EvidenceProfileCard";
+import { OfficialContactsCard } from "./OfficialContactsCard";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -127,6 +128,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
                 </View>
               ) : null}
         </Card>
+
+        <OfficialContactsCard verdicts={result.official} />
 
         {result.evidenceProfile ? (
           <EvidenceProfileCard profile={result.evidenceProfile} onAddOriginal={onAddOriginal} busy={addingOriginal} notice={evidenceNotice} testID="check-result-evidence-profile" />

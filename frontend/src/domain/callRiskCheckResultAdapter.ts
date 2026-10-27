@@ -4,6 +4,7 @@
 import type { ActionLink, CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
 import { GATE_REGISTRY } from "./gateRegistry";
 import { ACTION_LINKS } from "./actionRegistry";
+import { parseOfficialVerdict } from "./officialContacts";
 
 interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null;
@@ -14,6 +15,8 @@ interface CallRiskResult {
   /** "stale" = the live lookup failed and this is the last known score, from `checked_at`. */
   freshness?: "fresh" | "cached" | "stale";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
+  /** Official Organisation Directory: this number is an organisation's published one (as the server sent it). */
+  official?: unknown;
 }
 
 /** Format a raw phone number (e.g. "+15550101234") into a readable display string
@@ -163,5 +166,9 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
     evidence,
     completedAt: r.checked_at,
     investigationId: null,
+    official: (() => {
+      const official = parseOfficialVerdict(r.official, { kind: "phone", value: r.number });
+      return official ? [official] : [];
+    })(),
   };
 }

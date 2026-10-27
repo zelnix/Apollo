@@ -111,6 +111,15 @@ async def lifespan(_: FastAPI):
     await ensure_threat_indexes()
     from services import threat_feeds
     await threat_feeds.ensure_indexes()
+    try:
+        # Official Organisation Directory (shipped list; admin-edited entries are never overwritten) and the
+        # privacy-safe observed patterns' indexes.
+        from services import observed_intel, org_directory
+        await org_directory.seed()
+        await org_directory.load()
+        await observed_intel.ensure_indexes()
+    except Exception:  # noqa: BLE001 — the directory must never block startup
+        logger.warning("official organisation directory setup failed", exc_info=True)
     # Caller reputation freshness index
     await db.caller_id_numbers.create_index("evidence_expires_at")
     # Legacy blocklist migration disabled (product decision: no independent Apollo threat catalogue).
@@ -269,7 +278,7 @@ async def lifespan(_: FastAPI):
     # 9. threat_feeds_loop — the free threat-intelligence feeds (services/threat_feeds.py): each refreshes once a day,
     #    failures are retried every 2 hours. Hourly it only refreshes the feeds that are due; admins can refresh now.
     async def threat_feeds_loop():
-        from services import threat_feeds
+        from services import observed_intel, org_directory, threat_feeds
         await asyncio.sleep(90)  # let startup settle first
         while True:
             try:
@@ -278,6 +287,15 @@ async def lifespan(_: FastAPI):
                 raise
             except Exception:  # noqa: BLE001
                 logger.warning("threat feeds loop failed")
+            try:
+                # Re-read each organisation's own pages once a week (a day after an unreadable attempt); drop
+                # observations nobody made in the last 30 days.
+                await org_directory.run(trigger="scheduled", only_due=True)
+                await observed_intel.purge()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("official organisation directory loop failed")
             await asyncio.sleep(3600)
 
     threat_feeds_task = asyncio.create_task(threat_feeds_loop(), name="apollo-threat-feeds")

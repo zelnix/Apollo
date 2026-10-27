@@ -80,6 +80,9 @@ export interface CheckResultModel {
   investigationId?: string | null;
   /** Higgins Triage's classification of the evidence received (e.g. email L1–L4) and what it could examine. */
   evidenceProfile?: import("./triage/evidenceProfile").EvidenceProfile | null;
+  /** The Official Organisation Directory's verdict on each contact the check held (null: the lookup didn't answer;
+   *  absent: nothing to compare). Never changes the outcome. */
+  official?: import("./officialContacts").OfficialVerdict[] | null;
 }
 
 /** Short status label for a check item (plain English, same text spoken by Higgins).

@@ -3,6 +3,7 @@
 // never as clean. Only shapes that could turn a broken answer into an optimistic verdict are checked.
 
 import type { DomainInfo, IntelCoverage, IntelResult, IntelSource, IntelVerdict } from "./types";
+import { parseOfficialVerdict } from "./officialContacts.ts";
 
 const VERDICTS: IntelVerdict[] = ["clean", "malicious", "unknown"];
 const COVERAGES: IntelCoverage[] = ["full", "partial", "none"];
@@ -46,7 +47,8 @@ export function parseIntelResult(raw: unknown): IntelResult | null {
     if (!isStr(o.name) || !SOURCE_STATUS.includes(o.status as IntelSource["status"])) return null;
     sources.push({ name: o.name, status: o.status as IntelSource["status"], detail: isStr(o.detail) ? o.detail : "", threat_types: st,
       ...(o.check === "reputation" || o.check === "final_destination" ? { check: o.check } : {}),
-      ...(isStr(o.failure) ? { failure: o.failure } : {}) });
+      ...(isStr(o.failure) ? { failure: o.failure } : {}),
+      ...(isStr(o.url) && /^https:\/\//i.test(o.url) ? { url: o.url } : {}) });
   }
   // A "malicious" verdict must be backed by at least one matching source; "clean" must not carry unavailable sources as full coverage.
   if (r.verdict === "malicious" && !sources.some((s) => s.status === "match")) return null;
@@ -55,5 +57,6 @@ export function parseIntelResult(raw: unknown): IntelResult | null {
   return {
     verdict: r.verdict as IntelVerdict, coverage: r.coverage as IntelCoverage, threat_types, sources, indicator_digest: r.indicator_digest, checked_at: r.checked_at,
     cached: r.cached === true, redirect_chain, final_url: isStr(r.final_url) ? r.final_url : null, domain_info: parseDomainInfo(r.domain_info),
+    official: parseOfficialVerdict(r.official, { kind: "site", value: "" }),
   };
 }

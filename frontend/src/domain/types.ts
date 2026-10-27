@@ -62,6 +62,8 @@ export interface IntelSource {
   check?: "reputation" | "final_destination";
   /** Why it didn't complete, when it didn't (timeout, quota_exhausted, nonexistent_domain, …). */
   failure?: string | null;
+  /** The list's own page, so the person can see who flagged it (the entry's own page when the list has one). */
+  url?: string | null;
 }
 
 /** RDAP domain lookup — best-effort, keyless registrar/registration-date context. Never gates the
@@ -89,6 +91,8 @@ export interface IntelResult {
   cached: boolean;
   coverage: IntelCoverage;
   domain_info?: DomainInfo | null;
+  /** Official Organisation Directory: an organisation's own website, or one using its name that isn't. Never changes the verdict. */
+  official?: import("./officialContacts").OfficialVerdict | null;
 }
 
 export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email" | "file" | "family";

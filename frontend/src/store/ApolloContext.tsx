@@ -26,6 +26,8 @@ import { analyseEmail, parseEmail, type EmailAnalysis } from "@/src/domain/email
 import { fetchMessageUrlIntel, linkTriageOutcome, linkTriageRulesMet, lookupFailureMessage, lookupUrlIntel, type MessageUrlResult } from "@/src/domain/urlIntel";
 import { urlIncompleteChecks } from "@/src/domain/triage/completeness";
 import { fetchEvidencePhoneIntel, lookupNumberRisk } from "@/src/domain/phoneIntel";
+import { emailsIn, lookupOfficialContacts } from "@/src/domain/officialContactsLookup";
+import type { OfficialVerdict } from "@/src/domain/officialContacts";
 import { reportTriageOutcome } from "@/src/api/triageTelemetry";
 import { numberLookupFailure } from "@/src/domain/triage/limitedCause";
 import { extractPhoneCandidates, phoneIncompleteChecks, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
@@ -48,7 +50,7 @@ import { canTransition, resolveApolloState, type StateResolution } from "@/src/d
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
 import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
 import { securityAdapter } from "@/src/security/securityAdapter";
-import { deviceInfo } from "@/src/telemetry/deviceInfo";
+import { deviceInfo, isGoogleTestLab } from "@/src/telemetry/deviceInfo";
 import { simulation } from "@/src/simulation";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
@@ -110,6 +112,8 @@ const deviceMeta = async () => ({
   tz_offset_minutes: -new Date().getTimezoneOffset(),
   locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
   ...(await deviceInfo()),
+  // Google's test phones (Play pre-launch testing) say so, so they never count as real users. Only ever `true`.
+  ...((await isGoogleTestLab()) ? { test_lab: true } : {}),
 });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen", notifPrefs: "apollo.notification.prefs" };
@@ -158,7 +162,9 @@ export interface MessageExplanation { summary: string; why: string[]; recommenda
 export type { MessageUrlResult };
 export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; phones: EvidencePhoneResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null;
   /** Higgins Triage's classification of how the message reached ApolloSG. */
-  profile?: EvidenceProfile | null }
+  profile?: EvidenceProfile | null;
+  /** The Official Organisation Directory's verdict on its contacts (null: the lookup didn't answer). */
+  official?: OfficialVerdict[] | null }
 /** How a message reached ApolloSG (sets its evidence level), and the case a re-check belongs to. */
 export interface MessageCheckOptions {
   via?: MessageVia; receivedAt?: string | null; upgradeEventId?: string | null;
@@ -181,6 +187,8 @@ export interface EmailOutcome {
   upgraded: boolean;
   /** Better evidence was offered for a case but didn't match its email, so it was checked as a separate email. */
   upgradeMismatch: boolean;
+  /** The Official Organisation Directory's verdict on its contacts (null: the lookup didn't answer). */
+  official?: OfficialVerdict[] | null;
 }
 /** One email to check. `via` sets its evidence level; `original` is the message parsed on this phone (its bytes stay here). */
 export interface EmailCheckInput {
@@ -212,6 +220,8 @@ export interface CallRiskResult {
   investigation_case_id?: string | null;
   /** Higgins Triage's classification of what ApolloSG had for this number (merged into its case when there is one). */
   evidence_profile?: EvidenceProfile | null;
+  /** Official Organisation Directory: this number is an organisation's published one (raw from the server). */
+  official?: unknown;
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -250,7 +260,7 @@ interface ApolloContextValue {
   scanGmailInbox(): Promise<{ checked: number; accepted: number }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
-  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null; profile: EvidenceProfile }>;
+  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null; profile: EvidenceProfile; official?: OfficialVerdict[] | null }>;
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
   /** `deliberate` marks a check the person asked for (Check a Number, a re-check) as opposed to the
    *  background screening of an incoming call. A deliberate check that Apollo cannot settle from its
@@ -1038,6 +1048,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // ── Device Capabilities: the messaging app's own verdict, where it is shared with Apollo ──
     // Evidence belongs to the provider; it only triggers Apollo's existing investigation.
     const nativeFact = await readNativeClassification("message", sender);
+    // The Official Organisation Directory's verdict on the message's links, numbers and addresses, against the
+    // organisation it names. Runs alongside the checks below; never changes the outcome.
+    const officialLookup = lookupOfficialContacts({
+      text: `${sender}\n${text}`, claimedOrg: analysis.signals.claimedBrand, sites: analysis.signals.urls,
+      phones: extractPhoneCandidates(`${sender}\n${text}`), emails: emailsIn(`${sender}\n${text}`),
+    });
     // Gate detection path: local/deterministic analysis + link reputation only.
     // No backend investigation call — Magnum DI investigates only when the person requests it.
     const urls = await fetchMessageUrlIntel(analysis.signals.urls, deviceId);
@@ -1129,7 +1145,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
-    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, phones, explanation: null, assessment: null, remoteError, event, profile };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, phones, explanation: null, assessment: null, remoteError, event, profile, official: await officialLookup };
   }, [correlationFor, deviceId, upsertEvent]);
 
   // ── Email check (Gate 1) ─────────────────────────────────────────────────
@@ -1168,6 +1184,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       : false;
     const prior = previous?.evidence_profile?.type === "email" ? previous.evidence_profile as EmailEvidenceProfile : null;
     const profile = mergeEmailProfiles(prior, buildEmailProfile({ via: input.via ?? "pasted", analysis, original: parsedOriginal, keptOnDevice, simulated: input.simulated }));
+    const emailText = `${fromInput}\n${subjectInput}\n${rawInput}`;
+    // The Official Organisation Directory's verdict on the sender, links, numbers and addresses, against the organisation
+    // the email names. Runs alongside the checks below; never changes the outcome.
+    const officialLookup = lookupOfficialContacts({
+      text: emailText, claimedOrg: analysis.claimedBrand, sites: analysis.urls, phones: extractPhoneCandidates(emailText),
+      emails: [analysis.parsed.fromAddress ?? "", ...emailsIn(emailText)],
+    });
     const urls = await fetchMessageUrlIntel(analysis.urls, deviceId);
     // Telephone/mobile numbers in the email get the same real reputation check the links get.
     const phones = await fetchEvidencePhoneIntel(extractPhoneCandidates(`${fromInput}\n${subjectInput}\n${rawInput}`), deviceId, deviceRegion());
@@ -1265,7 +1288,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return {
       submissionId: event.event_id,
       analysis: { ...analysis, state: event.state, why: event.why },
-      urls, phones, event, investigationCaseId, profile, upgraded: !!previous, upgradeMismatch,
+      urls, phones, event, investigationCaseId, profile, upgraded: !!previous, upgradeMismatch, official: await officialLookup,
     };
   }, [correlationFor, deviceId, upsertEvent]);
 
@@ -1361,6 +1384,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const checkCall = useCallback(async (input: CallInput) => {
     const analysis = analyseCall(input);
+    // The Official Organisation Directory's verdict on the number (and any in the notes), against the organisation the
+    // caller claimed. Runs alongside the checks below; never changes the outcome.
+    const officialLookup = lookupOfficialContacts({
+      text: `${input.brandName ?? ""}\n${input.transcript ?? ""}`, claimedOrg: input.brandName ?? analysis.claimedBrand ?? null,
+      phones: [input.number ?? "", ...extractPhoneCandidates(input.transcript ?? "")],
+    });
     let event: PatrolEvent | null = null;
     // ── Device Capabilities: the device's own verdict, where it is shared with Apollo ──
     // Today no provider exposes one, so this is null and nothing below changes. When one does, it
@@ -1419,10 +1448,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         { label: "Caller said", value: input.brandName ? `${input.claim} (${input.brandName})` : input.claim },
         ...(input.asks.length ? [{ label: "Asked for", value: input.asks.join(", ") }] : []),
       ], text: input.transcript?.trim() ? input.transcript : null });
-      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event, profile };
-      if (nativeFact) return { submissionId: event.event_id, analysis: { ...analysis, why: event.why }, event, profile };
+      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event, profile, official: await officialLookup };
+      if (nativeFact) return { submissionId: event.event_id, analysis: { ...analysis, why: event.why }, event, profile, official: await officialLookup };
     }
-    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event, profile };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event, profile, official: await officialLookup };
   }, [correlationFor, deviceId, upsertEvent]);
 
   // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see

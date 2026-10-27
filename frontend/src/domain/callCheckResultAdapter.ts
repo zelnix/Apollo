@@ -6,6 +6,7 @@ import type { CallAnalysis, CallAsk, CallClaim } from "./callAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
 import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
+import type { OfficialVerdict } from "./officialContacts";
 import { toneForState, buildEvidenceRows, appendEventContext, buildCheckResult } from "./checkResultFramework";
 import { ACTION_LINKS } from "./actionRegistry";
 import { GATE_REGISTRY } from "./gateRegistry";
@@ -44,6 +45,8 @@ export function buildCallCheckResult(args: {
   event: PatrolEvent | null;
   number: string;
   transcript: string;
+  /** The Official Organisation Directory's verdict on the number, against the organisation the caller claimed. */
+  official?: OfficialVerdict[] | null;
 }): CheckResultModel {
   const { analysis: a, event, number, transcript } = args;
   const subject = number.trim() || CLAIM_LABEL[a.claimedBrand as CallClaim] || "Unknown caller";
@@ -132,7 +135,7 @@ export function buildCallCheckResult(args: {
   ]);
   appendEventContext(evidence, { eventId: event?.event_id });
 
-  return buildCheckResult({
+  return { ...buildCheckResult({
     gate: GATE_REGISTRY.call.checkResultGate,
     checkType: GATE_REGISTRY.call.defaultCheckType,
     subject,
@@ -145,5 +148,5 @@ export function buildCallCheckResult(args: {
     whatToDoLinks,
     evidence,
     event,
-  });
+  }), official: args.official };
 }

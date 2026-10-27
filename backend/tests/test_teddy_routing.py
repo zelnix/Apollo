@@ -155,6 +155,17 @@ def _lookups(monkeypatch, *, verdict="clean", threats=(), age_days=4000):
     async def not_listed(_scope, _value):
         return []
     monkeypatch.setattr(threat_feeds, "listed", not_listed)
+    # Earlier runs leave cross-device sightings of these same test links in the shared database; each case here is
+    # about its own evidence only (observed intelligence has its own tests in test_free_kb_phases_3_5.py).
+    from services import observed_intel
+
+    async def not_seen(*_args, **_kwargs):
+        return None
+
+    async def none_related(*_args, **_kwargs):
+        return []
+    monkeypatch.setattr(observed_intel, "seen", not_seen)
+    monkeypatch.setattr(observed_intel, "related", none_related)
 
 
 def _grounded(lines: list[str], urls: list[tuple[str, str]]) -> tuple[str, dict]:

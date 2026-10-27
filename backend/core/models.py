@@ -31,6 +31,8 @@ class DeviceRegister(BaseModel):
     os_version: Optional[str] = Field(default=None, max_length=32)
     country: Optional[str] = Field(default=None, pattern=r"^[A-Z]{2}$")  # from the phone's region setting
     installed_at: Optional[datetime] = None
+    # Android sets the system setting `firebase.test.lab` on Google's test devices (Play pre-launch reports).
+    test_lab: Optional[bool] = None
 
     def telemetry(self) -> dict[str, Any]:
         return {k: v for k, v in self.model_dump(include=DEVICE_TELEMETRY).items() if v is not None}
@@ -49,6 +51,8 @@ class Device(BaseDocument):
     os_version: Optional[str] = None
     country: Optional[str] = None
     installed_at: Optional[datetime] = None
+    # "google_test_lab": one of Google's test phones (reported by the phone, or marked by an admin). Never a real user.
+    test_device: Optional[str] = None
     created_at: datetime
     last_seen_at: datetime
 
@@ -119,6 +123,9 @@ class IntelCheckResponse(BaseModel):
     final_url: Optional[str] = None
     # RDAP domain lookup — best effort, never gates the verdict. None when not attempted (e.g. no valid host).
     domain_info: Optional[DomainInfo] = None
+    # Official Organisation Directory: an organisation's own website, or one carrying its name that isn't
+    # (services/org_directory.site_verdict). Presentational: it never changes the verdict above.
+    official: Optional[dict[str, Any]] = None
 
 
 class ReputationCache(BaseDocument):
@@ -422,6 +429,8 @@ class CallRiskRequest(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     number: str = Field(min_length=3, max_length=40)
     country: Optional[str] = Field(default=None, min_length=2, max_length=2)
+    # The organisation the material or caller says it is from, when it names one (for the Official Organisation Directory).
+    claimed_org: Optional[str] = Field(default=None, max_length=60)
 
 
 class PhoneRiskCache(BaseDocument):
@@ -467,3 +476,5 @@ class CallRiskResponse(BaseModel):
     failure: Optional[str] = None
     higgins: dict[str, Any]
     assessment: Optional[dict[str, Any]] = None
+    # Official Organisation Directory: an organisation's published number, or not one of the claimed organisation's.
+    official: Optional[dict[str, Any]] = None

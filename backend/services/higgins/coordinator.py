@@ -144,6 +144,14 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
     if response.outcome:
         # Apollo's case outcome — the latest one, from whichever layer answered.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"routing.outcome": response.outcome}})
+        # Privacy-safe patterns: a concerning case's websites, numbers and addresses are counted as one-way codes per
+        # separate device (services/observed_intel.py). Never content; never a simulated result.
+        try:
+            from services import observed_intel
+            await observed_intel.record_case(owner, case["case_id"], response.outcome, answered_by=provider_result.answered_by,
+                                             simulated=bool(provider_result.simulated or getattr(response, "simulated", False)))
+        except Exception:  # noqa: BLE001 — counting never fails the investigation
+            log.warning("observed_intel_record_failed case=%s", case["case_id"], exc_info=True)
     if fidelity:
         # The Fidelity Check of the latest result's plain English, for the admin portal: PASS/FAIL and why, no content.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]},

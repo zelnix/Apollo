@@ -18,10 +18,21 @@ const SOURCE_NAME: Record<string, string> = {
   apollo_rules: "Apollo threat list",
   apollo_threat_list: "Apollo threat list",
   intel: "Apollo threat list",
+  apollo_blocklist: "Apollo's blocklist",
+  phishtank: "PhishTank",
+  openphish: "OpenPhish",
+  spamhaus_drop: "Spamhaus DROP",
+  asic_investor_alerts: "ASIC's investor alert list",
+  acma_blocked_gambling: "ACMA's blocked gambling websites list",
 };
 
 function sourceLabel(name: string): string {
   return SOURCE_NAME[name] ?? name.replace(/_/g, " ");
+}
+
+/** "PhishTank", "PhishTank and Google Safe Browsing", "A, B and C". */
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 function confidenceLabel(c: "low" | "medium" | "high" | undefined): CheckResultModel["confidence"] {
@@ -134,13 +145,19 @@ export function buildLinkCheckResult(args: {
   // Priority: barking/biting → warn + what-to-do; growling/ears_up → caution; resting → reassurance
   // with any honest uncertainty from unavailable / incomplete checks.
   const unavailable = items.filter((i) => i.status === "unavailable" || i.status === "incomplete");
+  // The public lists that flagged it, named so the person can see who said so.
+  const flagged = (outcome.intel?.sources ?? []).filter((src) => src.status === "match");
+  const flaggedNames = Array.from(new Set(flagged.map((src) => sourceLabel(src.name))));
+  const listedBy = flaggedNames.length
+    ? `${joinNames(flaggedNames)} list${flaggedNames.length === 1 ? "s" : ""} this address as a known threat. `
+    : "";
   let higginsSays: string;
   let whatToDo: string | undefined;
   if (state === "biting") {
-    higginsSays = `Apollo blocked this website. The device's own evidence confirms the block. ${outcome.decision.claimed_brand ? `It was pretending to be ${outcome.decision.claimed_brand}. ` : ""}Nothing further is needed unless you already entered information before the block.`;
+    higginsSays = `Apollo blocked this website. The device's own evidence confirms the block. ${listedBy}${outcome.decision.claimed_brand ? `It was pretending to be ${outcome.decision.claimed_brand}. ` : ""}Nothing further is needed unless you already entered information before the block.`;
     whatToDo = liveEvent?.what_to_do ?? outcome.decision.what_to_do;
   } else if (state === "barking") {
-    higginsSays = `${liveEvent?.what_happened ?? outcome.decision.what_happened} ${outcome.decision.claimed_brand ? `The address looks like it's pretending to be ${outcome.decision.claimed_brand}. ` : ""}I'd recommend not opening this link.`;
+    higginsSays = `${liveEvent?.what_happened ?? outcome.decision.what_happened} ${listedBy}${outcome.decision.claimed_brand ? `The address looks like it's pretending to be ${outcome.decision.claimed_brand}. ` : ""}I'd recommend not opening this link.`;
     whatToDo = liveEvent?.what_to_do ?? outcome.decision.what_to_do;
   } else if (state === "growling" || state === "ears_up") {
     higginsSays = `${liveEvent?.what_happened ?? outcome.decision.what_happened} ${unavailable.length ? "Some of the checks couldn't complete — I've noted which ones below. " : ""}Treat this link with caution until you're sure.`;
@@ -156,8 +173,11 @@ export function buildLinkCheckResult(args: {
     whatToDo = undefined;
   }
 
-  // Actionable links — help the person report dangerous/suspicious sites.
+  // Actionable links — the list pages that flagged it, then help to report dangerous/suspicious sites.
   const whatToDoLinks: ActionLink[] = [];
+  for (const src of flagged) {
+    if (src.url && !whatToDoLinks.some((l) => l.url === src.url)) whatToDoLinks.push({ label: `See ${sourceLabel(src.name)}'s listing`, url: src.url });
+  }
   if (state === "barking" || state === "biting" || state === "growling") {
     whatToDoLinks.push(ACTION_LINKS.google_report_phishing);
     whatToDoLinks.push(ACTION_LINKS.ftc_report_fraud);
@@ -206,5 +226,7 @@ export function buildLinkCheckResult(args: {
     completedAt: new Date().toISOString(),
     investigationId: liveEvent?.investigation_case_id ?? null,
     evidenceProfile: liveEvent?.evidence_profile ?? outcome.profile ?? null,
+    // The Official Organisation Directory's verdict on this website (absent when the lookup didn't answer at all).
+    official: outcome.intel ? (outcome.intel.official ? [outcome.intel.official] : []) : undefined,
   };
 }

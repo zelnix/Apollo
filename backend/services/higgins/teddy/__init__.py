@@ -393,6 +393,14 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
 
     await progress("observe", "TC FlyBy is checking official sources first.")
     await official.run(plan_, case.get("triage_provider_evidence"), combined)
+    # Cross-source matching: every source's own answer per website, number and address, with its freshness. Adds only
+    # the observed/campaign weak signals to the checks; the record itself goes to Magnum DI's brief.
+    from services import correlation
+    try:
+        cross = await correlation.cross_source(plan_, case.get("triage_provider_evidence"), owner)
+    except Exception:  # noqa: BLE001 — extra context; never breaks an investigation
+        log.warning("cross_source_failed case=%s", case_id, exc_info=True)
+        cross = []
     decision, issues = deciding.evaluate(plan_, texts, final=False)
     searched = {"calls": 0, "queries": 0, "cacheHits": 0, "tokens": {"input": 0, "output": 0}, "simulated": False, "model": None, "status": "skipped"}
     # A decisive concern ends TC FlyBy's stages, whether it settles the case or hands Magnum DI what it couldn't read.
@@ -418,7 +426,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     unread_sections = official.unread_sections(case.get("triage_provider_evidence"))
     checks_id = await _item(owner, case, CHECKS_ITEM_ID, json.dumps({
         "messageType": plan_.message_type, "entities": plan_.entities.wire(), "checks": [c.wire() for c in plan_.checks],
-        "pattern": plan_.pattern, "gaps": plan_.gaps, "issues": [i.wire() for i in issues],
+        "pattern": plan_.pattern, "gaps": plan_.gaps, "issues": [i.wire() for i in issues], "crossSource": cross,
         "search": {k: v for k, v in searched.items() if k != "answers"}}, ensure_ascii=False, default=str), "TC FlyBy fly-by checks")
     await _mark_read(owner, case_id, read, texts)
 
@@ -433,7 +441,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
         response = report.compose(decision, plan_, texts, checks_id)
     brief_id = None
     if not decision:
-        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern, floor),
+        brief_id = await _item(owner, case, BRIEF_ITEM_ID, report.magnum_brief(plan_.checks, [i.wire() for i in issues], unread_sections, plan_.pattern, floor, cross),
                                "TC FlyBy brief for Magnum DI")
 
     # Material Teddy read in full, and the images whose content it read through the text extracted from them.
@@ -444,7 +452,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
               "decision": {"answeredBy": decision.answered_by, "outcome": decision.outcome, "basis": decision.basis} if decision else None,
               "issues": [i.wire() for i in issues], "settled": sorted(settled),
               "response": response, "magnumSearch": magnum_search, "floor": floor, "search": {k: v for k, v in searched.items() if k != "answers"},
-              "items": {"checks": checks_id, "brief": brief_id}}
+              "crossSource": cross, "items": {"checks": checks_id, "brief": brief_id}}
     summary = _summary(plan_, decision, issues, magnum_search, searched)
     summary["floor"] = floor
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {
@@ -463,7 +471,8 @@ async def discard_response(owner: str, case: dict) -> None:
     checks = [Check.from_wire(c) for c in record["checks"]]
     whole = [{"capability": "reasoning", "evidenceIds": [], "checkId": None,
               "text": "TC FlyBy's own result didn't pass Apollo's validation, so investigate the whole case."}]
-    brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"), record.get("floor"))
+    brief = report.magnum_brief(checks, whole, official.unread_sections(case.get("triage_provider_evidence")), record.get("pattern"), record.get("floor"),
+                                record.get("crossSource"))
     record["items"]["brief"] = await _item(owner, case, BRIEF_ITEM_ID, brief, "TC FlyBy brief for Magnum DI")
     record.update(response=None, decision=None, magnumSearch=True, issues=None)
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {

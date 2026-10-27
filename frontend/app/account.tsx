@@ -26,6 +26,9 @@ import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { screenImage } from "@/src/domain/imagePrivacy";
 import { buildAccountCheckResult } from "@/src/domain/accountCheckResultAdapter";
+import type { OfficialVerdict } from "@/src/domain/officialContacts";
+import { emailsIn, lookupOfficialContacts } from "@/src/domain/officialContactsLookup";
+import { extractPhoneCandidates } from "@/src/domain/phoneNumbers";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
@@ -83,7 +86,7 @@ export default function CheckAccount() {
   const [evidence, setEvidence] = useState<AccountEvidence | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
-  const [result, setResult] = useState<{ submissionId: string; a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; official: OfficialVerdict[] | null } | null>(null);
   const [identifier, setIdentifier] = useState("");
   const [breach, setBreach] = useState<Breach | null>(null);
   const [showSender, setShowSender] = useState(false);
@@ -128,6 +131,12 @@ export default function CheckAccount() {
         repeated: flags.repeated === true ? true : undefined, unusualLocation: flags.unusualLocation === true ? true : undefined,
         recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
       let a = analyseAccountAlert(input);
+      // The Official Organisation Directory's verdict on the alert's links, numbers and addresses; never changes the outcome.
+      const material = `${sender.trim()}\n${safeText}`;
+      const officialLookup = lookupOfficialContacts({
+        text: material, claimedOrg: a.claimedBrand ?? prov.brand, sites: a.urls,
+        phones: extractPhoneCandidates(material), emails: emailsIn(material),
+      });
       let remote: Remote | null = null;
       try {
         remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls, local_state: a.state, scenario: a.scenario, second_opinion: false });
@@ -139,7 +148,7 @@ export default function CheckAccount() {
         event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(a.verdict), why: a.why, what_to_do: a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null }, { kind: "account", fields: [{ label: "Provider", value: prov.label }, ...(sender.trim() ? [{ label: "From", value: sender }] : [])], text: text.trim() ? text : null });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
-      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked });
+      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked, official: await officialLookup });
     } finally { setBusy(false); }
   };
   const checkBreach = async () => {
@@ -153,7 +162,7 @@ export default function CheckAccount() {
 
   // UNIVERSAL CHECK RESULT — when the account check has produced an outcome
   if (result && a) {
-    const model = buildAccountCheckResult({ analysis: a, event: result.event, provider, kind: kind ?? "other", initiated });
+    const model = { ...buildAccountCheckResult({ analysis: a, event: result.event, provider, kind: kind ?? "other", initiated }), official: result.official };
     const askPrompt = `About the account alert I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const acctActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     acctActions.push({ testID: "account-open-official", variant: "secondary", label: `Open ${a.providerLabel} safely`, onPress: () => { void Linking.openURL(ACCOUNT_PROVIDERS.find((p) => p.id === provider)?.official[0] ? `https://${ACCOUNT_PROVIDERS.find((p) => p.id === provider)!.official[0]}` : "https://www.google.com"); } });

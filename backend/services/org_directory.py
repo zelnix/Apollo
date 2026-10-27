@@ -131,6 +131,8 @@ def _apply(orgs: list[dict]) -> None:
     brand_domains.DIRECTORY.update(domains)
     _VIEW.clear()
     _VIEW.update(view)
+    _SOURCES.clear()
+    _SOURCES.update({org["name"]: org.get("sources") or [] for org in orgs})
 
 
 async def load() -> int:
@@ -150,6 +152,111 @@ def email_owner(address: str) -> dict | None:
 
 def org(name: str) -> dict | None:
     return _VIEW["orgs"].get(name)
+
+
+def find(claimed: str | None) -> dict | None:
+    """The directory entry for an organisation as material or a caller names it ("Commonwealth Bank", "the ATO")."""
+    text = " ".join((claimed or "").lower().split()).removeprefix("the ")
+    if not text:
+        return None
+    by_name = {name.lower().removeprefix("the "): entry for name, entry in _VIEW["orgs"].items()}
+    if text in by_name:
+        return by_name[text]
+    hit = BRANDS.get(text)
+    return _VIEW["orgs"].get(hit[0]) if hit else None
+
+
+def _contact(item: dict, key: str) -> dict:
+    return {"value": item[key], "label": item.get("label") or "", "source_url": item.get("source_url")}
+
+
+def number_verdict(number: str, claimed: str | None = None) -> dict | None:
+    """What the directory says about a number: an organisation's published contact, or (when the material or caller
+    names a listed organisation) not one of that organisation's published numbers, with the ones to use instead."""
+    hit = phone_owner(number)
+    if hit:
+        return {"status": "published", "name": hit["name"], "label": hit.get("label") or "", "source_url": hit.get("source_url")}
+    entry = find(claimed)
+    if entry and entry["phones"]:
+        return {"status": "not_published", "name": entry["name"], "use_instead": [_contact(p, "number") for p in entry["phones"][:3]]}
+    return None
+
+
+def email_verdict(address: str, claimed: str | None = None) -> dict | None:
+    hit = email_owner(address)
+    if hit:
+        return {"status": "published", "name": hit["name"], "label": hit.get("label") or "", "source_url": hit.get("source_url")}
+    entry = find(claimed)
+    domain = (address or "").lower().split("@")[-1]
+    if entry and brand_domains.registrable(domain) not in brand_domains.official_domains(entry["name"]):
+        return {"status": "not_published", "name": entry["name"], "use_instead": [_contact(e, "address") for e in entry["emails"][:2]],
+                "domains": list(brand_domains.official_domains(entry["name"]))[:3]}
+    return None
+
+
+def host_of(value: str) -> str:
+    """The host of a link, a bare domain ("commbank.com.au/login") or an email address."""
+    value = (value or "").strip()
+    if "@" in value and "//" not in value:
+        return value.rsplit("@", 1)[-1].lower()
+    return (urlparse(value if "//" in value else f"https://{value}").hostname or "").lower()
+
+
+def site_verdict(host: str, claimed: str | None = None) -> dict | None:
+    """A website against the directory: an organisation's own domain, one carrying a listed organisation's name that
+    isn't its domain (a lookalike or a shared service), or, when the material names a listed organisation, a website that
+    isn't one of its own — each with the organisation's own website to use instead."""
+    host = (host or "").lower().strip(".").removeprefix("www.")
+    if "." not in host:
+        return None
+    source = lambda entry: next((s["url"] for s in _source_rows(entry["name"])), None)  # noqa: E731
+    owner = brand_domains.owner(host)
+    if owner and owner in _VIEW["orgs"]:
+        return {"status": "official", "name": owner, "domain": brand_domains.registrable(host), "source_url": source(_VIEW["orgs"][owner])}
+    for name, entry in _VIEW["orgs"].items():
+        kind, detail = brand_domains.classify(name, host)
+        if kind in ("lookalike", "shared_service"):
+            official = brand_domains.official_domains(name)
+            return {"status": kind, "name": name, "domain": brand_domains.registrable(host), "official_domain": official[0] if official else None,
+                    "detail": brand_domains.SIGN_WORDS.get(detail) if kind == "lookalike" else f"{detail} is a link or website service anyone can use",
+                    "source_url": source(entry)}
+    from services.higgins.teddy.official import official_domain
+    entry = find(claimed)
+    # Another organisation's or a government website, or the organisation's own country site, is never "not official".
+    if entry and not official_domain(host) and brand_domains.classify(entry["name"], host)[0] != "country_site":
+        official = brand_domains.official_domains(entry["name"])
+        return {"status": "not_official", "name": entry["name"], "domain": brand_domains.registrable(host),
+                "official_domain": official[0] if official else None, "source_url": source(entry)}
+    return None
+
+
+def names() -> list[dict]:
+    """Each organisation on the directory with the names people use for it, so the phone can tell which one material names."""
+    return [{"name": name, "aliases": sorted(n for n, (brand, _) in BRANDS.items() if brand == name)} for name in sorted(_VIEW["orgs"])]
+
+
+MAX_CONTACTS = 10
+
+
+def verdicts(claimed: str | None, sites: list[str], phones: list[str], emails: list[str]) -> list[dict]:
+    """The directory's verdict on each website, number and address in material being checked (only those it has one for).
+    An in-memory lookup: nothing is fetched and nothing is kept."""
+    judges = (("site", sites, lambda v: site_verdict(host_of(v), claimed)), ("phone", phones, lambda v: number_verdict(v, claimed)),
+              ("email", emails, lambda v: email_verdict(v, claimed)))
+    out = []
+    for kind, values, judge in judges:
+        for value in list(dict.fromkeys(v.strip() for v in values if v and v.strip()))[:MAX_CONTACTS]:
+            found = judge(value)
+            if found:
+                out.append({"kind": kind, "value": value, **found})
+    return out
+
+
+_SOURCES: dict[str, list[dict]] = {}
+
+
+def _source_rows(name: str) -> list[dict]:
+    return _SOURCES.get(name) or []
 
 
 # ── Shipped entries ────────────────────────────────────────────────────────────

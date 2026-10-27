@@ -33,7 +33,6 @@ async def owner():
     await db.patrol_events.delete_many({"device_id": device})
 
 
-@pytest.mark.anyio
 async def test_an_event_bound_to_its_case_later_stays_one_threat_case(owner):
     event_id = str(uuid.uuid4())
     first = await patrol_records.append(_event(owner, event_id), False)
@@ -46,14 +45,12 @@ async def test_an_event_bound_to_its_case_later_stays_one_threat_case(owner):
     assert len(await patrol_records.timeline(owner, cards[0]["recordId"])) == 3
 
 
-@pytest.mark.anyio
 async def test_a_new_event_for_an_existing_case_joins_that_case(owner):
     a = await patrol_records.append(_event(owner, str(uuid.uuid4()), investigation_case_id="case-2"), False)
     b = await patrol_records.append(_event(owner, str(uuid.uuid4()), investigation_case_id="case-2", indicator_digest="e" * 64), False)
     assert a["logical_issue_key"] == b["logical_issue_key"]
 
 
-@pytest.mark.anyio
 async def test_records_already_split_across_two_keys_read_as_one_case(owner):
     event_id = str(uuid.uuid4())
     base = {"owner_id": owner, "source_event_id": event_id, "duplicate_of": None, "category": "link", "headline": "h",
@@ -83,7 +80,6 @@ def test_server_triage_causes_mirror_the_device():
         "insufficient_evidence", "rule_execution_error", "gap_email_headers_unavailable"]
 
 
-@pytest.mark.anyio
 async def test_limited_by_cause_counts_real_phones_separately_from_test_traffic(monkeypatch):
     collection = f"test_triage_telemetry_{uuid.uuid4().hex[:8]}"
     monkeypatch.setattr(telemetry, "COLLECTION", collection)

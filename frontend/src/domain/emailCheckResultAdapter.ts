@@ -9,6 +9,7 @@ import { toneForState, buildEvidenceRowsFromTechnical, appendEventContext, build
 import { ACTION_LINKS } from "./actionRegistry";
 import { GATE_REGISTRY } from "./gateRegistry";
 import type { EmailEvidenceProfile } from "./triage/emailEvidence";
+import type { OfficialVerdict } from "./officialContacts";
 
 const FAILED_AUTH = new Set(["fail", "softfail", "permerror", "hardfail"]);
 
@@ -62,6 +63,8 @@ export function buildEmailCheckResult(args: {
   explanation: { summary?: string; why?: string[]; recommendation?: string } | null;
   /** Higgins Triage's classification of the email evidence (L1–L4). */
   profile?: EmailEvidenceProfile | null;
+  /** The Official Organisation Directory's verdict on the email's sender, links, numbers and addresses. */
+  official?: OfficialVerdict[] | null;
 }): CheckResultModel {
   const { analysis: a, event, from, subject: subj, submissionId, urlResults, explanation } = args;
   const headers = (args.profile?.rank ?? 0) >= 3;
@@ -204,5 +207,5 @@ export function buildEmailCheckResult(args: {
     evidence,
     event,
     investigationId: submissionId,
-  }), evidenceProfile: args.profile ?? null };
+  }), evidenceProfile: args.profile ?? null, official: args.official };
 }

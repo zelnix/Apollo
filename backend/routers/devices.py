@@ -14,6 +14,7 @@ from core.auth import _issue, _unauthorized
 from services import device_stats
 
 router = APIRouter()
+TEST_LAB = device_stats.TEST_LAB
 
 
 @router.post("/devices/register", status_code=201)
@@ -22,7 +23,8 @@ async def register_device(body: DeviceRegister):
     ts = now_utc()
     device_id = uuid.uuid4().hex
     raw, cred = _issue(device_id)
-    doc = Device(device_id=device_id, **body.model_dump(), created_at=ts, last_seen_at=ts).to_mongo()
+    doc = Device(device_id=device_id, **body.model_dump(exclude={"test_lab"}), test_device=TEST_LAB if body.test_lab else None,
+                 created_at=ts, last_seen_at=ts).to_mongo()
     doc.update(cred)
     await db.devices.insert_one(doc)
     return {"device_id": device_id, "device_token": raw, "token_expires_at": cred["token_expires_at"], "registered": True}
@@ -32,7 +34,8 @@ async def register_device(body: DeviceRegister):
 async def device_heartbeat(body: DeviceRegister, request: Request):
     """Authenticated 'still here' — updates platform/app/tz and last_seen for the token's device."""
     me = request.state.device["device_id"]
-    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes, "locale": body.locale, **body.telemetry()}})
+    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes, "locale": body.locale, **body.telemetry(),
+                                                             **({"test_device": TEST_LAB} if body.test_lab else {})}})
     return {"device_id": me}
 
 

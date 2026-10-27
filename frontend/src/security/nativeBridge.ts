@@ -24,6 +24,8 @@ export interface ApolloSecurityNativeModule {
   getEnforcementEvidence(): Promise<string>;
   /** Real manufacturer/model/OS/form-factor/locale facts (JSON DeviceProfileFacts). */
   getDeviceProfileFacts(): Promise<string>;
+  /** Android only: the phone is one of Google's test phones (system setting `firebase.test.lab` = "true"). */
+  isGoogleTestLab?(): Promise<boolean>;
   getGuardDogProductionCapabilities(): string;
   getGuardDogProductionStatus(): string;
   configureGuardDogProduction(configJson: string): string;

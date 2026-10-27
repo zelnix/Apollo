@@ -1,3 +1,22 @@
+## ApolloSG Free Knowledge Base — Phases 3–5 verified; "not the official contact" on every result (2026-10-27)
+**Owner's choices:** plan order as proposed; Claude/OpenAI stay blocked until the owner adds keys (don't ask again);
+delete preview data right away if counts match. No testing agent (owner's rule) — pytest + node tests + preview screenshots.
+- **Gap fixed:** `InvestigationCheckScreen` (the result for every check that opens a case) never showed the Official
+  contacts card — only `CheckResultScreen` did. Now `OfficialContactsCard` (`investigation-check-official`) sits under
+  the investigation. Account alert checks (`app/account.tsx`) now run `lookupOfficialContacts` too (links, numbers,
+  addresses, claimed brand = analysis brand or chosen provider) and pass `official` to the model.
+- Verified in preview: CommBank SMS with commbank-secure.xyz + 0412 999 888 → two "Not the official contact" lines;
+  Telstra SMS with 0499 111 222 → "Not the official number", 13 22 00 to use instead + Telstra's own page link.
+- Magnum DI: `correlation.cross_source` → `report.magnum_brief(..., cross)` → brief item `teddy-di-brief` → `_magnum_rows`
+  (teddy/__init__.py:383). Wired and tested (`test_magnum_di_gets_the_cross_source_record_as_context`).
+- Tests: `test_teddy_routing._lookups` now stubs `observed_intel.seen/related` (earlier runs left cross-device sightings of
+  the same test links in the shared DB, which turned a bare lookalike into the impersonation path). Removed
+  `@pytest.mark.anyio` from test_case_identity_and_limited_causes / test_case_origin (async fixture teardown ran on a
+  different loop — pre-existing errors). Backend 1345 passed; frontend 1083/1083; tsc clean; rule book stamped.
+- **Preview data purge:** `POST /api/admin/preview-data/purge` refuses on the preview by design; it runs only in
+  production with the expected copied-device range (~13,440 per memory/DEVICE_INVESTIGATION_2026-10-27.md). Needs the
+  owner to Publish first, then run scan → purge with `confirm: "DELETE PREVIEW DATA"`.
+
 ## ApolloSG Free Knowledge Base — Phases 1–2 done + Test this model (2026-10-27)
 **Owner's choices:** Test button first, then Phase 1–2 feeds; a provider without its key shows "key missing" and can't be
 saved; feeds refresh daily + admin "Refresh now"; ASIC and CVE/NVD added in this phase; check in after Phases 1–2.

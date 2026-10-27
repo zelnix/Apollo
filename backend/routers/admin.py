@@ -47,7 +47,7 @@ class BlocklistIn(BaseModel):
 
 
 def _admin_device(d: dict[str, Any]) -> dict[str, Any]:
-    return {k: d.get(k) for k in ("device_id", "platform", "adapter_mode", "app_version", "created_at", "last_seen_at", "token_issued_at", "token_expires_at", "revoked_at")}
+    return {k: d.get(k) for k in ("device_id", "platform", "adapter_mode", "app_version", "created_at", "last_seen_at", "token_issued_at", "token_expires_at", "revoked_at", "test_device")}
 
 
 @router.get("/ping")
@@ -150,6 +150,67 @@ async def admin_revoke_device(device_id: str, request: Request, actor: Optional[
         raise HTTPException(status_code=404, detail="Unknown or already revoked device.")
     await audit(request, "device.revoke", device_id, None, actor)
     return Response(status_code=204)
+
+
+class TestDeviceIn(BaseModel):
+    test_device: bool = True
+    reason: str = Field(default="", max_length=200)
+
+
+@router.post("/devices/{device_id}/test-device")
+async def admin_mark_test_device(device_id: str, body: TestDeviceIn, request: Request, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    """Marks (or unmarks) a device as one of Google's test phones, so it never counts as a real user. The record is
+    otherwise unchanged."""
+    from services.device_stats import TEST_LAB
+    value = TEST_LAB if body.test_device else None
+    r = await db.devices.update_one({"device_id": device_id}, {"$set": {"test_device": value, "test_device_marked_by": "admin" if value else None}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Unknown device.")
+    await audit(request, "device.test_device", device_id, {"test_device": value, "reason": body.reason}, actor)
+    return {"device_id": device_id, "test_device": value}
+
+
+# --------------------------------------------------------------------------- Preview data copied into production
+# services/preview_purge.py: a read-only scan, then a purge that runs only when the copied device count is in range.
+class PreviewPurgeIn(BaseModel):
+    cutoff: str = Field(min_length=10, max_length=40)
+    expected_devices_min: int = Field(ge=0)
+    expected_devices_max: int = Field(ge=0)
+    confirm: str
+
+
+@router.get("/preview-data/scan")
+async def admin_preview_scan(cutoff: str):
+    from services import preview_purge
+    try:
+        return await preview_purge.scan(preview_purge.parse_cutoff(cutoff))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="cutoff must be an ISO time in the past") from None
+
+
+@router.post("/preview-data/purge")
+async def admin_preview_purge(body: PreviewPurgeIn, request: Request, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    from services import preview_purge
+    if body.confirm != preview_purge.CONFIRM:
+        raise HTTPException(status_code=422, detail=f'Send confirm "{preview_purge.CONFIRM}".')
+    try:
+        cutoff = preview_purge.parse_cutoff(body.cutoff)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="cutoff must be an ISO time in the past") from None
+    result = await preview_purge.start(cutoff, (body.expected_devices_min, body.expected_devices_max))
+    if result["started"]:
+        await audit(request, "preview_data.purge", result["run_id"], {"cutoff": cutoff.isoformat(), "devices": result["scan"]["devices"],
+                                                                      "to_delete": result["scan"]["toDelete"]}, actor)
+    return result
+
+
+@router.get("/preview-data/purge/{run_id}")
+async def admin_preview_purge_status(run_id: str):
+    from services import preview_purge
+    found = await preview_purge.status(run_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Unknown purge run.")
+    return found
 
 
 

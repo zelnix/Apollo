@@ -7,7 +7,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry" | "email_evidence";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry" | "email_evidence" | "official_contacts";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode",
@@ -33,8 +33,12 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId", "deviceSnapshot"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
-  // Plus what the phone is (make, model, system, region-setting country, install date) for the admin Devices list.
-  device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale", "manufacturer", "model", "os_name", "os_version", "country", "installed_at"]),
+  // Plus what the phone is (make, model, system, region-setting country, install date) for the admin Devices list, and on
+  // Android whether it is one of Google's test phones (Play pre-launch testing), so those never count as real users.
+  device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale", "manufacturer", "model", "os_name", "os_version", "country", "installed_at", "test_lab"]),
+  // Official Organisation Directory: the websites (host only), numbers and addresses a check holds, and the organisation
+  // the material names. Nothing else from the material; the server keeps nothing.
+  official_contacts: new Set(["claimed_org", "sites", "phones", "emails"]),
   // A feature used on the phone: which one, and for a Learn article or scam alert its slug or link (kept only as a digest).
   device_activity: new Set(["kind", "item"]),
   push_register: new Set(["platform", "device_token"]),
@@ -190,6 +194,15 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
   if (endpoint === 'intel_check') {
     if (typeof out.value === 'string') out.value = out.indicator_type === 'domain' ? new URL(minimalIndicator(out.value)).hostname : minimalIndicator(out.value);
     if (Array.isArray(out.values)) out.values = out.values.map(v => minimalIndicator(String(v)));
+  }
+  if (endpoint === 'official_contacts') {
+    for (const key of ['sites', 'phones', 'emails'] as const) {
+      if (out[key] !== undefined && (!Array.isArray(out[key]) || (out[key] as unknown[]).some((v) => typeof v !== 'string' || v.length > 320))) {
+        throw new EgressViolation(endpoint, key);
+      }
+    }
+    // A website goes as its host only — never its path or query.
+    if (Array.isArray(out.sites)) out.sites = (out.sites as string[]).map((v) => v.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0].split('@').pop()!.toLowerCase());
   }
   if (endpoint === 'patrol_sync') {
     // Minimal case-link payload (only case_id) — no event content to validate.

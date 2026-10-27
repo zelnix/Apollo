@@ -124,7 +124,7 @@ export default function TextGuard() {
   // UNIVERSAL CHECK RESULT — when the text check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
-    const model = { ...buildMessageCheckResult({ analysis: a, event: result.event ?? null, sender, explanation: result.explanation ?? null, urlResults: result.urls ?? [], phones: result.phones ?? [] }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
+    const model = { ...buildMessageCheckResult({ analysis: a, event: result.event ?? null, sender, explanation: result.explanation ?? null, urlResults: result.urls ?? [], phones: result.phones ?? [], official: result.official }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the text I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const textActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     textActions.push({ testID: "textguard-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });

@@ -6,6 +6,8 @@ import * as Device from "expo-device";
 import * as Localization from "expo-localization";
 import { Platform } from "react-native";
 
+import { getNativeModule } from "@/src/security/nativeBridge";
+
 const clip = (value: string | null | undefined, max: number) => {
   const text = value?.trim();
   return text ? text.slice(0, max) : undefined;
@@ -20,6 +22,14 @@ export function regionCountry(region: string | null | undefined): string | undef
 async function installedAt(): Promise<string | undefined> {
   if (Platform.OS === "web") return undefined;
   try { return (await Application.getInstallationTimeAsync()).toISOString(); } catch { return undefined; }
+}
+
+/** True only on one of Google's test phones (Firebase Test Lab, which runs Play's pre-launch reports): Android sets the
+ *  system setting `firebase.test.lab` to "true" there. Read by ApolloSG's own native module; false wherever it can't
+ *  be read (iPhone, web, Expo Go). */
+export async function isGoogleTestLab(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  try { return (await getNativeModule()?.isGoogleTestLab?.()) === true; } catch { return false; }
 }
 
 export async function deviceInfo(): Promise<Record<string, string>> {

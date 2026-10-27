@@ -57,6 +57,7 @@ NAV = [
     ("Investigations",  "/api/admin/investigations-cost", "&#128200;"),
     ("Triage",          "/api/admin/triage",           "&#9878;"),
     ("Knowledge Base",  "/api/admin/knowledge",        "&#128218;"),
+    ("Official Organisations", "/api/admin/org-directory", "&#127970;"),
     ("Intelligence Reuse", "/api/admin/intel-reuse",   "&#9851;"),
     ("Rule Book",       "/api/admin/rule-book",        "&#128214;"),
     ("Play Store",      "/api/admin/play-console",     "&#9654;"),
@@ -3116,6 +3117,195 @@ async def threat_feeds_refresh(request: Request):
     return RedirectResponse(f"/api/admin/knowledge?feeds={'busy' if busy else 'started'}#threat-feeds", status_code=303)
 
 
+# ── Official Organisation Directory (services/org_directory.py) and ApolloSG's observed patterns ──
+
+_ORG_STATUS = {"confirmed": ("Confirmed", "var(--green)"), "curated": ("Shipped", "var(--green)"), "not_found": ("Not on its pages", "var(--red)"),
+               "unchecked": ("Not checked yet", "var(--muted)"), "unconfirmed": ("Not confirmed", "#d29922"), "read": ("Read", "var(--green)"),
+               "missing": ("Page gone", "var(--red)"), "unreadable": ("Couldn't read", "#d29922")}
+
+
+def _org_pill(item: dict, now) -> str:
+    from services import org_directory
+    status = item.get("status") or "unchecked"
+    if status == "confirmed" and not org_directory._fresh(item, now):
+        status = "unconfirmed"
+    label, colour = _ORG_STATUS.get(status, (status, "var(--muted)"))
+    return f"<span style='color:{colour};font-size:0.85em;'>{html_mod.escape(label)}</span>"
+
+
+def _org_row(doc: dict, now) -> str:
+    from services import org_directory
+    esc = html_mod.escape
+    key = esc(doc["key"])
+    domains = "<br>".join(f"{esc(d['domain'])} {_org_pill(d, now)}" for d in doc.get("domains") or [])
+    phones = "<br>".join(f"{esc(p['number'])}{(' · ' + esc(p['label'])) if p.get('label') else ''} {_org_pill(p, now)}" for p in doc.get("phones") or []) or "—"
+    emails = "<br>".join(f"{esc(e['address'])} {_org_pill(e, now)}" for e in doc.get("emails") or []) or "—"
+    sources = "<br>".join(f"<a href='{esc(s['url'])}' target='_blank' rel='noopener'>{esc(s['url'][:60])}</a> {_org_pill(s, now)}"
+                          + (f" <span style='font-size:0.8em;color:var(--muted);'>(archived copy)</span>" if s.get("via") == "internet_archive" else "")
+                          for s in doc.get("sources") or [])
+    return (f"<tr data-testid='org-row-{key}'><td><b>{esc(doc['name'])}</b><br><span style='font-size:0.8em;color:var(--muted);'>"
+            f"{esc(org_directory.SECTORS.get(doc.get('sector') or '', '—'))} · {'edited by admin' if doc.get('origin') == 'admin' else 'shipped'}</span></td>"
+            f"<td style='font-size:0.85em;'>{domains}</td><td style='font-size:0.85em;'>{phones}</td><td style='font-size:0.85em;'>{emails}</td>"
+            f"<td style='font-size:0.8em;word-break:break-all;'>{sources}</td><td style='font-size:0.85em;'>{_kb_when(doc.get('last_verified_at'))}</td>"
+            f"<td><a class='btn btn-sm' href='/api/admin/org-directory?edit={key}#org-form' data-testid='org-edit-{key}'>Edit</a>"
+            f"<form method='post' action='/api/admin/org-directory/verify' style='margin:4px 0 0;'><input type='hidden' name='key' value='{key}'>"
+            f"<button class='btn btn-sm' data-testid='org-verify-{key}'>Re-check</button></form></td></tr>")
+
+
+def _org_form(values: dict, problems: list[str], editing: bool) -> str:
+    from services import org_directory
+    esc = html_mod.escape
+    v = lambda k: esc(values.get(k) or "")  # noqa: E731
+    sectors = "".join(f"<option value='{k}'{' selected' if values.get('sector') == k else ''}>{esc(label)}</option>" for k, label in org_directory.SECTORS.items())
+    errors = ("<div class='alert alert-critical' data-testid='org-form-errors'><ul style='margin:0 0 0 18px;'>"
+              + "".join(f"<li>{esc(p)}</li>" for p in problems) + "</ul></div>") if problems else ""
+    archive = (f"<form method='post' action='/api/admin/org-directory/archive' style='margin-top:8px;' "
+               f"onsubmit=\"return confirm('Remove {v('name')} from the directory? Checks stop using it straight away.');\">"
+               f"<input type='hidden' name='key' value='{v('key')}'><button class='btn btn-danger' data-testid='org-archive'>Remove from directory</button></form>") if editing else ""
+    return f"""<h2 id="org-form">{'Edit ' + v('name') if editing else 'Add an organisation'}</h2>{errors}
+    <form method="post" action="/api/admin/org-directory/save" class="org-form" data-testid="org-form">
+      <input type="hidden" name="key" value="{v('key')}">
+      <label>Name<input name="name" value="{v('name')}" required maxlength="80" data-testid="org-name"></label>
+      <label>Sector<select name="sector" data-testid="org-sector">{sectors}</select></label>
+      <label>Other names people use (comma separated)<input name="aliases" value="{v('aliases')}" data-testid="org-aliases"></label>
+      <label>Its own domains (one per line)<textarea name="domains" rows="2" required data-testid="org-domains">{v('domains')}</textarea></label>
+      <label>Phone numbers, one per line as <code>number | what it's for</code><textarea name="phones" rows="3" data-testid="org-phones">{v('phones')}</textarea></label>
+      <label>Email addresses, one per line as <code>address | what it's for</code><textarea name="emails" rows="2" data-testid="org-emails">{v('emails')}</textarea></label>
+      <label>Official source pages (one https link per line, on its own domains or an official authority's site)<textarea name="sources" rows="3" required data-testid="org-sources">{v('sources')}</textarea></label>
+      <button class="btn" type="submit" data-testid="org-save">Save</button>
+      {'<a class="btn btn-sm" href="/api/admin/org-directory#org-form">Cancel</a>' if editing else ''}
+    </form>{archive}
+    <p style="font-size:0.85em;color:var(--muted);">Changes take effect straight away. A phone number or email address counts as official only once
+    ApolloSG finds it on one of the source pages (re-checked weekly); until then it shows "Not checked yet" and checks don't use it.</p>"""
+
+
+def _org_values(doc: dict | None) -> dict:
+    if not doc:
+        return {"sector": "bank"}
+    return {"key": doc["key"], "name": doc["name"], "sector": doc.get("sector"), "aliases": ", ".join(doc.get("aliases") or []),
+            "domains": "\n".join(d["domain"] for d in doc.get("domains") or []),
+            "phones": "\n".join(f"{p['number']} | {p.get('label') or ''}".rstrip(" |") for p in doc.get("phones") or []),
+            "emails": "\n".join(f"{e['address']} | {e.get('label') or ''}".rstrip(" |") for e in doc.get("emails") or []),
+            "sources": "\n".join(s["url"] for s in doc.get("sources") or [])}
+
+
+async def _observed_section() -> str:
+    from services import observed_intel
+    esc = html_mod.escape
+    s = await observed_intel.summary()
+    kinds = {"domain": "Website", "phone": "Phone number", "email": "Email address"}
+    subjects = "".join(f"<tr><td>{kinds.get(r.get('subject_kind'), '?')}</td><td>{esc(r.get('hostname') or 'one-way code ' + r['key'][-8:])}</td>"
+                       f"<td style='text-align:right;'>{r['devices_30d']}</td><td>{_kb_when(r.get('first_seen_at'))}</td><td>{_kb_when(r.get('last_verified_at'))}</td></tr>"
+                       for r in s["subjects"])
+    campaigns = "".join(f"<tr><td>{esc(r.get('a_name') or kinds.get(r.get('a_kind'), '?'))}</td><td>{esc(r.get('b_name') or kinds.get(r.get('b_kind'), '?'))}</td>"
+                        f"<td style='text-align:right;'>{r['devices_30d']}</td><td>{_kb_when(r.get('last_verified_at'))}</td></tr>" for r in s["campaigns"])
+    return f"""<h2 id="observed" data-testid="observed-heading">ApolloSG observed patterns</h2>
+    <p style="font-size:0.9em;color:var(--muted);">What ApolloSG has seen in material it found concerning, kept as one-way codes and counts of separate
+    devices — never content. Seen on {s['threshold']} or more separate devices in the last {s['windowDays']} days it is a weak signal in checks
+    (never a concern on its own). A website's name is shown only once it reaches that threshold; numbers and addresses are never shown.</p>
+    <div class="stats-grid">{_stat_card(f"{s['tracked']:,}", "Being counted")}{_stat_card(f"{s['atThreshold']:,}", f"Seen on {s['threshold']}+ devices")}
+    {_stat_card(f"{len(s['campaigns']):,}", "Seen together (possible campaigns)")}</div>
+    <table data-testid="observed-subjects"><tr><th>Kind</th><th>What</th><th>Devices (30 days)</th><th>First seen</th><th>Last seen</th></tr>
+    {subjects or '<tr><td colspan="5" style="color:var(--muted);">Nothing has reached the threshold yet.</td></tr>'}</table>
+    <h3>Seen together</h3><table data-testid="observed-campaigns"><tr><th>One</th><th>The other</th><th>Devices (30 days)</th><th>Last seen</th></tr>
+    {campaigns or '<tr><td colspan="4" style="color:var(--muted);">None yet.</td></tr>'}</table>"""
+
+
+async def _org_page(request: Request, adm: dict, *, values: dict | None = None, problems: list[str] | None = None) -> HTMLResponse:
+    from services import org_directory
+    entries = await org_directory.entries()
+    now = now_utc()
+    edit_key = (values or {}).get("key") or request.query_params.get("edit") or ""
+    editing_doc = next((e for e in entries if e["key"] == edit_key), None)
+    form_values = values if values is not None else _org_values(editing_doc)
+    confirmed = sum(org_directory.counts(e, now)["phones"] + org_directory.counts(e, now)["emails"] for e in entries)
+    listed = sum(org_directory.counts(e, now)["phones_total"] + org_directory.counts(e, now)["emails_total"] for e in entries)
+    notice = {"saved": "Saved. ApolloSG is reading its source pages now; reload in a minute to see what was confirmed.",
+              "removed": "Removed from the directory.", "verifying": "Re-checking the source pages now; reload in a minute."}.get(request.query_params.get("done", ""), "")
+    by_sector: dict[str, list[str]] = {}
+    for e in entries:
+        by_sector.setdefault(e.get("sector") or "", []).append(_org_row(e, now))
+    tables = "".join(f"<h3>{html_mod.escape(org_directory.SECTORS.get(sector, 'Other'))}</h3><table data-testid='org-table-{sector}'><tr><th>Organisation</th>"
+                     f"<th>Domains</th><th>Phone numbers</th><th>Email addresses</th><th>Official source pages</th><th>Last checked</th><th></th></tr>{''.join(rows)}</table>"
+                     for sector, rows in sorted(by_sector.items(), key=lambda kv: list(org_directory.SECTORS).index(kv[0]) if kv[0] in org_directory.SECTORS else 99))
+    body = f"""
+    {'<div class="alert alert-ok" data-testid="org-notice">' + html_mod.escape(notice) + '</div>' if notice else ''}
+    <p style="font-size:0.9em;color:var(--muted);">The published websites, phone numbers and email addresses of the organisations scammers most often
+    pretend to be. Every check uses it: a contact on this list is the organisation's own; a number or address presented as a listed organisation's
+    that isn't on it is a warning sign, and the person is shown the official contact to use instead. Each entry is traced to the organisation's own pages.</p>
+    <div class="stats-grid" data-testid="org-totals">{_stat_card(f"{len(entries):,}", "Organisations")}{_stat_card(f"{confirmed:,} of {listed:,}", "Contacts confirmed on their pages")}</div>
+    <div class="topbar-row"><span></span><form method="post" action="/api/admin/org-directory/verify" style="margin:0;">
+    <button class="btn" data-testid="org-verify-all">Re-check every source page now</button></form></div>
+    {tables or '<p>No organisations yet.</p>'}
+    {_org_form(form_values, problems or [], bool(editing_doc))}
+    {await _observed_section()}"""
+    css = (".org-form{display:grid;gap:10px;max-width:720px;} .org-form label{display:grid;gap:4px;font-size:0.88em;}"
+           " .org-form input,.org-form select,.org-form textarea{background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:6px 8px;font:inherit;}"
+           " .btn-danger{border-color:var(--red);color:var(--red);}")
+    return HTMLResponse(_shell("Official Organisations", "/api/admin/org-directory", body, admin=adm, extra_css=css), status_code=400 if problems else 200)
+
+
+@router.get("/admin/org-directory", response_class=HTMLResponse)
+async def org_directory_page(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    return await _org_page(request, adm)
+
+
+async def _form(request: Request) -> dict:
+    from urllib.parse import parse_qs
+    return {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True).items()}
+
+
+def _in_background(coro) -> None:
+    import asyncio
+    task = asyncio.create_task(coro)
+    _KB_TASKS.add(task)
+    task.add_done_callback(_KB_TASKS.discard)
+
+
+@router.post("/admin/org-directory/save")
+async def org_directory_save(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import org_directory
+    form = await _form(request)
+    record, problems = org_directory.parse_form({**form, "domains": (form.get("domains") or "").replace("\n", " ")})
+    if problems:
+        return await _org_page(request, adm, values=form, problems=problems)
+    key = await org_directory.save(record, adm.get("email", ""))
+    await _audit_log(adm.get("email", ""), "org_directory_save", f"{record['name']} ({key}): {len(record['domains'])} domains, "
+                     f"{len(record['phones'])} numbers, {len(record['emails'])} addresses, {len(record['sources'])} source pages")
+    _in_background(org_directory.run(key, trigger="admin_save"))
+    return RedirectResponse(f"/api/admin/org-directory?done=saved&edit={key}#org-form", status_code=303)
+
+
+@router.post("/admin/org-directory/archive")
+async def org_directory_archive(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import org_directory
+    key = (await _form(request)).get("key") or ""
+    if key and await org_directory.archive(key, adm.get("email", "")):
+        await _audit_log(adm.get("email", ""), "org_directory_archive", key)
+    return RedirectResponse("/api/admin/org-directory?done=removed", status_code=303)
+
+
+@router.post("/admin/org-directory/verify")
+async def org_directory_verify(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import org_directory
+    key = (await _form(request)).get("key") or None
+    _in_background(org_directory.run(key, trigger="manual"))
+    await _audit_log(adm.get("email", ""), "org_directory_verify", key or "all organisations")
+    return RedirectResponse("/api/admin/org-directory?done=verifying", status_code=303)
+
+
 # ── Releases ─────────────────────────────────────────────────────────────────
 
 @router.get("/admin/releases", response_class=HTMLResponse)
@@ -3450,7 +3640,9 @@ def _device_row(d: dict) -> str:
     n = device_stats.counts(d)
     installed = _t(d["installed_at"], "short") if d.get("installed_at") else f'{_t(d.get("created_at"), "short")}*'
     cells = "".join(f"<td class='num'>{n[key]:,}</td>" for key, _ in _COUNT_COLUMNS)
-    return (f"<tr><td><code title='{esc(d['device_id'])}'>{esc(d['device_id'][:8])}</code></td>"
+    kind = device_stats.record_type(d)
+    badge = f"<span class='kind kind-{'phone' if kind == 'Phone' else 'other'}'>{esc(kind)}</span>"
+    return (f"<tr><td><code title='{esc(d['device_id'])}'>{esc(d['device_id'][:8])}</code></td><td>{badge}</td>"
             f"<td>{esc(d.get('manufacturer') or '—')}</td><td>{esc(d.get('model') or '—')}</td>"
             f"<td>{esc(d.get('os_name') or _OS_NAMES.get(d.get('platform') or '', d.get('platform') or '—'))}</td>"
             f"<td>{esc(d.get('os_version') or '—')}</td><td>{esc(d.get('country') or '—')}</td><td>{installed}</td>"
@@ -3486,7 +3678,10 @@ async def device_list_page(request: Request):
         return _login_redirect()
     from services import device_stats
     platform = request.query_params.get("platform", "")
-    query = {"platform": platform} if platform in _PLATFORMS else {}
+    # Real phones by default (services/device_stats.REAL_PHONES); "All records" keeps every registration, including
+    # web, test and script registrations and Google's test phones.
+    view = "all" if request.query_params.get("view") == "all" else "real"
+    query = {**(device_stats.REAL_PHONES if view == "real" else {}), **({"platform": platform} if platform in _PLATFORMS else {})}
     page = int(request.query_params.get("page", "1")) if request.query_params.get("page", "1").isdigit() else 1
     page = max(page, 1)
     total = await db.devices.count_documents(query)
@@ -3494,31 +3689,40 @@ async def device_list_page(request: Request):
     page = min(page, pages)
     rows = await db.devices.find(query, {"_id": 0, "token_hash": 0}).sort("last_seen_at", -1) \
         .skip((page - 1) * _DEVICE_PAGE_SIZE).limit(_DEVICE_PAGE_SIZE).to_list(_DEVICE_PAGE_SIZE)
-    sums = await device_stats.totals()
-    cards = _stat_card(f"{total:,}", "Devices" + (f" ({_OS_NAMES[platform]})" if query else "")) + \
-        "".join(_stat_card(f"{sums[key]:,}", label) for key, label in _COUNT_COLUMNS)
-    filters = " ".join(f'<a class="btn btn-sm{" active" if platform == p else ""}" href="/api/admin/device-list{"?platform=" + p if p else ""}" '
-                       f'data-testid="device-filter-{p or "all"}">{_OS_NAMES.get(p, "All")}</a>' for p in ("", *_PLATFORMS))
-    link = lambda n: f"/api/admin/device-list?{urlencode({**({'platform': platform} if query else {}), 'page': n})}"  # noqa: E731
+    sums = await device_stats.totals(query)
+    label = ("Real phones" if view == "real" else "All records") + (f" ({_OS_NAMES[platform]})" if platform in _PLATFORMS else "")
+    cards = _stat_card(f"{total:,}", label) + "".join(_stat_card(f"{sums[key]:,}", label) for key, label in _COUNT_COLUMNS)
+    if view == "real":
+        everything = await db.devices.count_documents({})
+        cards += _stat_card(f"{everything - await db.devices.count_documents(device_stats.REAL_PHONES):,}", "Other records (not counted)")
+    params = lambda **kw: urlencode({k: v for k, v in {"view": view if view == "all" else "", "platform": platform, **kw}.items() if v})  # noqa: E731
+    views = " ".join(f'<a class="btn btn-sm{" active" if view == v else ""}" href="/api/admin/device-list?{params(view=v if v == "all" else "", platform=platform)}" '
+                     f'data-testid="device-view-{v}">{name}</a>' for v, name in (("real", "Real phones"), ("all", "All records")))
+    filters = " ".join(f'<a class="btn btn-sm{" active" if platform == p else ""}" href="/api/admin/device-list?{params(platform=p)}" '
+                       f'data-testid="device-filter-{p or "all"}">{_OS_NAMES.get(p, "Any system")}</a>' for p in ("", *_PLATFORMS))
+    link = lambda n: f"/api/admin/device-list?{params(page=str(n))}"  # noqa: E731
     newer = f'<a class="btn btn-sm" href="{link(page - 1)}" data-testid="device-page-newer">&larr; Newer</a>' if page > 1 else ""
     older = f'<a class="btn btn-sm" href="{link(page + 1)}" data-testid="device-page-older">Older &rarr;</a>' if page < pages else ""
     pager = f'<div class="pager" data-testid="device-pager">{newer}<span>Page {page:,} of {pages:,}</span>{older}</div>'
-    head = "".join(f"<th>{h}</th>" for h in ("ID", "Manufacturer", "Model", "OS", "OS version", "Country", "Date installed",
+    head = "".join(f"<th>{h}</th>" for h in ("ID", "Type", "Manufacturer", "Model", "OS", "OS version", "Country", "Date installed",
                                               "App version", *(label for _, label in _COUNT_COLUMNS), "Last seen"))
     body = f"""
     {await _last_reset_html(request.query_params.get("reset") == "done")}
     {_reset_form_html()}
     <h2>Totals</h2><div class="stats-grid" data-testid="device-totals">{cards}</div>
     <h2>Devices</h2>
-    <div class="topbar-row"><span>{filters}</span>{pager}</div>
+    <div class="topbar-row"><span>{views} &nbsp;·&nbsp; {filters}</span>{pager}</div>
     <div class="table-scroll"><table data-testid="device-table"><thead><tr>{head}</tr></thead>
-    <tbody>{"".join(_device_row(d) for d in rows) or '<tr><td colspan="15" style="color:var(--muted);">No devices.</td></tr>'}</tbody></table></div>
-    <p style="color:var(--muted);font-size:0.82em;">Newest activity first. Make, model, system, country (from the phone's
+    <tbody>{"".join(_device_row(d) for d in rows) or '<tr><td colspan="16" style="color:var(--muted);">No devices.</td></tr>'}</tbody></table></div>
+    <p style="color:var(--muted);font-size:0.82em;">Newest activity first. <b>Real phones</b> are the ApolloSG app on Android or iPhone using the
+    phone's own protection, except Google's test phones (Play pre-launch testing, reported by the phone or marked by an admin).
+    <b>All records</b> also shows web, test and script registrations. Make, model, system, country (from the phone's
     region setting) and install date arrive the next time each phone opens the app; phones on an older version show —.
     * the phone didn't report its install date, so this is when it first registered with ApolloSG. Learn and scam alert
     reads count different ones opened.</p>"""
     css = (".main{max-width:none;min-width:0;} .table-scroll{overflow-x:auto;max-width:100%;}"
-           " .table-scroll table{font-size:0.8em;white-space:nowrap;}"
+           " .table-scroll table{font-size:0.8em;white-space:nowrap;} .kind{font-size:0.85em;padding:1px 6px;border-radius:8px;border:1px solid var(--border);}"
+           " .kind-phone{color:var(--green);border-color:rgba(63,185,80,0.4);} .kind-other{color:var(--muted);}"
            " td.num{text-align:right;} .btn.active{border-color:var(--accent);color:#fff;} .pager{display:flex;gap:12px;align-items:center;}"
            " .reset-box{background:var(--card);border:1px solid rgba(248,81,73,0.35);border-radius:10px;padding:12px 16px;margin:12px 0;}"
            " .reset-box summary{cursor:pointer;} .reset-box ul{margin:6px 0 8px 22px;} .reset-box p{margin:8px 0;}"

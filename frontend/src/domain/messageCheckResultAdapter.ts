@@ -5,6 +5,7 @@ import type { MessageAnalysis } from "./messageAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
 import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
+import type { OfficialVerdict } from "./officialContacts";
 import { toneForState } from "./checkResultFramework";
 import { ACTION_LINKS } from "./actionRegistry";
 import { GATE_REGISTRY } from "./gateRegistry";
@@ -26,6 +27,8 @@ export function buildMessageCheckResult(args: {
   urlResults: { url: string; verdict: string }[];
   /** Reputation results for the telephone/mobile numbers found in the message itself. */
   phones?: { raw: string; decision: string; fraud_score: number | null }[];
+  /** The Official Organisation Directory's verdict on the message's contacts. */
+  official?: OfficialVerdict[] | null;
 }): CheckResultModel {
   const { analysis: a, event, sender, explanation, urlResults } = args;
   const phones = args.phones ?? [];
@@ -143,5 +146,6 @@ export function buildMessageCheckResult(args: {
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,
+    official: args.official,
   };
 }
