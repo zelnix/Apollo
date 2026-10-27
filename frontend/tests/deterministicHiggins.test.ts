@@ -69,6 +69,15 @@ test("a Patrol explanation lists Apollo's own findings with their provenance", (
   assert.match(text, /What you can do:\n• Use the next action on this result: Don't enter your password\./);
 });
 
+test("a quiet Patrol state is explained as what the checks found, never as all clear", () => {
+  const text = explainIssue({
+    gate: "link", issue_summary: "Link checked", assessment_state: "resting", findings: [], uncertainty: [],
+    confirmed_protective_actions: [], user_reported_actions: [],
+  });
+  assert.match(text, /Link checked — no concern found within the checks that completed\./);
+  assert.doesNotMatch(text, /all clear/i);
+});
+
 test("health check AI lines come from saved records", () => {
   assert.deepEqual(providerStatusLines(null), []);
   assert.deepEqual(providerStatusLines({ keyConfigured: true, lastCall: null }), ["AI service key: set.", "Last AI call: none recorded yet."]);

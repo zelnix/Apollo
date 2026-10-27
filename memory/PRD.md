@@ -1,3 +1,16 @@
+## Higgins wording corrections approved and implemented (2026-10-27)
+Owner approved all 7 items in `/app/memory/higgins_wording_review.md` (file left unchanged as the review record).
+EXPLAIN-layer wording only — no change to thresholds, TC FlyBy settlement (decide.py untouched), Magnum DI, gate outcomes or evidence.
+1. `teddy/report.clear` link-only verified domain: "{official} That settles who the address belongs to[, and none of Apollo's other checks found a warning sign]."
+2. `report.clear` message: `_what_was_checked` names only checks that ran (status resolved/not_found) + official scam alerts.
+3. `report.impersonation_result`: "{place} isn't one of {brand}'s published domains, and a separate check on that address backs up the concern." / reason "… whoever runs {place}, which isn't one of {brand}'s published domains."
+4. `report.signals_result`: `_signs_established` — only established warning signs called warning signs; the rest "recorded too, but don't count as warning signs on their own".
+5. `report.undetermined`: names the real cause — `_unchecked` (gaps, unavailable lookup, link without listing/registration result) and/or weak signals; reason differs.
+6. `presenter.STATE_TEXT` + `issueExplanation.ts` resting → "no concern found within the checks that completed".
+7. `words.SEVERITY["none"]` → "How serious: nothing Apollo found needs action." (Rule Book row updated; re-stamped).
+Tests: new `backend/tests/test_higgins_wording.py` (8), assertions in test_teddy_routing (5 paths), frontend deterministicHiggins test.
+Backend 1325 passed; frontend 1068/1068; tsc clean. Not changed (not in the 7): preview simulator `preview_analysis.py` has a similar "has no reason to send you anywhere other than" line.
+
 ## Rule book revision 2 approved; implementation audit done; EXPLAIN class added (2026-10-27)
 **Owner's choices:** add a new EXPLAIN class; audit all rules (incl. Higgins explanation code); fix everything straight
 away; but any Higgins explanation that says more than the evidence supports → LIST for owner review, don't change.

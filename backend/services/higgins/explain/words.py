@@ -75,7 +75,7 @@ def jargon(text: str, explained: set[str]) -> str:
 
 # How serious it is, in plain words: one fixed line per attention level, never anything else.
 SEVERITY = {
-    "none": "How serious: nothing needs doing.",
+    "none": "How serious: nothing Apollo found needs action.",
     "review": "How serious: worth a careful look before you act on it.",
     "action_needed": "How serious: you need to act. See what you can do.",
     "urgent": "How serious: urgent. Act now.",

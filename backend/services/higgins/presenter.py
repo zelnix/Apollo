@@ -20,7 +20,7 @@ ASSESSMENT_TEXT = {
 }
 ATTENTION_TEXT = {"none": "No action is needed.", "review": "It's worth reviewing.", "action_needed": "Action is needed.", "urgent": "This is urgent."}
 BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told ApolloSG", "inference": "{name}'s inference from the evidence"}
-STATE_TEXT = {"resting": "all clear", "sniffing": "Apollo is looking closer", "ears_up": "worth a look", "growling": "possible concern",
+STATE_TEXT = {"resting": "no concern found within the checks that completed", "sniffing": "Apollo is looking closer", "ears_up": "worth a look", "growling": "possible concern",
               "barking": "significant concern", "biting": "Apollo blocked it", "unknown": "state not known"}
 SEVERITY_TEXT = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "LOW": "Low"}
 

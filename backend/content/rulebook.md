@@ -721,7 +721,7 @@ Every finished TC FlyBy or Magnum DI result is explained in plain English by the
 
 | Attention | Line shown |
 |---|---|
-| None | How serious: nothing needs doing. |
+| None | How serious: nothing Apollo found needs action. |
 | Review | How serious: worth a careful look before you act on it. |
 | Action needed | How serious: you need to act. See what you can do. |
 | Urgent | How serious: urgent. Act now. |

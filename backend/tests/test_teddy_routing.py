@@ -187,6 +187,7 @@ async def test_an_official_government_link_is_cleared_without_gemini(monkeypatch
     assert response["assessment"] == "no_concern_found_within_scope" and response["attention"] == "none"
     assert response["outcome"] == "no_scam_indicators"
     assert "Australian Taxation Office's official domain" in response["overview"]
+    assert "That settles who the address belongs to" in response["overview"] and "nothing here needs action" not in response["overview"]
     assert case["routing"]["answeredBy"] == "teddy_official"
 
 
@@ -282,6 +283,12 @@ async def test_a_newly_registered_link_is_a_weak_signal_never_concerning(monkeyp
     assert calls == [], "Magnum DI couldn't change the finding or what to do"
     assert response["outcome"] == "unable_to_determine"
     assert any("registered on 2026-06-01" in f["text"] for f in response["findings"]), "the weak signal is listed"
+    assert "only a weak signal that isn't a concern on its own" in response["overview"]
+    # Offline, the link's targeted search is unavailable: the gap and the weak signal are both named, nothing broader.
+    assert {c["kind"]: c["status"] for c in case["routing"]["teddy"]["checks"]}["link"] == "unavailable"
+    assert ("Some of what would settle this couldn't be checked and a weak signal can't settle it either way"
+            in response["explanationMarkdown"])
+    assert response["attentionReason"] == "Something ApolloSG couldn't fully check may still be unsafe."
     assert case["routing"]["teddy"]["issues"] == [] and case["routing"]["teddy"]["basis"] == "unknown"
 
 
@@ -291,6 +298,7 @@ async def test_a_plain_message_asking_nothing_is_settled_without_magnum(monkeypa
     assert calls == []
     assert response["outcome"] == "no_scam_indicators" and response["assessment"] == "no_concern_found_within_scope"
     assert "isn't proof it's genuine" in response["overview"] and "safe" not in response["overview"].lower()
+    assert "Apollo found no links, numbers, addresses or names in it to look up" in response["explanationMarkdown"]
     teddy = case["routing"]["teddy"]
     assert teddy["resolved"] is True and teddy["issues"] == []
     assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "not_needed"
@@ -389,6 +397,10 @@ async def test_impersonation_with_a_brand_new_domain_is_concerning_without_gemin
     assert calls == [], "Magnum DI couldn't change the finding or what to do"
     assert response["outcome"] == "concerning" and response["assessment"] == "concern_found"
     assert "isn't CommBank's domain" in response["overview"] and "registered on 2026-06-01" in response["overview"]
+    assert "commbank-notice.net isn't one of CommBank's published domains" in response["explanationMarkdown"]
+    assert "no reason to send you" not in response["explanationMarkdown"]
+    assert response["attentionReason"] == ("Anything typed into that link goes to whoever runs commbank-notice.net, which isn't one of "
+                                           "CommBank's published domains.")
     assert any(a["label"] == "Don't use the link" for a in response["actions"])
     assert any("Not taken further" in u and "deception analysis" in u for u in response["uncertainties"])
     assert case["routing"]["answeredBy"] == "teddy_official" and case["routing"]["teddy"]["basis"] == "impersonation"
@@ -496,6 +508,8 @@ async def test_a_bare_link_ends_concerning_or_unable_to_determine_without_gemini
     assert calls == [], "Magnum DI can't open the page either: nothing it could add"
     assert response["outcome"] == "unable_to_determine" and response["assessment"] == "uncertain"
     assert case["routing"]["outcome"] == "unable_to_determine" and case["routing"]["teddy"]["resolved"] is True
+    assert "Some of what would settle this couldn't be checked" in response["explanationMarkdown"]
+    assert response["attentionReason"] == "Something ApolloSG couldn't fully check may still be unsafe."
 
 
 def test_magnums_outcome_must_agree_with_its_assessment():

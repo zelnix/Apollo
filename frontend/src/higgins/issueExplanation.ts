@@ -4,7 +4,7 @@
 import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 
 const STATE_TEXT: Record<string, string> = {
-  resting: "all clear", sniffing: "Apollo is looking closer", ears_up: "worth a look", growling: "possible concern",
+  resting: "no concern found within the checks that completed", sniffing: "Apollo is looking closer", ears_up: "worth a look", growling: "possible concern",
   barking: "significant concern", biting: "Apollo blocked it", unknown: "state not known",
 };
 const PROVENANCE_TEXT: Record<string, string> = { observed: "observed by Apollo", inferred: "Apollo's inference", user_reported: "from what you told ApolloSG" };

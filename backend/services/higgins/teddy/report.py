@@ -136,13 +136,36 @@ def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_it
     }
 
 
+# What each kind of check looked at in the material (singular, plural), for "Apollo checked … in it".
+_LOOKED_AT = {"link": ("the link", "the links"), "impersonation": ("the organisation it names", "the organisations it names"),
+              "phone": ("the phone number", "the phone numbers"), "email": ("the email address", "the email addresses"),
+              "company": ("the business it names", "the businesses it names"), "abn": ("the ABN", "the ABNs"), "acn": ("the ACN", "the ACNs"),
+              "licence": ("the licence number", "the licence numbers"), "person": ("the person it names", "the people it names"),
+              "claim": ("the claim it makes", "the claims it makes"), "phrase": ("whether its wording appears elsewhere online",) * 2}
+
+
+def _what_was_checked(checks: list[Check]) -> str:
+    """Only the checks that actually ran, named by what they looked at — never a fixed list."""
+    ran = [c for c in checks if c.status in ("resolved", "not_found")]
+    counts = {kind: sum(c.kind == kind for c in ran) for kind in _LOOKED_AT}
+    looked = [_LOOKED_AT[kind][counts[kind] > 1] for kind in _LOOKED_AT if counts[kind]]
+    alerts = any(c.kind == "scam_alerts" for c in ran)
+    if looked:
+        return f"Apollo checked {_join(looked)} in it" + (", and compared it with the official scam alerts ApolloSG holds." if alerts else ".")
+    return ("Apollo found no links, numbers, addresses or names in it to look up"
+            + (", so it compared it with the official scam alerts ApolloSG holds." if alerts else "."))
+
+
 def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str, route: str) -> dict:
     """No scam indicators in what TC FlyBy checked — never described as safe."""
     facts = _live(checks)
     findings = [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in facts]
-    official = next((f for _, f in facts if f["decisive"] and f["signal"] == "clear"), None)
+    official_check, official = next(((c, f) for c, f in facts if f["decisive"] and f["signal"] == "clear"), (None, None))
     if plan_.link_only:
-        overview = (f"{official['text']} Nothing Apollo checked raises a concern, so nothing here needs action."
+        # A verified official domain settles who the address belongs to — that check only, never the whole case.
+        others = any(c is not official_check and c.status in ("resolved", "not_found") for c in checks)
+        overview = (f"{official['text']} That settles who the address belongs to"
+                    + (", and none of Apollo's other checks found a warning sign." if others else ".")
                     if official else
                     f"Nothing Apollo checked raises a concern about {_subject(plan_)}. That isn't proof the site is safe — only that these checks found nothing.")
         means = ("These checks look at who runs the address and whether any safety list or warning names it. They don't show what the page asks "
@@ -151,8 +174,8 @@ def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item
     else:
         overview = ("Apollo's checks found no scam indicators in what you sent. That isn't proof it's genuine — only that these checks found "
                     "nothing, and it doesn't ask you to send money, codes or details anywhere that hasn't been verified.")
-        means = ("Apollo checked the links, numbers, addresses and names in it against official sources and its knowledge base. Checks like these "
-                 "can't confirm who sent it, so if anything about it feels off, contact the person or organisation using details you already have.")
+        means = (f"{_what_was_checked(checks)} Checks like these can't confirm who sent it, so if anything about it feels off, contact the person "
+                 "or organisation using details you already have.")
         uncertainties = ["Apollo can't confirm who actually sent this."]
     found = "\n".join(f"- {f['text']}" for _, f in facts) or "- No warning signs in anything Apollo checked."
     explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n**How Apollo checked**\n"
@@ -226,15 +249,29 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
         plan_, checks, found=found, outcome="concerning", attention="action_needed",
         overview=(f"This uses {brand}'s name, but its link goes to {place}, which isn't {brand}'s domain. {support[0]['text']} "
                   f"Don't use the link — go to {brand} directly through their official app or website."),
-        means=(f"A genuine {brand} message has no reason to send you to another domain, and what's known about that address backs that up. "
+        means=(f"{place} isn't one of {brand}'s published domains, and a separate check on that address backs up the concern. "
                "That's enough to treat it as concerning without weighing up the wording."),
         how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
-        reason=f"Anything typed into that link goes to whoever runs {place}, not {brand}.",
+        reason=f"Anything typed into that link goes to whoever runs {place}, which isn't one of {brand}'s published domains.",
         actions=[_action("Don't use the link", f"Don't open {place} and don't enter anything on it."),
                  _action(f"Contact {brand} yourself", f"Contact {brand} using their official app, a website address you type yourself, or the number on your card or statement."),
                  _action("Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already entered details, contact the organisation now.")],
         uncertainties=["ApolloSG didn't open the page, so what it shows or asks for wasn't checked.",
                        *_missing(checks, "it couldn't change the outcome or what to do")])
+
+
+_COUNT = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def _signs_established(warnings: int, rest: int) -> str:
+    """Only the established warning signs are called warning signs. Weak signals (and a name that still needs
+    corroborating) are listed after them, and are never called warning signs."""
+    if not rest:
+        return f"Apollo's checks established the warning sign{'s' if warnings > 1 else ''} above."
+    first = "the first finding above as a warning sign" if warnings == 1 else f"the first {_COUNT[warnings] if warnings < len(_COUNT) else warnings} findings above as warning signs"
+    other = ("The other finding is recorded too, but doesn't count as a warning sign on its own." if rest == 1 else
+             "The other findings are recorded too, but don't count as warning signs on their own.")
+    return f"Apollo's checks established {first}. {other}"
 
 
 def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
@@ -254,27 +291,50 @@ def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
         found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in facts],
         overview=(f"{subject[0].upper()}{subject[1:]} raises a concern: {facts[0][1]['text']} Nothing here proves it's a scam, but don't act on "
                   "it until you've checked it through a channel you trust."),
-        means=(f"Apollo's checks established the warning sign{'s' if len(facts) > 1 else ''} above. That's reason to be careful, but not enough "
-               "to call it a scam."),
+        means=f"{_signs_established(len(warning), len(facts) - len(warning))} That's reason to be careful, but not enough to call it a scam.",
         how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
         reason="Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
         uncertainties=[*_missing(checks, "it couldn't change the outcome or what to do"),
                        *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
 
 
+def _unchecked(plan_: Plan) -> bool:
+    """Something that bears on the outcome couldn't be checked: part of the material couldn't be read, a lookup was
+    unavailable, or a link has no listing or registration result. A young registration was checked (it's a weak
+    signal), so it isn't a gap. Wording only: it decides nothing."""
+    if plan_.gaps or any(c.status == "unavailable" for c in plan_.checks):
+        return True
+    for c in plan_.checks:
+        if c.kind != "link" or any(f["decisive"] and f["signal"] == "clear" for f in c.facts):
+            continue
+        topics = {f.get("topic"): f["signal"] for f in c.facts}
+        if topics.get("listing") != "clear" or topics.get("registration") not in ("neutral", "weak"):
+            return True
+    return False
+
+
 def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item: str) -> dict:
-    """The available evidence can't establish more, and deeper investigation couldn't change that."""
+    """The available evidence can't establish more, and deeper investigation couldn't change that. It says why:
+    something couldn't be checked, weak signals were found, or both — never a gap that isn't there."""
     subject = _subject(plan_)
     after = ("only use it if you reached it yourself from the organisation's official website or app." if plan_.link_only else
              "check it through a channel you trust before acting on it.")
+    unchecked = _unchecked(plan_)
+    weak = sum(f["signal"] == "weak" for _, f in _live(checks))
+    found = ("It found no warning signs" + ("" if not weak else ", only a weak signal that isn't a concern on its own" if weak == 1 else
+                                            ", only weak signals that aren't a concern on their own"))
+    why = [*(["some of what would settle this couldn't be checked"] if unchecked else []),
+           *(["a weak signal can't settle it either way" if weak == 1 else "weak signals can't settle it either way"] if weak else [])]
+    why = why or ["the checks that ran couldn't settle it either way"]
+    means = f"{why[0][0].upper()}{why[0][1:]}{' and ' + why[1] if len(why) > 1 else ''}, so the available evidence can't establish more."
     return _result(
         plan_, checks, outcome="unable_to_determine", attention="review", actions=[_action("Check before using it", _CHECK_FIRST)],
         found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks)],
-        overview=(f"ApolloSG couldn't establish enough about {subject} to say either way. Nothing it found raises a concern, but that isn't the same "
-                  f"as it being safe — {after}"),
-        means="Some of what would settle this couldn't be checked, so the available evidence can't establish more.",
+        overview=f"ApolloSG couldn't establish enough about {subject} to say either way. {found}, but that isn't the same as it being safe — {after}",
+        means=means,
         how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
-        reason="Something ApolloSG couldn't fully check may still be unsafe.",
+        reason=("Something ApolloSG couldn't fully check may still be unsafe." if unchecked else
+                "What ApolloSG found can't show whether it's safe or not."),
         uncertainties=[*_missing(checks, None), *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
 
 
