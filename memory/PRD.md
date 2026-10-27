@@ -14,6 +14,10 @@
   CB-03 catalogue title still says "clean" (catalogue change needed in the audit).
 - Tests (information only): backend test_rulebook 25/25; frontend ruleBook.test.ts 11/12 — "each gate lists its rules one
   per line" expects Link Gate as one 21-item list; now split by class (update in the audit).
+- **Second-round corrections (same day, script `/tmp/rulebook_r2b.py`):** LINK-11 → COVERAGE (strong evidence meets its own
+  DETECT rule); CORR-08 needs harmful/suspicious payload evidence; "copied elsewhere" → weak signal (supporting only);
+  Magnum DI may correct a PROVISIONAL concern up or down (with resolving evidence, naming what it corrected) but never
+  overrides ESTABLISHED threat evidence (authoritative listing/advisory, or deterministic direct observation). Still unaudited.
 - NEXT (only after owner approves r2): audit triage engines/catalogue, TC FlyBy decide/outcomes, Magnum coordinator/jobs,
   llm_boundary ABN handling against r2; then re-stamp.
 
