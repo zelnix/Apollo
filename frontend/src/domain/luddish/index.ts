@@ -15,6 +15,10 @@ import { grade, readability } from "./readability.ts";
 
 export { compose } from "./compose.ts";
 export type { LuddishExplanation, LuddishPart } from "./compose.ts";
+export { QUESTIONS, resultQuestions } from "./questions.ts";
+export type { AnswerItem, AnswerSection, QuestionId, ResultQuestion } from "./questions.ts";
+export { askedTerm, explainTerm } from "./terms.ts";
+export { isGeneralAnswer, lockFromCheckResult, lockFromInvestigation, lockFromIssue } from "./lockSources.ts";
 
 /** At most this many plain notes beside one result: more would bury the answer. */
 export const MAX_NOTES = 2;
@@ -39,11 +43,12 @@ function notesFor(text: string, explained: Set<string>, room: number): string[] 
   return terms.map((t) => t.meaning);
 }
 
-/** Free text in Luddish, line by line: a line whose plain wording changes anything keeps Apollo's words. */
-export function luddish(text: string, explained: Set<string> = new Set(), room = MAX_NOTES): LuddishText {
+/** Free text in Luddish, line by line: a line whose plain wording changes anything keeps Apollo's words. `strong`: a
+ *  headline or a step of what to do, which keeps every "not" in full. */
+export function luddish(text: string, explained: Set<string> = new Set(), room = MAX_NOTES, strong = false): LuddishText {
   const keptLines: LuddishText["keptLines"] = [];
   const lines = text.split("\n").map((line, i) => {
-    const plain = rewriteLine(line);
+    const plain = rewriteLine(line, strong);
     const codes = differences(line, plain);
     if (codes.length) { keptLines.push({ line: i, codes }); return line; }
     return plain;
@@ -59,8 +64,8 @@ function seedExplained(meanings: (string | null | undefined)[]): Set<string> {
   return ids;
 }
 
-/** Just the Luddish wording of `text` (no notes). */
-export const luddishText = (text: string): string => luddish(text, new Set(), 0).text;
+/** Just the Luddish wording of `text` (no notes). `strong`: a headline or a step of what to do. */
+export const luddishText = (text: string, strong = false): string => luddish(text, new Set(), 0, strong).text;
 
 // ── Check results ──
 export interface PlainCheckResult {
@@ -94,7 +99,8 @@ export function luddishCheckResult(model: CheckResultModel): PlainCheckResult {
 }
 
 // ── Reports (Ask Higgins and a threat's Overview) ──
-/** The report in Luddish. The one-line severity is a fixed line and stays as it is; sources keep their own titles. */
+/** The report in Luddish. The one-line severity is a fixed line and stays as it is; sources keep their own titles.
+ *  The first paragraph of the answer is Apollo's answer itself, so it keeps every "not" in full. */
 export function luddishReport(report: Report): Report {
   const explained = seedExplained(report.found.map((f) => f.explain));
   const text = (s: string) => luddish(s, explained, 0).text;
@@ -105,7 +111,7 @@ export function luddishReport(report: Report): Report {
     if (term) explained.add(term.id);
     return { ...f, text: plain, explain: term ? BY_ID[term.id].meaning : f.explain ?? null };
   });
-  const answer = report.answer.map(text);
+  const answer = report.answer.map((s, i) => luddish(s, explained, 0, i === 0).text);
   const means = report.means.map(text);
   const notes = notesFor([...answer, ...means].join(" "), explained, MAX_NOTES);
   return {
@@ -115,6 +121,13 @@ export function luddishReport(report: Report): Report {
     how: report.how.map(text),
     ...(notes.length ? { notes } : {}),
   };
+}
+
+/** Everything a report shows (in Luddish), so the question buttons never say it again. */
+export function reportShown(report: Report): string[] {
+  const r = luddishReport(report);
+  return [...r.answer, r.severity, ...r.found.flatMap((f) => [f.text, f.explain]), ...r.means, ...r.more.flatMap((m) => m.paragraphs),
+    ...r.uncertain, ...r.how, ...(r.notes ?? [])].filter((t): t is string => !!t);
 }
 
 // ── Ask Higgins ──

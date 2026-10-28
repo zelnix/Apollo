@@ -38,6 +38,9 @@ export interface LuddishExplanation {
   knowledge: KnowledgeEntry[];
   /** Apollo's locked wording, untouched, with what each piece is. */
   technical: { ref: string; label: string; text: string; detail?: string | null }[];
+  /** Who recorded the result, and how sure it said it is overall (as recorded; null when it didn't say). */
+  by: string;
+  confidence: string | null;
   readability: { before: number; after: number; target: number; met: boolean };
   fidelity: FidelityResult;
   /** What sent the plain wording back to Apollo's own wording (empty when it passed first time). */
@@ -49,7 +52,7 @@ export const isJargon = (t: LuddishTerm) => !t.familiar && !t.plain && t.categor
 export const jargonIn = (text: string) => termsIn(text).filter(isJargon);
 
 /** The same point already made by one of `said` (three quarters of its meaning-bearing words). */
-function alreadySaid(text: string, said: string[]): boolean {
+export function alreadySaid(text: string, said: readonly string[]): boolean {
   const a = new Set(canon(text));
   if (!a.size) return true;
   return said.some((s) => { const b = new Set(canon(s)); let hit = 0; for (const w of a) if (b.has(w)) hit++; return hit / a.size >= 0.75; });
@@ -91,7 +94,8 @@ export function compose(lock: EvidenceLock, literal = false): LuddishExplanation
     return inShortToo ? inShort(variant(rule.means, seed)) : null;
   };
   const evidence = (ref: string, text: string, opts: { inShort?: boolean; detail?: string | null } = {}): LuddishPart => {
-    const plain = plainAllowed ? rewrite(text) : text;
+    // A headline and a step of what to do are warnings: they keep every "not" in full.
+    const plain = plainAllowed ? rewrite(text, ref === "headline" || ref.startsWith("action:")) : text;
     const shown = differences(text, plain).length ? text : plain; // any change to the evidence: Apollo's words
     said.push(shown);
     return { ref, text: shown, source: "evidence", note: noteFor(shown, !!opts.inShort), ...(opts.detail !== undefined ? { detail: opts.detail } : {}) };
@@ -131,7 +135,7 @@ export function compose(lock: EvidenceLock, literal = false): LuddishExplanation
   const after = readability(evidenceText || brief.text);
   const ex: LuddishExplanation = {
     state: lock.state, label: rule.label, brief, explanation, findings, meaning, importance, limitation, action, noAction, how,
-    terms, knowledge, technical: technical(lock),
+    terms, knowledge, technical: technical(lock), by: lock.by ?? "Apollo", confidence: lock.confidence,
     readability: { before: grade(lockedText || brief.text), after: after.grade, target: TARGET_GRADE, met: after.met },
     fidelity: { status: "PASS", failures: [] }, fellBack: [],
   };

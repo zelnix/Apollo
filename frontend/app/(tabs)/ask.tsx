@@ -42,7 +42,7 @@ import { classifyIntent } from "@/src/higgins/intentRouter";
 import { detectCheckIntent } from "@/src/higgins/checkIntent";
 import { explainIssue, INVESTIGATE_OFFER } from "@/src/higgins/issueExplanation";
 import { getProtectionStatus, getGateStatus, getCurrentIssues, getPermissionStatus, getVpnStatus, getNotificationDiagnostic } from "@/src/higgins/diagnosticCore";
-import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage } from "@/src/higgins/localResponder";
+import { diagnosticToHigginsMessage, knowledgeToHigginsMessage, clarificationToHigginsMessage, termToHigginsMessage } from "@/src/higgins/localResponder";
 import { getNotificationHealth } from "@/src/push/notifications";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import type { Gate } from "@/src/investigation/types";
@@ -359,6 +359,12 @@ export default function Ask() {
     if (decision.route === "local_knowledge" && decision.knowledgeIntent) {
       const higginsMsg = knowledgeToHigginsMessage(decision.knowledgeIntent, conversationId.current);
       setChatMessages((current) => { const next = [...current, higginsMsg]; void saveLocalChat(next); return next; });
+      return true;
+    }
+
+    if (decision.route === "local_knowledge" && decision.termId) {
+      const termMsg = termToHigginsMessage(decision.termId, conversationId.current);
+      setChatMessages((current) => { const next = [...current, termMsg]; void saveLocalChat(next); return next; });
       return true;
     }
 

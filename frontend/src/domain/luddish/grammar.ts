@@ -1,6 +1,7 @@
 // Higgins Luddish L1 — Grammar & Punctuation, with the plain-word swaps. Every change keeps exactly what was said:
 //   - formal words become everyday ones: the server's list (backend explain/words.py PLAIN_SWAPS) word for word, then a
-//     few more that mean exactly the same;
+//     few more that mean exactly the same; a warning keeps its full "not" (instructions, a shouted NOT, headlines and
+//     steps of what to do);
 //   - a dictionary term with an exact plain name takes it ("URL" → "web address"), with "a"/"an" put right;
 //   - a long sentence is split only where a full stop changes nothing ("; ", ", but ", ", so ");
 //   - spacing, doubled words and doubled punctuation are tidied, and each sentence starts with a capital.
@@ -40,10 +41,19 @@ export const PLAIN_SWAPS: readonly (readonly [string, string])[] = [
   ["via", "through"], ["elevated", "higher"], ["appears to", "seems to"], ["appear to", "seem to"],
 ];
 
-// Longest first, so "is unable to" is swapped before anything shorter inside it.
+// Longest first, so "is unable to" is swapped before anything shorter inside it. The third value: the swap shortens a
+// "not" ("do not" → "don't", "is unable to" → "can't").
 const SWAPS = [...PLAIN_SWAPS].sort((a, b) => b[0].length - a[0].length)
-  .map(([formal, plain]) => [new RegExp(`(?<![\\w'-])${escapeRe(formal)}(?![\\w'-])`, "gi"), plain] as const);
+  .map(([formal, plain]) => [new RegExp(`(?<![\\w'-])${escapeRe(formal)}(?![\\w'-])`, "gi"), plain, /n't\b/.test(plain)] as const);
 const PLAIN_TERMS = COMPILED.filter((t) => t.plain);
+
+// A warning keeps its full "not": an instruction ("Do not share the code", "…and do not tap it") and a shouted "NOT"
+// stay as written everywhere, and a headline or a step of what to do (`strong`) never shortens a "not" at all.
+const INSTRUCTION_BEFORE = /(?:^|[.!?:;,(—–]\s*|\b(?:and|or|then|please|but|so|just|also)\s+)$/i;
+const fullNot = (plain: string) => plain.replace(/\bcan't\b/, "cannot").replace(/\bwon't\b/, "will not").replace(/n't\b/, " not");
+function keepsFullNot(match: string, before: string, strong: boolean): boolean {
+  return strong || /NOT/.test(match) || (/^do not$/i.test(match) && INSTRUCTION_BEFORE.test(before));
+}
 
 const SWAPPED = "\u0001"; // marks a swapped word until "a"/"an" in front of it is put right
 const FIRST_WORD_CAPITALISED = (s: string) => /^[A-Z](?:[a-z]|$|[^A-Za-z])/.test(s);
@@ -54,9 +64,14 @@ function cased(original: string, plain: string): string {
 }
 
 /** The plain swaps and the dictionary's exact plain names, on text whose identifiers are already held. */
-export function swapHeld(text: string): string {
+export function swapHeld(text: string, strong = false): string {
   let out = text;
-  for (const [re, plain] of SWAPS) out = out.replace(re, (m) => SWAPPED + cased(m, plain));
+  for (const [re, plain, shortens] of SWAPS) {
+    out = out.replace(re, (m: string, at: number, whole: string) => {
+      if (!shortens || !keepsFullNot(m, whole.slice(0, at), strong)) return SWAPPED + cased(m, plain);
+      return /not/i.test(m) ? m : SWAPPED + cased(m, fullNot(plain)); // "is unable to" → "cannot"
+    });
+  }
   for (const t of PLAIN_TERMS) {
     out = out.replace(new RegExp(t.re.source, t.re.flags), (m) => {
       const many = /s$/i.test(m) && t.plain!.many ? t.plain!.many : t.plain!.one;
@@ -131,12 +146,13 @@ function heldSentences(text: string): string[] {
 
 const PREFIX = /^(\s*(?:[-*•]|\d+[.)])\s+)?/;
 
-/** Grammar & Punctuation for one line (a bullet keeps its bullet): plain swaps, tidy, safe splits. */
-export function rewriteLine(line: string): string {
+/** Grammar & Punctuation for one line (a bullet keeps its bullet): plain swaps, tidy, safe splits. `strong`: a headline
+ *  or a step of what to do, which keeps every "not" in full. */
+export function rewriteLine(line: string, strong = false): string {
   if (!line.trim()) return line;
   const prefix = line.match(PREFIX)?.[0] ?? "";
   const { text: held, held: kept } = hold(line.slice(prefix.length));
-  const parts = heldSentences(tidy(swapHeld(held)));
+  const parts = heldSentences(tidy(swapHeld(held, strong)));
   const out = parts.flatMap(split);
   // A sentence that was split ends with a full stop like the sentence before it.
   if (out.length > parts.length && /[\w\u0000]$/.test(out[out.length - 1])) out[out.length - 1] += ".";
@@ -144,6 +160,6 @@ export function rewriteLine(line: string): string {
 }
 
 /** Grammar & Punctuation for any text, line by line. */
-export function rewrite(text: string): string {
-  return text.split("\n").map(rewriteLine).join("\n");
+export function rewrite(text: string, strong = false): string {
+  return text.split("\n").map((line) => rewriteLine(line, strong)).join("\n");
 }

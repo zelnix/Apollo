@@ -67,7 +67,9 @@ import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport, plainReport, shownPlainEnglish, stepText } from "@/src/domain/reportSections";
-import { luddishText } from "@/src/domain/luddish";
+import { compose, isGeneralAnswer, lockFromInvestigation, lockFromIssue, luddishText, reportShown } from "@/src/domain/luddish";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
+import { ResultQuestions } from "@/src/components/ResultQuestions";
 import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { FamilyNotes } from "@/src/components/FamilyNotes";
@@ -283,6 +285,14 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
     });
   }, [response, investigation, event, briefing, limited]);
 
+  // The question buttons under the report: Luddish's explanation of the investigation, or of what Apollo recorded on
+  // its own (only when it recorded findings, never from a privacy-protected summary).
+  const explanation = useMemo(() => {
+    if (response) return isGeneralAnswer(response) ? null : compose(lockFromInvestigation(response, investigatorName(investigation?.answeredBy)));
+    if (!hasRecordedFindings(event)) return null;
+    return compose(lockFromIssue(contextFromEvent(event, gateForCategory(event.category)), limited ? "limited" : undefined));
+  }, [response, investigation?.answeredBy, event, limited]);
+
   // What to do — the investigation's own steps, or an explicit statement that nothing needs doing.
   const action = (shownWhatToDo || "").trim();
   const noAction = !action || /^no action required\.?$/i.test(action) || (limited && /^(nothing to (do|worry)|no action)/i.test(action));
@@ -294,6 +304,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
   const steps = !note && response?.actions.length
     ? response.actions.map((a, i) => ({ id: a.id, title: a.label, body: stepText(response, i) }))
     : [{ id: "todo", title: null, body: note ?? (noAction ? (limited ? LIMITED_TODO : "Nothing to do.") : plainTriageText(action)) }];
+  const shown = useMemo(() => [...reportShown(report), ...steps.flatMap((step) => [step.title, step.body])], [report, steps]);
   const hasOutcome = !!outcomeLabel(response?.outcome);
   const risk = limited ? { label: "Not determined", color: "#D97706" } : riskLevel(event.state);
   // "Send to family": the result, what happened, what to do and the website or number — nothing else.
@@ -310,6 +321,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
       {/* Higgins' report — the same template and sections as Ask Higgins. */}
       <Card style={{ gap: spacing.md }} testID="tc-overview-briefing">
         <ReportBody report={report} time={investigation ? formatTime(investigation.completedAt || investigation.createdAt) : null} ids="tc-overview" />
+        {explanation ? <ResultQuestions explanation={explanation} shown={shown} testID="tc-overview-questions" /> : null}
         <Text style={s.reportSectionHeader}>What you can do</Text>
         <View style={{ gap: spacing.sm }} testID="tc-overview-todo">
           {steps.map((step) => (
@@ -317,7 +329,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
               <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
               <View style={{ flex: 1, gap: 2 }}>
                 {step.title ? <Text style={s.actionTitle}>{scrubMessage(step.title)}</Text> : null}
-                <Text style={step.title ? s.actionDescription : s.reportBody}>{luddishText(scrubMessage(step.body))}</Text>
+                <Text style={step.title ? s.actionDescription : s.reportBody}>{luddishText(scrubMessage(step.body), true)}</Text>
               </View>
             </View>
           ))}

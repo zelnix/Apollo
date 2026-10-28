@@ -31,10 +31,12 @@ import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
 import { ReportBody } from "@/src/components/report/ReportBody";
+import { ResultQuestions } from "@/src/components/ResultQuestions";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
-import { luddishText } from "@/src/domain/luddish";
+import { compose, isGeneralAnswer, lockFromInvestigation, luddishText, reportShown } from "@/src/domain/luddish";
+import { isFinished } from "@/src/higgins/followUp";
 import { assessmentLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -688,6 +690,9 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const outcomeKey = outcomeTone(response?.outcome);
   // Whoever actually settled this result: TC FlyBy or Magnum DI.
   const investigator = investigatorName(caseData?.answeredBy);
+  // The question buttons under the report: Luddish's explanation of the finished result, and what the screen already says.
+  const explanation = useMemo(() => isFinished(response) && !isGeneralAnswer(response) ? compose(lockFromInvestigation(response, investigator)) : null, [response, investigator]);
+  const shown = useMemo(() => report && response ? [...reportShown(report), ...response.actions.flatMap((a, i) => [a.label, stepText(response, i)])] : [], [report, response]);
   const outcomeBg = { resting: colors.restingTint, barking: colors.barkingTint, ears_up: colors.ears_upTint, sniffing: colors.sniffingTint }[outcomeKey];
   const outcomeColor = { resting: colors.restingText, barking: colors.barkingText, ears_up: colors.ears_upText, sniffing: colors.sniffingText }[outcomeKey];
   const OutcomeIcon = outcomeKey === "resting" ? CircleCheck : outcomeKey === "barking" ? CircleAlert : Info;
@@ -742,6 +747,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <Card style={[s.card, { gap: spacing.md }]} testID="inv-tab-overview-content">
           {/* Higgins' report — the same sections, each said once, as a threat's Overview. */}
           <View testID={response ? "inv-overview" : undefined}><ReportBody report={report ?? EMPTY_REPORT} time={higginsTime} ids="inv" /></View>
+          {explanation ? <ResultQuestions explanation={explanation} shown={shown} testID="inv-questions" /> : null}
           {!response && failure ? (
             <Text style={s.briefingText} testID="inv-overview">{higginsExplanation(failure as unknown as Record<string, unknown>, false)}</Text>
           ) : !response && error ? (
@@ -782,7 +788,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
                 <View style={s.actionContent}>
                   <Text style={s.actionTitle}>{action.label}</Text>
-                  <Text style={s.actionDescription}>{luddishText(scrubMessage(stepText(response, actionIndex)))}</Text>
+                  <Text style={s.actionDescription}>{luddishText(scrubMessage(stepText(response, actionIndex)), true)}</Text>
                 </View>
                 {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>

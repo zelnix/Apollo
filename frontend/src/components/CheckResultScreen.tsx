@@ -23,6 +23,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
 import { EvidenceProfileCard } from "./EvidenceProfileCard";
 import { OfficialContactsCard } from "./OfficialContactsCard";
+import { ResultQuestions } from "./ResultQuestions";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -36,6 +37,7 @@ const useStyles = makeStyles((c) => ({
   headline: { fontFamily: fonts.displayBold, fontSize: 22, lineHeight: 28, color: c.onSurface, letterSpacing: -0.3 },
   higginsText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   plainNote: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, fontStyle: "italic", marginTop: 2 },
+  questions: { borderTopWidth: 1, borderTopColor: c.divider, paddingTop: spacing.md },
 
   itemRow: { gap: 4, paddingVertical: spacing.sm },
   itemDivider: { borderTopWidth: 1, borderTopColor: c.divider },
@@ -85,6 +87,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
   const [fullOpen, setFullOpen] = useState(false);
   // Higgins speaks Luddish (L1): plain words, the evidence unchanged. The full investigation details stay as recorded.
   const plain = useMemo(() => luddishCheckResult(result), [result]);
+  // What the result already says, so the question buttons never repeat it.
+  const shown = useMemo(() => [plain.headline, plain.higginsSays, plain.whatToDo, ...plain.notes], [plain]);
 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
@@ -136,6 +140,11 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
                   ) : null}
                 </View>
               ) : null}
+
+              {/* ── Question buttons: the answer opens right here, under the result ── */}
+              <View style={s.questions}>
+                <ResultQuestions explanation={plain.explanation} shown={shown} testID="check-result-questions" />
+              </View>
         </Card>
 
         <OfficialContactsCard verdicts={result.official} />

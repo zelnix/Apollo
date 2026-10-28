@@ -31,6 +31,10 @@ export interface EvidenceLock {
   readonly how: string | null;
   /** Who actually blocked it (Android, your phone company, Apollo's Site Gate). null: not recorded. */
   readonly blockedBy: string | null;
+  /** Who recorded the result (Apollo, TC FlyBy, Magnum DI). */
+  readonly by: string | null;
+  /** How sure Apollo said it is overall, in its own words ("High"). null: not recorded. */
+  readonly confidence: string | null;
   readonly fingerprint: string;
 }
 
@@ -45,6 +49,8 @@ export interface LockInput {
   actions?: string[];
   how?: string | null;
   blockedBy?: string | null;
+  by?: string | null;
+  confidence?: string | null;
 }
 
 const clean = (v: string | null | undefined) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -57,7 +63,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-const content = (l: Omit<EvidenceLock, "fingerprint">) => JSON.stringify([l.state, l.subject, l.headline, l.findings, l.explanation, l.reason, l.uncertainties, l.actions, l.how, l.blockedBy]);
+const content = (l: Omit<EvidenceLock, "fingerprint">) => JSON.stringify([l.state, l.subject, l.headline, l.findings, l.explanation, l.reason, l.uncertainties, l.actions, l.how, l.blockedBy, l.by, l.confidence]);
 
 export function lockEvidence(input: LockInput): EvidenceLock {
   const body = {
@@ -71,6 +77,8 @@ export function lockEvidence(input: LockInput): EvidenceLock {
     actions: (input.actions ?? []).map((a) => a.trim()).filter(Boolean),
     how: clean(input.how),
     blockedBy: clean(input.blockedBy),
+    by: clean(input.by),
+    confidence: clean(input.confidence),
   };
   return deepFreeze({ ...body, fingerprint: fingerprint(content(body)) });
 }

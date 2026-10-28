@@ -17,6 +17,8 @@
  * whether the VPN is running or whether a gate is active.
  */
 
+import { askedTerm } from "../domain/luddish/terms.ts";
+
 // ── Route types ──────────────────────────────────────────────────────────────
 
 export type HigginsRoute = "local_diagnostic" | "investigation" | "local_knowledge" | "clarify" | "ask_higgins";
@@ -49,7 +51,8 @@ export interface RouteDecision {
   diagnosticIntent?: LocalDiagnosticIntent;
   /** For local_knowledge: which knowledge topic. */
   knowledgeIntent?: LocalKnowledgeIntent;
-  /** Confidence: 0..1. Below 0.5 → clarify. */
+  /** For local_knowledge: the dictionary word a "what is …?" question asks about (Higgins Luddish L1). */
+  termId?: string;
   confidence: number;
   /** Short reason for the classification (for logging/debugging). */
   reason: string;
@@ -347,6 +350,13 @@ export function classifyIntent(
         return { route: rule.route, confidence: rule.confidence, reason: rule.reason };
       }
     }
+  }
+
+  // "What is phishing?" — a word Higgins' dictionary explains, answered on the phone from the Luddish Dictionary and
+  // Knowledge Library. Checked before the status and scam patterns, which would read "phishing" as a case to open.
+  const term = askedTerm(trimmed);
+  if (term) {
+    return { route: "local_knowledge", termId: term.id, confidence: 0.9, reason: "A word Higgins' dictionary explains" };
   }
 
   // Check diagnostics next — these should NEVER reach Magnum DI

@@ -1,7 +1,8 @@
 // Higgins Luddish L1 — the Luddish Rules: one approved set of words for every state ApolloSG reports. A state is
 // taken only from what Apollo recorded, never inferred, and never made stronger or weaker. Each sentence has approved
 // variations that say exactly the same thing, so Higgins doesn't sound robotic; a variation never changes the
-// evidence, how sure Apollo is or how serious it is. Pure: no React, no native imports.
+// evidence, how sure Apollo is or how serious it is. A step of what to do says "Do not" in full, like a warning.
+// Pure: no React, no native imports.
 import { fingerprint } from "./patterns.ts";
 
 export type StateId =
@@ -46,15 +47,15 @@ export const STATE_RULES: Readonly<Record<StateId, StateRule>> = {
     finding: ["Apollo found a concern.", "Apollo's checks found a concern."],
     means: ["Something Apollo checked needs your attention before you act on it.", "Before you act on this, something Apollo checked needs your attention."],
     matters: "Acting on it before you've checked could put your money, details or phone at risk.", limitation: "A concern isn't proof of a scam.",
-    action: "Don't act on it until you've checked it another way.", noAction: null, never: ["safe", "confirmed", "proven", "definitely"] },
+    action: "Do not act on it until you've checked it another way.", noAction: null, never: ["safe", "confirmed", "proven", "definitely"] },
   likely_scam: { id: "likely_scam", label: "Likely scam", strength: 4,
     finding: ["The evidence points to a scam."], means: ["It's very likely a scam, though Apollo can't be certain."],
     matters: "Scams like this aim to get money, passwords or personal details.", limitation: "This is a strong warning, not proof.",
-    action: "Don't reply, tap links, call numbers in it or pay anything.", noAction: null, never: ["safe", "confirmed", "proven"] },
+    action: "Do not reply, tap links, call numbers in it or pay anything.", noAction: null, never: ["safe", "confirmed", "proven"] },
   threat: { id: "threat", label: "Confirmed scam or threat", strength: 5,
     finding: ["Apollo's checks confirmed this is a scam or a threat."], means: ["Treat it as a scam."],
     matters: "Acting on it could cost you money, passwords or personal details.", limitation: null,
-    action: "Don't use anything in it. If you've already acted on it, contact your bank or the organisation using details you find yourself.",
+    action: "Do not use anything in it. If you've already acted on it, contact your bank or the organisation using details you find yourself.",
     noAction: null, never: ["safe", "maybe", "probably"] },
   checking: { id: "checking", label: "Looking closer", strength: null,
     finding: ["Apollo is looking closer."], means: ["Apollo hasn't finished checking, so there's no answer yet."],

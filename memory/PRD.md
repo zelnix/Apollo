@@ -1,3 +1,24 @@
+## Higgins Luddish L1 — P1 done: question buttons + strong warnings + typed word questions (2026-10-28)
+**Owner's choices:** before/after list approved as is; warnings keep "Do not"/"NOT" (headlines, steps, instructions,
+capitalised NOT), only ordinary sentences use contractions; a question's answer opens right under the result. No testing
+agent (owner's rule) — node tests + tsc + preview screenshots.
+- Grammar: `rewrite(text, strong)` — instruction "do not" (sentence start or after , ; : and/or/then…) and any "NOT" never
+  shortened; `strong` (headline, `action:*`, report answer[0], step text) never shortens a "not" ("is unable to" → "cannot").
+  Rule actions now say "Do not …" (concern, likely_scam, threat).
+- Lock: + `by` (who recorded it) and `confidence` (overall, as recorded); `lockFromIssue(ctx, state?)`; `isGeneralAnswer`
+  (no outcome + no findings = library answer → no buttons).
+- `domain/luddish/questions.ts` `resultQuestions(ex, shown)`: What does this mean? · Why does it matter? · How sure is
+  Higgins? · What should I do? · Show the technical detail — each only when it adds something not on screen; knowledge
+  labelled with source; technical = locked wording verbatim + attribution, plain words beside (`plain`) never instead.
+- `components/ResultQuestions.tsx` on CheckResultScreen (`check-result-questions`), InvestigationView (`inv-questions`),
+  threat Overview (`tc-overview-questions`, only with recorded findings; Limited → "limited").
+- Typed word questions: `domain/luddish/terms.ts` `askedTerm`/`explainTerm`; intentRouter routes "What is phishing?" to
+  `local_knowledge` + `termId` before diagnostics/scam patterns; `termToHigginsMessage` (quoted).
+- Rule book updated + stamped; before/after regenerated (`memory/luddish_before_after.md`: 23 reworded, 12 notes, 92 same).
+- Tests: luddish.test.ts +7; frontend 1125/1125 (133 files); tsc clean; test_rulebook 27; Magnum DI cross-source 2 passed.
+- Observed, not fixed (pre-existing backend): a call check "bank wants a code" was answered by TC FlyBy as a general KB
+  question (QR-code articles, "No concern found"); Magnum DI simulated scope text shows raw evidence IDs.
+
 ## Higgins Luddish L1 — P0 done: engine + everywhere Higgins speaks + before/after list (2026-10-28)
 **Owner's choices:** L1 first (validate with before/after), then question buttons; all five buttons (What does this mean? ·
 Why does it matter? · How sure is Higgins? · What should I do? · Show the technical detail), each only when it makes sense;

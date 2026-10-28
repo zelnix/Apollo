@@ -4,13 +4,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { compose, luddish, luddishChat, luddishCheckResult, luddishReport, luddishText, MAX_NOTES, PLAIN_WORDS } from "../src/domain/luddish/index.ts";
+import { compose, luddish, luddishChat, luddishCheckResult, luddishReport, luddishText, MAX_NOTES, PLAIN_WORDS, QUESTIONS, resultQuestions } from "../src/domain/luddish/index.ts";
+import { askedTerm, explainTerm } from "../src/domain/luddish/terms.ts";
+import { classifyIntent } from "../src/higgins/intentRouter.ts";
 import { BY_ID, COMPILED, DICTIONARY, lookupTerm, termsIn } from "../src/domain/luddish/dictionary.ts";
 import { checkExplanation, differences, findingDetail, inShort } from "../src/domain/luddish/fidelity.ts";
 import { PLAIN_SWAPS, rewrite, swap } from "../src/domain/luddish/grammar.ts";
 import { KNOWLEDGE, KNOWLEDGE_TEXTS } from "../src/domain/luddish/knowledge.ts";
 import { lockEvidence, lockIntact, lockedTexts } from "../src/domain/luddish/lock.ts";
-import { lockFromInvestigation, lockFromIssue } from "../src/domain/luddish/lockSources.ts";
+import { isGeneralAnswer, lockFromInvestigation, lockFromIssue } from "../src/domain/luddish/lockSources.ts";
 import { grade, isHard, readability, TARGET_GRADE } from "../src/domain/luddish/readability.ts";
 import { noStronger, STATE_RULES, stateFromCheckStatus, stateFromOutcome, stateFromPatrol, stateFromTone, type StateId } from "../src/domain/luddish/rules.ts";
 import type { CheckResultModel } from "../src/domain/checkResult.ts";
@@ -20,6 +22,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 
 const CONCERN = lockEvidence({
   state: "concern",
+  by: "TC FlyBy",
   headline: "This text uses ANZ's name, but its link isn't ANZ's website.",
   findings: [{ text: "The link anz-secure-login.co was registered 3 days ago.", basis: "observed", confidence: "high", by: "TC FlyBy" },
     { text: "The message asks you to pay $250 to 0412 345 678 by 5:00 pm.", basis: "inferred", confidence: "medium", by: "TC FlyBy" }],
@@ -170,10 +173,12 @@ test("the Composer writes Finding → Meaning → Importance → Limitation → 
   assert.equal(ex.explanation?.text, "Magnum DI couldn't confirm who sent it. But the link shows an impersonation of ANZ, so you shouldn't enter any details on it.");
   assert.deepEqual(ex.findings.map((f) => f.text), CONCERN.findings.map((f) => f.text), "findings already plain stay word for word");
   assert.deepEqual(ex.findings.map((f) => f.detail), ["Seen directly by TC FlyBy · High confidence", "TC FlyBy's reading of the evidence, not seen directly · Medium confidence"]);
-  assert.deepEqual(ex.meaning.map((p) => [p.source, p.text]), [["rule", "Something Apollo checked needs your attention before you act on it."]]);
+  assert.equal(ex.meaning.length, 1);
+  assert.equal(ex.meaning[0].source, "rule");
+  assert.ok(STATE_RULES.concern.means.includes(ex.meaning[0].text), "one of the state's approved variations");
   assert.equal(ex.importance?.source, "rule");
   assert.deepEqual(ex.limitation.map((p) => p.text), ["Apollo can't confirm who actually sent this.", "A concern isn't proof of a scam."]);
-  assert.deepEqual(ex.action.map((p) => p.text), ["Don't open anz-secure-login.co and don't enter anything on it."]);
+  assert.deepEqual(ex.action.map((p) => p.text), ["Do not open anz-secure-login.co and do not enter anything on it."], "a step of what to do keeps its full \"not\"");
   assert.equal(ex.noAction, null, "there is something to do");
   assert.deepEqual(ex.technical.map((t) => t.text), lockedTexts(CONCERN), "the technical detail is Apollo's own wording, untouched");
   assert.deepEqual(ex.terms.map((t) => t.id), ["impersonation", "registration_record"]);
@@ -231,6 +236,111 @@ test("any part whose plain wording would change the evidence stays in Apollo's w
   assert.equal(ex.fidelity.status, "PASS");
 });
 
+test("a warning keeps its strong wording: instructions and a shouted NOT stay as written, headlines and steps never shorten a \"not\"", () => {
+  assert.equal(rewrite("Do not share the code. The caller asked for it."), "Do not share the code. The caller asked for it.");
+  assert.equal(rewrite("Delete it and do not tap the link."), "Delete it and do not tap the link.");
+  assert.equal(rewrite("Don't tap the link: Do not open the link and do not enter any details on it."), "Don't tap the link: Do not open the link and do not enter any details on it.");
+  assert.equal(rewrite("If you do not know them, do not reply."), "If you don't know them, do not reply.", "a statement shortens, the instruction doesn't");
+  assert.equal(rewrite("Sent from paypa1-security.com, which is NOT PayPal's official domain."), "Sent from paypa1-security.com, which is NOT PayPal's official domain.");
+  assert.equal(rewrite("You reported that you did NOT start this."), "You reported that you did NOT start this.");
+  assert.equal(rewrite("Message identity is not authenticated."), "Message identity isn't authenticated.", "an ordinary sentence still shortens");
+  assert.equal(rewrite("Apollo is unable to confirm it and it does not show who sent it.", true), "Apollo cannot confirm it and it does not show who sent it.", "strong: formal words still go, every \"not\" stays");
+  const call = compose(lockEvidence({ state: "concern", headline: "Do not share the code.", explanation: "Do not share the code. The caller asked you to read out a security code.", actions: ["Hang up and do not call back on that number."] }));
+  assert.deepEqual([call.brief.text, call.explanation?.text, call.action[0].text], ["Do not share the code.", "Do not share the code. The caller asked you to read out a security code.", "Hang up and do not call back on that number."]);
+  assert.equal(luddishText("Apollo is unable to open it.", true), "Apollo cannot open it.");
+  assert.deepEqual(luddishReport({ answer: ["Do not use the link; it is not CommBank's.", "It is not listed."], found: [], means: [], more: [], uncertain: [], how: [], sources: [] }).answer,
+    ["Do not use the link; it is not CommBank's.", "It isn't listed."], "the report's answer is Apollo's answer itself");
+  for (const id of ["concern", "likely_scam", "threat"] as const) assert.match(STATE_RULES[id].action!, /^Do not /, `${id}: its step says "Do not" in full`);
+});
+
+// ── Question buttons ──
+const STEP = CONCERN.actions[0];
+test("question buttons: five questions in order, each answered only from the explanation, never repeating the screen", () => {
+  const ex = compose(CONCERN);
+  const qs = resultQuestions(ex, [STEP]);
+  assert.deepEqual(qs.map((q) => q.label), ["What does this mean?", "Why does it matter?", "How sure is Higgins?", "What should I do?", "Show the technical detail"]);
+  assert.deepEqual(QUESTIONS.map((q) => q.id), ["meaning", "matters", "sure", "todo", "technical"]);
+  const by = (id: string) => qs.find((q) => q.id === id)!.sections;
+  assert.deepEqual(by("meaning")[0].items.map((i) => i.text), ex.meaning.map((p) => p.text), "the recorded state's meaning");
+  assert.deepEqual(by("meaning").find((s) => s.kind === "words")!.items.map((i) => i.text), ex.terms.map((t) => t.meaning));
+  for (const s of qs.flatMap((q) => q.sections).filter((s) => s.kind === "knowledge")) {
+    assert.ok(s.source && KNOWLEDGE.some((k) => k.source.publisher === s.source && k.title === s.heading), "general knowledge says where it comes from");
+  }
+  assert.equal(by("matters")[0].items[0].text, STATE_RULES.concern.matters);
+  const sure = by("sure");
+  assert.deepEqual(sure[0].items[0], { label: "Result", text: "Concerning", detail: "Recorded by TC FlyBy" });
+  assert.deepEqual(sure[1].items.map((i) => i.text), ex.findings.map((f) => f.detail), "how each finding was established, in fixed words");
+  assert.deepEqual(sure[2].items.map((i) => i.text), ex.limitation.map((p) => p.text));
+  assert.deepEqual(by("todo")[0].items.map((i) => i.text), [STATE_RULES.concern.action], "the step already on screen isn't repeated; the state's approved step is added");
+  assert.ok(!resultQuestions(compose(lockEvidence({ state: "handled" })), [STATE_RULES.handled.noAction]).some((q) => q.id === "todo"), "nothing new to say: no button");
+  assert.ok(!resultQuestions(compose(lockEvidence({ state: "safe" }))).some((q) => q.id === "matters" && !q.sections.length));
+});
+
+test("\"Show the technical detail\" is Apollo's locked wording exactly as recorded, with who established it; plain words only beside it", () => {
+  const ex = compose(CONCERN);
+  const technical = resultQuestions(ex).find((q) => q.id === "technical")!.sections;
+  assert.equal(technical.length, 1);
+  const items = technical[0].items;
+  assert.deepEqual(items.map((i) => i.text), lockedTexts(CONCERN), "word for word, nothing reworded");
+  assert.deepEqual(items.map((i) => i.detail), ["Recorded by TC FlyBy", ...CONCERN.findings.map(findingDetail), "Recorded by TC FlyBy", "Recorded by TC FlyBy", "Recorded by TC FlyBy", "Recorded by TC FlyBy"]);
+  const explanation = items.find((i) => i.label === "Higgins' explanation")!;
+  assert.equal(explanation.plain, ex.explanation!.text, "the plain wording sits beside the original");
+  assert.equal(items.find((i) => i.label === "Finding")!.plain, null, "a piece Luddish didn't reword has no plain line");
+  const literal = compose({ ...CONCERN, headline: "Changed." } as typeof CONCERN);
+  assert.ok(resultQuestions(literal).find((q) => q.id === "technical")!.sections[0].items.every((i) => !i.plain), "a lock that fails: Apollo's words only");
+  const component = read("../src/components/ResultQuestions.tsx");
+  assert.match(component, /testID=\{`\$\{testID\}-\$\{i\}-text`\}>\{item\.text\}<\/Text>/, "rendered as recorded");
+  assert.doesNotMatch(component, /luddish\(|luddishText|scrubMessage|rewrite\(/, "never reworded on screen");
+});
+
+test("every answer comes from an approved place: the checked explanation, the state's wording, the dictionary or the Knowledge Library", () => {
+  const cases = [compose(CONCERN), compose(lockEvidence({ state: "safe", findings: [{ text: "Google Safe Browsing doesn't list this link." }] })),
+    luddishCheckResult(MODEL).explanation, compose(lockEvidence({ state: "blocked", blockedBy: "Apollo's Site Gate" }))];
+  for (const ex of cases) {
+    const parts = [ex.brief, ex.explanation, ...ex.findings, ex.importance, ...ex.meaning, ...ex.limitation, ...ex.action, ex.how].filter(Boolean).map((p) => p!.text);
+    const r = STATE_RULES[ex.state];
+    const approved = new Set([...parts, ...r.means, r.matters, r.limitation, r.action, r.noAction, ...DICTIONARY.map((t) => t.meaning), ...KNOWLEDGE_TEXTS,
+      ...ex.findings.map((f) => f.detail), ...ex.technical.map((t) => t.text), ex.label, ex.confidence].filter(Boolean));
+    for (const q of resultQuestions(ex)) for (const s of q.sections) for (const i of s.items) assert.ok(approved.has(i.text), `${ex.state} · ${q.id}: ${i.text}`);
+  }
+});
+
+test("the question buttons are on every result: check results, investigations in Ask Higgins and a threat's Overview", () => {
+  assert.match(read("../src/components/CheckResultScreen.tsx"), /<ResultQuestions explanation=\{plain\.explanation\} shown=\{shown\} testID="check-result-questions" \/>/);
+  const view = read("../src/components/InvestigationView.tsx");
+  assert.match(view, /isFinished\(response\) && !isGeneralAnswer\(response\) \? compose\(lockFromInvestigation\(response, investigator\)\)/);
+  assert.match(view, /<ResultQuestions explanation=\{explanation\} shown=\{shown\} testID="inv-questions" \/>/);
+  const patrol = read("../app/patrol/[id].tsx");
+  assert.match(patrol, /isGeneralAnswer\(response\) \? null :/, "a general question answered from the library has nothing to explain");
+  assert.equal(isGeneralAnswer({ outcome: null, findings: [] }), true);
+  assert.equal(isGeneralAnswer({ outcome: "concerning", findings: [] }), false);
+  assert.equal(isGeneralAnswer({ outcome: undefined, findings: [{ id: "f", text: "x", basis: "observation", confidence: "high", evidenceIds: [], sourceIds: [] }] }), false, "an older result with findings is still explained");
+  assert.match(patrol, /<ResultQuestions explanation=\{explanation\} shown=\{shown\} testID="tc-overview-questions" \/>/);
+  assert.match(patrol, /if \(!hasRecordedFindings\(event\)\) return null;/, "never from a privacy-protected summary");
+  assert.match(patrol, /limited \? "limited" : undefined/, "a Limited Triage result is never explained as safe");
+});
+
+test("typed questions about a word are answered on the phone from the dictionary and the Knowledge Library", () => {
+  assert.equal(askedTerm("What is phishing?")?.id, "phishing");
+  assert.equal(askedTerm("What does DMARC mean?")?.id, "dmarc");
+  assert.equal(askedTerm("what's a VPN")?.id, "vpn");
+  assert.equal(askedTerm("Explain DKIM")?.id, "dkim");
+  assert.equal(askedTerm("What is Magnum DI?"), null, "ApolloSG's own names keep Higgins' own replies");
+  assert.equal(askedTerm("What is this scam?"), null);
+  assert.equal(askedTerm("Is this phishing? https://x.example.com"), null);
+  const spf = explainTerm(BY_ID.spf);
+  assert.ok(spf.startsWith(BY_ID.spf.meaning));
+  assert.match(spf, /SPF stands for Sender Policy Framework\./);
+  const entry = KNOWLEDGE.find((k) => k.terms.includes("spf"))!;
+  assert.ok(spf.includes(`General knowledge from ${entry.source.publisher}, not a finding about anything you've checked:\n${entry.explain}`));
+  assert.equal(explainTerm(BY_ID.spf), spf, "deterministic");
+  const decision = classifyIntent("What is phishing?");
+  assert.deepEqual([decision.route, decision.termId], ["local_knowledge", "phishing"], "a question about a word never opens a case");
+  assert.equal(classifyIntent("This looks like phishing").route, "investigation");
+  assert.match(read("../app/(tabs)/ask.tsx"), /decision\.route === "local_knowledge" && decision\.termId/);
+  assert.match(read("../src/higgins/localResponder.ts"), /content: explainTerm\(BY_ID\[termId\]\),[\s\S]{0,120}quoted: true/);
+});
+
 // ── Where Higgins speaks ──
 const MODEL: CheckResultModel = {
   id: "x", gate: "Link checking", checkType: "Link check", subject: "anz-secure-login.co", tone: "barking", confidence: "High", completedAt: "2026-06-01T00:00:00Z",
@@ -246,7 +356,7 @@ test("a check result: plain headline, explanation and steps, plain item findings
   const plain = luddishCheckResult(MODEL);
   assert.equal(plain.headline, "This link is trying to get your sign-in details.");
   assert.equal(plain.higginsSays, "The address anz-secure-login.co doesn't belong to ANZ. PhishTank lists this address as a known threat. I'd recommend not opening this link.");
-  assert.equal(plain.whatToDo, "Don't open https://anz-secure-login.co/login. Report it at https://www.scamwatch.gov.au.");
+  assert.equal(plain.whatToDo, "Do not open https://anz-secure-login.co/login. Report it at https://www.scamwatch.gov.au.");
   assert.equal(plain.items["src:phishtank"], MODEL.items[0].finding);
   assert.ok(plain.notes.length <= MAX_NOTES);
   for (const note of plain.notes) assert.ok(DICTIONARY.some((t) => t.meaning === note) || note.startsWith("In short:"), note);

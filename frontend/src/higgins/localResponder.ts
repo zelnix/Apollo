@@ -12,6 +12,8 @@ import type { DiagnosticResult } from "./diagnosticCore";
 import type { LocalKnowledgeIntent } from "./intentRouter";
 import type { HigginsChatMessage } from "./chatClient";
 import { navLinks, type NavLink } from "./appMap";
+import { BY_ID } from "../domain/luddish/dictionary.ts";
+import { explainTerm } from "../domain/luddish/terms.ts";
 import * as Crypto from "expo-crypto";
 
 // ── Turn diagnostic results into Higgins messages ────────────────────────────
@@ -127,5 +129,20 @@ export function clarificationToHigginsMessage(question: string, conversationId: 
     content: question,
     createdAt: new Date().toISOString(),
     conversationId,
+  };
+}
+
+/** "What is phishing?" — the Luddish Dictionary's meaning and the Knowledge Library's background, in their own words
+ *  (`quoted`: Luddish never rewords or annotates them again). */
+export function termToHigginsMessage(termId: string, conversationId: string): HigginsChatMessage {
+  return {
+    id: Crypto.randomUUID(),
+    turnId: Crypto.randomUUID(),
+    role: "higgins",
+    content: explainTerm(BY_ID[termId]),
+    createdAt: new Date().toISOString(),
+    conversationId,
+    quoted: true,
+    links: navLinks("/higgins/learning"),
   };
 }
