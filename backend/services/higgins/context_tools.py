@@ -297,8 +297,7 @@ _CALL_SCREENING_RE = re.compile(
 )
 
 
-def classify_context(message: str, *, has_selected_report: bool = False,
-                     has_selected_patrol_record: bool = False) -> ContextPlan:
+def classify_context(message: str, *, has_selected_patrol_record: bool = False) -> ContextPlan:
     """Deterministically select the minimum Apollo context required for a Higgins question.
 
     This replaces the previous pattern of asking Gemini to choose from a toolbox
@@ -368,10 +367,6 @@ def classify_context(message: str, *, has_selected_report: bool = False,
             routes.append("checks")
 
     # ── Classify context readers (unchanged logic) ───────────────────────
-    if has_selected_report:
-        return ContextPlan([], "investigation_report_context",
-                           knowledge_modules=modules, route_groups=routes)
-
     if has_selected_patrol_record:
         return ContextPlan(["get_last_relevant_outcome"], "patrol_record_context",
                            knowledge_modules=modules, route_groups=routes)
@@ -415,6 +410,66 @@ def classify_context(message: str, *, has_selected_report: bool = False,
 
     return ContextPlan([], "general_knowledge",
                        knowledge_modules=modules, route_groups=routes)
+
+
+# ── What the person's message asks Higgins about ─────────────────────────────
+# The app's own hand-offs (an opened scam alert or Learn article), and what a question is about. Deterministic.
+_ALERT_URL = re.compile(r"official source:\s*(https?://\S+)", re.I)
+_ALERT_CARD = re.compile(r"i just read this scam alert", re.I)
+_CARD_FIELD = {"title": re.compile(r"^\W*title:\s*(.+)$", re.I | re.M), "source": re.compile(r"^\W*source:\s*(.+)$", re.I | re.M),
+               "summary": re.compile(r"^\W*what the source says:\s*(.+)$", re.I | re.M)}
+_ARTICLE = re.compile(r"explain the learning article:\s*(.+?)\s*$", re.I | re.S)
+
+
+def alert_url_in(message: str) -> Optional[str]:
+    match = _ALERT_URL.search(message or "")
+    return match.group(1).rstrip(").,") if match else None
+
+
+def alert_card_in(message: str) -> Optional[dict]:
+    """The alert card the Scam Alerts screen hands to Higgins: its title, source, summary and official link."""
+    if not _ALERT_CARD.search(message or ""):
+        return None
+    fields = {name: (m.group(1).strip() if (m := pattern.search(message)) else "") for name, pattern in _CARD_FIELD.items()}
+    if not fields["title"]:
+        return None
+    return {**fields, "url": alert_url_in(message) or ""}
+
+
+def article_title_in(message: str) -> Optional[str]:
+    """The Learn article the person opened and asked Higgins to explain."""
+    match = _ARTICLE.search(message or "")
+    return match.group(1).strip().strip("“”\"'.") if match else None
+
+
+_SCOPE = re.compile(r"\b(scam\w*|fraud\w*|phish\w*|smish\w*|vish\w*|spam|hack\w*|malware|virus\w*|ransomware|spyware|security|secure|safe\w*|cyber\w*|"
+                    r"password\w*|passphrase\w*|passkey\w*|pin|two[- ]factor|2fa|mfa|authenticat\w*|identity|id theft|privacy|private|data breach\w*|breach\w*|"
+                    r"account\w*|bank\w*|card\w*|payment\w*|money|transfer\w*|invest\w*|crypto\w*|bitcoin|gift cards?|romance|dating|sextortion|blackmail|"
+                    r"impersonat\w*|fake|suspicious|link\w*|url|website\w*|email\w*|text messages?|sms|message\w*|calls?|caller|number|phone|device|app\w*|"
+                    r"wi-?fi|network|vpn|router|update\w*|backup\w*|download\w*|attachment\w*|qr|remote access|tech support|apollo|higgins|magnum|"
+                    r"report\w*|stolen|steal\w*|lost|trick\w*|con|deepfake\w*|ai voice|social media|facebook|instagram|whatsapp|marketplace)\b", re.I)
+_ABOUT_THIS_PHONE = re.compile(r"\b(my|this)\s+(phone|device|mobile|iphone|android)\b|\bon (?:my|this) (?:phone|device)\b|\b(?:am i|are my|is my)\b", re.I)
+# Unmistakably about the state Apollo reads on this phone: always answered from the reading, whatever the wording.
+_ABOUT_STATE = re.compile(r"\bmy\s+(?:[\w'-]+\s+){0,3}(?:protections?|gates?|permissions|security (?:review|check|status)|device (?:check|assessment))\b"
+                          r"|\bapollo (?:says|shows|reports) (?:its|the|my) status\b", re.I)
+_ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|can) i\b|\bhow (?:do|can) i (?:check|scan|open|find|turn|use)\b", re.I)
+
+
+def in_scope(question: str) -> bool:
+    """A question about scams, security, privacy or ApolloSG — what Higgins answers."""
+    return bool(_SCOPE.search(question or ""))
+
+
+def about_state(message: str) -> bool:
+    return bool(_ABOUT_STATE.search(message or ""))
+
+
+def about_this_phone(message: str) -> bool:
+    return bool(_ABOUT_THIS_PHONE.search(message or ""))
+
+
+def about_apollo(message: str) -> bool:
+    return bool(_ABOUT_APOLLO.search(message or ""))
 
 
 # ── Reader registry (unchanged) ──────────────────────────────────────────────

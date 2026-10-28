@@ -95,6 +95,13 @@ async def get_article(slug: str) -> dict | None:
     return {**_summary(row), "sections": row.get("sections", []), "citations": row.get("citations", [])}
 
 
+async def article_by_title(title: str) -> dict | None:
+    """The published article with exactly this title (any case), as get_article returns it."""
+    row = await db.learning_articles.find_one({"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "status": "published", "deleted_at": None},
+                                              {"_id": 0, "slug": 1})
+    return await get_article(row["slug"]) if row else None
+
+
 async def article_preferences(owner: str) -> dict[str, Any]:
     row = await db.learning_preferences.find_one({"owner_id": owner}, {"_id": 0, "owner_id": 0})
     return row or {"topics": [], "audiences": [], "contentTypes": [], "updatedAt": None}

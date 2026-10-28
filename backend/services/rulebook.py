@@ -14,6 +14,8 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from services.higgins import outcomes
+
 BACKEND = Path(__file__).resolve().parent.parent
 ROOT = BACKEND.parent
 BOOK = BACKEND / "content" / "rulebook.md"
@@ -282,7 +284,7 @@ def settled_reason(routing: Optional[dict]) -> Optional[dict]:
     if not teddy:
         return None
     answered_by = routing.get("answeredBy") or teddy.get("answeredBy") or ""
-    if answered_by.startswith("teddy"):
+    if outcomes.settled_by_flyby(answered_by):
         found = _flyby(teddy, answered_by)
         if not found:
             return None

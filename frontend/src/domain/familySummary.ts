@@ -1,6 +1,6 @@
 // What a threat's "Send to family" shares: the result, what happened, what to do and the website or number
 // involved. Never the original message, its full links or its pictures. Pure: no React, no native imports.
-import { sentences } from "./reportSections.ts";
+import { sentences } from "./luddish/patterns.ts";
 
 export interface Involved { label: "Website" | "Number"; value: string }
 

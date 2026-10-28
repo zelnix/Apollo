@@ -114,7 +114,8 @@ async function runCreate(record: ManagedOperation): Promise<ManagedOperation> {
   if (!record.input || !record.turn) return record;
   if (!record.caseData) {
     publish(record, { phase: "creating", error: null });
-    const opened = await api.createCase({ ...record.input, question: record.files.length ? "" : record.input.question, deviceProfile: currentDeviceProfile() }, record.operationId);
+    // Everything opened here is something the person submitted.
+    const opened = await api.createCase({ ...record.input, question: record.files.length ? "" : record.input.question, deviceProfile: currentDeviceProfile(), origin: "user" }, record.operationId);
     if (operations.get(record.operationId) !== record || record.generation !== generation) {
       void api.deleteCase(opened.case.id).catch(() => undefined);
       return record;

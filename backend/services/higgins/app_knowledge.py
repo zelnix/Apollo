@@ -88,6 +88,18 @@ def route_label(route: str) -> str:
     return NAV_ROUTES.get(route, "")
 
 
+def navigation(routes: list[str], limit: int = 2) -> list[tuple[str, str]]:
+    """(route, label) for the first `limit` genuine Apollo destinations, each once, so a tap never lands nowhere."""
+    out: list[tuple[str, str]] = []
+    for route in routes:
+        candidate = str(route or "").strip()
+        if valid_route(candidate) and all(candidate != taken for taken, _ in out):
+            out.append((candidate, route_label(candidate)))
+        if len(out) == limit:
+            break
+    return out
+
+
 # ── Route groups (classifier picks relevant slices) ──────────────────────────
 
 ROUTE_GROUPS: dict[str, dict[str, str]] = {

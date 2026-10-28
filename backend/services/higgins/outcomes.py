@@ -5,6 +5,8 @@ the two can never disagree. A general question (nothing submitted to check) has 
 """
 from __future__ import annotations
 
+from typing import Optional
+
 OUTCOMES = ("no_scam_indicators", "concerning", "likely_scam", "confirmed_threat", "unable_to_determine")
 
 LABELS = {
@@ -22,6 +24,22 @@ ASSESSMENT = {
     "confirmed_threat": "concern_found",
     "unable_to_determine": "uncertain",
 }
+
+# Which way each outcome points, read from its assessment: a finding pointing the same way supports it. An outcome
+# that is uncertain points neither way.
+DIRECTION = {outcome: "concern" if assessment == "concern_found" else "clear"
+             for outcome, assessment in ASSESSMENT.items() if assessment != "uncertain"}
+
+
+def settled_by_flyby(answered_by: Optional[str]) -> bool:
+    """TC FlyBy settled the result (answered_by "teddy_*"). Anything else, including results recorded before routing
+    existed, was Magnum DI's."""
+    return str(answered_by or "").startswith("teddy")
+
+
+def investigator(answered_by: Optional[str]) -> str:
+    """Who settled a result, by name: the one place this is decided."""
+    return "TC FlyBy" if settled_by_flyby(answered_by) else "Magnum DI"
 
 # What each outcome means — stated once, here, and given to Magnum DI as the schema's description.
 CRITERIA = (

@@ -861,6 +861,89 @@ def alleged_charge(blob: str) -> bool:
                                                   and bool(_CHARGE_DISPUTE.search(blob) or _URGENCY.search(blob)))
 
 
+# Mirror of frontend src/domain/messageAnalysis.ts (DISGUISE, INVISIBLE, OTHER_SCRIPT, organisationNamed, REPLY_RE, …).
+# Look-alike characters: typographic ligatures (ﬁ ﬂ ﬀ), full-width and mathematical letters/digits, Greek or Cyrillic
+# letters inside a word written in English letters, and invisible joiners inside a word.
+_DISGUISE = re.compile("[\ufb00-\ufb06\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\U0001d400-\U0001d7ff]")
+_INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff]")
+_OTHER_SCRIPT = re.compile("[\u0370-\u03ff\u0400-\u04ff]")
+_WORD_SPLIT = re.compile(r"[\s.,;:!?()\"“”‘’']+")
+_ORG_WORD = re.compile(r"\b(?:energy|solar|power|electric(?:al|ity)?|gas|bank|banking|group|australian?|pty|ltd|limited|services?|insurance|telco|"
+                       r"telecom|mobile|finance|financial|super|health|support|team|company|corp(?:oration)?|inc|homes?|realty|motors|logistics|"
+                       r"express|post|retail|solutions|renewables?|batter(?:y|ies)|installations?|installers?|utilities|water)\b", re.I)
+_NAME_END = re.compile(r"[.,;:!?)]+$")
+_INTRO = re.compile(r"\b(?:it'?s|it’s|this is|we are|we'?re|we’re)\s+", re.I)
+_CALLING_FROM = re.compile(r"\bcalling (?:you )?from\s+", re.I)
+_REPLY = re.compile(r"\breply\s+(?:with\s+)?[\"“']?(?:yes|y|ok(?:ay)?|confirm|interested|[1-9])\b[\"”']?|\breply (?:to (?:confirm|book|claim|secure))\b"
+                    r"|\btext (?:back|us back|yes)\b|\brespond (?:with )?yes\b", re.I)
+_OFFER = r"(?:rebates?|prices?|offers?|discounts?|savings?|subsid(?:y|ies)|incentives?|stcs?|deals?|spots?|places?)"
+_PRESSURE = re.compile("|".join((
+    rf"\bbefore (?:the )?(?:\w+\s+){{0,2}}{_OFFER}\s+(?:drops?|dropping|ends?|expires?|changes?|go(?:es)?|closes?|runs? out|disappears?|reduces?|falls?)\b"
+    r"(?:\s+(?:next|this) (?:week|month|year))?",
+    rf"\b{_OFFER}\s+(?:are|is)\s+(?:dropping|ending|expiring|closing|running out|going up|changing|reducing|disappearing)\b",
+    r"\bbefore (?:the )?(?:year[- ]end|end of (?:the )?(?:year|month|week|financial year)|eofy)\b",
+    r"\b(?:limited time|limited (?:spots|places)|while (?:stocks?|spots?|places?) last|ends? soon|only \d+ (?:spots|places) left)\b",
+)), re.I)
+_REBATE = re.compile(r"\b(?:government|govt|federal|state)(?:[- ](?:funded|backed))?\s+(?:[\w-]+\s+){0,3}?(?:rebates?|grants?|subsid(?:y|ies)|incentives?|stcs?|"
+                     r"schemes?|programs?|programmes?|bonus(?:es)?)\b|\bsmall[- ]scale technology certificates?\b|\b(?:solar|battery|batteries|energy|"
+                     r"electricity|heat pump|hot water)\s+(?:[\w-]+\s+){0,2}?(?:rebates?|subsid(?:y|ies)|grants?|incentives?)\b|\bcheaper home batteries\b", re.I)
+_STC = re.compile(r"\bstcs?\b(?:\s+(?:savings?|rebates?|discounts?))?", re.I)
+_ENERGY_CONTEXT = re.compile(r"\brebates?\b|\bsolar\b|\bbatter(?:y|ies)\b|\bsavings?\b|\binstall(?:ation)?\b", re.I)
+
+
+def disguised_words(text: str) -> list[str]:
+    """Each word that contains a look-alike character."""
+    out = []
+    for word in _WORD_SPLIT.split(text):
+        latin = bool(re.search(r"[A-Za-z]", word))
+        if word and any(_DISGUISE.match(ch) or (latin and (_INVISIBLE.match(ch) or _OTHER_SCRIPT.match(ch))) for ch in word):
+            out.append(word)
+    return out
+
+
+def _capitalised_run(rest: str) -> tuple[str, Optional[str]]:
+    """The run of capitalised words at the start of `rest` (at most four), stopping at punctuation; and the next word."""
+    name: list[str] = []
+    for token in rest.strip().split():
+        word = _NAME_END.sub("", token)
+        if not word or not word[0].isupper() or len(name) == 4:
+            return " ".join(name), word.lower() or None
+        name.append(word)
+        if word != token:
+            return " ".join(name), None
+    return " ".join(name), None
+
+
+def organisation_named(text: str) -> Optional[str]:
+    """The organisation a message introduces itself as ("It's UNIﬁed Energy here", "This is Sam from Bright Solar",
+    "calling from AGL Energy"). Only a name with an organisation word counts — never a person's name."""
+    import unicodedata
+    is_org = lambda name: bool(name) and bool(_ORG_WORD.search(unicodedata.normalize("NFKC", name)))  # noqa: E731
+    for m in _INTRO.finditer(text):
+        rest = text[m.end():]
+        name, following = _capitalised_run(rest)
+        if following in ("here", "calling", "team", "again", "with") and is_org(name):
+            return name
+        frm = re.match(r"\S+\s+from\s+", rest, re.I)
+        if frm and is_org(org := _capitalised_run(rest[frm.end():])[0]):
+            return org
+    for m in _CALLING_FROM.finditer(text):
+        if is_org(org := _capitalised_run(text[m.end():])[0]):
+            return org
+    return None
+
+
+def lookalike_name(text: str) -> bool:
+    """The organisation the message introduces itself as is written with a look-alike character."""
+    org = organisation_named(text)
+    return bool(org) and any(word in org for word in disguised_words(text))
+
+
+def rebate_claim(text: str) -> bool:
+    """A claimed government rebate: an explicit one, or STCs offered as savings or rebates."""
+    return bool(_REBATE.search(text)) or (bool(_ENERGY_CONTEXT.search(text)) and bool(_STC.search(text)))
+
+
 def _attachment_triage(names: list[str]) -> dict:
     """Each attachment judged by the File Gate rules (by its name: the server never receives the file here)."""
     from services.triage import evaluate
@@ -876,7 +959,8 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
                    correlation: Optional[dict] = None) -> dict:
     """Build the shared Triage evidence dict from server-side intake evidence."""
     source_type = evidence.get("source_type", "unknown")
-    text = (evidence.get("text_preview") or "").lower()
+    raw_text = evidence.get("text_preview") or ""
+    text = raw_text.lower()
     subject = (evidence.get("subject") or "").lower()
     blob = f"{subject} {text}"
     finding_blob = " ".join(findings).lower()
@@ -942,7 +1026,7 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
             "job_offer": "job" in blob or "hiring" in blob or "recruiter" in blob,
             "romance_escalation": any(word in blob for word in ("my love", "darling", "sweetheart")) and "money" in blob,
             "platform_switch": any(word in blob for word in ("telegram", "whatsapp", "signal", "wechat")),
-            "urgency": any(word in blob for word in ("urgent", "immediately", "final notice", "expires", "act now")),
+            "urgency": any(word in blob for word in ("urgent", "immediately", "final notice", "expires", "act now")) or bool(_PRESSURE.search(raw_text)),
             "threat": any(word in blob for word in ("suspended", "locked", "penalty", "fine", "legal action", "arrest")),
             "unknown_sender": not sender_domain,
             "claimed_brand": evidence.get("claimed_brand"),
@@ -955,6 +1039,12 @@ def _rule_evidence(evidence: dict, findings: list[str], provider_evidence: dict,
             # with dispute or urgency wording. A phone number on its own is never suspicious.
             "callback_request": callback_request(blob),
             "alleged_charge": alleged_charge(blob),
+            # Read on the message as written (case and look-alike characters kept).
+            "lookalike_name": lookalike_name(raw_text),
+            "lookalike_chars": bool(disguised_words(raw_text)),
+            "reply_request": bool(_REPLY.search(raw_text)),
+            "time_pressure": bool(_PRESSURE.search(raw_text)),
+            "government_rebate": rebate_claim(raw_text),
         }
         phones = provider_evidence.get("ipqs", {}).get("phones", {})
         for phone, info in phones.items():

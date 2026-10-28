@@ -15,7 +15,7 @@ const useStyles = makeStyles((c) => ({
   link: { fontFamily: fonts.textSemibold, color: c.brandPrimary },
 }));
 
-export function SettledReasonLine({ reason, testID = "settled-reason" }: { reason: SettledReason | null | undefined; testID?: string }) {
+export function SettledReasonLine({ reason, testID = "settled-reason" }: { reason: Pick<SettledReason, "sentence"> | null | undefined; testID?: string }) {
   const s = useStyles();
   const router = useRouter();
   const show = useShowResultReasons();

@@ -1222,6 +1222,26 @@ const CATALOGUE = {
       "gapCode": "INTELLIGENCE_PROVIDER_UNAVAILABLE"
     },
     {
+      "id": "MSG-23",
+      "category": "message",
+      "class": "DETECT",
+      "title": "Name of the organisation the message claims to be is written with look-alike characters",
+      "evidence": [
+        "signals.lookalike_name"
+      ]
+    },
+    {
+      "id": "MSG-24",
+      "category": "message",
+      "class": "DETECT",
+      "title": "Government rebate or subsidy claim with deadline pressure and a request to reply or call",
+      "evidence": [
+        "signals.government_rebate",
+        "signals.time_pressure",
+        "signals.reply_request"
+      ]
+    },
+    {
       "id": "CALL-01",
       "category": "call",
       "class": "DETECT",

@@ -329,6 +329,15 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
             return met("coherent scam pattern: " + ", ".join(moderate))
         return unmet(f"{len(moderate)} moderate indicator(s) — no coherent scam pattern")
 
+    def rebate_pressure(ev: dict) -> Verdict:
+        if not _sig(ev, "government_rebate"):
+            return unmet("no government rebate or subsidy claim")
+        if not _sig(ev, "time_pressure"):
+            return unmet("rebate claim without deadline pressure")
+        if _sig(ev, "reply_request") or _sig(ev, "callback_request"):
+            return met("government rebate or subsidy claim", "deadline pressure", "request to reply or call")
+        return unmet("rebate claim with deadline pressure but no request to reply or call")
+
     def instant_payment(kind: str) -> Callable[[dict], Verdict]:
         def check(ev: dict) -> Verdict:
             if not _sig(ev, "instant_payment"):
@@ -408,6 +417,9 @@ def _message_rules() -> dict[str, Callable[[dict], Verdict]]:
         "PAY-01": instant_payment("impersonation"), "PAY-02": instant_payment("urgency"), "PAY-03": instant_payment("change"),
         "FWD-01": forwarding("code"), "FWD-02": forwarding("intent"),
         "CB-01": callback("charge"), "CB-02": callback("urgent"), "CB-03": callback("clean_reputation"),
+        # A real organisation has no reason to write its own name with look-alike characters: on its own this is enough.
+        "MSG-23": flag("lookalike_name", "organisation name written with look-alike characters"),
+        "MSG-24": rebate_pressure,
     }
 
 

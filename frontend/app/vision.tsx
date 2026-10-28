@@ -213,6 +213,7 @@ export default function VisionScreen() {
       indicator_digest: null,
       verified_block: false,
       evidence_provenance: "local_device",
+      origin: "user",
       adapter_label: mode === "text_only" ? "Vision (text)" : "Vision",
       occurred_at: now,
       resolved_at: threatIndicators.length > 0 ? null : now,

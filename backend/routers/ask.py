@@ -31,7 +31,6 @@ class ChatRequest(Wire):
     conversation_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=4, max_length=80)
     previous_turn_ids: list[str] = Field(default_factory=list, max_length=8)
     selected_patrol_record_id: str | None = Field(default=None, max_length=100)
-    selected_report_id: str | None = Field(default=None, max_length=100)
     # Live reading of this phone's own Apollo state, so Higgins answers from what is
     # actually true rather than from what he can infer. State only — never content.
     device_snapshot: chat.DeviceSnapshot | None = None
@@ -43,7 +42,7 @@ class ChatRequest(Wire):
 async def higgins_chat(body: ChatRequest, request: Request):
     owner = request.state.device["device_id"]
     result = await chat.reply(owner, body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
-                              body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
+                              body.selected_patrol_record_id, body.device_snapshot, body.selected_scam_alert_url)
     return JSONResponse(result.wire(), headers=NO_STORE)
 
 
@@ -51,7 +50,7 @@ async def higgins_chat(body: ChatRequest, request: Request):
 async def ask_stream(body: ChatRequest, request: Request):
     """Compatibility SSE transport with ordinary-chat semantics and no case side effect."""
     result = await chat.reply(request.state.device["device_id"], body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
-                              body.selected_patrol_record_id, body.selected_report_id, body.device_snapshot, body.selected_scam_alert_url)
+                              body.selected_patrol_record_id, body.device_snapshot, body.selected_scam_alert_url)
     async def events():
         yield f"data: {json.dumps({'delta': result.answer, 'clarification': result.clarification, 'suggested_actions': [a.wire() for a in result.suggested_actions], 'investigative_work_started': result.investigative_work_started, 'pipeline_case_id': result.pipeline_case_id})}\n\n"
         yield f"data: {json.dumps({'done': True, 'provider_complete': True, 'finish_reason': 'STOP', 'investigative_work_started': result.investigative_work_started})}\n\n"

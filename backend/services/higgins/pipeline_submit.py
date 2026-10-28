@@ -113,7 +113,7 @@ async def submit_to_investigation_pipeline(
     Uses the SAME case-creation and pre-gathering flow as User Checks and
     Apollo automatic detection.  The only difference is `initiator`.
 
-    Returns: {"case_id": str, "status": str, "reused": bool, "job_id": str|None}
+    Returns: {"case_id": str, "status": str, "job_id": str|None}
     """
     from routers.investigations import (
         _pregather_specialist_evidence,
@@ -185,6 +185,13 @@ async def submit_to_investigation_pipeline(
     return {
         "case_id": case_id,
         "status": "queued",
-        "reused": False,
         "job_id": job["job_id"] if job else None,
     }
+
+
+def submitted_answer(items: list[dict]) -> str:
+    """What Higgins tells the person when their message went to the investigation pipeline."""
+    artefact = items[0]["value"][:80] if items else "your item"
+    return (f"I've submitted that for investigation. Apollo is now investigating {artefact} through the same pipeline "
+            "used for all security checks: TC FlyBy investigates it first, and Magnum DI looks deeper only if that could change the answer. "
+            "You'll find the full briefing, evidence chain and recommended actions in your investigation history once it completes.")

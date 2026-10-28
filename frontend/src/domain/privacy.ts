@@ -30,7 +30,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // `deviceSnapshot` is the live reading of this phone's own Apollo state (protection
   // statuses, permission states, settings values, counts and headlines Apollo wrote).
   // It carries no message content, screenshots, files, links or secrets.
-  higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId", "deviceSnapshot"]),
+  higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "deviceSnapshot"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
   // Plus what the phone is (make, model, system, region-setting country, install date) for the admin Devices list, and on

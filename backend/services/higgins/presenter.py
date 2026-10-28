@@ -9,17 +9,13 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from services.higgins import app_knowledge
+from services.higgins import app_knowledge, outcomes
+from services.higgins.explain import words as W
 from services.higgins.knowledge import terms
 
-# "{name}" is whichever investigator settled the result: TC FlyBy or Magnum DI (see `investigator`).
-ASSESSMENT_TEXT = {
-    "concern_found": "{name} found a concern.",
-    "no_concern_found_within_scope": "{name} found no concern within what it was able to check.",
-    "uncertain": "{name} couldn't reach a firm conclusion.",
-}
-ATTENTION_TEXT = {"none": "No action is needed.", "review": "It's worth reviewing.", "action_needed": "Action is needed.", "urgent": "This is urgent."}
-BASIS_TEXT = {"observation": "observed in the evidence", "user_report": "from what you told ApolloSG", "inference": "{name}'s inference from the evidence"}
+# The follow-up's verdict, why, findings and what isn't certain come from the case's Higgins Case Briefing — the one
+# authoritative presentation of the result — and, for an older result recorded before briefings, from the result's
+# own recorded fields. Nothing here decides or rewords a verdict.
 STATE_TEXT = {"resting": "no concern found within the checks that completed", "sniffing": "Apollo is looking closer", "ears_up": "worth a look", "growling": "possible concern",
               "barking": "significant concern", "biting": "Apollo blocked it", "unknown": "state not known"}
 SEVERITY_TEXT = {"EXTREME": "Extreme", "HIGH": "High", "MODERATE": "Moderate", "LOW": "Low"}
@@ -70,11 +66,6 @@ NEW_ITEM_NOTE = ("You've mentioned something new ({items}) that wasn't part of t
                  "so its findings don't cover it and nothing new has been checked. To have it checked, start a new check.")
 
 
-def investigator(answered_by: Optional[str]) -> str:
-    """Who settled a result, by name. Results recorded before routing existed were Magnum DI's."""
-    return "TC FlyBy" if str(answered_by or "").startswith("teddy") else "Magnum DI"
-
-
 def new_items(question: str) -> list[str]:
     """The kinds of new material a follow-up mentions, in a fixed order. Emails are removed before links are looked for."""
     text = question or ""
@@ -98,6 +89,12 @@ def is_finished(response: Optional[dict[str, Any]]) -> bool:
     return bool(response) and response.get("completion") in ("complete", "partial") and not response.get("question")
 
 
+def _briefing(response: dict[str, Any]) -> dict[str, Any]:
+    """The result's Higgins Case Briefing when it passed its Fidelity Check; {} for a result without one."""
+    briefing = response.get("briefing") or {}
+    return briefing if (briefing.get("fidelity") or {}).get("status") == "PASS" else {}
+
+
 def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, Any]], question: str, answered_by: Optional[str] = None) -> dict[str, Any]:
     """Answer a follow-up from a completed investigation result (camelCase wire shape), credited to whichever
     investigator settled it (`answered_by`). Never infers.
@@ -105,23 +102,26 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
     A follow-up never reaches an AI model, even when it brings something new: the new item is named as
     not covered, and the answer comes only from what the finished investigation recorded.
     """
-    name = investigator(answered_by)
+    name = outcomes.investigator(answered_by)
+    briefing = _briefing(response)
     overview = str(response.get("overview") or "").strip()
-    assessment = ASSESSMENT_TEXT.get(str(response.get("assessment") or ""), "").format(name=name)
-    attention = ATTENTION_TEXT.get(str(response.get("attention") or ""), "")
-    reason = str(response.get("attentionReason") or "").strip()
-    findings = [f for f in response.get("findings") or [] if str(f.get("text") or "").strip()]
+    status = briefing.get("status") or outcomes.LABELS.get(str(response.get("outcome") or ""), "")
+    reason = str(briefing.get("statusReason") or response.get("attentionReason") or "").strip()
+    verdict = " ".join(p for p in [f"{status}." if status else "", "" if reason and reason in overview else reason] if p)
+    shown = {f.get("id"): f.get("finding") for f in briefing.get("findings") or []}
+    findings = [{**f, "text": shown.get(f.get("id")) or f.get("text")} for f in response.get("findings") or [] if str(f.get("text") or "").strip()]
     actions = [a for a in response.get("actions") or [] if str(a.get("instruction") or a.get("label") or "").strip()]
     recommended = response.get("recommendedActionId")
     actions.sort(key=lambda a: a.get("id") != recommended)
-    uncertainties = [str(u).strip() for u in response.get("uncertainties") or [] if str(u).strip()]
+    uncertainties = [str(u).strip() for u in briefing.get("unresolved") or response.get("uncertainties") or [] if str(u).strip()]
     scope = str(response.get("scope") or "").strip()
     by_source = {s.get("id"): s for s in sources}
     intent = follow_up_intent(question)
     limitation = False
 
     def finding_line(f: dict, *, detail: bool = False) -> str:
-        line = f"{f['text']} ({BASIS_TEXT.get(f.get('basis'), 'basis not recorded').format(name=name)}; {f.get('confidence', 'unknown')} confidence"
+        known = f.get("basis") in W.BASIS and f.get("confidence") in W.CONFIDENCE
+        line = f"{f['text']} ({W.detail(f['basis'], f['confidence'], name) if known else 'basis not recorded'}"
         if detail:
             count = len(f.get("evidenceIds") or [])
             titles = [by_source[i].get("title") for i in f.get("sourceIds") or [] if by_source.get(i, {}).get("title")]
@@ -133,9 +133,9 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
         answer = (f"{name}'s investigation is finished, so it isn't re-assessed — any fresh reading Apollo took is shown with the action, "
                   "and what the investigation established is unchanged.") + (f"\n\n{overview}" if overview else "")
     elif intent == "meaning":
-        answer = "\n\n".join(part for part in [overview, " ".join(p for p in [assessment, attention, reason] if p)] if part)
+        answer = "\n\n".join(part for part in [overview, verdict] if part)
     elif intent == "why":
-        answer = "\n\n".join(part for part in [reason or assessment, f"What {name} found:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if part)
+        answer = "\n\n".join(part for part in [reason or verdict, f"What {name} found:\n" + _bullets([finding_line(f) for f in findings]) if findings else ""] if part)
         if not findings and not reason:
             answer, limitation = f"{name}'s investigation doesn't record specific reasons beyond its overall result. " + overview, True
     elif intent == "evidence":
@@ -144,7 +144,7 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
         limitation = not findings
     elif intent == "confidence":
         counts = {level: sum(1 for f in findings if f.get("confidence") == level) for level in ("high", "medium", "low")}
-        parts = [f"Overall: {assessment}" if assessment else "",
+        parts = [f"Overall: {status}." if status else "",
                  "Confidence in the findings: " + ", ".join(f"{n} {level}" for level, n in counts.items() if n) if findings else "",
                  "What it couldn't establish:\n" + _bullets(uncertainties) if uncertainties else ""]
         answer = "\n\n".join(p for p in parts if p) or f"{name} didn't record a confidence level for this investigation."
@@ -158,7 +158,7 @@ def investigation_follow_up(response: dict[str, Any], sources: list[dict[str, An
                 answer += " What it does recommend:\n" + _bullets([f"{a.get('label')}: {a.get('instruction')}" for a in actions])
     elif intent == "actions":
         answer = (f"What {name} recommends:\n" + _bullets([f"{a.get('label')}: {a.get('instruction')}" if a.get("label") else a.get("instruction") for a in actions])) \
-            if actions else f"{name} didn't recommend any action for this. {attention}".strip()
+            if actions else f"{name} didn't recommend any action for this."
     elif intent == "not_established":
         answer = "\n\n".join(p for p in [f"What {name} couldn't establish:\n" + _bullets(uncertainties) if uncertainties else
                                           f"{name} didn't record anything it was unable to establish.",

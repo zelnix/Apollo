@@ -96,12 +96,6 @@ class TestContextClassifier(unittest.TestCase):
         self.assertIn("get_recent_cases", plan.readers)
         print(f"PASS: investigation_explain with {plan.readers}")
 
-    def test_explain_investigation_with_report(self):
-        plan = classify_context("Explain this investigation", has_selected_report=True)
-        self.assertEqual(plan.label, "investigation_report_context")
-        self.assertEqual(plan.readers, [])
-        print(f"PASS: investigation_report_context (report already injected)")
-
     # ── Product info ─────────────────────────────────────────────────────────
 
     def test_what_does_apollo_do(self):

@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildReport, sentences } from "../src/domain/reportSections.ts";
+import { buildReport } from "../src/domain/reportSections.ts";
+import { sentences } from "../src/domain/luddish/patterns.ts";
 
 // The Linkt check from the preview, exactly as TC FlyBy settled it.
 const linkt = {
@@ -24,12 +25,12 @@ test("each fact appears once: the finding the answer states, the rule's restatem
   assert.deepEqual(r.answer, [linkt.overview]);
   assert.deepEqual(r.found, [], "the only finding is already in the answer");
   assert.deepEqual(r.means, [linkt.attentionReason], "'What it means' kept only what the Settled-by line doesn't say");
-  assert.deepEqual(r.uncertain, [linkt.uncertainties[0]]);
+  assert.deepEqual(r.uncertain, [], "how Apollo checked is on the DI tab, never under what isn't certain");
   assert.equal(r.how.length, 1);
   const how = r.how[0];
   assert.match(how, /^TC FlyBy checked what you sent using Apollo's knowledge base and a targeted web search\. Magnum DI's deeper analysis wasn't needed/);
   assert.match(how, /So these weren't taken further: impersonation \(whether the material genuinely comes from Linkt\); message and deception analysis/);
-  assert.match(how, /Nothing was opened or fetched from the destination, no one was contacted and no account was accessed\.$/);
+  assert.match(how, /no account was accessed\. TC FlyBy's search found no record for linkt-au-pay\.top: Apollo's knowledge base has nothing on linkt-au-pay\.top\.$/);
   assert.equal((how.match(/couldn't change the outcome/g) ?? []).length, 1, "the reason is said once");
   assert.equal((how.match(/targeted web search/g) ?? []).length, 1, "'What this covered' merged into 'How Apollo checked'");
 });

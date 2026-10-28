@@ -102,6 +102,7 @@ export function mergeLocalAndRemoteEvents(
         what_to_do: localIsDetailed ? local.what_to_do : remote.what_to_do,
         // Keep local-only fields.
         local_indicator: local.local_indicator ?? remote.local_indicator,
+        origin: local.origin ?? remote.origin,
         claimed_brand: local.claimed_brand ?? remote.claimed_brand,
         scenario: local.scenario ?? remote.scenario,
         // Where the evidence came from and where it was processed never change in a sync.

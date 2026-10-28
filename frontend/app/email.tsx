@@ -205,6 +205,8 @@ export default function CheckEmail() {
   const autoRan = useRef(false);
   /** The text in the box came from the connected mailbox (until the person edits it). */
   const fromInbox = useRef(false);
+  /** When the email picked from the inbox arrived, as the mailbox recorded it. */
+  const inboxDate = useRef<string | null>(null);
   const { ready, setupDone, checkEmail, deviceId, showToast, scanGmailInbox } = useApollo();
 
   // ── Input state ──
@@ -462,6 +464,7 @@ export default function CheckEmail() {
       setSubject(detail.subject || msg.subject);
       setRaw(detail.body || msg.snippet);
       fromInbox.current = true;
+      inboxDate.current = detail.date || msg.date || null;
       setPickerVisible(false);
       // Auto-investigate the selected email
       const body = detail.body || msg.snippet;
@@ -564,6 +567,7 @@ export default function CheckEmail() {
       // possible threat, and reused when this email correlates with something already investigated).
       const outcome = await checkEmail({
         from, subject: safeSubject, raw: safeRaw, via, simulated: source?.simulated,
+        receivedAt: via === "connected_mailbox" && !source?.simulated ? inboxDate.current : null,
         captured: { from, subject: subjectInput, text: rawInput },
       });
       showOutcome(outcome, {

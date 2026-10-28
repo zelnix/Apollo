@@ -5,6 +5,7 @@
 // further are said once there. Pure: no React, no native imports.
 import type { Finding, HigginsResponse, PlainEnglish, SourceReference } from "../investigation/types";
 import { plainEvidenceRefs, type EvidenceRef } from "./evidenceRefs.ts";
+import { sentences } from "./luddish/patterns.ts";
 import { compactUrls } from "./urlPresentation.ts";
 
 /** `explain`: Apollo's fixed explanation of a jargon word in the finding — explanatory, never evidence. */
@@ -76,22 +77,6 @@ function paragraphs(lines: string[]): string[] {
   return lines.map((l) => (isBullet(l) ? unbullet(l) : plainLine(l))).filter(Boolean);
 }
 
-/** Sentences, split only where a full stop is followed by a space — "linkt.com.au" stays whole. */
-export function sentences(text: string): string[] {
-  const out: string[] = [];
-  let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if ((ch === "." || ch === "!" || ch === "?") && (i + 1 === text.length || /\s/.test(text[i + 1]))) {
-      out.push(text.slice(start, i + 1).trim());
-      start = i + 1;
-    }
-  }
-  const rest = text.slice(start).trim();
-  if (rest) out.push(rest);
-  return out.filter(Boolean);
-}
-
 const words = (text: string) => text.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9'\s]/g, " ").split(/\s+/).filter(Boolean);
 const normal = (text: string) => words(text).join(" ");
 const grams = (w: string[], n = 4) => w.length < n ? [w.join(" ")] : Array.from({ length: w.length - n + 1 }, (_, i) => w.slice(i, i + n).join(" "));
@@ -131,6 +116,9 @@ class Said {
 }
 
 const NOT_TAKEN = /^Not taken further, because (.+?): (.+)$/i;
+/** A line about how Apollo checked (it names Apollo's own investigators): it belongs on the DI tab, never under what
+ *  isn't certain. Cases settled before the server said these under "How Apollo checked", and Magnum DI's own wording. */
+const METHOD_LINE = /\b(?:TC FlyBy|Magnum DI|Higgins Triage)\b/;
 
 /** "impersonation: whether it's from Linkt" reads as "impersonation (whether it's from Linkt)". */
 function topic(text: string): string {
@@ -183,13 +171,15 @@ export function buildReport(input: ReportInput): Report {
     if (paras.length) { more.push({ title: b.title, paragraphs: paras }); paras.forEach((p) => said.add(p)); }
   }
 
-  // 4. What isn't certain. Questions not taken further are explained once, under how Apollo checked.
+  // 4. What isn't certain. Questions not taken further, and any line about how Apollo checked, go under how Apollo checked.
   const notTaken = new Map<string, string[]>();
+  const method: string[] = [];
   const uncertain: string[] = [];
   for (const raw of input.uncertainties ?? []) {
     const line = plainLine(raw);
     const m = line.match(NOT_TAKEN);
     if (m) { notTaken.set(m[1], [...(notTaken.get(m[1]) ?? []), topic(m[2])]); continue; }
+    if (METHOD_LINE.test(line)) { method.push(line); continue; }
     if (!line || said.repeats(line)) continue;
     uncertain.push(line);
     said.add(line);
@@ -209,6 +199,7 @@ export function buildReport(input: ReportInput): Report {
     if (at >= 0) how.splice(at + 1, 0, `So these weren't taken further: ${topics.join("; ")}.`);
     else how.push(`Not taken further, because ${reason}: ${topics.join("; ")}.`);
   }
+  for (const line of method) if (!said.repeats(line)) { how.push(line); said.add(line); }
 
   const used = new Set(input.sourceIds ?? []);
   return presented({ answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) }, input.evidence);
@@ -239,6 +230,8 @@ export function shownPlainEnglish(response: Pick<HigginsResponse, "plainEnglish"
  *  so nothing is left out here. */
 export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[], evidence?: readonly EvidenceRef[]): Report {
   const used = new Set(sourceIds ?? []);
+  // A line about how Apollo checked is on the DI tab, never under what isn't certain.
+  const method = plain.uncertain.filter((line) => NOT_TAKEN.test(line) || METHOD_LINE.test(line));
   return presented({
     // The result, then what the case is about ("What it is: the Stoko email address hello@stoko.com.").
     answer: [plain.result, plain.subject].filter((line): line is string => !!line),
@@ -246,8 +239,8 @@ export function plainReport(plain: PlainEnglish, sources?: SourceReference[], so
     found: plain.established.map((item) => ({ text: item.text, detail: item.detail || null, explain: item.explain || null })),
     means: [...plain.means, ...plain.matters],
     more: [],
-    uncertain: plain.uncertain,
-    how: plain.how.length ? [plain.how.join(" ")] : [],
+    uncertain: plain.uncertain.filter((line) => !method.includes(line)),
+    how: plain.how.length || method.length ? [[...plain.how, ...method].join(" ")] : [],
     sources: (sources ?? []).filter((s) => used.has(s.id)),
   }, evidence);
 }

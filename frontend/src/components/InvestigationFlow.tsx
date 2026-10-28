@@ -24,8 +24,8 @@ export interface InvestigationFlowProps {
   caseId?: string | null;
   continuityKey?: string;
   onResolved?: (resolved: boolean) => void;
-  /** Display only: the kind of check the report is titled with (see InvestigationView). */
-  kind?: string;
+  /** Show the question that opened the case (false when a check opened it — the top card shows the material). */
+  openingQuestion?: boolean;
 }
 
 export function InvestigationFlow({
@@ -38,7 +38,7 @@ export function InvestigationFlow({
   caseId,
   continuityKey,
   onResolved,
-  kind,
+  openingQuestion,
 }: InvestigationFlowProps) {
   const operationId = continuityKey
     ? `${continuityKey}:${submissionId}`
@@ -99,7 +99,8 @@ export function InvestigationFlow({
         onRetry={() => void retry()}
         onCancel={() => void cancel()}
         testID={`${testID}-view`}
-        kind={kind}
+        eventId={eventId}
+        openingQuestion={openingQuestion}
         onAction={(action, outcome) => {
           if (outcome.kind === "observed")
             void ask(

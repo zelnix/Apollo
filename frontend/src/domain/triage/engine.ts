@@ -285,6 +285,15 @@ const MESSAGE: Record<string, (ev: TriageEvidence) => Verdict> = {
       ? met("clean callback reputation does not override impersonation evidence")
       : unmet("callback lure conditions not met");
   },
+  // A real organisation has no reason to write its own name with look-alike characters: on its own this is enough.
+  "MSG-23": flag("lookalike_name", "organisation name written with look-alike characters"),
+  "MSG-24": (ev) => {
+    if (!sig(ev, "government_rebate")) return unmet("no government rebate or subsidy claim");
+    if (!sig(ev, "time_pressure")) return unmet("rebate claim without deadline pressure");
+    return sig(ev, "reply_request") || sig(ev, "callback_request")
+      ? met("government rebate or subsidy claim", "deadline pressure", "request to reply or call")
+      : unmet("rebate claim with deadline pressure but no request to reply or call");
+  },
 };
 
 // ── Calls ───────────────────────────────────────────────────────────────────

@@ -1,13 +1,13 @@
-// Unified Investigation Report: four-tab structure — Overview | Evidence | History | DI.
-// Default to Overview. Matches the approved Threat Case reporting experience.
-// Apollo detects. Magnum DI investigates. Higgins explains findings and guides users.
-// Evidence tab shows original evidentiary sources, not summaries or interpretations.
+// Unified Investigation Report, the same as a Threat Case: Findings Brief | Evidence | History | DI, opening on the
+// Findings Brief. Apollo detects; Higgins Triage, TC FlyBy and Magnum DI investigate; the Evidence Lock keeps what
+// they established; Higgins Luddish explains it. Findings Brief = the result in plain words; Evidence = the original
+// material and the sources used; History = what happened when; DI = how it was checked.
 import * as FileSystemLegacy from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, Platform, Pressable, Text, View } from "react-native";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
@@ -23,27 +23,29 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Search from "lucide-react-native/icons/search";
-import Shield from "lucide-react-native/icons/shield";
-import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
+import { Body, Button, Card } from "@/src/components/ui";
 import { API_BASE } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
-import { DiReport, SimulatedAnswerNotice } from "@/src/components/DiReport";
-import { ReportBody } from "@/src/components/report/ReportBody";
+import { DiReport } from "@/src/components/DiReport";
 import { ResultQuestions } from "@/src/components/ResultQuestions";
-import { ReportHeader } from "@/src/components/report/ReportHeader";
-import { checkKind } from "@/src/components/report/checkKind";
-import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
-import { compose, isGeneralAnswer, lockFromInvestigation, luddishText, reportShown } from "@/src/domain/luddish";
+import { FindingsBrief, briefShown, investigationVerdict, type BriefStep } from "@/src/components/report/FindingsBrief";
+import { SourceList } from "@/src/components/report/SourceList";
+import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
+import { SourceSummaryCard } from "@/src/components/report/SourceSummaryCard";
+import { ServerCopyNote } from "@/src/components/ServerCopyNote";
+import { buildReport, plainReport, shownPlainEnglish, stepText } from "@/src/domain/reportSections";
+import { compose, isGeneralAnswer, lockFromInvestigation, luddishReport, luddishText } from "@/src/domain/luddish";
 import { isFinished } from "@/src/higgins/followUp";
-import { assessmentLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
+import { investigationHistory, investigatorName, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
 import { listLocalReports, saveLocalReport, deleteLocalReport } from "@/src/investigation/localReports";
+import { useApollo } from "@/src/store/ApolloContext";
 import { canResubmit, resubmitLabels, resubmitWaitSeconds } from "@/src/investigation/resubmit";
-import type { ActionProposal, Attention, EvidenceItem } from "@/src/investigation/types";
+import type { ActionProposal, EvidenceItem } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
 
@@ -51,7 +53,7 @@ import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
 
 type TabId = "overview" | "evidence" | "history" | "di";
 const TAB_LABELS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Findings Brief" },
   { id: "evidence", label: "Evidence" },
   { id: "history", label: "History" },
   { id: "di", label: "DI" },
@@ -60,30 +62,15 @@ const TAB_LABELS: { id: TabId; label: string }[] = [
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const useStyles = makeStyles((c) => ({
-  // ── Status Card ──
-  statusCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, gap: spacing.sm },
-  statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm },
-  statusIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
-  statusInfo: { flex: 1, gap: 2 },
-  statusTitle: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
-  statusTimestamp: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
-  statusBadge: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" as const },
-  statusBadgeText: { fontFamily: fonts.textSemibold, fontSize: 12 },
-  confidenceText: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
-
   // ── Tab bar ──
   tabBar: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.surfaceSecondary },
-  tab: { flex: 1, paddingVertical: 12, alignItems: "center" as const, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tab: { flexGrow: 1, flexBasis: "auto" as const, paddingVertical: 12, paddingHorizontal: spacing.sm, alignItems: "center" as const, borderBottomWidth: 2, borderBottomColor: "transparent" },
   tabActive: { borderBottomColor: c.brandPrimary },
   tabText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.muted },
   tabTextActive: { color: c.onSurface, fontFamily: fonts.textSemibold },
 
-  // ── Overview tab ──
-  higginsHeader: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md, marginBottom: spacing.md },
-  higginsName: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
-  higginsTime: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  // ── Findings Brief tab ──
   briefingText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
-  sectionHeader: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, marginTop: spacing.md },
 
   // ── Action cards ──
   actionCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 0.25, borderColor: c.border, padding: spacing.lg, flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.md },
@@ -100,11 +87,9 @@ const useStyles = makeStyles((c) => ({
   // ── Shared content ──
   text: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   muted: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted },
-  heading: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurfaceSecondary, marginTop: spacing.xs },
   sectionTitle: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
   row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: spacing.sm, alignItems: "center" as const },
   source: { paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
-  findingRow: { gap: 2, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   link: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
   question: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
   turn: { gap: spacing.xs, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
@@ -124,7 +109,6 @@ const useStyles = makeStyles((c) => ({
   sourceHeaderMetaBold: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.onSurfaceSecondary },
   sourceContentBlock: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border },
   sourceContentText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurface },
-  sourceLink: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary, marginTop: spacing.xs },
   sourceOriginalBanner: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, backgroundColor: c.restingTint, borderRadius: radius.sm, marginTop: spacing.xs },
   sourceOriginalText: { fontFamily: fonts.textMedium, fontSize: 12, color: c.restingText },
 
@@ -161,8 +145,6 @@ const useStyles = makeStyles((c) => ({
   rawCopyBtn: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4 },
   rawCopyText: { fontFamily: fonts.textMedium, fontSize: 12, color: c.brandPrimary },
   rawCode: { fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }), fontSize: 12, color: c.onSurface, lineHeight: 18 },
-  sensitiveRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
-  sensitiveText: { fontFamily: fonts.text, fontSize: 12, color: c.muted, flex: 1 },
 
   // ── Preserved legacy ──
   card: { gap: spacing.sm, borderColor: c.navyBorder },
@@ -172,11 +154,6 @@ const useStyles = makeStyles((c) => ({
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Attention projection → Apollo tone. */
-export function attentionTone(attention: Attention): Tone { return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting"; }
-
-const EMPTY_REPORT: Report = { answer: [], found: [], means: [], more: [], uncertain: [], how: [], sources: [] };
 
 /** Build a copyable diagnostics record from failure data. */
 function buildDiagnosticsCopy(failure: Record<string, unknown> | null | undefined, caseId?: string): string {
@@ -240,18 +217,6 @@ function higginsExplanation(failure: Record<string, unknown> | null | undefined,
   if (history.length > 1) return "Magnum DI couldn't complete the investigation because the analysis service remained unavailable after several attempts. I'll show you any findings already collected. You can try again later.";
   if (code === "evidence_expired") return "Temporary evidence expired before the investigation could finish. A new investigation with fresh evidence may be needed.";
   return "Magnum DI couldn't complete the investigation, but I can't confirm exactly what interrupted it. I'll show you the available findings and the technical details so we can identify what needs fixing.";
-}
-
-/** Investigation status for the badge. */
-function statusInfo(phase: string, response: { completion?: string } | null, _failure: unknown): { label: string; tone: "barking" | "resting" | "ears_up" | "sniffing" } {
-  if (phase === "expired") return { label: "Expired", tone: "barking" };
-  if (phase === "failed") return { label: "Incomplete", tone: "barking" };
-  if (response) {
-    if (response.completion === "complete") return { label: "Complete", tone: "resting" };
-    if (response.completion === "partial") return { label: "Partial", tone: "ears_up" };
-    if (response.completion === "waiting_user") return { label: "Question pending", tone: "ears_up" };
-  }
-  return { label: "In progress", tone: "sniffing" };
 }
 
 /** Build a JSON representation of raw provider response for display. */
@@ -390,7 +355,7 @@ function TabBar({ active, onChange, s }: { active: TabId; onChange: (id: TabId) 
     <View style={s.tabBar} testID="inv-tab-bar">
       {TAB_LABELS.map(({ id, label }) => (
         <Pressable key={id} style={[s.tab, active === id && s.tabActive]} onPress={() => onChange(id)} accessibilityRole="tab" accessibilityState={{ selected: active === id }} testID={`inv-tab-${id}`}>
-          <Text style={[s.tabText, active === id && s.tabTextActive]}>{label}</Text>
+          <Text style={[s.tabText, active === id && s.tabTextActive]} numberOfLines={1}>{label}</Text>
         </Pressable>
       ))}
     </View>
@@ -566,12 +531,17 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation", kind: kindHint }: {
+export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation", eventId, openingQuestion = true }: {
   state: CaseState; onAnswer?: (text: string) => void; onRetry: () => void; onCancel: () => void; onAction?: (action: ActionProposal, outcome: ActionOutcome) => void; testID?: string;
-  /** The kind of check this report is about, when the screen knows it better than the investigation's gate (a file check). */
-  kind?: string;
+  /** The Threat Case this investigation belongs to, when there is one: the original may be kept under its id. */
+  eventId?: string | null;
+  /** Show the question that opened the case. False when a check opened it: the question is Apollo's own wording. */
+  openingQuestion?: boolean;
 }) {
   const s = useStyles(); const { colors } = useTheme();
+  // The check's own record on this phone: who started it (when the case doesn't say) and Higgins Triage's record.
+  const { events } = useApollo();
+  const event = useMemo(() => (eventId ? events.find((e) => e.event_id === eventId) ?? null : null), [events, eventId]);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [confirmablePlanId, setConfirmablePlanId] = useState<string | null>(null);
@@ -659,7 +629,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const resubmitDisabled = retrying || waitSeconds > 0;
   const inventory = caseData?.inventory;
   const showTabs = !!(response || (failure && caseData && !working));
-  // Higgins' report, built the same way as a threat's Overview: each fact once.
+  // Higgins' report, built the same way as a threat's Findings Brief: each fact once.
   // Higgins' plain English when it passed its Fidelity Check; otherwise Apollo's own wording.
   const report = useMemo(() => {
     if (!response) return null;
@@ -671,40 +641,45 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       alreadySaid: [caseData?.settledReason?.sentence], evidence: evidenceItems,
     });
   }, [response, sources, caseData?.settledReason, evidenceItems]);
-  const higginsTime = caseData ? new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   // ── Categorised evidence items ──
   const originalEvidence = useMemo(() => evidenceItems.filter((e) => e.origin === "user_submission" || e.origin === "device_observation"), [evidenceItems]);
   const derivedEvidence = useMemo(() => evidenceItems.filter((e) => e.origin !== "user_submission" && e.origin !== "device_observation"), [evidenceItems]);
 
-  // ── Status info ──
-  const kind = checkKind(kindHint ?? caseData?.gates?.[0]);
-  const status = statusInfo(phase, response, failure);
   const timeline = useMemo(() => buildTimeline(state), [state]);
 
-  const statusBadgeBg = status.tone === "resting" ? colors.restingTint : status.tone === "barking" ? colors.barkingTint : status.tone === "ears_up" ? colors.ears_upTint : colors.sniffingTint;
-  const statusBadgeColor = status.tone === "resting" ? colors.restingText : status.tone === "barking" ? colors.barkingText : status.tone === "ears_up" ? colors.ears_upText : colors.sniffingText;
-  const StatusIcon = status.tone === "resting" ? CircleCheck : status.tone === "barking" ? CircleAlert : Info;
-  // Apollo's case outcome (e.g. "Likely scam"), whichever investigation layer answered.
-  const outcome = outcomeLabel(response?.outcome);
-  const outcomeKey = outcomeTone(response?.outcome);
+  // The Findings Brief's verdict and how serious it is, from the Case Briefing — read the same way on a threat.
+  const verdict = useMemo(() => (response ? investigationVerdict(response) : null), [response]);
   // Whoever actually settled this result: TC FlyBy or Magnum DI.
   const investigator = investigatorName(caseData?.answeredBy);
   // The question buttons under the report: Luddish's explanation of the finished result, and what the screen already says.
   const explanation = useMemo(() => isFinished(response) && !isGeneralAnswer(response) ? compose(lockFromInvestigation(response, investigator)) : null, [response, investigator]);
-  const shown = useMemo(() => report && response ? [...reportShown(report), ...response.actions.flatMap((a, i) => [a.label, stepText(response, i)])] : [], [report, response]);
-  const outcomeBg = { resting: colors.restingTint, barking: colors.barkingTint, ears_up: colors.ears_upTint, sniffing: colors.sniffingTint }[outcomeKey];
-  const outcomeColor = { resting: colors.restingText, barking: colors.barkingText, ears_up: colors.ears_upText, sniffing: colors.sniffingText }[outcomeKey];
-  const OutcomeIcon = outcomeKey === "resting" ? CircleCheck : outcomeKey === "barking" ? CircleAlert : Info;
+  // What you can do: the investigation's own steps. One Apollo can carry out (open a setting, a verified source) is tappable.
+  const pressAction = (action: ActionProposal) => {
+    if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
+    if (!caseData) return;
+    void runAction(action, caseData).then((outcome) => {
+      setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this phone."
+        : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
+        : outcome.kind === "requested" ? "ApolloSG asked the system for that permission. A fresh check runs when you return."
+        : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
+      onAction?.(action, outcome);
+    });
+  };
+  const steps: BriefStep[] = response?.actions.map((action, i) => ({
+    id: action.id, text: stepText(response, i) || action.label, onPress: isExecutable(action) ? () => pressAction(action) : undefined,
+  })) ?? [];
+  const shown = report && verdict ? briefShown(report, verdict, steps) : [];
 
   return <View style={{ gap: spacing.md }} testID={testID}>
 
-    {/* ── Conversation history (all turns) ── */}
-    {turns.slice(0, -1).map((turn) => <View key={turn.turnId} style={s.turn} testID={`inv-turn-${turn.turnId}`}>
-      <View style={s.user}><Text style={s.text}>{turn.question}</Text></View>
+    {/* ── Conversation history (all turns). The opening question is left out when the case began from a check: the
+        card at the top already shows what was submitted, and the question is Apollo's own wording. ── */}
+    {turns.slice(0, -1).map((turn, i) => <View key={turn.turnId} style={s.turn} testID={`inv-turn-${turn.turnId}`}>
+      {i > 0 || openingQuestion ? <View style={s.user}><Text style={s.text}>{turn.question}</Text></View> : null}
       <Text style={s.text}>{luddishText(scrubMessage(turn.response.overview))}</Text>
     </View>)}
-    {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
+    {turns.length && (turns.length > 1 || openingQuestion) ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
 
     {/* ── Working / progress state ── */}
     {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted \u2014 reconnecting to the same investigation\u2026" : phase === "waiting_device" ? "Checking this device for a fresh observation\u2026" : "Apollo is investigating\u2026"}</Body></View>
@@ -722,40 +697,26 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
 
     {/* ── Status Card + Four-Tab Report ── */}
     {showTabs ? <>
-      {/* ── Status Card ── (shared with a threat's Overview) */}
-      <ReportHeader
-        kind={kind} testID="inv-status-card" ids={{ explainer: "inv-outcome-explainer", settled: "inv-settled-reason", serverCopy: "inv-server-copy" }}
-        badges={[
-          ...(outcome ? [{ label: outcome, bg: outcomeBg, fg: outcomeColor, Icon: OutcomeIcon, testID: "inv-outcome" }] : []),
-          { label: status.label, bg: statusBadgeBg, fg: statusBadgeColor, Icon: StatusIcon, testID: "inv-status" },
-        ]}
-        time={caseData ? new Date(caseData.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null}
-        meta={outcome ? null : `Confidence: ${response ? assessmentLabel(response.assessment) : "Unavailable"}`}
-        outcome={outcome ? response?.outcome : null}
-        settledReason={response ? caseData?.settledReason : null}
-        serverCopyCaseId={caseData?.id} liveCase={caseData} showServerCopy={!!response && !response.question}
-      />
-
-      {/* A simulated answer is labelled on every tab, in every build. */}
-      {caseData && response ? <SimulatedAnswerNotice caseId={caseData.id} refreshKey={response.revision} /> : null}
+      {/* ── What started it, and when (shared with a threat) — the result is in the Findings Brief ── */}
+      <SourceSummaryCard origin={caseData?.origin ?? event?.origin} at={caseData?.createdAt} caseKeys={[eventId, caseData?.id]}
+        event={event} evidence={evidenceItems} simulated={caseData?.simulated} testID="inv-source-summary" />
 
       {/* ── Tab Navigation ── */}
       <TabBar active={activeTab} onChange={setActiveTab} s={s} />
 
-      {/* ━━━━ TAB 1: OVERVIEW — Higgins' Briefing ━━━━ */}
+      {/* ━━━━ TAB 1: FINDINGS BRIEF — what the investigation concluded, from the Evidence Lock ━━━━ */}
       {activeTab === "overview" ? (
-        <Card style={[s.card, { gap: spacing.md }]} testID="inv-tab-overview-content">
-          {/* Higgins' report — the same sections, each said once, as a threat's Overview. */}
-          <View testID={response ? "inv-overview" : undefined}><ReportBody report={report ?? EMPTY_REPORT} time={higginsTime} ids="inv" /></View>
+        <View style={{ gap: spacing.md }} testID="inv-tab-overview-content">
+          {report && verdict ? <View testID="inv-overview"><FindingsBrief report={report} verdict={verdict} steps={steps} ids="inv" /></View> : null}
           {explanation ? <ResultQuestions explanation={explanation} shown={shown} testID="inv-questions" /> : null}
+          {response?.outcome ? <OutcomeExplainerLink outcome={response.outcome} testID="inv-outcome-explainer" /> : null}
+        <Card style={[s.card, { gap: spacing.md }]} testID="inv-overview-more">
           {!response && failure ? (
             <Text style={s.briefingText} testID="inv-overview">{higginsExplanation(failure as unknown as Record<string, unknown>, false)}</Text>
           ) : !response && error ? (
             <Text style={s.briefingText} testID="inv-overview">{error}</Text>
           ) : null}
 
-          {/* What you can do */}
-          <Text style={s.sectionHeader}>What you can do</Text>
           <View style={{ gap: spacing.sm }}>
             {/* Resubmit — when Magnum DI's one call and its one retry both failed */}
             {(showResubmit && caseData) ? (
@@ -769,30 +730,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 {!resubmitDisabled ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>
             ) : null}
-
-            {/* Dynamic actions from Higgins */}
-            {response?.actions.map((action, actionIndex) => (
-              <Pressable key={action.id} style={s.actionCard} testID={`inv-action-${action.id}`}
-                onPress={() => {
-                  if (!isExecutable(action)) return;
-                  if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
-                  if (!caseData) return;
-                  void runAction(action, caseData).then((outcome) => {
-                    setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this phone."
-                      : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
-                      : outcome.kind === "requested" ? "ApolloSG asked the system for that permission. A fresh check runs when you return."
-                      : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
-                    onAction?.(action, outcome);
-                  });
-                }}>
-                <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
-                <View style={s.actionContent}>
-                  <Text style={s.actionTitle}>{action.label}</Text>
-                  <Text style={s.actionDescription}>{luddishText(scrubMessage(stepText(response, actionIndex)), true)}</Text>
-                </View>
-                {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
-              </Pressable>
-            )) ?? null}
 
             {/* Partial findings card — when partial findings available */}
             {failure && response ? (
@@ -839,6 +776,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             {reportNote ? <Text style={s.muted} testID="inv-report-note">{reportNote}</Text> : null}
           </View> : null}
         </Card>
+        </View>
       ) : null}
 
       {/* ━━━━ TAB 2: EVIDENCE — Original Source Material ━━━━ */}
@@ -862,6 +800,12 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
               </Card>
             ))}
           </> : null}
+
+          {/* The sources Apollo used for this answer */}
+          {report?.sources.length ? <Card style={[s.card, { gap: spacing.xs }]} testID="inv-evidence-sources">
+            <Text style={s.sectionTitle}>SOURCES APOLLO USED</Text>
+            <SourceList sources={report.sources} ids="inv" />
+          </Card> : null}
 
           {/* Derived / extracted content — kept separate and clearly labelled */}
           {derivedEvidence.length ? <>
@@ -941,6 +885,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 </View>
               );
             })}
+            {/* When the files sent for this result leave Apollo's server. */}
+            {response && !response.question ? <ServerCopyNote caseId={caseData?.id} live={caseData} testID="inv-server-copy" /> : null}
           </Card>
 
           {/* Investigation history from domain (phase-based) */}
@@ -972,7 +918,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {/* ── DI tab: the Magnum DI processing record (evidence is untouched by this view) ── */}
     {activeTab === "di" && showTabs ? (
       <View testID="inv-tab-di-content">
-        <DiReport caseId={caseData?.id ?? null} />
+        <DiReport caseId={caseData?.id ?? null} triage={event?.triage_investigation ?? null} settledReason={response ? caseData?.settledReason : null} how={report ? luddishReport(report).how : []} />
       </View>
     ) : null}
 

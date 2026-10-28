@@ -256,8 +256,10 @@ async def test_a_targeted_search_finding_an_official_warning_stops(monkeypatch):
 
 
 # ── Magnum DI receives only the unresolved slice ────────────────────────────
-INVOICE = ("Hi, it's Sarah from Brightline Accounts. Our bank details have changed, so please pay invoice 4471 ($1,240) to "
-           "BSB 062-000 account 1234 5678 today. The invoice is at https://brightline-docs.net/inv/4471")
+# A payment request through a route nobody verified, that no Higgins Triage rule flags: only Magnum DI's reasoning could
+# change what to do. (Once Triage flags a message, TC FlyBy settles it as Concerning — test_unified_energy_sms.py.)
+INVOICE = ("Hi, it's Sarah from Brightline Accounts. Please pay invoice 4471 ($1,240) to "
+           "account 1234 5678 today. The invoice is at https://brightline-docs.net/inv/4471")
 
 
 async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_search_off(monkeypatch):
@@ -281,9 +283,9 @@ async def test_magnum_gets_only_the_unresolved_issue_and_teddys_brief_with_searc
     assert "outcome" in magnum["response_schema"]["required"], "Magnum DI feeds the same outcome system"
     sent = [p.text for p in captured[0] if p.text]
     assert any("TC FlyBy fly-by results" in t and "For Magnum DI to settle" in t for t in sent)
-    assert any("(reasoning) Message and deception analysis" in t and "payment details change" in t for t in sent), "only the unresolved issue"
+    assert any("(reasoning) Message and deception analysis" in t and "payment (“" in t for t in sent), "only the unresolved issue"
     assert not any("apollo-triage-intelligence" in t or '"safe_browsing"' in t for t in sent), "raw lookups Teddy settled are not resent"
-    assert any("please pay invoice 4471" in t for t in sent), "the material the issue is about is sent in full"
+    assert any("Please pay invoice 4471" in t for t in sent), "the material the issue is about is sent in full"
     teddy = case["routing"]["teddy"]
     assert [i["capability"] for i in teddy["issues"]] == ["reasoning"]
     assert {c["kind"]: c["status"] for c in teddy["checks"]}["message_analysis"] == "needs_reasoning"
@@ -422,7 +424,8 @@ async def test_impersonation_with_a_brand_new_domain_is_concerning_without_gemin
     assert response["attentionReason"] == ("Anything typed into that link goes to whoever runs commbank-notice.net, which isn't one of "
                                            "CommBank's published domains.")
     assert any(a["label"] == "Don't use the link" for a in response["actions"])
-    assert any("Not taken further" in u and "deception analysis" in u for u in response["uncertainties"])
+    assert "So these weren't taken further:" in response["explanationMarkdown"] and "deception analysis" in response["explanationMarkdown"]
+    assert not any("TC FlyBy" in u or "Not taken further" in u for u in response["uncertainties"]), "how Apollo checked is on the DI tab"
     assert case["routing"]["answeredBy"] == "teddy_official" and case["routing"]["teddy"]["basis"] == "impersonation"
     assert "magnum" not in case["routing"]
 

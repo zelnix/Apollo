@@ -8,6 +8,7 @@ an uncertainty — missing evidence is never turned into a fact.
 from __future__ import annotations
 
 import json
+import re
 
 from services.higgins import outcomes
 from services.higgins.teddy.decide import WARNING, Decision, corroborated_impersonation, signals
@@ -40,16 +41,33 @@ def _knowledge(checks: list[Check]) -> list[dict]:
     return [f for c in checks for f in c.facts if f.get("class") == "apollo_knowledge"]
 
 
-def _missing(checks: list[Check], not_taken_further: str | None) -> list[str]:
-    """What stays uncertain: lookups that found nothing or failed, and — when TC FlyBy resolved the case —
-    the open issues it didn't take further, with the reason."""
+def _not_found(checks: list[Check]) -> list[str]:
+    """How Apollo checked, for the DI tab only: lookups that found nothing or didn't answer. They describe TC FlyBy's
+    method, so they are never listed under what isn't certain."""
     out = [f["text"] for c in checks for f in c.facts if f["signal"] == "missing"]
-    for c in checks:
-        if c.status == "unavailable":
-            out.append(f"{c.subject}: TC FlyBy's lookup was unavailable, so this wasn't established either way.")
-        elif c.status in ("open", "needs_reasoning", "not_needed") and not_taken_further and c.open_issue:
-            out.append(f"Not taken further, because {not_taken_further}: {c.open_issue[0].lower()}{c.open_issue[1:]}")
-    return out
+    out += [f"{c.subject}: TC FlyBy's lookup was unavailable, so this wasn't established either way." for c in checks if c.status == "unavailable"]
+    return [t if t.endswith((".", "!", "?")) else f"{t}." for t in out]
+
+
+def _topic(text: str) -> str:
+    """"Impersonation: whether it's from Linkt." reads as "impersonation (whether it's from Linkt)"."""
+    t = f"{text[0].lower()}{text[1:]}".strip().rstrip(".")
+    m = re.match(r"^([^:()]{1,40}): (.+)$", t)
+    return f"{m.group(1)} ({m.group(2)})" if m else t
+
+
+def _method(lead: str, checks: list[Check], *, not_taken: bool) -> str:
+    """"How Apollo checked": what TC FlyBy did and, said once after the reason it gives, the open issues it didn't take
+    further; then the lookups that found nothing or didn't answer."""
+    topics = [_topic(c.open_issue) for c in checks if not_taken and c.open_issue and c.status in ("open", "needs_reasoning", "not_needed")]
+    return " ".join([lead, *([f"So these weren't taken further: {'; '.join(topics)}."] if topics else []), *_not_found(checks)])
+
+
+def _who(plan_: Plan) -> str:
+    return f"Apollo can't confirm who actually {'called' if plan_.channel == 'call' else 'sent this'}."
+
+
+_PAGE_UNOPENED = "ApolloSG didn't open the page, so what it shows or asks for wasn't checked."
 
 
 def _knowledge_block(checks: list[Check]) -> str:
@@ -80,8 +98,8 @@ def _routes(checks: list[Check]) -> str:
     reused = [c for c in searched if any((f.get("source") or {}).get("reused") for f in c.facts)]
     search = ("a targeted web search" if not reused else "ApolloSG's recent targeted web search, reused while still current"
               if len(reused) == len(searched) else "a targeted web search, partly reused from ApolloSG's recent lookups")
-    names = [label for route, label in (("official_source", "official source checks"), ("apollo_kb", "ApolloSG's knowledge base"),
-                                        ("google_search", search)) if route in used]
+    names = [label for route, label in (("triage_rules", "Higgins Triage's message rules"), ("official_source", "official source checks"),
+                                        ("apollo_kb", "ApolloSG's knowledge base"), ("google_search", search)) if route in used]
     return _join(names) or "official source checks"
 
 
@@ -126,14 +144,13 @@ def concern(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_it
              "acting on it would put your money, accounts or device at risk.")
     found = "\n".join(f"- {f['text']}" for _, f in decisive)
     settled = "the official result already settles what to do"
-    explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n"
-                   f"**How Apollo checked**\n{_checked(plan_, ROUTE_LABEL[route])} Magnum DI's deeper analysis wasn't needed, because {settled}.")
+    explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n**How Apollo checked**\n"
+                   + _method(f"{_checked(plan_, ROUTE_LABEL[route])} Magnum DI's deeper analysis wasn't needed, because {settled}.", checks, not_taken=True))
     return {
         "overview": f"{lead['text']} Don't act on it" + (f" — if you need to, contact {brand} yourself." if brand else "."),
         "explanationMarkdown": explanation, "assessment": "concern_found", "outcome": "confirmed_threat", "attention": "action_needed",
         "attentionReason": "An official source has already identified it as dangerous, so acting on it puts your money or accounts at risk.",
-        "findings": findings[:8], "uncertainties": _missing(checks, settled)[:4] or
-        ["Anything outside the submitted material — earlier messages or the sender's history — wasn't examined."],
+        "findings": findings[:8], "uncertainties": ["Anything outside the submitted material — earlier messages or the sender's history — wasn't examined."],
         "scope": _scope(plan_, ROUTE_LABEL[route]), "sourceIds": sorted({s for f in findings for s in f["sourceIds"]}),
         "remainingEvidenceIds": [], "actions": actions, "recommendedActionIndex": 0, "question": None, "completion": "complete",
     }
@@ -173,20 +190,20 @@ def clear(plan_: Plan, checks: list[Check], material: dict[str, str], teddy_item
                     f"Nothing Apollo checked raises a concern about {_subject(plan_)}. That isn't proof the site is safe — only that these checks found nothing.")
         means = ("These checks look at who runs the address and whether any safety list or warning names it. They don't show what the page asks "
                  "you to do, so still never enter passwords or codes on a page you reached from a message.")
-        uncertainties = ["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."]
+        uncertainties = [_PAGE_UNOPENED]
     else:
         overview = ("Apollo's checks found no scam indicators in what you sent. That isn't proof it's genuine — only that these checks found "
                     "nothing, and it doesn't ask you to send money, codes or details anywhere that hasn't been verified.")
         means = (f"{_what_was_checked(checks)} Checks like these can't confirm who sent it, so if anything about it feels off, contact the person "
                  "or organisation using details you already have.")
-        uncertainties = ["Apollo can't confirm who actually sent this."]
+        uncertainties = [_who(plan_)]
     found = "\n".join(f"- {f['text']}" for _, f in facts) or "- No warning signs in anything Apollo checked."
     explanation = (f"**What was found**\n{found}\n\n**What it means**\n{means}{_knowledge_block(checks)}\n\n**How Apollo checked**\n"
-                   f"{_checked(plan_, ROUTE_LABEL[route])} Nothing in it needed Magnum DI's deeper analysis.")
+                   + _method(f"{_checked(plan_, ROUTE_LABEL[route])} Nothing in it needed Magnum DI's deeper analysis.", checks, not_taken=False))
     return {
         "overview": overview, "explanationMarkdown": explanation, "assessment": "no_concern_found_within_scope", "outcome": "no_scam_indicators",
         "attention": "none", "attentionReason": None, "findings": findings[:8],
-        "uncertainties": (_missing(checks, None) + uncertainties)[:4],
+        "uncertainties": uncertainties,
         "scope": _scope(plan_, ROUTE_LABEL[route]), "sourceIds": sorted({s for f in findings for s in f["sourceIds"]}),
         "remainingEvidenceIds": [], "actions": [], "recommendedActionIndex": None, "question": None, "completion": "complete",
     }
@@ -235,12 +252,11 @@ def pattern_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
         attention, reason = "review", "Replying or acting before you've checked is what messages like this rely on."
     return _result(plan_, checks, overview=overview, found=found, means=means, outcome=outcome, attention=attention, reason=reason,
                    # The scope's own first sentence, word for word, so "How Apollo checked" says it once.
-                   how=f"{_checked(plan_, _routes(checks))} It compared {'them' if call else 'it'} with the established scam patterns in "
-                       f"ApolloSG's knowledge base. {_NOT_NEEDED}",
+                   how=_method(f"{_checked(plan_, _routes(checks))} It compared {'them' if call else 'it'} with the established scam patterns in "
+                               f"ApolloSG's knowledge base. {_NOT_NEEDED}", checks, not_taken=True),
                    actions=[_action(label, instruction) for label, instruction in advice],
                    uncertainties=[(f"Apollo can't confirm who actually {'called' if call else 'sent this'} — a pattern match supports the assessment "
-                                   f"but isn't proof about the {'caller' if call else 'sender'}."),
-                                  *_missing(checks, "it couldn't change the outcome or what to do")],
+                                   f"but isn't proof about the {'caller' if call else 'sender'}.")],
                    extra_sources=kb_sources)
 
 
@@ -257,13 +273,12 @@ def impersonation_result(plan_: Plan, checks: list[Check], material: dict[str, s
                   f"Don't use the link — go to {brand} directly through their official app or website."),
         means=(f"{place} isn't one of {brand}'s published domains, and a separate check on that address backs up the concern. "
                "That's enough to treat it as concerning without weighing up the wording."),
-        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
+        how=_method(f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}", checks, not_taken=True),
         reason=f"Anything typed into that link goes to whoever runs {place}, which isn't one of {brand}'s published domains.",
         actions=[_action("Don't use the link", f"Don't open {place} and don't enter anything on it."),
                  _action(f"Contact {brand} yourself", f"Contact {brand} using their official app, a website address you type yourself, or the number on your card or statement."),
                  _action("Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already entered details, contact the organisation now.")],
-        uncertainties=["ApolloSG didn't open the page, so what it shows or asks for wasn't checked.",
-                       *_missing(checks, "it couldn't change the outcome or what to do")])
+        uncertainties=[_PAGE_UNOPENED])
 
 
 _COUNT = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
@@ -298,10 +313,9 @@ def signals_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
         overview=(f"{subject[0].upper()}{subject[1:]} raises a concern: {facts[0][1]['text']} Nothing here proves it's a scam, but don't act on "
                   "it until you've checked it through a channel you trust."),
         means=f"{_signs_established(len(warning), len(facts) - len(warning))} That's reason to be careful, but not enough to call it a scam.",
-        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
+        how=_method(f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}", checks, not_taken=True),
         reason="Acting on something with warning signs before checking it is how people lose money or access to their accounts.",
-        uncertainties=[*_missing(checks, "it couldn't change the outcome or what to do"),
-                       *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if link else [])])
+        uncertainties=[_PAGE_UNOPENED if link else _who(plan_)])
 
 
 def _unchecked(plan_: Plan) -> bool:
@@ -338,10 +352,10 @@ def undetermined(plan_: Plan, checks: list[Check], material: dict[str, str], ted
         found=[_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _live(checks)],
         overview=f"ApolloSG couldn't establish enough about {subject} to say either way. {found}, but that isn't the same as it being safe — {after}",
         means=means,
-        how=f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}",
+        how=_method(f"{_checked(plan_, _routes(checks))} {_NOT_NEEDED}", checks, not_taken=False),
         reason=("Something ApolloSG couldn't fully check may still be unsafe." if unchecked else
                 "What ApolloSG found can't show whether it's safe or not."),
-        uncertainties=[*_missing(checks, None), *(["ApolloSG didn't open the page, so what it shows or asks for wasn't checked."] if plan_.link_only else [])])
+        uncertainties=[_PAGE_UNOPENED if plan_.link_only else _who(plan_)])
 
 
 def _with_gaps(result: dict, plan_: Plan) -> dict:

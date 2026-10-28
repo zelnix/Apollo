@@ -8,6 +8,7 @@
 //     evidence are never altered.
 // Pure + unit-tested.
 
+import { briefed, firstFinding, needsYou } from "../domain/caseBriefing.ts";
 import { shortDomain } from "../domain/threatSubject.ts";
 import type { PatrolEvent } from "../domain/types";
 import type { LocalAlert } from "./notifications";
@@ -102,12 +103,11 @@ const inSentence = (subject: string) => subject.replace(/^The /, "the ");
 const OPEN = "Open ApolloSG to see what I found.";
 
 /** The case's own briefing, short: its first finding (which always names its subject) and, when the case owes the
- *  person a decision, that it does. Null when the event has no Higgins Case Briefing. */
+ *  person a decision (caseBriefing.needsYou, as Home and Threats decide it), that it does. Null when the event has no
+ *  Higgins Case Briefing. */
 function briefingSummary(event: PatrolEvent): string | null {
-  const b = event.case_briefing;
-  if (!b || b.from !== "briefing" || !b.summary) return null;
-  const first = b.summary.split(/(?<=[.!?])\s+/)[0] ?? b.summary;
-  return `Higgins: ${first}${b.userActionRequired && b.actionReason ? " This needs your decision." : ""} ${OPEN}`;
+  const b = briefed(event);
+  return b ? `Higgins: ${firstFinding(b)}${needsYou(event) ? " This needs your decision." : ""} ${OPEN}` : null;
 }
 
 /** The short, specific notification body for an event. */

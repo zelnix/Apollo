@@ -8,7 +8,7 @@
 import type { DeviceInvestigation } from "../investigation/deviceStore";
 import { caseShortfalls, hasRecordedFindings, unrecordedShortfall, type Shortfall } from "./caseFacts.ts";
 import { evidenceModel } from "./evidenceModel.ts";
-import { investigatorName } from "./messageVoice.ts";
+import { investigatorName, settledByFlyby } from "./messageVoice.ts";
 import type { EmailEvidenceProfile } from "./triage/emailEvidence.ts";
 import type { PatrolEvent } from "./types";
 
@@ -127,7 +127,7 @@ export function buildCaseSources(input: { event: PatrolEvent; investigation?: De
   const caseId = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;
   if (triage) {
     const next = !caseId ? "Magnum DI was not engaged."
-      : (investigation?.answeredBy ?? "").startsWith("teddy") ? "TC FlyBy settled it — Magnum DI was not engaged."
+      : settledByFlyby(investigation?.answeredBy) ? "TC FlyBy settled it — Magnum DI was not engaged."
         : "Escalated to Magnum DI.";
     sources.push({
       id: "triage",

@@ -143,7 +143,7 @@ def no_ai(monkeypatch, store):
     monkeypatch.setattr(provider, "generate", calls)
     monkeypatch.setattr(chat.memory, "add_chat_exchange", AsyncMock(return_value=now_utc() + timedelta(minutes=5)))
     monkeypatch.setattr(chat.knowledge, "search", AsyncMock(return_value=[]))
-    monkeypatch.setattr(chat, "submit_to_investigation_pipeline", AsyncMock(side_effect=AssertionError("no investigation")))
+    monkeypatch.setattr(chat.pipeline_submit, "submit_to_investigation_pipeline", AsyncMock(side_effect=AssertionError("no investigation")))
     return calls
 
 

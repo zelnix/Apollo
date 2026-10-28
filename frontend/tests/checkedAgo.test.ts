@@ -28,6 +28,6 @@ test("the reused line names Apollo's earlier check", () => {
 test("the report shows the line for a reused result; Ask Higgins has no saved AI answers to show", () => {
   const ask = readFileSync(new URL("../app/(tabs)/ask.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(ask, /reusedLine|Saved answer|ask-reused-|ask-simulated-/);
-  const body = readFileSync(new URL("../src/components/report/ReportBody.tsx", import.meta.url), "utf8");
+  const body = readFileSync(new URL("../src/components/report/SourceList.tsx", import.meta.url), "utf8");
   assert.match(body, /source\.reused \? <Text style=\{s\.muted\} testID=\{`\$\{testID\}-reused`\}>\{reusedLine\(source\.retrievedAt\)\}/);
 });

@@ -33,7 +33,7 @@ from typing import Optional
 from core.db import db, now_utc
 from services import device_stats
 from services.higgins import evidence as ev
-from services.higgins import explain
+from services.higgins import explain, outcomes
 from services.higgins import ai_settings
 from services.higgins import provider
 from services.higgins.ai_request import Message, Part
@@ -111,7 +111,7 @@ async def _plain_english(owner: str, case: dict, response: HigginsResponse, answ
     """Higgins' plain English for the validated result, after its Fidelity Check (services/higgins/explain). It sits
     beside the result and changes nothing in it. A renderer error never fails the investigation: the person then sees
     Apollo's own wording."""
-    by = explain.facts_mod.investigator(answered_by)
+    by = outcomes.investigator(answered_by)
     try:
         doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "routing": 1, "gates": 1}) or {}
         plain, briefing = explain.explain_case(response, answered_by=answered_by, routing=doc.get("routing") or {},

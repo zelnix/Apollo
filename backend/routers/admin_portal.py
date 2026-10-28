@@ -1498,7 +1498,8 @@ def _env_label(model_str: str | None) -> str:
 
 # How each investigation was answered (cost routing): TC FlyBy's route, or Magnum DI's Gemini call.
 ANSWERED_BY_LABELS = {"teddy_official": "Official check", "teddy_kb": "ApolloSG KB", "teddy_search": "Web search", "magnum_di": "Gemini"}
-_ROUTE_LABELS = {"official_source": "Official source", "apollo_kb": "ApolloSG KB", "google_search": "Web search (TC FlyBy)"}
+_ROUTE_LABELS = {"triage_rules": "Higgins Triage rules", "official_source": "Official source", "apollo_kb": "ApolloSG KB",
+                 "google_search": "Web search (TC FlyBy)"}
 
 
 def _answered_by(case: dict, magnum_calls: int) -> str:

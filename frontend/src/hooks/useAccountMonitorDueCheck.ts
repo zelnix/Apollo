@@ -25,7 +25,7 @@ export function useAccountMonitorDueCheck() {
         if (!fresh.length) return;
         const count = fresh.length;
         await upsertEvent({
-          event_id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+          event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), origin: "apollo",
           device_id: deviceId, category: "account", state: "ears_up", status: "active",
           headline: `Account exposure: ${count} new breach match${count > 1 ? "es" : ""}`,
           what_happened: `This week's account check found ${count} monitored address${count > 1 ? "es" : ""} newly appearing in breach data: ${fresh.map((e) => maskEmail(e.email)).join(", ")}.`,

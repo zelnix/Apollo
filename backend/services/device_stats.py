@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 
 from core.db import db
+from services.higgins import outcomes
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def investigator(answered_by: Optional[str]) -> Optional[str]:
     """Which count an investigation's first answer adds to: TC FlyBy settled it, or Magnum DI answered it."""
     if answered_by == "magnum_di":
         return "magnum_di"
-    if (answered_by or "").startswith("teddy"):
+    if outcomes.settled_by_flyby(answered_by):
         return "tc_flyby"
     return None
 

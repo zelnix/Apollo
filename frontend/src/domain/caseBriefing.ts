@@ -3,7 +3,9 @@
 // DI stays the technical trace and Evidence the original material. Pure: no React Native, unit-tested in node.
 import type { CaseBriefing, HigginsResponse } from "../investigation/types";
 import { evidenceModel } from "./evidenceModel.ts";
-import type { PatrolEvent } from "./types";
+import { sentences } from "./luddish/patterns.ts";
+import { outcomeLabel, outcomeTone } from "./messageVoice.ts";
+import type { ApolloState, PatrolEvent } from "./types";
 
 /** What a Patrol event carries of its case's briefing (device-local, never synced). */
 export interface EventBriefing {
@@ -73,9 +75,37 @@ export function needsYou(event: PatrolEvent): boolean {
     && !!clean(event.why?.[0]) && !!clean(event.what_to_do);
 }
 
+/** The event's checked Case Briefing, when it has one to show (a headline and a summary); null otherwise. Every
+ *  case-result surface reads the briefing through this. */
+export function briefed(event: PatrolEvent | undefined): EventBriefing | null {
+  const b = event?.case_briefing;
+  return b && b.from === "briefing" && b.headline && b.summary ? b : null;
+}
+
+/** The briefing's first finding (its subject always named): the short form Home and notifications show. */
+export function firstFinding(b: EventBriefing): string {
+  return (sentences(b.summary)[0] ?? b.summary).trim();
+}
+
+/** Apollo's case outcome as the person sees it ("Likely scam") and its tone: the briefing's status, or for a result
+ *  recorded before briefings, the label of its recorded outcome. Never worked out from anything else. */
+export function caseOutcome(response: HigginsResponse | null | undefined): { label: string | null; tone: ReturnType<typeof outcomeTone> } {
+  const b = response?.briefing?.fidelity?.status === "PASS" ? response.briefing : null;
+  const code = b ? b.statusCode : response?.outcome;
+  return { label: (b?.status || null) ?? outcomeLabel(code), tone: outcomeTone(code) };
+}
+
+/** How serious the result is: the attention its Case Briefing recorded, or for a result recorded before briefings,
+ *  the attention the result recorded. Never worked out from anything else. */
+export function caseSeverity(response: HigginsResponse | null | undefined): ApolloState | null {
+  if (!response) return null;
+  const b = response.briefing?.fidelity?.status === "PASS" ? response.briefing : null;
+  const attention = b?.attention ?? response.attention;
+  return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting";
+}
+
 /** Title and summary for a case card (Home and Threats): the briefing's when there is one, else what Apollo recorded. */
 export function caseCardText(event: PatrolEvent, fallbackTitle: string): { title: string; summary: string | null } {
-  const b = event.case_briefing;
-  if (b?.headline && b.summary) return { title: b.headline, summary: b.summary };
-  return { title: fallbackTitle, summary: null };
+  const b = briefed(event);
+  return b ? { title: b.headline, summary: b.summary } : { title: fallbackTitle, summary: null };
 }

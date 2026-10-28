@@ -383,7 +383,7 @@ test("a report: every section in plain words, the severity line and sources unto
   assert.deepEqual(out.means, ["You shouldn't reply."]);
   assert.deepEqual(out.more[0].paragraphs, ["It doesn't show who sent it."]);
   assert.deepEqual(out.uncertain, ["Apollo can't confirm the sender."]);
-  assert.match(read("../src/components/report/ReportBody.tsx"), /luddishReport\(given\)/);
+  assert.match(read("../src/components/report/FindingsBrief.tsx"), /const r = luddishReport\(report\);/);
 });
 
 test("Ask Higgins: answers in plain words with plain notes last; a source's own words and fixed replies are never reworded", () => {

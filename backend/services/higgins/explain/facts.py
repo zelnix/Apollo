@@ -186,8 +186,6 @@ RESULT_KINDS: tuple[tuple[str, re.Pattern], ...] = (
 )
 REASSURING = {"OFFICIAL", "NOT_LISTED", "VALID"}
 CONCERNING = {"NOT_OFFICIAL", "LISTED", "FAILED"}
-# Which way each outcome points: a finding that points the same way supports it, the other way is contrary.
-DIRECTION = {"confirmed_threat": "concern", "likely_scam": "concern", "concerning": "concern", "no_scam_indicators": "clear"}
 
 _ORG_NAME = r"([A-Z][\w&.-]*(?: (?:[A-Z][\w&.-]*|of|and|&)){0,4})"
 _ORG = (re.compile(rf"\bpublished {_ORG_NAME} (?:customer|contact|support|enquir|help|email|address)"),
@@ -283,7 +281,7 @@ def structure_finding(finding: dict, candidates: dict[str, list[str]], outcome: 
     ids = identifiers(statement)
     check, result = classify(statement)
     polarity = "clear" if check != "stated" and result in REASSURING else "concern" if check != "stated" and result in CONCERNING else "neutral"
-    direction = DIRECTION.get(outcome or "")
+    direction = outcomes.DIRECTION.get(outcome or "")
     subject = ids[0] if ids else None
     org = organisation(statement)
     # "st0ko-login.co is not Stoko's domain": Stoko is the organisation the subject is NOT — never its owner.
@@ -322,10 +320,6 @@ _HOW = re.compile(r"^how apollo (checked|answered)", re.I)
 _MEANS = re.compile(r"^what it means", re.I)
 AUTHORITY = {"official": "official source", "independent": "independent source",
              "self_claimed": "the destination's own page, not independent", "unknown": "search result, publisher not independently verified"}
-
-
-def investigator(answered_by: Optional[str]) -> str:
-    return "TC FlyBy" if str(answered_by or "").startswith("teddy") else "Magnum DI"
 
 
 def _blocks(markdown: str) -> list[tuple[Optional[str], list[str]]]:
@@ -402,7 +396,7 @@ class Facts:
 
 def build(response: HigginsResponse, *, answered_by: Optional[str], routing: dict, sources: list[dict],
           gates: tuple[str, ...] | list[str] = ()) -> Facts:
-    by = investigator(answered_by)
+    by = outcomes.investigator(answered_by)
     findings = [{"id": f.id, "text": strip_markdown(f.text), "basis": f.basis, "confidence": f.confidence, "sourceIds": list(f.source_ids),
                  "evidenceIds": list(f.evidence_ids)} for f in response.findings]
     meaning_paras: list[tuple[Optional[str], str]] = []

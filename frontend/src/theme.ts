@@ -4,7 +4,7 @@
 // color props. Never write color literals in .tsx files.
 
 import { useMemo } from "react";
-import { Appearance, StyleSheet, useColorScheme } from "react-native";
+import { Appearance, StyleSheet, useColorScheme, useWindowDimensions } from "react-native";
 
 export type ColorScheme = "light" | "dark";
 
@@ -169,11 +169,51 @@ export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
   return { scheme, colors: themes[scheme] ?? themes.light };
 }
 
+// ── Phone sizing ──
+// Screens are drawn for a 390-wide phone. A narrower phone (a foldable's cover screen, a small Android, a phone set to
+// a bigger display zoom) gets proportionally smaller text and spacing, so nothing is oversized, cut off or pushed off the
+// side; wider screens keep the design size. The phone's own text-size setting is honoured up to MAX_FONT_SCALE.
+const DESIGN_WIDTH = 390;
+const MIN_SCALE = 0.8;
+const MAX_FONT_SCALE = 1.15;
+const TEXT_KEYS = new Set(["fontSize", "lineHeight", "letterSpacing"]);
+const SPACE_KEYS = new Set([
+  "padding", "paddingHorizontal", "paddingVertical", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight", "paddingStart", "paddingEnd",
+  "margin", "marginHorizontal", "marginVertical", "marginTop", "marginBottom", "marginLeft", "marginRight", "marginStart", "marginEnd",
+  "gap", "rowGap", "columnGap",
+]);
+
+const round = (value: number, step: number) => Math.round(value / step) * step;
+
+/** How much this screen shrinks spacing (`space`) and text (`text`, which also offsets an oversized system text setting). */
+export function useSizing(): { space: number; text: number } {
+  const { width, fontScale } = useWindowDimensions();
+  const system = fontScale || 1;
+  const space = round(Math.min(1, Math.max(MIN_SCALE, width / DESIGN_WIDTH)), 0.01);
+  return { space, text: round((space * Math.min(system, MAX_FONT_SCALE)) / system, 0.01) };
+}
+
+function fit<T extends Record<string, any>>(styles: T, space: number, text: number): T {
+  if (space === 1 && text === 1) return styles;
+  const out: Record<string, any> = {};
+  for (const [name, style] of Object.entries(styles)) {
+    const next: Record<string, any> = { ...style };
+    for (const [key, value] of Object.entries(style ?? {})) {
+      if (typeof value !== "number") continue;
+      if (TEXT_KEYS.has(key)) next[key] = key === "letterSpacing" ? value * text : round(value * text, 0.5);
+      else if (SPACE_KEYS.has(key)) next[key] = Math.round(value * space);
+    }
+    out[name] = next;
+  }
+  return out as T;
+}
+
 export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
   factory: (colors: ThemeColors) => T & StyleSheet.NamedStyles<any>,
 ): () => T {
   return function useStyles(): T {
     const { colors } = useTheme();
-    return useMemo(() => StyleSheet.create(factory(colors)), [colors]);
+    const { space, text } = useSizing();
+    return useMemo(() => StyleSheet.create(fit(factory(colors), space, text)), [colors, space, text]);
   };
 }

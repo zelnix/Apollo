@@ -10,10 +10,15 @@ import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Copy from "lucide-react-native/icons/copy";
 import React, { useEffect, useState } from "react";
-import { Pressable, Share, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, Share, Text, View } from "react-native";
 
 import { apiGet } from "@/src/api/client";
+import { SettledByBadge } from "@/src/components/SettledByBadge";
+import { SettledReasonLine } from "@/src/components/SettledReasonLine";
+import { TriageSummary } from "@/src/components/TriageSummary";
 import { Card } from "@/src/components/ui";
+import type { PatrolEvent } from "@/src/domain/types";
+import type { SettledReason } from "@/src/investigation/types";
 import { formatBytes, provenanceLabel, type DiTrace, type DiTransaction } from "@/src/domain/diTransaction";
 import { diRequestText, diResponseText, toolList } from "@/src/domain/diTransactionText";
 import { buildDecisionTrace, TRACE_ORDER, type TraceStatus, type TraceStep } from "@/src/domain/diTrace";
@@ -146,8 +151,8 @@ function DiSection({ title, subtitle, testID, children }: { title: string; subti
 type DiState = { loading: boolean; error: string | null; records: DiTransaction[]; trace: DiTrace | null };
 
 /** The Magnum DI record(s) and decision path for one case, exactly as the server holds them — nothing
- *  filtered out. `refreshKey` re-reads the record when the case moves on (e.g. a new answer arrives). */
-export function useDiTransactions(caseId: string | null, refreshKey?: unknown): DiState {
+ *  filtered out. */
+export function useDiTransactions(caseId: string | null): DiState {
   const [state, setState] = useState<DiState>({ loading: !!caseId, error: null, records: [], trace: null });
 
   useEffect(() => {
@@ -159,23 +164,9 @@ export function useDiTransactions(caseId: string | null, refreshKey?: unknown): 
         if (alive) setState({ loading: false, error: error instanceof Error ? error.message : "The DI record could not be read.", records: [], trace: null });
       });
     return () => { alive = false; };
-  }, [caseId, refreshKey]);
+  }, [caseId]);
 
   return state;
-}
-
-/** Shown above an investigation's answer whenever the preview simulator produced it — in EVERY build,
- *  production included. A simulated verdict must never pass for a Magnum DI investigation. */
-export function SimulatedAnswerNotice({ caseId, refreshKey, style }: { caseId: string | null; refreshKey?: unknown; style?: StyleProp<ViewStyle> }) {
-  const s = useStyles();
-  const { records, trace } = useDiTransactions(caseId, refreshKey);
-  if (!records.some((record) => record.simulated) && !trace?.flyby?.simulated && !trace?.magnum?.simulated) return null;
-  return (
-    <View style={[s.diNotice, style]} testID="simulated-answer-notice" accessibilityRole="alert">
-      <Text style={s.diNoticeText}>SIMULATED</Text>
-      <Text style={s.sourceSub}>The preview stood in for the outside service Magnum DI calls. Everything else ran exactly as in production.</Text>
-    </View>
-  );
 }
 
 // ── Decision path ───────────────────────────────────────────────────────────
@@ -193,12 +184,13 @@ function useStatusColors(): Record<TraceStatus, { dot: string; bg: string; fg: s
   };
 }
 
-function DecisionTrace({ steps }: { steps: TraceStep[] }) {
+function DecisionTrace({ steps, settled }: { steps: TraceStep[]; settled: React.ReactNode }) {
   const s = useStyles();
   const tones = useStatusColors();
   return (
     <Card testID="tc-di-trace">
       <Text style={s.sectionTitle}>Decision path</Text>
+      {settled}
       <Text style={[s.provenanceNote, { marginBottom: spacing.md }]}>{TRACE_ORDER}</Text>
       {steps.map((step, i) => {
         const tone = tones[step.status];
@@ -417,7 +409,16 @@ function ResponseBody({ records, trace, hasCase }: { records: DiTransaction[]; t
 
 // ── The DI tab ──────────────────────────────────────────────────────────────
 
-export function DiReport({ caseId, triage }: { caseId: string | null; triage?: TriageInvestigationRecord | null }) {
+export function DiReport({ caseId, triage, settledReason, settledEvent, how }: {
+  caseId: string | null;
+  /** "How Apollo checked", in Higgins' plain words: the method behind the Findings Brief, kept here and not there. */
+  how?: string[];
+  triage?: TriageInvestigationRecord | null;
+  /** The rule that settled the result, as this phone recorded it ("Settled by TC FlyBy — …"). */
+  settledReason?: SettledReason | null;
+  /** For results saved before the settling rule was recorded: who settled it, from the threat's record. */
+  settledEvent?: Pick<PatrolEvent, "investigation_completed_at" | "investigation_answered_by"> | null;
+}) {
   const s = useStyles();
   const state = useDiTransactions(caseId);
 
@@ -449,25 +450,31 @@ export function DiReport({ caseId, triage }: { caseId: string | null; triage?: T
   const rulesCount = triageRecord ? `${triageRecord.rules.filter((r) => r.applicable).length} rules · ${triageRecord.outcome}` : "No Triage record";
   const flybyNote = state.trace?.flyby ? ` · TC FlyBy ${state.trace.flyby.checks.length} check(s)` : "";
   const sentNote = state.records.length ? `${state.records.length} request(s) · ${state.records[0].mode}` : "Magnum DI was not engaged";
+  // Who settled the result and by which rule: the phone's record, else the server's decision record.
+  const reason = settledReason ?? state.trace?.settledReason ?? null;
+  const settled = reason ? <SettledReasonLine reason={reason} testID="tc-di-settled-reason" />
+    : settledEvent ? <SettledByBadge event={settledEvent} testID="tc-di-settled" /> : null;
 
   return (
     <View style={s.content} testID="tc-di-content">
-      {/* Every record is shown in every build. A simulated one is labelled, never hidden: hiding it is
-          how production once ran on the simulator without anyone seeing it. */}
-      {state.records.map((record, index) => record.simulated ? (
-        <View key={index} style={s.diNotice} testID={`tc-di-simulator-warning-${index}`}>
-          <Text style={s.diNoticeText}>
-            SIMULATED — the preview stood in for the outside service Magnum DI calls. The workflow, the request and the processing below ran
-            exactly as in production.
-          </Text>
-        </View>
-      ) : record.notice ? (
+      {/* Every record is shown in every build; a simulated one says so in its own Mode row below. */}
+      {state.records.map((record, index) => record.notice && !record.simulated ? (
         <View key={index} style={s.diNotice} testID={`tc-di-notice-${index}`}>
           <Text style={s.diNoticeText}>{record.notice}</Text>
         </View>
       ) : null)}
 
-      <DecisionTrace steps={steps} />
+      <DecisionTrace steps={steps} settled={settled} />
+
+      {how?.length ? (
+        <Card testID="tc-di-how">
+          <Text style={s.sectionTitle}>How Apollo checked</Text>
+          {how.map((line, i) => <Text key={`${i}-${line}`} style={s.sourceSub} testID={`tc-di-how-${i}`}>{line}</Text>)}
+        </Card>
+      ) : null}
+
+      {/* How Apollo's own checks ran: what was checked, what couldn't be, and what that means. */}
+      {triageRecord ? <TriageSummary record={triageRecord} /> : null}
 
       <DiSection testID="tc-di-rules" title="Apollo deterministic rules" subtitle={`${rulesCount}${flybyNote}`}>
         <RulesBody triage={triageRecord} trace={state.trace} />

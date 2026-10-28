@@ -6,12 +6,23 @@
 import type { ApolloState } from "./types";
 import { OFFICIAL_DOMAINS, registrableDomain as brandRegistrableDomain } from "./brand.ts";
 
-export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15" | "M16";
+export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15" | "M16" | "M17" | "M18";
 
 export interface MessageSignals {
   urls: string[];
+  /** Who the message says it is from, as the message writes it ("UNIﬁed Energy"), or a known brand's name. */
   claimedBrand: string | null;
-  brandKind: "bank" | "courier" | "government" | "toll" | "telco" | "tech" | "marketplace" | null;
+  brandKind: "bank" | "courier" | "government" | "toll" | "telco" | "tech" | "marketplace" | "energy" | null;
+  /** Characters that look like ordinary letters but aren't (ﬁ, full-width or another alphabet's letters, invisible joiners). */
+  lookalikeChars: string[];
+  /** The name of the organisation the message claims to be is written with one of those characters. */
+  lookalikeName: boolean;
+  /** The message's own words asking for a reply ("Reply YES"); a "reply STOP" opt-out is never one. */
+  replyRequest: string | null;
+  /** The message's own words putting a deadline on an offer ("before rebates drop next week"). */
+  timePressure: string | null;
+  /** The message's own words claiming a government rebate or subsidy ("Government STCs"). */
+  governmentRebate: string | null;
   requestedAction: string | null;
   paymentRequest: boolean;
   smallPayment: boolean;
@@ -81,14 +92,97 @@ const CHARGE_STRONG = /\bunauthori[sz]ed charge\b|\bunrecogni[sz]ed (?:charge|tr
 const CHARGE_CLAIM = /\b(?:been|was|were|being) (?:charged|debited|billed)\b|\b(?:charge|payment|transaction|purchase|debit|withdrawal|order) of (?:aud\s?)?\$\s?\d/;
 const CHARGE_DISPUTE = /\bif (?:you|this) (?:did ?n[o']?t|was ?n[o']?t)\b|\bnot you\b|\bdid ?n[o']?t (?:make|authori[sz]e|recogni[sz]e)\b|\bto (?:cancel|dispute|stop|reverse) (?:this|the) (?:charge|payment|transaction|order|purchase)\b/;
 
+// Mirror of backend services/triage_engine.py (_DISGUISE, _INVISIBLE, _OTHER_SCRIPT, organisation_named, …).
+// Look-alike characters: typographic ligatures (ﬁ ﬂ ﬀ), full-width and mathematical letters/digits, letters from the
+// Greek or Cyrillic alphabet inside a word written in English letters, and invisible joiners inside a word.
+const DISGUISE = /[\uFB00-\uFB06\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u{1D400}-\u{1D7FF}]/u;
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF]/u;
+const OTHER_SCRIPT = /[\u0370-\u03FF\u0400-\u04FF]/u;
+const LATIN = /[A-Za-z]/;
+
+/** Each word that contains a look-alike character, with those characters. */
+export function disguisedWords(text: string): { word: string; chars: string[] }[] {
+  const out: { word: string; chars: string[] }[] = [];
+  for (const word of text.split(/[\s.,;:!?()"“”‘’']+/u)) {
+    if (!word) continue;
+    const latin = LATIN.test(word);
+    const chars = Array.from(new Set(Array.from(word).filter((ch) => DISGUISE.test(ch) || (latin && (INVISIBLE.test(ch) || OTHER_SCRIPT.test(ch))))));
+    if (chars.length) out.push({ word, chars });
+  }
+  return out;
+}
+
+// Words that make a name an organisation's rather than a person's.
+const ORG_WORD = /\b(?:energy|solar|power|electric(?:al|ity)?|gas|bank|banking|group|australian?|pty|ltd|limited|services?|insurance|telco|telecom|mobile|finance|financial|super|health|support|team|company|corp(?:oration)?|inc|homes?|realty|motors|logistics|express|post|retail|solutions|renewables?|batter(?:y|ies)|installations?|installers?|utilities|water)\b/i;
+const NAME_END = /[.,;:!?)]+$/;
+/** The run of capitalised words at the start of `rest` (at most four), stopping at punctuation. */
+function capitalisedRun(rest: string): { name: string; next: string | null } {
+  const tokens = rest.trim().split(/\s+/);
+  const name: string[] = [];
+  for (const token of tokens) {
+    const word = token.replace(NAME_END, "");
+    if (!word || !/^\p{Lu}/u.test(word) || name.length === 4) return { name: name.join(" "), next: word.toLowerCase() || null };
+    name.push(word);
+    if (word !== token) return { name: name.join(" "), next: null };
+  }
+  return { name: name.join(" "), next: null };
+}
+/** The organisation a message introduces itself as: "It's UNIﬁed Energy here", "This is Sam from Bright Solar",
+ *  "calling from AGL Energy". Only a name with an organisation word counts — never a person's name. */
+export function organisationNamed(text: string): string | null {
+  const isOrg = (name: string) => !!name && ORG_WORD.test(name.normalize("NFKC"));
+  for (const m of text.matchAll(/\b(?:it'?s|it’s|this is|we are|we'?re|we’re)\s+/giu)) {
+    const rest = text.slice((m.index ?? 0) + m[0].length);
+    const run = capitalisedRun(rest);
+    if (run.next && /^(?:here|calling|team|again|with)$/.test(run.next) && isOrg(run.name)) return run.name;
+    const from = rest.match(/^\S+\s+from\s+/i);
+    if (from) { const org = capitalisedRun(rest.slice(from[0].length)).name; if (isOrg(org)) return org; }
+  }
+  for (const m of text.matchAll(/\bcalling (?:you )?from\s+/giu)) {
+    const org = capitalisedRun(text.slice((m.index ?? 0) + m[0].length)).name;
+    if (isOrg(org)) return org;
+  }
+  return null;
+}
+
+// A request to reply (never a "reply STOP" opt-out), a deadline on an offer, and a claimed government rebate.
+const REPLY_RE = /\breply\s+(?:with\s+)?["“']?(?:yes|y|ok(?:ay)?|confirm|interested|[1-9])\b["”']?|\breply (?:to (?:confirm|book|claim|secure))\b|\btext (?:back|us back|yes)\b|\brespond (?:with )?yes\b/i;
+const OFFER = String.raw`(?:rebates?|prices?|offers?|discounts?|savings?|subsid(?:y|ies)|incentives?|stcs?|deals?|spots?|places?)`;
+const PRESSURE_RE = new RegExp([
+  String.raw`\bbefore (?:the )?(?:\w+\s+){0,2}${OFFER}\s+(?:drops?|dropping|ends?|expires?|changes?|go(?:es)?|closes?|runs? out|disappears?|reduces?|falls?)\b(?:\s+(?:next|this) (?:week|month|year))?`,
+  String.raw`\b${OFFER}\s+(?:are|is)\s+(?:dropping|ending|expiring|closing|running out|going up|changing|reducing|disappearing)\b`,
+  String.raw`\bbefore (?:the )?(?:year[- ]end|end of (?:the )?(?:year|month|week|financial year)|eofy)\b`,
+  String.raw`\b(?:limited time|limited (?:spots|places)|while (?:stocks?|spots?|places?) last|ends? soon|only \d+ (?:spots|places) left)\b`,
+].join("|"), "i");
+const REBATE_RE = /\b(?:government|govt|federal|state)(?:[- ](?:funded|backed))?\s+(?:[\w-]+\s+){0,3}?(?:rebates?|grants?|subsid(?:y|ies)|incentives?|stcs?|schemes?|programs?|programmes?|bonus(?:es)?)\b|\bsmall[- ]scale technology certificates?\b|\b(?:solar|battery|batteries|energy|electricity|heat pump|hot water)\s+(?:[\w-]+\s+){0,2}?(?:rebates?|subsid(?:y|ies)|grants?|incentives?)\b|\bcheaper home batteries\b/i;
+const STC_RE = /\bstcs?\b(?:\s+(?:savings?|rebates?|discounts?))?/i;
+const ENERGY_CONTEXT = /\brebates?\b|\bsolar\b|\bbatter(?:y|ies)\b|\bsavings?\b|\binstall(?:ation)?\b/i;
+
+/** The message's own words for a government rebate claim: an explicit one, or STCs offered as savings or rebates. */
+function rebateClaim(text: string): string | null {
+  const explicit = text.match(REBATE_RE)?.[0];
+  if (explicit) return explicit.trim();
+  return ENERGY_CONTEXT.test(text) ? text.match(STC_RE)?.[0]?.trim() ?? null : null;
+}
+
 export function extractSignals(sender: string, text: string): MessageSignals {
   const t = text.toLowerCase();
   const urls = Array.from(new Set((text.match(URL_RE) ?? []).map((u) => u.replace(/[.,;:!?]+$/, "")).filter((u) => /\.[a-z]{2,}(\/|$)/i.test(u) && !/^\d+(\.\d+)+$/.test(u))));
-  const brand = BRANDS.find((b) => b.re.test(text));
+  // Brand names are matched with look-alike characters read as the letters they imitate ("CommBaｎk" is CommBank);
+  // the name itself is kept exactly as the message wrote it.
+  const plain = text.normalize("NFKC");
+  const introduced = organisationNamed(text);
+  const known = BRANDS.find((b) => b.re.test(introduced ? introduced.normalize("NFKC") : plain));
+  const brand = introduced && !known ? { name: introduced, kind: (/\b(?:energy|solar|power|electric(?:al|ity)?|gas|renewables?|batter(?:y|ies))\b/i.test(introduced.normalize("NFKC")) ? "energy" : null) as MessageSignals["brandKind"] } : known;
+  const disguised = disguisedWords(text);
+  const lookalikeName = !!brand && disguised.some(({ word }) => (introduced ? introduced.includes(word) : !!known?.re.test(word.normalize("NFKC"))));
+  const replyRequest = text.match(REPLY_RE)?.[0]?.trim() ?? null;
+  const timePressure = text.match(PRESSURE_RE)?.[0]?.trim() ?? null;
+  const governmentRebate = rebateClaim(text);
   const paymentRequest = has(t, /\bpay(ment)?\b|\bfee\b|\bowe|\boverdue\b|\binvoice\b|\bbill\b|\btransfer\b|\bdeposit\b/);
   const smallPayment = has(t, /\$\s?[0-9]{1,2}(\.\d{2})?\b(?!\d)/) && !has(t, /\$\s?[0-9]{3,}/);
   const codeRequest = has(t, /\b(six|6|four|4)[- ]?digit\b|\bverification code\b|\bsecurity code\b|\bone[- ]time (code|password)\b|\botp\b|\bcode (that|we|i) (just )?sent\b|\bsend (me )?the code\b|\bread (me|out) the code\b/);
-  const urgency = has(t, /\bimmediately\b|\burgent(ly)?\b|\bright now\b|\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\btoday\b|\bexpires?\b|\bfinal notice\b|\blast chance\b|\bact now\b|\bnow\b/);
+  const urgency = !!timePressure || has(t, /\bimmediately\b|\burgent(ly)?\b|\bright now\b|\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\btoday\b|\bexpires?\b|\bfinal notice\b|\blast chance\b|\bact now\b|\bnow\b/);
   const threat = has(t, /\brestrict(ed)?\b|\bsuspend(ed)?\b|\blocked\b|\bpenalt(y|ies)\b|\bfine\b|\blegal action\b|\barrest\b|\bwarrant\b|\bcancel(led)?\b|\bdebt\b/);
   const giftCards = has(t, /\bgift ?cards?\b|\bitunes\b|\bgoogle play card\b|\bsteam card\b|\bvoucher codes?\b/);
   const crypto = has(t, /\bbitcoin\b|\bbtc\b|\bcrypto\b|\busdt\b|\bethereum\b|\bwallet address\b|\bbinance\b/);
@@ -117,7 +211,9 @@ export function extractSignals(sender: string, text: string): MessageSignals {
     : advanceFee ? "pay a fee to receive money" : paymentRequest && urls.length ? "pay via a link" : loginRequest ? "log in via a link" : identityRequest ? "share identity details"
     : moneyRequest ? "send money" : crypto ? "send cryptocurrency" : urls.length ? "open a link" : null;
 
-  return { urls, claimedBrand: brand?.name ?? null, brandKind: brand?.kind ?? null, requestedAction, paymentRequest, smallPayment, codeRequest, urgency, threat, giftCards, crypto,
+  return { urls, claimedBrand: brand?.name ?? null, brandKind: brand?.kind ?? null,
+    lookalikeChars: Array.from(new Set(disguised.flatMap((d) => d.chars))), lookalikeName, replyRequest, timePressure, governmentRebate,
+    requestedAction: requestedAction ?? (replyRequest ? "reply to the message" : null), paymentRequest, smallPayment, codeRequest, urgency, threat, giftCards, crypto,
     remoteAccess, newNumber, familyClaim, moneyRequest, platformSwitch, guaranteedReturns, jobOffer, advanceFee, fakePayment, extortion, romanceEscalation, identityRequest, loginRequest,
     callbackNumber, callbackRequest, allegedCharge, deadlineThreat, namedEntities, unknownSender };
 }
@@ -130,6 +226,7 @@ const VERIFY: Record<NonNullable<MessageSignals["brandKind"]> | "family" | "pers
   telco: "Open your provider's official app or call the number on your bill.",
   tech: "Open the company's official app or website yourself and check for any notices there.",
   marketplace: "Check payment inside the marketplace app or your own bank app. Never follow a courier or payment link a buyer sends you.",
+  energy: "Contact your energy retailer using the number on your bill or its official website. For rebates, check the Clean Energy Regulator or your state government's website yourself.",
   family: "Call the family member on the number you already have saved. If they don't answer, try another family member before sending anything.",
   person: "Contact the person through a channel you already trust and have used before — not the one in this message.",
   none: "If a message claims to be from someone, contact them using details you already have or find yourself — never from the message.",
@@ -211,6 +308,27 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
       why: [`It claims to be ${brand}.`, s.threat || s.urgency ? "It uses fear and urgency about your account or money." : "It asks you to act on your account.", urlWhy],
       rec: "Don't enter your password or verification code. Open your bank's app yourself to check.", verify: VERIFY.bank };
   }
+  // A disguised organisation name, and a government-rebate deadline pushing for a reply: the message's own words are quoted.
+  const pressureWhy = [
+    s.governmentRebate ? `It claims a government rebate (“${s.governmentRebate}”).` : "",
+    s.timePressure ? `It puts a deadline on it to hurry you (“${s.timePressure}”).` : "",
+    s.replyRequest ? `It asks you to reply (“${s.replyRequest}”) so someone can contact you.` : s.callbackRequest ? "It asks you to call a number it supplies." : "",
+  ].filter(Boolean);
+  const pressureRec = "Don't reply. If you want solar or battery advice, find an installer yourself and check rebates on the Clean Energy Regulator's or your state government's website.";
+  if (s.lookalikeName) {
+    const chars = s.lookalikeChars.map((c) => `“${c}”`).join(" and ");
+    return { scenario: "M17", title: "Disguised business name", state: "growling",
+      verdict: `This message writes the name ${brand} with a look-alike character, so Apollo can't take it at face value.`,
+      why: [`It writes “${brand}” with ${chars} in place of ordinary letters.`,
+        "Look-alike characters are a common way to get scam texts past message filters. A real business has no reason to use them.",
+        ...pressureWhy],
+      rec: pressureWhy.length ? pressureRec : `Don't reply or act on it. Contact ${brand} only through details you find yourself.`,
+      verify: VERIFY[s.brandKind ?? "none"] };
+  }
+  if (s.governmentRebate && s.timePressure && (s.replyRequest || s.callbackRequest)) return { scenario: "M18", title: "Rebate deadline pressure", state: "growling",
+    verdict: "This message uses a government-rebate deadline to rush you into replying.",
+    why: [...pressureWhy, s.claimedBrand ? `It says it's from ${brand}, but Apollo can't confirm who sent it.` : "It doesn't say clearly who it's from."],
+    rec: pressureRec, verify: VERIFY[s.brandKind === "government" ? "government" : s.brandKind ?? "energy"] };
   if (s.extortion) return { scenario: "M14", title: "Threat / extortion", state: s.crypto || s.paymentRequest ? "barking" : "growling", verdict: "This is an extortion attempt. A claim is not evidence.",
     why: ["It claims to have hacked or recorded you.", s.crypto ? "It demands payment in cryptocurrency." : "It demands payment to stay quiet.", "These are sent in bulk; the claim is almost always false."],
     rec: "Don't pay and don't reply. Apollo sees no evidence your device is compromised from this message alone — change reused passwords if you're worried.", verify: VERIFY.none };
@@ -283,7 +401,11 @@ export function analyseMessage(sender: string, text: string): MessageAnalysis {
   const labels: string[] = [];
   if (signals.claimedBrand) labels.push(`Claims to be ${signals.claimedBrand}`);
   if (signals.urls.length) labels.push(`${signals.urls.length} link${signals.urls.length > 1 ? "s" : ""}`);
-  if (signals.urgency) labels.push("Urgency");
+  if (signals.urgency && !signals.timePressure) labels.push("Urgency");
+  if (signals.timePressure) labels.push("Deadline pressure");
+  if (signals.lookalikeChars.length) labels.push(signals.lookalikeName ? "Disguised business name" : "Look-alike characters");
+  if (signals.replyRequest) labels.push("Asks for a reply");
+  if (signals.governmentRebate) labels.push("Government rebate claim");
   if (signals.threat) labels.push("Threat / penalty");
   if (signals.paymentRequest) labels.push("Payment request");
   if (signals.codeRequest) labels.push("Code request");

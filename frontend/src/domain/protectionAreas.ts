@@ -67,7 +67,7 @@ export function areaOfGate(gateId: GateId): ProtectionAreaId {
 }
 
 /** Friendly capability labels per gate, used inside the area detail. */
-const CAPABILITY_LABELS: Record<GateId, string> = {
+export const CAPABILITY_LABELS: Record<GateId, string> = {
   site: "Website filtering",
   link: "Link checking",
   text: "Message screening",

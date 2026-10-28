@@ -47,6 +47,8 @@ export interface DeviceInvestigation {
   simulated?: boolean;
   /** When the server's copy of what was sent was removed, or the latest time it will be. Absent on older results. */
   serverCopy?: ServerCopy;
+  /** Who started it, as the case recorded: the person ("user") or Apollo ("apollo"). Absent when not recorded. */
+  origin?: import("./types").CaseOrigin | null;
 }
 
 export interface DeviceInvestigationMeta {

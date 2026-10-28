@@ -29,7 +29,7 @@ Every check starts at a gate. Each gate below lists every one of its rules, word
 **Process**
 1. **First look on the phone.** Fixed rules give the check one of six states: Checking, Patrolling, Sniffing, Growling, Barking or Biting.
 2. **Specialist lookups, gathered once.** These are Google Safe Browsing, Apollo's blocklist and the free threat lists (see ApolloSG's knowledge base), the domain registration record (RDAP), redirect expansion, IPQualityScore (links and phone numbers), direct-download detection, official scam advisories and breach data. TC FlyBy and Magnum DI reuse these results; they never repeat them.
-3. **Gate rules.** A fixed catalogue of 153 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule has one class (see Rule classes) and is listed under its gate below, grouped by class.
+3. **Gate rules.** A fixed catalogue of 155 rules covers links/QR, messages, calls, email/accounts, files, apps, device, network and correlated sequences. Each source type is checked only against its own rule groups. Every rule has one class (see Rule classes) and is listed under its gate below, grouped by class.
 4. **Retries.** A temporary failure gets up to 3 attempts. This covers a provider not answering, a network failure, content that couldn't be opened, or a check error. Permanent limits are never retried. On the phone, link and number reputation lookups follow the same policy within a time budget, and identical lookups already running are shared, never sent twice. An authorisation failure or rejected input is not retried. If every attempt fails, the lookup is recorded as unavailable, with how it failed. It is never counted as a pass, and the attempts appear in the DI.
 5. **Rules that can't run here.** A rule that needs something this context can never provide is **not applicable**, not a coverage gap. The DI still lists it, with the reason. Example: BITM-01 to BITM-04 need the page's live content and WebSocket traffic as a browser sees them, which ApolloSG can't observe from an app. A coverage gap means a check that should have run, but didn't.
 6. **Limited by cause.** Every Triage outcome reports its cause codes (no content): reputation timeout, authorisation failure, lookup allowance used up, provider unavailable, genuine insufficient evidence, a moderate number-risk result, a rule execution error, and so on. Every number check reports its outcome, whether the number was allowed, risky or unknown. The admin Triage page counts them for real phones separately from previews and test devices, with the checks that didn't complete listed for every outcome.
@@ -151,12 +151,14 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - Every message goes through the same checks as a pasted one: the Text Gate rules below, plus the Link Gate check for each link (MSG-12 is the ROUTE rule that hands each link over).
 - **Numbers in a message** get a reputation lookup. A lookup that fails is recorded as a check that didn't complete. On its own it never makes an ordinary message Limited: only a callback lure (a supplied number with a claimed charge or a claimed organisation) depends on that number's reputation.
 - **Callback scams:** a supplied number (including 1800, 1300 and 13 numbers written without a leading 0) with call or contact wording, together with an unexpected charge or payment, meets CB-01. An unexpected charge is an explicit "unauthorised charge", "unrecognised transaction" or "suspicious transaction", or a claim that the person was charged, debited or billed (or a payment of a dollar amount) with dispute wording ("if this wasn't you") or urgency.
+- **Look-alike characters:** characters that look like ordinary letters but aren't — typographic ligatures such as "ﬁ", full-width or mathematical letters, Greek or Cyrillic letters inside an English word, and invisible joiners inside a word. When the name of the organisation the message introduces itself as ("It's UNIﬁed Energy here", "This is Sam from …", "calling from …"; only a name with an organisation word, never a person's name) or a known brand's name is written with one, MSG-23 is met on its own. Brand names are matched with look-alike characters read as the letters they imitate; the name is always kept exactly as the message wrote it.
+- **Rebate pressure:** a claimed government rebate or subsidy (for example "Government STCs", "battery rebates", or STCs offered as savings), with a deadline on the offer ("before rebates drop next week", "rebates are dropping", "before year-end") and a request to reply ("Reply YES"; a "reply STOP" opt-out is never one) or call a supplied number, meets MSG-24. A deadline on an offer also counts as urgency.
 - **Never a threat on their own:** an unknown sender, urgency, an ordinary payment discussion, PayID/Osko use, a brand mention, and a job, investment or romance discussion without scam mechanics.
 - **Message evidence levels** (Higgins Triage, on the phone): Pasted text and Screenshot (who sent it and when couldn't be verified) · Shared from an app · Read from your messages (the number or name it arrived from and when, as the phone stored them) · Captured from the notification. Who really sent a message is never verified — messaging apps don't share it — unless a provider shared its own rating, which is recorded as that provider's rating. Links and numbers are recorded as checked, partly checked ("1 of 2 links couldn't be checked") or not checked; pictures or files sent with a message never reach ApolloSG. Signals (not proof): moving to another app or number, a "new number", a callback number, links or numbers that couldn't be checked. A re-check from the case keeps the case's level and history.
 
-**Text Gate rules (30)**
+**Text Gate rules (32)**
 
-**DETECT** (29)
+**DETECT** (31)
 - **MSG-01** · OTP, MFA or security code requested
 - **MSG-02** · Password, PIN or login credential requested
 - **MSG-03** · Banking or card credentials requested
@@ -186,6 +188,8 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - **CB-01** · Claimed charge or account problem with a supplied callback number inconsistent with the claimed organisation
 - **CB-02** · Urgent cancellation, refund or security lure with a suspicious callback number
 - **CB-03** · Callback number has no known threat listing but strong impersonation evidence remains
+- **MSG-23** · Name of the organisation the message claims to be is written with look-alike characters
+- **MSG-24** · Government rebate or subsidy claim with deadline pressure and a request to reply or call
 
 **ROUTE** (1)
 - **MSG-12** · Malicious or deceptive link in the message
@@ -517,6 +521,8 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 
 **Job:** a fast, low-cost investigation that takes the cheapest reliable route. It runs once per case; Magnum DI's permitted retry reuses its record and repeats no lookups.
 
+**What Higgins Triage flagged is never dismissed.** Before its own stages, TC FlyBy runs Higgins Triage's message rules (the same catalogue the phone runs) over the material, except for a call. Each threat-producing rule met is a **warning sign** about this case, recorded in the message's own words (for example, an organisation name written with a look-alike character: MSG-23). TC FlyBy's own checks can add to it, never dismiss it: a case Triage flagged can't end as "No scam indicators found". When TC FlyBy finds nothing more, it settles the case as **Concerning** ("be careful and check it first"); Magnum DI isn't called, because it couldn't change what to do.
+
 **Weak signals, warning signs and verified checks**
 - **Weak signals:** a redirect to another site, a newly registered domain, a direct download, a third-party reputation warning (an IPQualityScore flag on a link or a number, or a warning the search finds from a source that isn't official), the material's text found copied elsewhere online, and ApolloSG's observed patterns (seen in concerning material on 3 or more other devices, or seen together with a listed website). Alone or together they never make a case Concerning. They are recorded as signals, and they count only as the independent corroboration that an impersonation or another warning sign needs.
 - **Warning signs:** a real lookalike sign, the organisation's name in front of a shared link service, a register entry that doesn't match the name in the material, an ABN or ACN that fails its check-digit test, a risky claim cited to Scamwatch, and a number presented as a listed organisation's that isn't one of its published numbers (needs corroboration). Those marked as needing corroboration count only once something corroborates them.
@@ -583,7 +589,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 2. **Likely scam:** a full pattern match that nothing contradicts. A contradiction is an impersonation pattern where every link and address is the organisation's own.
 3. **Concerning:** corroborated impersonation. An organisation is named, a link isn't one of its own domains, and an independent fact about that same link backs it up (a weak signal: a new domain, a third-party flag, a redirect to another site, or a download).
 4. **Concerning:** the opening of the family pattern, with no ask yet.
-5. **Concerning:** an established warning sign. Weak signals never count here, alone or together. A name mentioned beside another organisation's address counts only once something corroborates it.
+5. **Concerning:** an established warning sign, including any rule Higgins Triage met. Weak signals never count here, alone or together. A name mentioned beside another organisation's address counts only once something corroborates it.
 6. **No scam indicators found:** only when everything was checked. There are no gaps and no failed lookups, and every link is either verified as official, or has no known threat listing *and* an established registration.
 7. Otherwise: **Unable to determine**, with any weak signals listed.
 

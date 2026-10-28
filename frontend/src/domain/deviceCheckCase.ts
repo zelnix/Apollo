@@ -67,6 +67,7 @@ export function deviceCheckEvent(args: {
     resolved_at: null,
     trust_allowed: false,
     background: false,
+    origin: "user",
     evidence_provenance: "local_device",
     source_metadata: { type: "device", subject: `Device check — ${platformLabel}`, preview: briefing.headline },
   } as PatrolEvent;

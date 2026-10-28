@@ -77,7 +77,7 @@ const useStyles = makeStyles((c) => ({
   pillTextCompact: { fontSize: 8, letterSpacing: 0.1 },
   dotCompact: { width: 5, height: 5, borderRadius: 2.5 },
   btn: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
-  btnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
+  btnText: { fontFamily: fonts.textSemibold, fontSize: 15, flexShrink: 1, textAlign: "center" },
   section: { fontFamily: fonts.displayBold, fontSize: 13, color: c.brand, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: spacing.md },
   sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   sectionDivider: { width: 16, height: 3, borderRadius: 2, backgroundColor: c.gold },

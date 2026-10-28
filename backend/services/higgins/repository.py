@@ -163,7 +163,13 @@ async def assert_live(owner: str, case_id: str, epoch: Optional[str] = None) -> 
 
 
 # ------------------------------------------------------------------ cases
-async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict], client_submission_id: Optional[str] = None, initiator: str = "user_check") -> dict:
+# The initiators that say outright who started a case. "user_check" is also the default for any case opened through the
+# public API, so on its own it records nothing about who started it.
+_ORIGIN_OF_INITIATOR = {"higgins_user_request": "user", "apollo_automatic": "apollo"}
+
+
+async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict], client_submission_id: Optional[str] = None,
+                      initiator: str = "user_check", origin: Optional[str] = None) -> dict:
     now = now_utc()
     doc = {"owner_id": owner, "case_id": str(uuid.uuid4()), "revision": 0, "epoch": uuid.uuid4().hex, "work_epoch": uuid.uuid4().hex, "gates": [gate] if gate else [], "status": "queued",
            "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS),
@@ -173,7 +179,7 @@ async def create_case(owner: str, gate: Optional[str], device_profile: Optional[
            "pending_device_request_ids": [], "accepted_commits": [], "open_question_ciphertext": None,
            "cleanup_status": "not_due", "deleted": False, "attention": "none",
            "client_submission_id": client_submission_id,
-           "initiator": initiator}
+           "initiator": initiator, "origin": origin or _ORIGIN_OF_INITIATOR.get(initiator)}
     await db.investigation_cases.insert_one(dict(doc))
     return doc
 
@@ -236,7 +242,7 @@ async def case_view(doc: dict) -> InvestigationCase:
                              cleanup_status=doc.get("cleanup_status", "not_due"), answered_by=routing.get("answeredBy"),
                              settled_reason=rulebook.settled_reason(doc.get("routing")) if response else None,
                              content_delete_by=utc(doc["content_delete_by"]) if doc.get("content_delete_by") else None,
-                             simulated=simulated)
+                             simulated=simulated, origin=doc.get("origin"))
 
 
 def device_profile(doc: dict) -> Optional[dict]:

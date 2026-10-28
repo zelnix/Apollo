@@ -27,7 +27,7 @@ async def _progress(*_args):
 async def test_request_is_question_plus_complete_evidence_plus_schema():
     owner = f"req-shape-{uuid.uuid4().hex[:8]}"
     case = await repo.create_case(owner, "text", None)
-    long_text = "Invoice 4471 must be paid to BSB 063-000 today. " * 200  # > the old 2000-char cut
+    long_text = "Invoice 4471 must be paid to account 063-000-1234 today. " * 200  # > the old 2000-char cut
     await ev.ingest_text(owner, case, "item-1", long_text, kind="text", origin="user_submission", label="the message")
     # Apollo's pre-gathered specialist intelligence, stored exactly as triage produced it.
     await db.investigation_cases.update_one(

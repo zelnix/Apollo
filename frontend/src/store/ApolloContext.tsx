@@ -198,6 +198,8 @@ export interface EmailCheckInput {
   /** A preview sample standing in for `via`: processed exactly as `via`, only tagged Simulated. */
   simulated?: boolean;
   original?: { parsed: ParsedOriginal; binary: string } | null;
+  /** When the email arrived, as the mailbox recorded it (an email picked from a connected inbox). */
+  receivedAt?: string | null;
   /** Add this evidence to an existing email case and re-triage it there, keeping its history. */
   upgradeEventId?: string | null;
 }
@@ -472,7 +474,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (a.state && lastConnectionKey.current !== a.key) {
         lastConnectionKey.current = a.key;
         const ev: PatrolEvent = {
-          event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",
+          event_id: Crypto.randomUUID(), origin: "apollo", device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",
           headline: a.headline, what_happened: a.what_happened, why: a.why, what_to_do: a.what_to_do, indicator_host: null, indicator_digest: null,
           verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
         };
@@ -521,7 +523,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const existing = eventsRef.current.find(x => x.event_id === (e.eventId ?? e.evidenceId));
       if (existing) { await syncEventRef.current?.(existing); seen.add(e.evidenceId); continue; }
       const base: PatrolEvent = existing ?? {
-        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        event_id: e.eventId ?? e.evidenceId, origin: "apollo", device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
         headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : undefined, indicator_digest: null,
         verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
       };
@@ -557,7 +559,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const source = e.attribution.processName ?? e.attribution.appId;
       const mechanism = e.mechanism === "wfp_ale_authorization" ? "Windows Filtering Platform" : "the macOS Network Extension";
       const ev: PatrolEvent = {
-        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        event_id: e.eventId ?? e.evidenceId, origin: "apollo", device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
         headline: `Apollo's desktop filter stopped ${domain}`,
         what_happened: `${mechanism} reported a blocked outbound connection${source ? ` from ${source}` : ""}. This is flow-level evidence, so Apollo does not label it Biting.`,
         why: ["The operating system reported an enforced flow or connection-authorization drop.", "Apollo reserves Biting for correlated packet-drop evidence."],
@@ -572,7 +574,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     for (const e of evidence.filter(x => x.mechanism === 'call_screening' && x.requestedAction === 'block' && !seen.has(x.evidenceId))) {
       const ev: PatrolEvent = {
-        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
+        event_id: e.eventId ?? e.evidenceId, origin: 'apollo', device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
         headline: 'Call rejection requested', what_happened: 'Call Gate submitted a rejection request to Android. No separate completion receipt is available.',
         why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Gate.',
         indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false, evidence_provenance: "local_device",
@@ -607,7 +609,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       for (const obs of fresh) {
         const domain = obs.hostname;
         const ev: PatrolEvent = {
-          event_id: `dns-obs-${obs.observationId}`, device_id: deviceIdRef.current ?? "local", category: "website",
+          event_id: `dns-obs-${obs.observationId}`, origin: "apollo", device_id: deviceIdRef.current ?? "local", category: "website",
           state: "growling", status: "active",
           headline: `Apollo detected a known threat: ${domain}`,
           what_happened: `Apollo's website protection observed a DNS query for ${domain}, which matches a known threat in Apollo's active rules. The DNS answer was redirected to prevent the connection.`,
@@ -1125,7 +1127,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         : guardHeadline || (nativeFact ? `${nativeFact.provider} flagged this sender` : "");
       event = await upsertEvent({
         ...(previous ?? {}),
-        event_id: eventId, device_id: deviceId ?? "local", category: "message", state, status: "active",
+        event_id: eventId, origin: "user", device_id: deviceId ?? "local", category: "message", state, status: "active",
         headline: apolloHeadline,
         what_happened: patrolSafeSummary(analysis.state !== "resting" ? analysis.verdict : (guard.why[0] ?? analysis.verdict)),
         why,
@@ -1259,7 +1261,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString();
     const event = await upsertEvent({
       ...(previous ?? {}),
-      event_id: eventId, device_id: deviceId ?? "local", category: "email", state,
+      event_id: eventId, origin: "user", device_id: deviceId ?? "local", category: "email", state,
       status: resting ? "resolved" : "active",
       headline: `Email: ${analysis.title}`,
       what_happened: patrolSafeSummary(analysis.verdict),
@@ -1280,6 +1282,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       fields: [
         ...(captured.from.trim() ? [{ label: "From", value: captured.from }] : []),
         ...(captured.subject.trim() ? [{ label: "Subject", value: captured.subject }] : []),
+        ...((input.receivedAt ?? parsedOriginal?.technical.date) ? [{ label: "Received", value: (input.receivedAt ?? parsedOriginal?.technical.date)! }] : []),
         ...(analysis.parsed.attachments.length ? [{ label: "Attachments", value: analysis.parsed.attachments.join(", ") }] : []),
       ],
       text: captured.text,
@@ -1415,7 +1418,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const callSummary = describeCall(input, nativeFact ? `${nativeFact.provider} classified this number as "${nativeFact.classification}" (${nativeFact.provider}'s own rating, not Apollo's)` : null);
         try {
           const remote = await apiPost<{ case?: { id?: string | null } }>("/investigations", "call_investigation", {
-            gate: "call",
+            gate: "call", origin: "user",
             question: `Investigate this phone call.\n\n${callSummary}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: callSummary, label: "Call details" }],
             initial_findings: [...nativeWhy, ...analysis.why].slice(0, 12),
@@ -1428,7 +1431,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       }
       const why = [...nativeWhy, ...analysis.why];
       event = await upsertEvent({
-        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
+        event_id: Crypto.randomUUID(), origin: "user", device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
         headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: escalationNote ? [...why, escalationNote] : why, what_to_do: analysis.recommendation,
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
@@ -1512,7 +1515,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       let investigationCaseId: string | null = existingCaseId;
       if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || reported) && !investigationCaseId) try {
         const investigationResult = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
-          gate: "call",
+          gate: "call", origin: options?.deliberate ? "user" : "apollo",
           question: `Investigate caller ${result.number}. Fraud score: ${result.fraud_score ?? "unknown"}/100.${reported ? ` ${reported}` : ""}`,
           submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\n${result.voip ? "VOIP number" : ""}${result.recent_abuse ? "\nRecent abuse reported" : ""}`, label: "Risk check result" }],
           initial_findings: why,
@@ -1525,7 +1528,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
       const ev: PatrolEvent = {
         ...(existing ?? {
-          event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const, status: "active" as const,
+          event_id: Crypto.randomUUID(), origin: options?.deliberate ? "user" as const : "apollo" as const, device_id: deviceId ?? "local", category: "call" as const, status: "active" as const,
           indicator_host: null, indicator_digest: null, local_indicator: result.number, verified_block: false,
           adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, why: [],
         }),
@@ -1580,7 +1583,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           : "the reputation service could not be reached or could not resolve the number";
         try {
           const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
-            gate: "call",
+            gate: "call", origin: options?.deliberate ? "user" : "apollo",
             question: `Investigate caller ${result.number}. ApolloSG's caller-reputation source returned no data for this number (${unreachable}), so nothing about it could be established on this device.${reported ? ` ${reported}` : ""}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nReputation: no data returned (source: ${result.source})`, label: "Number with no reputation data" }],
             initial_findings: [...(reported ? [reported] : []), `ApolloSG's caller-reputation source returned no data for ${result.number} — ${unreachable}.`],
@@ -1600,7 +1603,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (!investigationCaseId) {
         try {
           const created = await apiPost<{ case?: { id?: string | null } }>("/investigations", "number_risk_investigation", {
-            gate: "call",
+            gate: "call", origin: options?.deliberate ? "user" : "apollo",
             question: `Investigate caller ${result.number}. ${reported} ApolloSG's caller-reputation source found no strong risk signal (fraud score ${result.fraud_score ?? "unknown"}/100).`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: `Number: ${result.number}\nDecision: ${result.decision}\nFraud score: ${result.fraud_score ?? "unknown"}/100\nCarrier warning reported by the person: yes`, label: "Number with a carrier warning" }],
             initial_findings: [reported],
@@ -1742,7 +1745,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString();
     const ev: PatrolEvent = {
       ...(previous ?? {}),
-      event_id: eventId, device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
+      event_id: eventId, origin: "user", device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
       state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
       headline: decision.headline,
       what_happened: patrolSafeSummary(decision.what_happened),

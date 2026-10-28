@@ -63,6 +63,7 @@ async function commitAnswered(caseId: string, caseData: InvestigationCase, quest
       patrolEventId: null, committedAt: new Date().toISOString(), answeredBy: caseData.answeredBy ?? null, settledReason: caseData.settledReason ?? null,
       ...(caseData.simulated ? { simulated: true } : {}),
       serverCopy: { removedAt: null, leavesBy: serverLeavesBy(caseData) },
+      origin: caseData.origin ?? null,
     };
     await commitInvestigation(snapshot);
     // Tell the server to purge — failures are queued for retry. A confirmed removal time goes on the result's note.
@@ -356,7 +357,7 @@ export function useInvestigation(boundOperationId?: string | null) {
             reportByteSize: 0, response: local.response, activeJobId: null,
             pendingDeviceRequestIds: [], inventory: { total: 0, examined: 0, partial: 0, unavailable: 0, purged: 0, contentExpired: 0 },
             cleanupStatus: "complete" as const, answeredBy: local.answeredBy ?? null, settledReason: local.settledReason ?? null,
-            simulated: local.simulated,
+            simulated: local.simulated, origin: local.origin ?? null,
           };
           caseRef.current = reconstructed;
           update({ caseData: reconstructed, response: local.response, sources: local.sources, turns: local.turns,

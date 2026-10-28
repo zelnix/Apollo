@@ -92,7 +92,7 @@ export default function CheckFile() {
       inspected: read.inspected, inspectionError: read.inspectionError ?? null, sha256: read.sha256 ?? null, passwordInMessage: file.passwordInMessage });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
-      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario, evidence_profile: profile });
+      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), origin: "user", device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario, evidence_profile: profile });
     }
     setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, profile });
     void markCheckDone("file");
@@ -231,7 +231,6 @@ export default function CheckFile() {
             submissionId={result.event.event_id}
             eventId={result.event.event_id}
             caseId={result.event.investigation_case_id ?? null}
-            kind="file"
             actions={fileActions}
           />
         ) : (

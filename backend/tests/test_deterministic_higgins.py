@@ -44,7 +44,7 @@ def no_gemini(monkeypatch):
     """Any Gemini call — chat's fallback, an investigation or a pipeline submission — fails the test."""
     gemini = AsyncMock(side_effect=AssertionError("Gemini must not be called"))
     monkeypatch.setattr(provider, "generate", gemini)
-    monkeypatch.setattr(chat, "submit_to_investigation_pipeline", AsyncMock(side_effect=AssertionError("no new investigation")))
+    monkeypatch.setattr(chat.pipeline_submit, "submit_to_investigation_pipeline", AsyncMock(side_effect=AssertionError("no new investigation")))
     monkeypatch.setattr(chat.memory, "add_chat_exchange", AsyncMock(return_value=now_utc() + timedelta(minutes=5)))
     monkeypatch.setattr(chat.knowledge, "search", AsyncMock(return_value=[]))
     return gemini
@@ -90,15 +90,6 @@ def test_only_finished_results_are_answered_deterministically():
     assert presenter.is_finished({**RESPONSE, "completion": "partial"})
     assert not presenter.is_finished({**RESPONSE, "completion": "waiting_user", "question": {"id": "q1"}})
     assert not presenter.is_finished(None)
-
-
-@pytest.mark.asyncio
-async def test_chat_follow_up_on_a_saved_report_with_a_new_link_makes_no_call(monkeypatch, no_gemini):
-    monkeypatch.setattr(chat, "_saved_report", AsyncMock(return_value=dict(RESPONSE)))
-    reply = await ask("Please investigate this link too https://auspost-redelivery.top/track", selected_report_id="report-1")
-    assert reply.answered_by == "apollo" and reply.answer.startswith("You've mentioned something new (a link)")
-    assert not reply.investigative_work_started
-    no_gemini.assert_not_awaited()
 
 
 def _request(owner: str = "owner-turns") -> Request:
@@ -157,11 +148,11 @@ async def test_learn_article_explanation_uses_the_articles_own_words(monkeypatch
     article = {"slug": "toll-scams", "title": "Toll scams", "summary": "How fake toll texts work.",
                "sections": [{"heading": "Spot it", "paragraphs": ["Real toll operators don't text links."], "bullets": ["Check the app"]}],
                "citations": [{"label": "Scamwatch", "url": "https://www.scamwatch.gov.au"}]}
-    monkeypatch.setattr(chat, "_learn_article", AsyncMock(return_value=article))
+    monkeypatch.setattr(chat.learning, "article_by_title", AsyncMock(return_value=article))
     reply = await ask("Please explain the learning article: Toll scams")
     assert reply.answer.startswith("From the Learn with Higgins article “Toll scams”")
     assert "Real toll operators don't text links." in reply.answer and "• Check the app" in reply.answer
-    monkeypatch.setattr(chat, "_learn_article", AsyncMock(return_value=None))
+    monkeypatch.setattr(chat.learning, "article_by_title", AsyncMock(return_value=None))
     missing = await ask("Please explain the learning article: Not a real article")
     assert "couldn't find" in missing.answer
     no_gemini.assert_not_awaited()

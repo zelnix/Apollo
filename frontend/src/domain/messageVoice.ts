@@ -158,10 +158,15 @@ export function scrubMessage(text: string | null | undefined): string {
 }
 
 // --- Investigation status history (History Everywhere) -----------------------------------------------
+/** TC FlyBy settled the result (the case's `answeredBy` is "teddy_*"): the one place this is decided on this device. */
+export function settledByFlyby(answeredBy: string | null | undefined): boolean {
+  return (answeredBy ?? "").startsWith("teddy");
+}
+
 /** Who settled an investigation result, by name (the case's `answeredBy`). Results recorded before
  *  routing existed were Magnum DI's. */
 export function investigatorName(answeredBy: string | null | undefined): "TC FlyBy" | "Magnum DI" {
-  return (answeredBy ?? "").startsWith("teddy") ? "TC FlyBy" : "Magnum DI";
+  return settledByFlyby(answeredBy) ? "TC FlyBy" : "Magnum DI";
 }
 
 /** Plain-English "what has been done so far", derived from the turns and current phase, credited to whichever

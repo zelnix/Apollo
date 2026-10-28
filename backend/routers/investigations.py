@@ -27,7 +27,7 @@ from routers.push import push_configured
 from services.higgins import evidence as ev
 from services.higgins import jobs
 from services.higgins import ai_settings
-from services.higgins import presenter
+from services.higgins import outcomes, presenter
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins.capacity import EVIDENCE_RETENTION_SECONDS
@@ -344,7 +344,7 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     if not gate and body.submissions:
         gate = _infer_gate_from_submissions(body.submissions, body.question)
 
-    case = await repo.create_case(owner, gate, body.device_profile.wire() if body.device_profile else None, initiator="user_check")
+    case = await repo.create_case(owner, gate, body.device_profile.wire() if body.device_profile else None, initiator="user_check", origin=body.origin)
     for item in body.submissions:
         if item.kind == "url":
             await ev.ingest_url(owner, case, item.client_item_id, item.value, label=item.label)
@@ -485,7 +485,7 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
     # Server-owned: set client_submission_id and triage provider evidence directly on the case
     # document. These fields are never accepted from the public /investigations API — only the
     # internal background-text path writes them.
-    case_update: dict = {"client_submission_id": body.submission_id, "initiator": "apollo_automatic"}
+    case_update: dict = {"client_submission_id": body.submission_id, "initiator": "apollo_automatic", "origin": "apollo"}
     if triage_result.provider_evidence:
         case_update["triage_provider_evidence"] = triage_result.provider_evidence
     # Source metadata — actual recorded text/SMS identifiers, NOT Gemini-inferred.
@@ -940,7 +940,7 @@ async def _finished_follow_up(owner: str, case: dict, body: SubmitTurn) -> Optio
     answered_by = (case.get("routing") or {}).get("answeredBy")
     answer = presenter.investigation_follow_up(response, await repo.sources(owner, case["case_id"]), redact_investigation_secrets(body.message), answered_by)
     if body.evidence_ids and answer["intent"] != "recheck":
-        answer = {**answer, "answer": (f"The new material was kept with this case, but {presenter.investigator(answered_by)}'s investigation is finished, "
+        answer = {**answer, "answer": (f"The new material was kept with this case, but {outcomes.investigator(answered_by)}'s investigation is finished, "
                                        "so it wasn't re-assessed.\n\n" + answer["answer"])}
     return {"turnId": body.turn_id, "question": redact_investigation_secrets(body.message), "answer": answer["answer"],
             "intent": answer["intent"], "limitation": answer["limitation"], "newItems": answer["newItems"], "answeredBy": "apollo"}

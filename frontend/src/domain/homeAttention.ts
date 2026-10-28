@@ -5,7 +5,7 @@
 // limitation / the event's what_to_do. Pure and unit-tested.
 import type { GatePresentation } from "./gates";
 import type { EventCategory, PatrolEvent } from "./types";
-import { needsYou } from "./caseBriefing.ts";
+import { briefed, needsYou } from "./caseBriefing.ts";
 import { isActive } from "./stateMachine.ts";
 
 export interface AttentionItem {
@@ -99,11 +99,11 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
     const gate = gateForCategory(e.category);
     // A case with a Higgins Case Briefing is described by it — its headline names the organisation and what was
     // checked, its summary every material subject and what is still unresolved — never by generic Patrol text.
-    const briefing = e.case_briefing?.from === "briefing" && e.case_briefing.headline && e.case_briefing.summary ? e.case_briefing : null;
+    const briefing = briefed(e);
     const problem = briefing ? briefing.summary : (e.what_happened || e.headline || "").trim();
     const decision = needsYou(e);
-    const higgins = (decision && e.case_briefing?.actionReason
-      ? [e.case_briefing.actionReason, e.case_briefing.recommendedAction?.instruction].filter(Boolean).join(" ")
+    const higgins = (decision && briefing?.actionReason
+      ? [briefing.actionReason, briefing.recommendedAction?.instruction].filter(Boolean).join(" ")
       : (briefing?.recommendedAction?.instruction ?? e.what_to_do ?? "").trim())
       || "Review this finding. I'll explain what Apollo discovered and whether you need to take action.";
     // Build an evidence-specific title rather than generic "Email Gate looks suspicious".

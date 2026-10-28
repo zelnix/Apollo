@@ -54,7 +54,7 @@ export default function TabsLayout() {
   // One line on every phone: the label never wraps. Its size follows the column width (a fifth of the bar,
   // less the tab's 5pt side padding; "Ask Higgins" is ~6 font-px per point at this weight), so it fits on
   // narrow phones too; a large system text size is capped for the same reason.
-  const labelSize = Math.max(9, Math.min(11, (screenW / TAB_COUNT - 10) / 6.1));
+  const labelSize = Math.max(8, Math.min(11, (screenW / TAB_COUNT - 10) / 6.1));
   const badgeStyle = { backgroundColor: colors.barking, color: colors.onBrand, fontFamily: fonts.textSemibold, fontSize: 10 };
   const tabLabel = (title: string) =>
     function TabLabel({ focused }: { focused: boolean }) {

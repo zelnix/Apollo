@@ -4,7 +4,7 @@
 // kept here on purpose. The provider and model never appear.
 
 import type { DiTrace, DiTransaction } from "./diTransaction.ts";
-import { outcomeLabel } from "./messageVoice.ts";
+import { investigatorName, outcomeLabel } from "./messageVoice.ts";
 import { outcomeLabel as triageOutcomeLabel, type TriageInvestigationRecord } from "./triage/contract.ts";
 
 export type TraceStatus = "ran" | "settled" | "escalated" | "not_engaged" | "failed" | "simulated" | "pending" | "not_recorded";
@@ -21,7 +21,6 @@ export interface TraceStep {
 export const TRACE_ORDER = "Deterministic triage → TC FlyBy → Magnum DI → Higgins";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const isFlyby = (answeredBy: string | null | undefined) => (answeredBy ?? "").startsWith("teddy");
 
 /** Whether a Magnum DI transaction finished with an answer. */
 export function diSucceeded(record: DiTransaction): boolean {
@@ -118,7 +117,7 @@ function magnumStep(trace: DiTrace | null, records: DiTransaction[], hasCase: bo
 
 function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | null, hasCase: boolean): TraceStep {
   const name = "Higgins";
-  const who = isFlyby(trace?.answeredBy) ? "TC FlyBy" : "Magnum DI";
+  const who = investigatorName(trace?.answeredBy);
   const higgins = trace?.higgins;
   if (higgins) {
     const details = [`Fidelity Check: ${higgins.status ?? "not recorded"} · mode ${higgins.mode ?? "not recorded"} · ${higgins.attempts ?? 0} attempt(s)`];

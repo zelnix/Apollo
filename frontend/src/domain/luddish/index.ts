@@ -123,13 +123,6 @@ export function luddishReport(report: Report): Report {
   };
 }
 
-/** Everything a report shows (in Luddish), so the question buttons never say it again. */
-export function reportShown(report: Report): string[] {
-  const r = luddishReport(report);
-  return [...r.answer, r.severity, ...r.found.flatMap((f) => [f.text, f.explain]), ...r.means, ...r.more.flatMap((m) => m.paragraphs),
-    ...r.uncertain, ...r.how, ...(r.notes ?? [])].filter((t): t is string => !!t);
-}
-
 // ── Ask Higgins ──
 export const PLAIN_WORDS = "In plain words:";
 

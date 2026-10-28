@@ -10,8 +10,9 @@
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
-import { needsYou } from "./caseBriefing.ts";
+import { briefed, firstFinding, needsYou } from "./caseBriefing.ts";
 import { hasRecordedFindings } from "./caseFacts.ts";
+import { sentences } from "./luddish/patterns.ts";
 import { subjectDescriptor, threatSubject } from "./threatSubject.ts";
 import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver.ts";
 import type { StateResolution } from "./stateMachine";
@@ -41,14 +42,8 @@ export function findingSentence(event: PatrolEvent): string | null {
   // Web addresses read as their website before anything is split or capped.
   const text = domainOnly((event.what_happened || "").trim());
   if (!text) return null;
-  const sentences = text
-    .split(/(\.|\?|!)\s+/)
-    .reduce<string[]>((acc, part, i, arr) => {
-      if (i % 2 === 0 && part.trim()) acc.push((part + (arr[i + 1] ?? "")).trim());
-      return acc;
-    }, []);
   // Instructions belong in the case, never in the hero line.
-  const factual = sentences.filter((sentence) => !/→|\bsettings\b|^open\b|^tap\b|\bgo to\b/i.test(sentence));
+  const factual = sentences(text).filter((sentence) => !/→|\bsettings\b|^open\b|^tap\b|\bgo to\b/i.test(sentence));
   const stated = factual.find((sentence) => /\b(found|detected|observed|spotted|flagged|blocked|stopped|is active)\b/i.test(sentence))
     ?? factual[0];
   if (!stated) return null;
@@ -61,10 +56,8 @@ export function findingSentence(event: PatrolEvent): string | null {
 /** A finding in its Higgins Case Briefing's own words: the headline, then its first finding (subject always named).
  *  Null when the event has no checked briefing. */
 export function briefedLine(event: PatrolEvent | undefined): string | null {
-  const b = event?.case_briefing;
-  if (!b || b.from !== "briefing" || !b.headline || !b.summary) return null;
-  const first = (b.summary.split(/(?<=[.!?])\s+/)[0] ?? b.summary).trim();
-  return `${b.headline}: ${first}${needsYou(event!) ? " It needs your decision." : ""}`;
+  const b = briefed(event);
+  return b ? `${b.headline}: ${firstFinding(b)}${needsYou(event!) ? " It needs your decision." : ""}` : null;
 }
 
 const sentence = (text: string) => (/[.!?…]$/.test(text) ? text : `${text}.`);

@@ -308,6 +308,9 @@ class InvestigationCase(Wire):
     # An outside source behind the result was simulated (the preview's stand-in for Magnum DI's call or TC FlyBy's search).
     # Everything else ran exactly as in production; this only tags it.
     simulated: bool = False
+    # Who started the investigation, as recorded when the case was opened: the person ("user") or Apollo ("apollo").
+    # None when the record doesn't say — never inferred.
+    origin: Optional[Literal["user", "apollo"]] = None
 
 
 class RetryAttempt(Wire):
@@ -513,6 +516,8 @@ class CreateCase(Wire):
     initial_finding_refs: list[str] = Field(default_factory=list)
     initial_findings: list[str] = Field(default_factory=list)  # Apollo observations (apollo_inference origin), full text
     device_profile: Optional[DeviceProfile] = None
+    # Who started it, as the phone records it: the person submitted it ("user") or Apollo detected it ("apollo").
+    origin: Optional[Literal["user", "apollo"]] = None
 
 
 class TextSubmission(Wire):

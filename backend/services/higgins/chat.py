@@ -1,40 +1,32 @@
-"""Higgins chat — Higgins faithfully communicates what Apollo already knows. Ask Higgins makes NO AI call.
+"""Higgins chat — the router. Higgins faithfully communicates what Apollo already knows. Ask Higgins makes NO AI call.
 
-Every answer comes from what Apollo already holds, first that applies:
-  1. Investigation intent with an artefact → the shared investigation pipeline (TC FlyBy first, Magnum DI only
-     when a deeper look could change the answer).
-  2. A completed investigation report (TC FlyBy's or Magnum DI's), a scam alert, Patrol findings, the phone's live state, recent
-     investigations or Apollo's product knowledge → deterministic presentation (presenter.py).
-  3. Apollo's knowledge base — Learn articles, Scam Alerts, official guidance and researched trusted pages,
-     quoted with their provenance and labelled as general knowledge, never as a finding about a case.
+Each question goes to the first of these that applies; each one's work lives in its own module:
+  1. Something specific to check → the shared investigation pipeline (pipeline_submit.py): TC FlyBy first, Magnum DI
+     only when a deeper look could change the answer. Never answered here.
+  2. A scam alert or Learn article the person opened → its source's own words (government_alerts, learning, presenter.py).
+  3. What Apollo already established — Patrol findings, the phone's live state, recent investigations or Apollo's
+     product knowledge → deterministic presentation (context_tools.py, presenter.py).
+  4. Apollo's knowledge base — Learn articles, Scam Alerts, official guidance and researched trusted pages
+     (knowledge.py), quoted with their provenance and labelled as general knowledge, never as a finding about a case.
 When none of these covers a question, Higgins says so plainly — ApolloSG's trusted knowledge doesn't answer it —
-rather than asking a general AI model. Questions outside Higgins' scope get a fixed reply. A specific item to
-check goes to TC FlyBy → Magnum DI through the investigation pipeline (step 1), never answered here.
+rather than asking a general AI model. Questions outside Higgins' scope get a fixed reply.
 Tavily is never used here — it only maintains the knowledge base.
 """
 from __future__ import annotations
 
 import logging
-import re
-from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import Field
 
-from core.db import db
 from core.redaction import redact_investigation_secrets
 from services import government_alerts, learning
 from services import reusable_intel as intel
 from services import sufficiency
-from services.higgins import app_knowledge, knowledge, presenter
+from services.higgins import app_knowledge, knowledge, pipeline_submit, presenter
 from services.higgins import context as memory
 from services.higgins import context_tools
 from services.higgins.contracts import Wire
-from services.higgins.pipeline_submit import (
-    detect_investigation_intent,
-    extract_submittable_items,
-    submit_to_investigation_pipeline,
-)
 
 log = logging.getLogger("apollo.higgins.chat")
 
@@ -135,91 +127,24 @@ class ChatReply(Wire):
 
 
 async def reply(owner: str, conversation_id: str, turn_id: str, message: str, previous_turn_ids: list[str],
-                selected_patrol_record_id: str | None = None, selected_report_id: str | None = None,
-                device_snapshot: DeviceSnapshot | None = None, selected_scam_alert_url: str | None = None) -> ChatReply:
+                selected_patrol_record_id: str | None = None, device_snapshot: DeviceSnapshot | None = None,
+                selected_scam_alert_url: str | None = None) -> ChatReply:
     clean = redact_investigation_secrets(message).strip()
 
-    # ── P0: Completed Magnum DI report → deterministic follow-up (0 AI calls) ──
-    # Checked first so a follow-up that mentions a new link, email or number is still answered from the
-    # finished record — it never opens a new investigation.
-    if selected_report_id:
-        report = await _saved_report(owner, selected_report_id)
-        if report is not None:
-            follow = presenter.investigation_follow_up(report, report.get("sources") or [], clean, report.get("answeredBy"))
-            provenance = ["saved_report"]
-            if follow["intent"] == "unanswered" and not follow["newItems"]:
-                # A general question about this kind of scam: Higgins can teach from the KB, kept apart from the case.
-                entries = await knowledge.search(clean)
-                if entries:
-                    general, sources = knowledge.present(entries, clean)
-                    follow = {**follow, "answer": f"{follow['answer']}\n\nGeneral knowledge — not part of {presenter.investigator(report.get('answeredBy'))}'s "
-                                                  f"findings about this case:\n\n{general}",
-                              "sources": sources}
-                    provenance.append("apollo_knowledge_base")
-            return await _deterministic(owner, conversation_id, turn_id, clean, follow, "investigation_report", provenance,
-                                        uncertainty=["The investigation doesn't answer this directly."] if follow["limitation"] else [])
-
-    # ── P1: Investigation intent routing ─────────────────────────────────────
-    # If the user clearly asks Higgins to investigate a specific artefact, submit
-    # it directly into the shared investigation pipeline.  Higgins does NOT perform
-    # a separate pseudo-investigation in chat — it uses the same pipeline as User
-    # Checks and Apollo automatic detection.
-    if detect_investigation_intent(clean):
-        items = extract_submittable_items(clean)
+    # ── 1. Something specific to check → the shared investigation pipeline (never a pseudo-investigation here) ──
+    if pipeline_submit.detect_investigation_intent(clean):
+        items = pipeline_submit.extract_submittable_items(clean)
         if items:
             try:
-                result = await submit_to_investigation_pipeline(owner, clean, items)
-                case_id = result["case_id"]
-                reused = result["reused"]
-
-                if reused:
-                    answer = (
-                        "I found an existing investigation for that item on your device. "
-                        "You can review the full findings in your investigation history — "
-                        "tap the investigation to see the complete briefing, evidence and assessment."
-                    )
-                else:
-                    artefact_desc = items[0]["value"][:80] if items else "your item"
-                    answer = (
-                        f"I've submitted that for investigation. "
-                        f"Apollo is now investigating {artefact_desc} through the same pipeline "
-                        f"used for all security checks: TC FlyBy investigates it first, and Magnum DI looks deeper only if that could change the answer. You'll find the full briefing, evidence chain "
-                        f"and recommended actions in your investigation history once it completes."
-                    )
-
-                expires = await memory.add_chat_exchange(
-                    owner, conversation_id, turn_id, clean, answer,
-                    classification="investigation_submission",
-                    context_sources=["pipeline_submit"],
-                    investigation_available=True,
-                )
-                log.info("higgins_investigation_routed device=%s case=%s reused=%s",
-                         owner[:12], case_id[:12], reused)
-                return ChatReply(
-                    turn_id=turn_id,
-                    conversation_id=conversation_id,
-                    answer=answer,
-                    evidence_basis=["investigation_pipeline"],
-                    uncertainty=[],
-                    clarification=None,
-                    context_used=[ContextUse(source="pipeline_submit", status="submitted")],
-                    suggested_actions=[SuggestedAction(
-                        destination="higgins_case",
-                        label="View Investigation",
-                        purpose="Open the investigation that was submitted from this conversation.",
-                    )],
-                    investigation_available=True,
-                    investigative_work_started=True,
-                    pipeline_case_id=case_id,
-                    retention=ChatRetention(server_content_expires_at=expires.isoformat()),
-                )
+                result = await pipeline_submit.submit_to_investigation_pipeline(owner, clean, items)
+                return await _submitted(owner, conversation_id, turn_id, clean, result["case_id"], pipeline_submit.submitted_answer(items))
             except Exception as exc:
                 log.warning("higgins_pipeline_submit_failed device=%s error=%s", owner[:12], type(exc).__name__)
                 # Fall through to normal chat if pipeline submission fails
 
-    # ── P2: A scam alert the person opened → the source's own sections (0 AI calls) ──
-    card = _alert_card_in(clean)
-    alert_url = selected_scam_alert_url or (card or {}).get("url") or _alert_url_in(clean)
+    # ── 2. A scam alert the person opened → the source's own sections (0 AI calls) ──
+    card = context_tools.alert_card_in(clean)
+    alert_url = selected_scam_alert_url or (card or {}).get("url") or context_tools.alert_url_in(clean)
     if alert_url or card:
         alert = await government_alerts.alert_by_url(alert_url) if alert_url else None
         if alert:
@@ -231,23 +156,23 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
                                         presenter.scam_alert_card(card["title"], card["source"], card["summary"], card["url"]),
                                         "scam_alert", ["scam_alert_card"])
 
-    # ── P2b: A Learn with Higgins article the person opened → its own words (0 AI calls) ──
-    article_title = _article_title_in(clean)
+    # ── 2b. A Learn with Higgins article the person opened → its own words (0 AI calls) ──
+    article_title = context_tools.article_title_in(clean)
     if article_title:
-        article = await _learn_article(article_title)
+        article = await learning.article_by_title(article_title)
         result = presenter.learn_article(article) if article else {
             "answer": f"I couldn't find “{article_title}” in ApolloSG's Learn with Higgins library, so I have nothing of its to show you.",
             "navigate": ["/higgins/learning"], "limitation": True}
         return await _deterministic(owner, conversation_id, turn_id, clean, result, "learn_article", ["learn_with_higgins_catalogue"])
 
-    # ── P3: Anything Apollo already knows is presented as it stands ──
-    plan = context_tools.classify_context(clean, has_selected_report=False, has_selected_patrol_record=bool(selected_patrol_record_id))
+    # ── 3. Anything Apollo already knows is presented as it stands ──
+    plan = context_tools.classify_context(clean, has_selected_patrol_record=bool(selected_patrol_record_id))
     established = await _from_apollo(owner, clean, plan, device_snapshot, selected_patrol_record_id)
     if established:
         result, label, provenance = established
         return await _deterministic(owner, conversation_id, turn_id, clean, result, label, provenance)
 
-    # ── P4: Apollo's knowledge base (Learn, Scam Alerts, official guidance, researched trusted pages) ──
+    # ── 4. Apollo's knowledge base (Learn, Scam Alerts, official guidance, researched trusted pages) ──
     entries = await knowledge.search(clean)
     decision = sufficiency.assess(sufficiency.Requirement(intel.subject_key("question", clean), needs=("answer",)), kb=entries)
     await intel.count(GENERAL_SITE, *decision.events(call_made=False))
@@ -256,84 +181,14 @@ async def reply(owner: str, conversation_id: str, turn_id: str, message: str, pr
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": answer, "navigate": [], "sources": sources},
                                     "knowledge_base", [e["kind"] for e in decision.kb], answered_by="knowledge_base")
 
-    # ── P5: Nothing trusted answers it. Higgins says so; no general AI model is asked. ──
-    if not in_scope(clean):
+    # ── 5. Nothing trusted answers it. Higgins says so; no general AI model is asked. ──
+    if not context_tools.in_scope(clean):
         return await _deterministic(owner, conversation_id, turn_id, clean, {"answer": presenter.OUT_OF_SCOPE, "navigate": []},
                                     "out_of_scope", [])
     return await _deterministic(owner, conversation_id, turn_id, clean, presenter.not_in_trusted_knowledge(), "not_in_trusted_knowledge", [])
 
 
-# ── Deterministic helpers ─────────────────────────────────────────────────────
-
 GENERAL_SITE = "higgins_general_question"  # this call site, in the reuse counters (always answered without an AI call)
-
-_SCOPE = re.compile(r"\b(scam\w*|fraud\w*|phish\w*|smish\w*|vish\w*|spam|hack\w*|malware|virus\w*|ransomware|spyware|security|secure|safe\w*|cyber\w*|"
-                    r"password\w*|passphrase\w*|passkey\w*|pin|two[- ]factor|2fa|mfa|authenticat\w*|identity|id theft|privacy|private|data breach\w*|breach\w*|"
-                    r"account\w*|bank\w*|card\w*|payment\w*|money|transfer\w*|invest\w*|crypto\w*|bitcoin|gift cards?|romance|dating|sextortion|blackmail|"
-                    r"impersonat\w*|fake|suspicious|link\w*|url|website\w*|email\w*|text messages?|sms|message\w*|calls?|caller|number|phone|device|app\w*|"
-                    r"wi-?fi|network|vpn|router|update\w*|backup\w*|download\w*|attachment\w*|qr|remote access|tech support|apollo|higgins|magnum|"
-                    r"report\w*|stolen|steal\w*|lost|trick\w*|con|deepfake\w*|ai voice|social media|facebook|instagram|whatsapp|marketplace)\b", re.I)
-
-
-def in_scope(question: str) -> bool:
-    return bool(_SCOPE.search(question or ""))
-
-
-_ALERT_URL = re.compile(r"official source:\s*(https?://\S+)", re.I)
-_ALERT_CARD = re.compile(r"i just read this scam alert", re.I)
-_CARD_FIELD = {"title": re.compile(r"^\W*title:\s*(.+)$", re.I | re.M), "source": re.compile(r"^\W*source:\s*(.+)$", re.I | re.M),
-               "summary": re.compile(r"^\W*what the source says:\s*(.+)$", re.I | re.M)}
-_ARTICLE = re.compile(r"explain the learning article:\s*(.+?)\s*$", re.I | re.S)
-
-
-def _alert_url_in(message: str) -> Optional[str]:
-    match = _ALERT_URL.search(message or "")
-    return match.group(1).rstrip(").,") if match else None
-
-
-def _alert_card_in(message: str) -> Optional[dict]:
-    """The alert card the Scam Alerts screen hands to Higgins: its title, source, summary and official link."""
-    if not _ALERT_CARD.search(message or ""):
-        return None
-    fields = {name: (m.group(1).strip() if (m := pattern.search(message)) else "") for name, pattern in _CARD_FIELD.items()}
-    if not fields["title"]:
-        return None
-    return {**fields, "url": _alert_url_in(message) or ""}
-
-
-def _article_title_in(message: str) -> Optional[str]:
-    match = _ARTICLE.search(message or "")
-    return match.group(1).strip().strip("“”\"'.") if match else None
-
-
-async def _learn_article(title: str) -> Optional[dict]:
-    row = await db.learning_articles.find_one({"title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}, "status": "published", "deleted_at": None},
-                                              {"_id": 0, "slug": 1})
-    return await learning.get_article(row["slug"]) if row else None
-
-
-def _navigation(routes: list[str]) -> list[NavTarget]:
-    """Only genuine Apollo destinations survive, so a tap can never land the person nowhere."""
-    navigation: list[NavTarget] = []
-    for route in routes:
-        candidate = str(route or "").strip()
-        if app_knowledge.valid_route(candidate) and all(candidate != item.route for item in navigation):
-            navigation.append(NavTarget(route=candidate, label=app_knowledge.route_label(candidate)))
-        if len(navigation) == 2:
-            break
-    return navigation
-
-
-async def _saved_report(owner: str, report_id: str) -> Optional[dict]:
-    """Legacy server-side saved report (removed in Stage 11); new investigations live on the device."""
-    from services.higgins import repository as repo
-    doc = await db.investigation_reports.find_one({"owner_id": owner, "report_id": report_id}, {"_id": 0, "report_ciphertext": 1})
-    if not doc or not doc.get("report_ciphertext"):
-        return None
-    try:
-        return repo.dec_json(doc["report_ciphertext"])
-    except (ValueError, TypeError, KeyError):
-        return None
 
 
 async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan,
@@ -352,9 +207,9 @@ async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan
         found = await context_tools.execute(owner, "get_recent_patrol_outcomes")
         return presenter.patrol_findings(found.get("items") or []), label, ["authoritative_patrol_record_store"]
     # Anything about THIS phone's state is answered from its live reading — never inferred.
-    about_state = label in ("protection_status", "current_issues", "device_info") or bool(_ABOUT_STATE.search(message))
+    about_state = label in ("protection_status", "current_issues", "device_info") or context_tools.about_state(message)
     device = presenter.device_state(snapshot, message, about_phone=about_state)
-    if device and (about_state or _ABOUT_THIS_PHONE.search(message)):
+    if device and (about_state or context_tools.about_this_phone(message)):
         return device, "device_state", ["device_snapshot" if snapshot else "no_device_reading"]
     if label == "scam_alerts":
         snapshot_alerts = await government_alerts.snapshot(5)
@@ -362,18 +217,24 @@ async def _from_apollo(owner: str, message: str, plan: context_tools.ContextPlan
     if label == "investigation_explain":
         found = await context_tools.execute(owner, "get_recent_cases")
         return presenter.recent_investigations(found.get("items") or []), label, ["investigation_case_store"]
-    if plan.knowledge_modules or label == "product_info" or _ABOUT_APOLLO.search(message):
+    if plan.knowledge_modules or label == "product_info" or context_tools.about_apollo(message):
         product = presenter.product_knowledge(message, plan.knowledge_modules)
         if product:
             return product, "product_knowledge", ["apollo_product_knowledge"]
     return None
 
 
-_ABOUT_THIS_PHONE = re.compile(r"\b(my|this)\s+(phone|device|mobile|iphone|android)\b|\bon (?:my|this) (?:phone|device)\b|\b(?:am i|are my|is my)\b", re.I)
-# Unmistakably about the state Apollo reads on this phone: always answered from the reading, whatever the wording.
-_ABOUT_STATE = re.compile(r"\bmy\s+(?:[\w'-]+\s+){0,3}(?:protections?|gates?|permissions|security (?:review|check|status)|device (?:check|assessment))\b"
-                          r"|\bapollo (?:says|shows|reports) (?:its|the|my) status\b", re.I)
-_ABOUT_APOLLO = re.compile(r"\b(apollo|higgins|magnum|this app)\b|\bwhere (?:do|can) i\b|\bhow (?:do|can) i (?:check|scan|open|find|turn|use)\b", re.I)
+async def _submitted(owner: str, conversation_id: str, turn_id: str, message: str, case_id: str, answer: str) -> ChatReply:
+    """The reply when the message went to the investigation pipeline: where to find the case."""
+    expires = await memory.add_chat_exchange(owner, conversation_id, turn_id, message, answer, classification="investigation_submission",
+                                             context_sources=["pipeline_submit"], investigation_available=True)
+    log.info("higgins_investigation_routed device=%s case=%s", owner[:12], case_id[:12])
+    return ChatReply(turn_id=turn_id, conversation_id=conversation_id, answer=answer, evidence_basis=["investigation_pipeline"], uncertainty=[],
+                     clarification=None, context_used=[ContextUse(source="pipeline_submit", status="submitted")],
+                     suggested_actions=[SuggestedAction(destination="higgins_case", label="View Investigation",
+                                                        purpose="Open the investigation that was submitted from this conversation.")],
+                     investigation_available=True, investigative_work_started=True, pipeline_case_id=case_id,
+                     retention=ChatRetention(server_content_expires_at=expires.isoformat()))
 
 
 async def _deterministic(owner: str, conversation_id: str, turn_id: str, message: str, result: dict, label: str,
@@ -385,6 +246,7 @@ async def _deterministic(owner: str, conversation_id: str, turn_id: str, message
     return ChatReply(turn_id=turn_id, conversation_id=conversation_id, answer=result["answer"], evidence_basis=provenance,
                      uncertainty=(uncertainty or []) + limitation, clarification=None,
                      context_used=[ContextUse(source=item, status="ok") for item in provenance], suggested_actions=[],
-                     navigation=_navigation(result.get("navigate") or []), sources=[ChatSource(**src) for src in result.get("sources") or []],
+                     navigation=[NavTarget(route=route, label=name) for route, name in app_knowledge.navigation(result.get("navigate") or [])],
+                     sources=[ChatSource(**src) for src in result.get("sources") or []],
                      investigation_available=False, answered_by=answered_by,
                      retention=ChatRetention(server_content_expires_at=expires.isoformat()))

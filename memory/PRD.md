@@ -1,5 +1,45 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Screens checked on phone sizes + email top card folded (2026-10-28)
+**Owner's choices:** only check and fix the screens (single-source fix and boundary tests NOT started); an expanded
+email shows its text without links. No testing agent (owner's rule) — node tests + tsc + preview screenshots at 300/360/390.
+- Found: handoff claimed the email expand was done — it wasn't (card never rendered `body`/`received`, so SMS top cards
+  fell back to "Submitted message text"). Global phone scaling lives in `theme.ts` (`useSizing`/`fit` in makeStyles).
+- `caseSourceSummary.ts`: email = From + Subject lines only (+ `received`), `body` = text with paragraphs kept and web
+  addresses → "[link]" (`withoutLinks`); other material keeps its own text in `body`.
+- `SourceSummaryCard.tsx`: email shows "Received <date>" (or "Date received: not recorded") + "Show/Hide the full email"
+  (`*-expand`, `*-body`, `*-received`); other material shows its text (10 lines multi-line, else 3); a kept original with
+  text only now wins over the event/evidence fallback.
+- Received date recorded: `EmailCheckInput.receivedAt` (inbox pick, `email.tsx` `inboxDate` ref) or the .eml Date header
+  → original field "Received". Preview samples have no date ("not recorded").
+- `FindingsBrief`: under 360 wide the risk/status pills go under the verdict (was breaking "Concerning" mid-word).
+- Bottom tab label floor 9 → 8 ("Ask Higgins" was cut to "Ask Higgi…" at 300 wide). `Button` text can wrap (flexShrink).
+- Scan of 30 routes at 300/360: nothing off-screen. Tests: new `tests/caseSourceSummary.test.ts` (6); all frontend tests pass; tsc clean.
+
+## Findings Brief on both screens + one verdict path; UNIﬁed Energy SMS acceptance run (2026-10-28)
+**Owner's choices:** plan order as proposed (finish both screens, then the SMS test); SMS supplied as a screenshot
+(asset `Screenshot_20261028_122908_Messages.webp`, sender 0419 841 238). No testing agent (owner's rule) — node tests + tsc + preview screenshots.
+- Tabs on Ask Higgins (`InvestigationView`) and a Threat Case (`app/patrol/[id].tsx`): **Findings Brief | Evidence | History | DI**
+  (ids stay `overview`/`inv-tab-overview`/`tc-tab-overview`); labels one line (`numberOfLines={1}`, tabs `flexGrow` from content).
+- Both use `components/report/FindingsBrief.tsx` (Verdict + risk + status pills → Key findings → What isn't certain → What you can do)
+  + `ResultQuestions` + `OutcomeExplainerLink`. `ReportBody.tsx`, `ReportVerdict.tsx` and luddish `reportShown` deleted.
+- One verdict path: `investigationVerdict(response)` (FindingsBrief.tsx) = `caseOutcome` (briefing status) + `caseSeverity`
+  (new in caseBriefing.ts: briefing attention when Fidelity PASS, else the response's attention). `attentionTone` removed.
+  A threat with no investigation: label = its status (STATUS_LABELS), risk = `riskPill(event.state)`, Limited → caution `LIMITED_CAUTION`, no risk.
+- Top card `SourceSummaryCard` ("What you submitted" / "What Apollo detected" + time + preview): InvestigationView now falls back to the
+  check's own event origin (`caseData.origin ?? event.origin`) — /message/analyse cases record no origin, so it said "What started this investigation".
+- Check screens no longer show Apollo's auto-written opening question as a chat bubble (`openingQuestion={false}` from InvestigationCheckScreen → InvestigationFlow → InvestigationView).
+- DI: `DiReport how` prop → "How Apollo checked" card (`tc-di-how`); InvestigationView passes the event's Triage record (was "No record").
+- Threat Evidence tab: Origin / "Sent from this device for checking" / Checked rows removed from `CaseFactsRows` (top card + DI say them);
+  Apollo's Triage checks row filtered out of "Sources ApolloSG used" (DI shows it). Evidence pack text unchanged.
+- **UNIﬁed Energy SMS acceptance run (preview, real pipeline):** "No concern identified", Confidence Low, no case opened. Cause:
+  `analyseMessage` extracts nothing from it (no claimed organisation, no reply request "Reply YES", no deadline pressure "before rebates
+  drop next week", no government-rebate claim, the "ﬁ" ligature not flagged) → Higgins Triage NO_THREAT_IDENTIFIED → TC FlyBy/Magnum DI/
+  Evidence Lock/Findings Brief never reached. Same with plain "fi". NOT changed — owner decision pending.
+- Observed, not changed (owner decision pending): TC FlyBy puts method lines in uncertainties (`teddy/report._missing`: "TC FlyBy's search
+  found no record for …", "Not taken further, because …"), so they show under "What isn't certain" in the Findings Brief.
+- Tests: frontend 1113/1113 (checkedAgo → SourceList.tsx, luddish → FindingsBrief); tsc clean. Preview: CommBank SMS → both screens verified.
+
 ## Call checks get a real scam assessment + plain "How Apollo checked" (2026-10-28)
 **Owner's choices:** plan as proposed; old evidence codes become plain words on screen but stay under "Show the technical
 detail"; full scam warning for bank/card asking for a code, fake police/tax office/government, fake tech support, delivery

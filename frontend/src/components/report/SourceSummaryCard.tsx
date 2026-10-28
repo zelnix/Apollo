@@ -1,0 +1,209 @@
+// The compact top card of an investigation and a Threat Case: "What caused this, and when?" — the heading from the
+// case's recorded origin, its time, and a short preview of the material itself. For what Apollo detected, the facts
+// of the detection follow (From · Type · Detected by · Reason). No findings or verdicts: those are in the Findings
+// Brief below; how the case got there is in History and DI.
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
+import Clock from "lucide-react-native/icons/clock";
+import FileText from "lucide-react-native/icons/file-text";
+import ImageIcon from "lucide-react-native/icons/image";
+import Link from "lucide-react-native/icons/link";
+import Mail from "lucide-react-native/icons/mail";
+import MessageCircleMore from "lucide-react-native/icons/message-circle-more";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import Search from "lucide-react-native/icons/search";
+import Shield from "lucide-react-native/icons/shield";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import React, { useEffect, useMemo, useState } from "react";
+import { Image, Pressable, Text, useWindowDimensions, View } from "react-native";
+
+import { toneText, toneTint } from "@/src/components/ui";
+import {
+  detectionFacts, originHeading, previewFromEvent, previewFromEvidence, previewFromOriginal,
+  type DetectionFact, type PreviewIcon, type SourcePreview,
+} from "@/src/domain/caseSourceSummary";
+import { formatDateTime } from "@/src/domain/threatCase";
+import type { ApolloState, PatrolEvent } from "@/src/domain/types";
+import type { CaseOrigin, EvidenceItem } from "@/src/investigation/types";
+import { listImageEvidence, subscribeImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
+import { getOriginalSource, subscribeOriginalSource, type OriginalSource } from "@/src/store/originalSource";
+import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
+
+type Icon = React.ComponentType<{ size: number; color: string }>;
+const PREVIEW_ICON: Record<PreviewIcon, Icon> = {
+  sms: MessageSquare, email: Mail, link: Link, call: Phone, file: FileText, picture: ImageIcon, app: Smartphone, device: Shield, item: FileText,
+};
+const FACT_ICON: Record<DetectionFact["id"], Icon> = { from: Phone, type: MessageSquare, detected_by: Clock, reason: ShieldCheck };
+
+type CardTone = "sniffing" | "resting" | "ears_up" | "growling" | "barking";
+/** What Apollo detected is tinted by how serious Apollo recorded it as. */
+function detectedTone(state: ApolloState | undefined): CardTone {
+  if (state === "barking" || state === "biting") return "barking";
+  if (state === "growling" || state === "ears_up" || state === "resting") return state;
+  return "sniffing";
+}
+const tint = (c: ThemeColors, tone: CardTone) => ({ sniffing: c.sniffingTint, resting: c.restingTint, ears_up: c.ears_upTint, growling: c.growlingTint, barking: c.barkingTint }[tone]);
+const ink = (c: ThemeColors, tone: CardTone) => ({ sniffing: c.sniffingText, resting: c.restingText, ears_up: c.ears_upText, growling: c.growlingText, barking: c.barkingText }[tone]);
+
+const useStyles = makeStyles((c) => ({
+  card: { borderRadius: radius.lg, borderWidth: 0.25, borderColor: c.border, padding: spacing.md, gap: spacing.md },
+  top: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  badge: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  headingWrap: { flex: 1, gap: 2 },
+  heading: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
+  time: { fontFamily: fonts.text, fontSize: 14, color: c.muted },
+  tag: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
+  tagText: { fontFamily: fonts.textSemibold, fontSize: 11 },
+  previewBox: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
+  preview: { flexDirection: "row", gap: spacing.md },
+  fullText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
+  expand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, minHeight: 44, borderRadius: radius.md, backgroundColor: c.surface },
+  expandText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  tile: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.surface, alignItems: "center", justifyContent: "center" },
+  smsMark: { position: "absolute", fontFamily: fonts.textSemibold, fontSize: 8, letterSpacing: 0.3, color: c.onSurface, top: 15 },
+  thumb: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.surface },
+  previewText: { flex: 1, gap: 2 },
+  line: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
+  facts: { flexDirection: "row", flexWrap: "wrap", rowGap: spacing.sm },
+  fact: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  factDivider: { borderLeftWidth: 1, borderLeftColor: c.divider, paddingLeft: spacing.md },
+  factText: { flex: 1, gap: 1 },
+  factLabel: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  factValue: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+}));
+
+/** The picture beside the preview: the picture itself when one was kept, else the kind of material. */
+function PreviewTile({ icon, picture, kind, testID }: { icon: PreviewIcon; picture: string | null; kind: string; testID: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  if (picture) return <Image source={{ uri: picture }} style={s.thumb} resizeMode="cover" testID={`${testID}-image`} accessibilityLabel="Picture that was checked" />;
+  const Glyph = PREVIEW_ICON[icon];
+  return (
+    <View style={s.tile} accessibilityLabel={kind} testID={`${testID}-icon`}>
+      <Glyph size={icon === "sms" ? 30 : 22} color={colors.onSurface} />
+      {icon === "sms" ? <Text style={s.smsMark}>SMS</Text> : null}
+    </View>
+  );
+}
+
+export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simulated, testID }: {
+  origin: CaseOrigin | null | undefined;
+  /** When the case began: when it was submitted or detected. */
+  at: string | null | undefined;
+  /** Every key the case's original may be kept under (its event id and its investigation id). */
+  caseKeys: (string | null | undefined)[];
+  /** What the case recorded at intake, used when no original is kept on the phone, and for what Apollo detected. */
+  event?: PatrolEvent | null;
+  /** The investigation's evidence list, used when nothing else is kept. */
+  evidence?: EvidenceItem[];
+  /** The material itself, or an outside source behind the answer, was simulated in the preview. */
+  simulated?: boolean;
+  testID: string;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const [original, setOriginal] = useState<OriginalSource | null>(null);
+  const [images, setImages] = useState<ImageEvidenceRecord[]>([]);
+  const [open, setOpen] = useState(false);
+  const keyList = caseKeys.filter((k): k is string => !!k).join("|");
+
+  useEffect(() => {
+    const keys = keyList ? keyList.split("|") : [];
+    let live = true;
+    const load = async () => {
+      let found: OriginalSource | null = null;
+      for (const key of keys) { found = await getOriginalSource(key).catch(() => null); if (found) break; }
+      const pictures = new Map<string, ImageEvidenceRecord>();
+      for (const key of keys) for (const r of await listImageEvidence(key).catch(() => [])) pictures.set(r.id, r);
+      if (live) { setOriginal(found); setImages([...pictures.values()]); }
+    };
+    void load();
+    const offOriginal = subscribeOriginalSource(() => void load());
+    const offImages = subscribeImageEvidence(() => void load());
+    return () => { live = false; offOriginal(); offImages(); };
+  }, [keyList]);
+
+  const preview = useMemo<SourcePreview | null>(() => {
+    const local = original ? previewFromOriginal(original, images.length > 0)
+      : images.length ? { kind: images.length > 1 ? `${images.length} pictures` : "Picture", icon: "picture" as const, lines: [], received: null, body: null } : null;
+    if (local?.lines.length || local?.body || images.length) return local;
+    return (event ? previewFromEvent(event) : null) ?? (evidence ? previewFromEvidence(evidence) : null) ?? local;
+  }, [original, images, event, evidence]);
+
+  const { heading, verb } = originHeading(origin);
+  const when = formatDateTime(at);
+  const picture = images[0]?.originalUri ?? images[0]?.sentUri ?? null;
+  const email = preview?.icon === "email";
+  const detected = origin === "apollo";
+  const tone = detectedTone(event?.state);
+  const facts = detected && event ? detectionFacts(event, original) : [];
+  const wide = width >= 600;
+  const BadgeIcon = detected ? TriangleAlert : origin === "user" ? MessageCircleMore : Search;
+  const badgeBg = detected ? tint(colors, tone) : origin === "user" ? colors.groupAccountsTint : colors.sniffingTint;
+  const badgeFg = detected ? ink(colors, tone) : origin === "user" ? colors.groupAccounts : colors.sniffingText;
+
+  return (
+    <View style={[s.card, { backgroundColor: detected ? tint(colors, tone) : colors.surfaceSecondary }]} testID={testID}>
+      <View style={s.top}>
+        <View style={[s.badge, { backgroundColor: badgeBg }]}><BadgeIcon size={22} color={badgeFg} /></View>
+        <View style={s.headingWrap}>
+          <Text style={s.heading} testID={`${testID}-heading`}>{heading}</Text>
+          {when ? <Text style={s.time} testID={`${testID}-time`}>{`${verb} ${when}`}</Text> : null}
+        </View>
+        {simulated ? (
+          <View style={[s.tag, { backgroundColor: toneTint(colors, "neutral") }]} testID={`${testID}-simulated`}>
+            <Text style={[s.tagText, { color: toneText(colors, "neutral") }]}>Simulated</Text>
+          </View>
+        ) : null}
+      </View>
+      {preview ? (
+        <View style={s.previewBox} testID={`${testID}-preview`}>
+          <View style={s.preview}>
+            <PreviewTile icon={preview.icon} picture={picture} kind={preview.kind} testID={testID} />
+            <View style={s.previewText}>
+              {preview.lines.map((line, i) => (
+                <Text key={`${i}-${line}`} style={s.line} numberOfLines={2} testID={`${testID}-line-${i}`}>{line}</Text>
+              ))}
+              {email ? (
+                <Text style={s.line} numberOfLines={2} testID={`${testID}-received`}>
+                  {preview.received ? `Received ${formatDateTime(preview.received) || preview.received}` : "Date received: not recorded"}
+                </Text>
+              ) : preview.body ? (
+                <Text style={s.line} numberOfLines={preview.body.includes("\n") ? 10 : 3} testID={`${testID}-body`}>{preview.body}</Text>
+              ) : null}
+            </View>
+          </View>
+          {email && preview.body ? (
+            <>
+              {open ? <Text style={s.fullText} selectable testID={`${testID}-body`}>{preview.body}</Text> : null}
+              <Pressable onPress={() => setOpen((v) => !v)} style={s.expand} accessibilityRole="button" accessibilityState={{ expanded: open }} testID={`${testID}-expand`}>
+                <Text style={s.expandText}>{open ? "Hide the full email" : "Show the full email"}</Text>
+                {open ? <ChevronUp size={18} color={colors.brand} /> : <ChevronDown size={18} color={colors.brand} />}
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+      {facts.length ? (
+        <View style={s.facts} testID={`${testID}-facts`}>
+          {facts.map((fact, i) => {
+            const FactIcon = fact.id === "from" && preview?.icon === "email" ? Mail : FACT_ICON[fact.id];
+            return (
+              <View key={fact.id} style={[s.fact, wide ? { flex: 1 } : { width: "50%" }, wide && i > 0 ? s.factDivider : null]} testID={`${testID}-fact-${fact.id}`}>
+                <FactIcon size={20} color={colors.onSurfaceSecondary} />
+                <View style={s.factText}>
+                  <Text style={s.factLabel}>{fact.label}</Text>
+                  <Text style={s.factValue} numberOfLines={2}>{fact.value}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}

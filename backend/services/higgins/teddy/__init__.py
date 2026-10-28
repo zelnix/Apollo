@@ -34,7 +34,7 @@ from services.higgins.contracts import Coverage, SourceReference
 from services.higgins.teddy import decide as deciding
 from services.higgins.teddy import official, patterns, report, search
 from services.higgins.teddy.official import fact, source_ref
-from services.higgins.teddy.triage import RED_FLAG_CLAIM, Check, Plan, digits
+from services.higgins.teddy.triage import CALL_GATE, RED_FLAG_CLAIM, Check, Plan, digits
 from services.higgins.teddy.triage import plan as triage_plan
 
 log = logging.getLogger("apollo.teddy")
@@ -123,6 +123,46 @@ async def _material(owner: str, case: dict, rows: list[dict]) -> tuple[dict[str,
         elif kind in ("audio", "attachment"):
             gaps.append(_gap(row, label, "ApolloSG can't extract content from this kind of file", magnum=False))
     return texts, gaps, read
+
+
+# ── Higgins Triage's rules: what flagged the case is a warning sign TC FlyBy builds on ──
+def _lookalike_chars(org: str, text: str) -> list[str]:
+    from services import triage_engine as te
+    return list(dict.fromkeys(ch for word in te.disguised_words(text) if word in org for ch in word
+                              if te._DISGUISE.match(ch) or te._OTHER_SCRIPT.match(ch)))
+
+
+def _rule_fact(rule_id: str, title: str, text: str) -> str:
+    """What the rule saw, quoting the message's own words where the rule reads them (the phone's wording)."""
+    from services import triage_engine as te
+    if rule_id == "MSG-23":
+        org = te.organisation_named(text)
+        chars = _lookalike_chars(org, text)
+        how = " and ".join(f"“{c}”" for c in chars) if chars else "look-alike characters"
+        return f"It writes “{org}” with {how} in place of ordinary letters. A real business has no reason to do that."
+    if rule_id == "MSG-24":
+        rebate = te._REBATE.search(text) or te._STC.search(text)
+        reply = te._REPLY.search(text)
+        ask = f"asks you to reply (“{reply.group(0)}”)" if reply else "asks you to call a number it supplies"
+        return (f"It claims a government rebate (“{rebate.group(0)}”), puts a deadline on it to hurry you "
+                f"(“{te._PRESSURE.search(text).group(0)}”) and {ask}.")
+    return f"{title}."
+
+
+def _triage_stage(plan_: Plan, text: str, provider_evidence: dict | None) -> None:
+    """Higgins Triage's message rules — the catalogue the phone runs — over the material. Each threat-producing rule
+    met is a warning sign about this case: TC FlyBy's own checks can add to it, never dismiss it."""
+    if not plan_.has_message or plan_.channel == CALL_GATE:
+        return
+    from services.triage import evaluate
+    from services.triage_engine import _extract_evidence_from_text, _rule_evidence
+    evidence = {**_extract_evidence_from_text("", text), "text_preview": text}
+    met = evaluate(_rule_evidence(evidence, [], provider_evidence or {})).met_rules
+    if not met:
+        return
+    facts = [{**fact(_rule_fact(r.rule_id, r.title, text), "concern", topic="triage_rule"), "ruleId": r.rule_id} for r in met]
+    plan_.checks.append(Check(id=f"c{len(plan_.checks) + 1}", kind="triage_rules", subject="Higgins Triage's message rules",
+                              status="resolved", route="triage_rules", facts=facts))
 
 
 # ── Stage 2: Apollo Knowledge Base ──────────────────────────────────────────
@@ -391,6 +431,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     texts, gaps, read = await _material(owner, case, rows)
     plan_ = triage_plan(question, list(texts.values()), gaps=gaps, gate=next(iter(case.get("gates") or []), None))
     combined = "\n".join(texts.values())
+    _triage_stage(plan_, combined, case.get("triage_provider_evidence"))
 
     await progress("observe", "TC FlyBy is checking official sources first.")
     await official.run(plan_, case.get("triage_provider_evidence"), combined)
