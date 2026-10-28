@@ -4,6 +4,7 @@
 // isn't listed again; "How Apollo checked" and "What this covered" are one section; the reasons a question wasn't taken
 // further are said once there. Pure: no React, no native imports.
 import type { Finding, HigginsResponse, PlainEnglish, SourceReference } from "../investigation/types";
+import { plainEvidenceRefs, type EvidenceRef } from "./evidenceRefs.ts";
 import { compactUrls } from "./urlPresentation.ts";
 
 /** `explain`: Apollo's fixed explanation of a jargon word in the finding — explanatory, never evidence. */
@@ -35,6 +36,8 @@ export interface ReportInput {
   scope?: string | null;
   sources?: SourceReference[];
   sourceIds?: string[];
+  /** The case's evidence items, so "How Apollo checked" can name an item it refers to by id. */
+  evidence?: readonly EvidenceRef[];
   /** Already said in the top card (the settled-by sentence), so never repeated below. */
   alreadySaid?: (string | null | undefined)[];
 }
@@ -208,12 +211,13 @@ export function buildReport(input: ReportInput): Report {
   }
 
   const used = new Set(input.sourceIds ?? []);
-  return presented({ answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) });
+  return presented({ answer, found, means, more, uncertain, how: how.length ? [how.join(" ")] : [], sources: (input.sources ?? []).filter((s) => used.has(s.id)) }, input.evidence);
 }
 
-/** What people read: web addresses shortened in the prose. Sources keep their addresses whole, and nothing
- *  stored (the evidence, redirect chains, the investigation itself) is touched. */
-function presented(report: Report): Report {
+/** What people read: web addresses shortened in the prose, and "How Apollo checked" naming each item it refers to in
+ *  plain words rather than by its evidence reference. Sources keep their addresses whole, and nothing stored (the
+ *  evidence, redirect chains, the investigation itself) is touched. */
+function presented(report: Report, evidence?: readonly EvidenceRef[]): Report {
   return {
     ...report,
     answer: report.answer.map(compactUrls),
@@ -221,7 +225,7 @@ function presented(report: Report): Report {
     means: report.means.map(compactUrls),
     more: report.more.map((s) => ({ ...s, paragraphs: s.paragraphs.map(compactUrls) })),
     uncertain: report.uncertain.map(compactUrls),
-    how: report.how.map(compactUrls),
+    how: report.how.map((p) => compactUrls(plainEvidenceRefs(p, evidence))),
   };
 }
 
@@ -233,7 +237,7 @@ export function shownPlainEnglish(response: Pick<HigginsResponse, "plainEnglish"
 
 /** The report from Higgins' checked plain English. The server already said each point once and kept every finding,
  *  so nothing is left out here. */
-export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[]): Report {
+export function plainReport(plain: PlainEnglish, sources?: SourceReference[], sourceIds?: string[], evidence?: readonly EvidenceRef[]): Report {
   const used = new Set(sourceIds ?? []);
   return presented({
     // The result, then what the case is about ("What it is: the Stoko email address hello@stoko.com.").
@@ -245,7 +249,7 @@ export function plainReport(plain: PlainEnglish, sources?: SourceReference[], so
     uncertain: plain.uncertain,
     how: plain.how.length ? [plain.how.join(" ")] : [],
     sources: (sources ?? []).filter((s) => used.has(s.id)),
-  });
+  }, evidence);
 }
 
 /** A step of what to do: in Higgins' plain English when it's shown, else Apollo's own wording. */

@@ -392,17 +392,21 @@ class Plan:
     gaps: list[dict]                           # what Triage couldn't extract: {"evidenceId", "item", "what", "magnum"}
     advisories: list[dict] = field(default_factory=list)   # official advisories Teddy's stage 1 matched
     pattern: dict | None = None                            # the established scam pattern (Apollo KB) the material matches best
+    channel: str | None = None                             # "call": a phone call the person describes (a Call Gate check)
 
 
 WARNING_STATUSES = ("WARNING", "NO_WARNING_FOUND")
+CALL_GATE = "call"
 
 
-def plan(question: str, material: list[str], *, gaps: list[dict] | None = None) -> Plan:
-    """Decide which checks are relevant to what came in. Nothing is looked up here."""
+def plan(question: str, material: list[str], *, gaps: list[dict] | None = None, gate: str | None = None) -> Plan:
+    """Decide which checks are relevant to what came in. Nothing is looked up here. A case opened from a call check is
+    a call to assess, never a question for the library."""
     gaps = gaps or []
     text = "\n".join(material)
     ent = extract(text if material else question)
-    general = general_question(question, material, ent) and not gaps
+    channel = CALL_GATE if gate == CALL_GATE else None
+    general = not channel and general_question(question, material, ent) and not gaps
     urls_only = bool(material) and all(URL_RE.fullmatch(m.strip()) for m in material if m.strip())
     has_message = bool(text.strip()) and not urls_only and not general
     checks: list[Check] = []
@@ -459,4 +463,4 @@ def plan(question: str, material: list[str], *, gaps: list[dict] | None = None) 
         # Planned, not automatic: it reaches Magnum DI only if the deciding test says its reasoning could change the result.
         add("message_analysis", "the submitted material",
             open_issue="Message and deception analysis of the submitted material (requests, pressure, persuasion, intent).")
-    return Plan(ent, "link_only" if urls_only else mtype, checks, has_message, urls_only, False, gaps)
+    return Plan(ent, "link_only" if urls_only else mtype, checks, has_message, urls_only, False, gaps, channel=channel)

@@ -91,11 +91,14 @@ def _subject(plan_: Plan) -> str:
 
 def _checked(plan_: Plan, how: str) -> str:
     """One sentence, used word for word by "How Apollo checked" and the scope, so the report says it once."""
-    examined = "the submitted link" + ("s" if len(plan_.entities.hosts) > 1 else "") if plan_.link_only else "the submitted material"
+    examined = ("the call details" if plan_.channel == "call" else
+                "the submitted link" + ("s" if len(plan_.entities.hosts) > 1 else "") if plan_.link_only else "the submitted material")
     return f"TC FlyBy checked {examined} using {how}."
 
 
 def _scope(plan_: Plan, how: str) -> str:
+    if plan_.channel == "call":
+        return f"{_checked(plan_, how)} No one was called back, nothing was opened and no account was accessed."
     return f"{_checked(plan_, how)} Nothing was opened or fetched from the destination, no one was contacted and no account was accessed."
 
 
@@ -217,11 +220,12 @@ def pattern_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
     found += [_finding(f, _evidence(c, material, teddy_item), "medium") for c, f in _signs(checks)]
     kb_sources = sorted({s for c in checks if c.kind == "scam_pattern" for f in c.facts for s in f.get("sourceIds", [])})
     advice = p["advice"]
+    call = plan_.channel == "call"
     if outcome == "likely_scam":
         overview = f"This matches the {p['name']} that {p['publisher']} warns about. {advice[0][1]} {advice[1][1]}"
         means = (f"Together, these are the defining features of the {p['name']}: {p['summary']} A match like this supports Apollo's "
-                 "assessment, but it isn't proof that this particular sender is a scammer — which is why the safe step is to check through "
-                 "a channel you already trust.")
+                 f"assessment, but it isn't proof that this particular {'caller' if call else 'sender'} is a scammer — which is why the safe "
+                 "step is to check through a channel you already trust.")
         attention, reason = "action_needed", p["consequence"]
     else:
         overview = (f"This starts the way the {p['name']} does, as {p['publisher']} describes it, though it hasn't asked for anything yet. "
@@ -230,10 +234,12 @@ def pattern_result(plan_: Plan, checks: list[Check], material: dict[str, str], t
                  "but checking first costs nothing.")
         attention, reason = "review", "Replying or acting before you've checked is what messages like this rely on."
     return _result(plan_, checks, overview=overview, found=found, means=means, outcome=outcome, attention=attention, reason=reason,
-                   how=f"TC FlyBy checked the material using {_routes(checks)}, comparing it with the established scam patterns in ApolloSG's "
-                       f"knowledge base. {_NOT_NEEDED}",
+                   # The scope's own first sentence, word for word, so "How Apollo checked" says it once.
+                   how=f"{_checked(plan_, _routes(checks))} It compared {'them' if call else 'it'} with the established scam patterns in "
+                       f"ApolloSG's knowledge base. {_NOT_NEEDED}",
                    actions=[_action(label, instruction) for label, instruction in advice],
-                   uncertainties=["Apollo can't confirm who actually sent this — a pattern match supports the assessment but isn't proof about the sender.",
+                   uncertainties=[(f"Apollo can't confirm who actually {'called' if call else 'sent this'} — a pattern match supports the assessment "
+                                   f"but isn't proof about the {'caller' if call else 'sender'}."),
                                   *_missing(checks, "it couldn't change the outcome or what to do")],
                    extra_sources=kb_sources)
 

@@ -18,8 +18,8 @@ import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
 import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { buildCallCheckResult } from "@/src/domain/callCheckResultAdapter";
-import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
-import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
+import { CALL_ASKS, CALL_CLAIMS, describeCall, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
+import { contextFromEvent, gateForCategory, issueContext } from "@/src/domain/higginsHandoff";
 import { type PatrolEvent } from "@/src/domain/types";
 import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -119,7 +119,11 @@ export default function CheckCall() {
         {result.event ? (
           <InvestigationCheckScreen
             result={model}
-            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationContext={issueContext({
+              ...contextFromEvent(result.event, gateForCategory(result.event.category)),
+              // The call's details travel with a case opened here, so it's assessed as a call, never answered from the library.
+              original_evidence: [{ kind: "text", value: describeCall({ asks, claim, number, transcript }), label: "Call details" }],
+            })}
             investigationQuestion={askPrompt}
             submissionId={result.event.event_id}
             eventId={result.event.event_id}

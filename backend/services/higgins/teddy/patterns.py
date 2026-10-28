@@ -31,6 +31,34 @@ KIND = "scam_pattern"
 SCAMWATCH = "Scamwatch (ACCC)"
 _PAY = r"\b(?:pay|payment|fee|fees|charge|settle|card details|bank details)\b|\$\s?\d"
 
+# ── Phone calls, as the person describes them (channel "call": only for a call check) ──
+_PHONE_URL = "https://www.scamwatch.gov.au/types-of-scams/phone-scams"
+_PHONE_INTRO = ("Scamwatch: “Scammers call, claiming to be from well-known organisations. This includes government organisations, law "
+                "enforcement, investment and law firms, banks, telecommunication providers.” ")
+_PHONE_CHECK = (" What to do: “If you are not sure if a caller is who they say they are, it's ok to hang up.” “Call the organisation or "
+                "person back on a phone number you have found yourself (on their website).”")
+# Who the caller said they were: "said they were from my bank", "claimed to be the ATO", "from tech support" …
+_CLAIMED = (r"(?:from|with|calling\s+from|on\s+behalf\s+of|claim(?:ed|s|ing)?\s+to\s+be(?:\s+from)?|pretend(?:ed|s|ing)?\s+to\s+be(?:\s+from)?"
+            r"|said\s+(?:they|he|she|it)\s+(?:were|was|is|are)(?:\s+from)?|says\s+(?:they|he|she|it)(?:'re|'s|\s+(?:are|is))(?:\s+from)?)"
+            r"\s+(?:my|your|the|our|a|an)?\s*")
+# … or the organisation doing something on the call: "bank wants my code", "the ATO rang".
+_CALLED = (r"(?:'s)?\s+(?:called|calls|rang|rings|phoned|wants|wanted|asked|asks|is\s+asking|was\s+asking|asking|said|says|needs|needed"
+           r"|fraud\s+team|security\s+team)\b")
+_BANK = (r"(?:bank|card\s+(?:provider|issuer|company)|credit\s+union|building\s+society|commbank|commonwealth\s+bank|westpac|anz|nab"
+         r"|national\s+australia\s+bank|st\.?\s?george|bankwest|bendigo\s+bank|macquarie\s+bank|suncorp|ubank|bank\s+of\s+melbourne|ing|hsbc"
+         r"|citibank|amex|american\s+express)")
+_GOV = (r"(?:ato|australian\s+taxation\s+office|tax\s+office|police|afp|federal\s+police|immigration|home\s+affairs|border\s+force|court"
+        r"|sheriff|services\s+australia|centrelink|medicare|mygov|government(?:\s+agency|\s+department)?|department\s+of\s+\w+)")
+_TECH = (r"(?:tech(?:nical)?\s+support|it\s+support|help\s*desk|microsoft|apple|google|windows|amazon|telstra|optus|vodafone|tpg|iinet"
+         r"|nbn(?:\s+co)?|(?:my|your|the)\s+(?:telco|internet\s+provider|phone\s+company|isp))")
+_COURIER = (r"(?:auspost|australia\s+post|startrack|dhl|fedex|ups|aramex|couriers\s+please|toll\s+(?:priority|ipec)"
+            r"|(?:delivery|courier|parcel|postal)(?:\s+or\s+parcel)?\s+(?:company|service|driver)|courier)")
+_CODE_ASK = (r"\b(?:want(?:s|ed)?|ask(?:s|ed|ing)?(?:\s+(?:me|you|us))?(?:\s+(?:for|to\s+(?:give|read(?:\s+out)?|tell|confirm|share|provide|enter|send|repeat|say)))?"
+             r"|request(?:s|ed|ing)?|need(?:s|ed)?|give|read(?:\s+out)?|tell|confirm|share|provide|send|repeat)\b[^.?!\n]{0,40}?"
+             r"\b(?:one[- ]time\s+(?:code|password|passcode|pin)|otp|verification\s+code|security\s+code|sms\s+code|text\s+code"
+             r"|(?:the|my|your|a|that|this)\s+code|pin(?:\s+number)?|passcode|password|card\s+(?:number|details)|cvv|bank(?:ing)?\s+details"
+             r"|netbank\s+(?:password|details|login)|login\s+details)\b")
+
 PATTERNS: tuple[dict, ...] = (
     {
         "key": "family_new_number",
@@ -254,12 +282,105 @@ PATTERNS: tuple[dict, ...] = (
                    ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already given access, disconnect from the internet and contact your bank."]],
         "consequence": "Remote access lets someone see and control everything on your device, including your banking.",
     },
+    {
+        "key": "bank_code_call",
+        "name": "bank call scam asking for a code, PIN or password",
+        "url": _PHONE_URL,
+        "summary": "a caller claiming to be from your bank or card provider asks you to read out a one-time code, PIN, password or card details.",
+        "body": (_PHONE_INTRO + "“It's probably a scam call if the caller: asks for personal or financial information: … your password, pin, "
+                 "one-time code, or some other security information; credit card or banking details to process a refund or other "
+                 "‘overpayment’.”" + _PHONE_CHECK),
+        "hallmarks": [["says the caller is from your bank or card provider", rf"\b{_CLAIMED}{_BANK}\b|\b{_BANK}{_CALLED}"]],
+        "ask": ["says the caller asked for a code, PIN, password or card details", _CODE_ASK],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "channel": "call",
+        "advice": [["Don't give any codes", "Don't give the caller any code, PIN, password or card details."],
+                   ["Call your bank yourself", "Hang up and call your bank on the number on your card or in its official app — not a number the caller gave you."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already given a code or details, call your bank now."]],
+        "consequence": "A code read out to a caller can let them into your account or approve a payment straight away.",
+    },
+    {
+        "key": "government_call",
+        "name": "government or police impersonation call",
+        "url": _PHONE_URL,
+        "summary": "a caller claiming to be from a government agency or the police asks you to pay, move money or hand over your details.",
+        "body": (_PHONE_INTRO + "“It's probably a scam call if the caller: asks for personal or financial information: payment, or for you "
+                 "to move money between accounts …” or “threatens you with immediate arrest, deportation, or blackmail etc.” What to do: "
+                 "“Immediately hang up on anyone who tries to threaten or intimidate you.” “Never use contact details given by a caller "
+                 "or written in an email or SMS.”"),
+        "hallmarks": [["says the caller is from a government agency or the police", rf"\b{_CLAIMED}{_GOV}\b|\b{_GOV}{_CALLED}"]],
+        "ask": ["says the caller asked you to pay, move money or hand over details",
+                r"\b(?:pay|transfer|send|move|buy|purchase|deposit|wire)\b[^.?!\n]{0,50}?(?:\$\s?\d[\d,]*(?:\.\d{2})?|\bmoney\b|\bfunds\b|\bgift\s?cards?\b|\bvouchers?\b"
+                r"|\bitunes\b|\bgoogle\s+play\b|\bbitcoin\b|\bcrypto(?:currency)?\b|\bfine\b|\bpenalty\b|\bdebt\b|\bfee\b|\bamount\b|\bbalance\b)"
+                r"|\b(?:give|provide|confirm|tell|read(?:\s+out)?|share|send)\b[^.?!\n]{0,30}?\b(?:bank\s+(?:details|account)|card\s+(?:number|details)"
+                r"|tax\s+file\s+number|tfn|passport|one[- ]time\s+code|verification\s+code|security\s+code|password|pin)\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "channel": "call",
+        "advice": [["Don't pay or give details", "Don't pay, move money or give any details to this caller."],
+                   ["Call the agency yourself", "Hang up and contact the agency using contact details from its official website — never a number the caller gave you."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid, contact your bank now."]],
+        "consequence": "Money paid or details given to a caller like this go to the scammer and are rarely recovered.",
+    },
+    {
+        "key": "tech_support_call",
+        "name": "tech support call scam",
+        "url": _PHONE_URL,
+        "summary": "a caller claiming to be tech support or your internet provider asks you to install an app, share your screen or give them remote access.",
+        "body": (_PHONE_INTRO + "“It's probably a scam call if the caller: … wants you to install software or access a secure account on your "
+                 "mobile phone or computer” or “suggests you or your accounts have been hacked or involved in fraud”. What to do: “Never "
+                 "give anyone remote access to your computer.”"),
+        "hallmarks": [["says the caller is from tech support or your internet provider",
+                       rf"\b{_CLAIMED}{_TECH}\b|\b{_TECH}(?:\s+(?:support|technician|security|team|department))?{_CALLED}"
+                       r"|\byour\s+(?:computer|device|pc|laptop|phone|internet|nbn|connection|router|modem)\s+(?:has\s+been|is|was)\s+(?:hacked|infected|compromised|at\s+risk)\b"]],
+        "ask": ["says the caller asked you to install an app, share your screen or give remote access",
+                r"\b(?:download|install|open|run|get)\s+(?:an?\s+|the\s+|this\s+|their\s+|some\s+|our\s+)?(?:app|application|program|software|anydesk|teamviewer"
+                r"|ultraviewer|quick\s?support|quick\s+assist|remote\s+(?:access|desktop|support)(?:\s+app)?)\b"
+                r"|\b(?:allow|give|grant|let)\s+(?:them\s+|him\s+|her\s+|us\s+|me\s+|our\s+technician\s+)?(?:remote\s+)?access\b"
+                r"|\b(?:share|start)\s+(?:my\s+|your\s+|the\s+)?screen\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "channel": "call",
+        "advice": [["Don't give access", "Don't install anything, share your screen or let the caller connect to your device."],
+                   ["Hang up and check", "Hang up. If you're worried, contact the company using details from its official website — not anything the caller gave you."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already given access, disconnect from the internet and contact your bank."]],
+        "consequence": "Remote access lets someone see and control everything on your device, including your banking.",
+    },
+    {
+        "key": "delivery_call",
+        "name": "delivery or parcel fee call scam",
+        "url": _PHONE_URL,
+        "summary": "a caller says a parcel or delivery has a problem and asks you to pay a fee or give your card details to sort it out.",
+        "body": ("Scamwatch (text and SMS scams): scam messages may say “there's a problem with your payment or your package delivery”. "
+                 "Scamwatch (phone scams): “It's probably a scam call if the caller: asks for personal or financial information: payment, "
+                 "or for you to move money between accounts … credit card or banking details …” What to do: “Never use contact details "
+                 "given by a caller or written in an email or SMS.”"),
+        "hallmarks": [["says the call is about a parcel or delivery",
+                       rf"\b{_CLAIMED}{_COURIER}\b|\b(?:my|your|a|the|an)\s+(?:parcel|package|delivery|shipment|consignment)\b"]],
+        "ask": ["says the caller asked you to pay a fee or give card details",
+                r"\b(?:pay|settle|clear|transfer|send)\b[^.?!\n]{0,40}?(?:\$\s?\d[\d,]*(?:\.\d{2})?|\bmoney\b|\bfee\b|\bcharge\b|\bamount\b|\bbalance\b|\bcustoms\b|\bduty\b)"
+                r"|\b(?:redelivery|delivery|customs|handling|release)\s+(?:fee|charge)\b"
+                r"|\b(?:give|provide|confirm|read(?:\s+out)?|tell|share|enter)\b[^.?!\n]{0,30}?\b(?:card\s+(?:number|details)|bank\s+details|cvv"
+                r"|one[- ]time\s+code|verification\s+code|security\s+code)\b"],
+        "opening": False,
+        "requires": [],
+        "impersonates_organisation": True,
+        "channel": "call",
+        "advice": [["Don't pay the caller", "Don't pay any fee or give card details to this caller."],
+                   ["Check the delivery yourself", "Track the parcel in the courier's official app or a website address you type yourself."],
+                   ["Report it", "Report it to Scamwatch at scamwatch.gov.au. If you've already paid or given card details, contact your bank now."]],
+        "consequence": "Card details given for a small fee can be used to take much more.",
+    },
 )
 
 _REQUIREMENT_LABEL = {"brand": "names an organisation", "link": "contains a link",
                       "offsite_link": "sends you to a link that isn't the organisation's own website"}
 # Bumped whenever the shipped markers change, so the KB entries are refreshed rather than left stale.
-PATTERN_VERSION = 2
+PATTERN_VERSION = 3
 
 
 async def load() -> int:
@@ -351,13 +472,15 @@ def match_one(entry: dict, text: str, *, has_link: bool, has_brand: bool, offsit
 _RANK = {"full": 3, "opening": 2, "partial": 1}
 
 
-async def best(text: str, *, has_link: bool, has_brand: bool, offsite: bool | None) -> PatternMatch | None:
-    """The established pattern the material matches best, or None."""
+async def best(text: str, *, has_link: bool, has_brand: bool, offsite: bool | None, channel: str | None = None) -> PatternMatch | None:
+    """The established pattern the material matches best, or None. A pattern for one channel (a phone call, as the
+    person describes it) is compared only with material from that channel."""
     try:
         rows = await entries()
     except Exception:  # noqa: BLE001 — the KB can never break an investigation
         log.warning("scam_patterns_unavailable", exc_info=True)
         return None
+    rows = [e for e in rows if e["pattern"].get("channel") in (None, channel)]
     matches = [m for m in (match_one(e, text, has_link=has_link, has_brand=has_brand, offsite=offsite) for e in rows) if m]
     matches.sort(key=lambda m: (_RANK[m.stage], len(m.found) + (1 if m.ask else 0)), reverse=True)
     return matches[0] if matches else None

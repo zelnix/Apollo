@@ -1,3 +1,26 @@
+## Call checks get a real scam assessment + plain "How Apollo checked" (2026-10-28)
+**Owner's choices:** plan as proposed; old evidence codes become plain words on screen but stay under "Show the technical
+detail"; full scam warning for bank/card asking for a code, fake police/tax office/government, fake tech support, delivery
+or parcel fees. No testing agent (owner's rule) — pytest + node tests + tsc + preview screenshots.
+- Root cause: a call check's investigation either had no material (InvestigationFlow opened the case with only the
+  "About the phone call I just checked…" question → Higgins Triage read it as a general question → KB/QR-code articles)
+  or carried the screen's option ids ("Caller said: bank / Asked for: code") that no pattern could read → "No scam indicators".
+- Backend: `triage.plan(..., gate=)` → `Plan.channel = "call"` for a Call Gate case: never a general question; no material →
+  Magnum DI (Reasoning) via `decide.evaluate`. `patterns.py` + 4 phone-call patterns (`channel: "call"`, Scamwatch phone-scams
+  page quoted): `bank_code_call`, `government_call`, `tech_support_call`, `delivery_call`; `best(..., channel=)` compares
+  them with calls only; PATTERN_VERSION 3. Phone-call patterns excluded from general KB search/related (`knowledge._GENERAL`)
+  and the benchmark corpus (benchmark baseline unchanged). Report wording for calls: "the call details", "who actually
+  called", scope "No one was called back…"; pattern "How" now repeats the scope sentence exactly (said once).
+- Frontend: `callAnalysis.describeCall()` (plain sentences: "The caller said they were from my bank (CommBank). They asked
+  me to give a verification code. …") used by ApolloContext's case and by call.tsx (`original_evidence` "Call details");
+  new claim chip "Delivery / parcel company" (`delivery`). `domain/evidenceRefs.ts` `plainEvidenceRefs()` names
+  "evidence <id> · kind=text · Call details" / bare ids as "the call details" etc. in "How Apollo checked"
+  (`reportSections` buildReport/plainReport `evidence`); the lock's `how` (technical detail) keeps the recorded wording.
+- Rule book: scam patterns 8 → 12 + phone-call rules; stamped.
+- Tests: new `backend/tests/test_call_investigation.py` (14); backend 1360 passed (5 live-API failures were a mid-run backend
+  restart; re-run 21/21 passed); frontend tests/ 1113 + new (reportSections, gate4, luddish) passed; tsc clean.
+  `src/tests/detection-regression.test.ts` fails before and after (missing `src/domain/risk` module, pre-existing).
+
 ## Higgins Luddish L1 — P1 done: question buttons + strong warnings + typed word questions (2026-10-28)
 **Owner's choices:** before/after list approved as is; warnings keep "Do not"/"NOT" (headlines, steps, instructions,
 capitalised NOT), only ordinary sentences use contractions; a question's answer opens right under the result. No testing

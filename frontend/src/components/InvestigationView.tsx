@@ -664,13 +664,13 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const report = useMemo(() => {
     if (!response) return null;
     const plain = shownPlainEnglish(response);
-    if (plain) return plainReport(plain, sources, response.sourceIds);
+    if (plain) return plainReport(plain, sources, response.sourceIds, evidenceItems);
     return buildReport({
       overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
       findings: response.findings, uncertainties: response.uncertainties, scope: response.scope, sources, sourceIds: response.sourceIds,
-      alreadySaid: [caseData?.settledReason?.sentence],
+      alreadySaid: [caseData?.settledReason?.sentence], evidence: evidenceItems,
     });
-  }, [response, sources, caseData?.settledReason]);
+  }, [response, sources, caseData?.settledReason, evidenceItems]);
   const higginsTime = caseData ? new Date(caseData.updatedAt ?? caseData.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   // ── Categorised evidence items ──

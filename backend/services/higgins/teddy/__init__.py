@@ -151,7 +151,8 @@ async def _pattern_stage(plan_: Plan, text: str) -> None:
     """Compare the material with the established scam patterns in Apollo's KB (deterministic, no cost)."""
     if not plan_.has_message:
         return
-    found = await patterns.best(text, has_link=bool(plan_.entities.hosts), has_brand=bool(plan_.entities.brands), offsite=_offsite(plan_))
+    found = await patterns.best(text, has_link=bool(plan_.entities.hosts), has_brand=bool(plan_.entities.brands), offsite=_offsite(plan_),
+                                channel=plan_.channel)
     if not found:
         return
     plan_.pattern = found.wire()
@@ -388,7 +389,7 @@ async def _run(owner: str, case: dict, job: dict, question: str, rows: list[dict
     case_id = case["case_id"]
     await progress("observe", "Higgins Triage is preparing what was sent and working out what needs checking.")
     texts, gaps, read = await _material(owner, case, rows)
-    plan_ = triage_plan(question, list(texts.values()), gaps=gaps)
+    plan_ = triage_plan(question, list(texts.values()), gaps=gaps, gate=next(iter(case.get("gates") or []), None))
     combined = "\n".join(texts.values())
 
     await progress("observe", "TC FlyBy is checking official sources first.")

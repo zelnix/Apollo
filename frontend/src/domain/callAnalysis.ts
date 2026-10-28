@@ -6,7 +6,7 @@ import { extractSignals } from "./messageAnalysis.ts";
 import type { ApolloState } from "./types";
 
 export type CallAsk = "transfer" | "code" | "password" | "install" | "remote" | "giftcards" | "crypto" | "screen" | "bankdetails" | "dont_hangup" | "refund" | "subscription" | "callback" | "nothing" | "other";
-export type CallClaim = "bank" | "government" | "techsupport" | "family" | "telco" | "business" | "investment" | "relationship" | "unknown";
+export type CallClaim = "bank" | "government" | "techsupport" | "family" | "telco" | "business" | "delivery" | "investment" | "relationship" | "unknown";
 
 export const CALL_ASKS: { id: CallAsk; label: string }[] = [
   { id: "transfer", label: "Transfer money" }, { id: "code", label: "Give a verification code" }, { id: "password", label: "Give a password / PIN" },
@@ -18,6 +18,7 @@ export const CALL_ASKS: { id: CallAsk; label: string }[] = [
 export const CALL_CLAIMS: { id: CallClaim; label: string }[] = [
   { id: "bank", label: "My bank" }, { id: "government", label: "Government / police / ATO" }, { id: "techsupport", label: "Tech support (Microsoft, Apple…)" },
   { id: "family", label: "A family member" }, { id: "telco", label: "Telco / NBN" }, { id: "business", label: "A business / appointment" },
+  { id: "delivery", label: "Delivery / parcel company" },
   { id: "investment", label: "An investment offer" }, { id: "relationship", label: "Someone I met online" }, { id: "unknown", label: "Didn't say / not sure" },
 ];
 
@@ -34,18 +35,49 @@ const VERIFY: Record<CallClaim, string> = {
   family: "Call the family member on the number you already have saved, or another relative you trust. Don't rely on the number that called you.",
   telco: "Hang up and call your provider using the number on your bill or in their official app.",
   business: "Look the business up yourself (their website or a directory) and call the number listed there.",
+  delivery: "Hang up. Track the parcel in the courier's official app or a website address you type yourself. Couriers don't call to ask for fees or card details.",
   investment: "Check the adviser and company on the ASIC register yourself. Never commit money on a cold call.",
   relationship: "Talk it over with someone you trust before sending anything. Never send money to someone you haven't met in person.",
   unknown: "If they claim to be from an organisation, hang up and contact it using details you find yourself — never a number they give you.",
 };
-const CLAIM_LABEL: Record<CallClaim, string> = { bank: "your bank", government: "a government agency", techsupport: "tech support", family: "a family member", telco: "your telco", business: "a business", investment: "an investment firm", relationship: "someone you met online", unknown: "an unnamed caller" };
+const CLAIM_LABEL: Record<CallClaim, string> = { bank: "your bank", government: "a government agency", techsupport: "tech support", family: "a family member", telco: "your telco", business: "a business", delivery: "a delivery company", investment: "an investment firm", relationship: "someone you met online", unknown: "an unnamed caller" };
+
+// The call as the person described it, in their own plain sentences: what an investigation receives as the call's
+// details (never the screen's option ids), so TC FlyBy can compare it with Scamwatch's phone-scam patterns.
+const CLAIM_SENTENCE: Record<CallClaim, string> = {
+  bank: "The caller said they were from my bank", government: "The caller said they were from the government, the police or the ATO",
+  techsupport: "The caller said they were from tech support", family: "The caller said they were a family member",
+  telco: "The caller said they were from my telco or the NBN", business: "The caller said they were from a business or about an appointment",
+  delivery: "The caller said they were from a delivery or parcel company", investment: "The caller offered me an investment",
+  relationship: "The caller is someone I met online", unknown: "I'm not sure who the caller said they were",
+};
+const ASK_SENTENCE: Record<CallAsk, string> = {
+  transfer: "They asked me to transfer money.", code: "They asked me to give a verification code.", password: "They asked me to give a password or PIN.",
+  install: "They asked me to install an app.", remote: "They asked me to allow remote access.", giftcards: "They asked me to buy gift cards.",
+  crypto: "They asked me to send cryptocurrency.", screen: "They asked me to share my screen.", bankdetails: "They asked me to give my bank or card details.",
+  dont_hangup: "They asked me to stay on the line and tell no one.", refund: "They offered me a refund.", subscription: "They asked me to cancel a renewal.",
+  callback: "They asked me to call a number back.", nothing: "They didn't ask me to do anything unusual.", other: "They asked me to do something else.",
+};
+
+/** The call's details for an investigation, one plain sentence per thing the person told ApolloSG. `note`: a line that
+ *  comes first (a provider's own rating of the number). */
+export function describeCall(input: CallInput, note?: string | null): string {
+  const brand = input.brandName?.trim();
+  return [
+    note || null,
+    `${CLAIM_SENTENCE[input.claim]}${brand ? ` (${brand})` : ""}.`,
+    ...input.asks.map((ask) => ASK_SENTENCE[ask]),
+    input.number?.trim() ? `The number that called: ${input.number.trim()}` : null,
+    input.transcript?.trim() ? `What the caller said, in my words: ${input.transcript.trim()}` : null,
+  ].filter(Boolean).join("\n");
+}
 
 export function analyseCall(input: CallInput): CallAnalysis {
   const asks = new Set(input.asks);
   const text = (input.transcript ?? "").trim();
   const sig = text ? extractSignals(input.number ?? "", text) : null;
   // A transcript can reveal who the caller claims to be when the user didn't pick.
-  const inferred: Partial<Record<NonNullable<typeof sig>["brandKind"] & string, CallClaim>> = { bank: "bank", government: "government", tech: "techsupport", telco: "telco", courier: "business", toll: "business", marketplace: "business" };
+  const inferred: Partial<Record<NonNullable<typeof sig>["brandKind"] & string, CallClaim>> = { bank: "bank", government: "government", tech: "techsupport", telco: "telco", courier: "delivery", toll: "business", marketplace: "business" };
   const claim: CallClaim = input.claim !== "unknown" ? input.claim : (sig?.brandKind && inferred[sig.brandKind]) || (sig?.familyClaim ? "family" : sig?.guaranteedReturns ? "investment" : "unknown");
   // Fold description signals into asks so typed descriptions drive the same rules.
   if (sig) {

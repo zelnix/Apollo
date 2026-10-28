@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-10-27T23:13:39.134754+00:00",
+  "ran_at": "2026-10-28T01:59:16.402254+00:00",
   "corpus_version": "2026-06-v1",
   "scope": "backend intelligence layer only (on-device heuristics are scored in-app: Settings \u2192 Run threat benchmark)",
   "intel_coverage": [

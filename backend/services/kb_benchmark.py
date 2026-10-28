@@ -41,6 +41,8 @@ def corpus_records() -> list[dict]:
     for article in articles:
         out.append({"kind": "learn_article", "key": article["slug"], "title": article["title"], "body": knowledge._article_text(article)})
     for p in patterns.PATTERNS:
+        if p.get("channel"):
+            continue   # a phone-call pattern is a matching rule for call checks, never a library answer
         out.append({"kind": "scam_pattern", "key": p["key"], "title": f"Scam pattern: {p['name']}", "body": p["body"]})
     return out
 

@@ -13,7 +13,7 @@ import { GATE_REGISTRY } from "./gateRegistry";
 
 const CLAIM_LABEL: Record<CallClaim, string> = {
   bank: "your bank", government: "a government agency", techsupport: "tech support",
-  family: "a family member", telco: "your telco", business: "a business",
+  family: "a family member", telco: "your telco", business: "a business", delivery: "a delivery company",
   investment: "an investment firm", relationship: "someone you met online", unknown: "an unnamed caller",
 };
 

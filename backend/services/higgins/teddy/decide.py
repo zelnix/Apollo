@@ -262,6 +262,10 @@ def evaluate(plan_: Plan, texts: dict[str, str], *, final: bool) -> tuple[Decisi
         if check.status == "resolved":
             return Decision("teddy_kb" if check.route == "apollo_kb" else "teddy_search", None, "knowledge"), []
         return None, ([Issue("reasoning", f"Answer the general question: {check.subject}", list(texts), check.id)] if final else [])
+    if plan_.channel == "call" and not plan_.has_message and not plan_.link_only:
+        # A call described only in the question: TC FlyBy has nothing to compare, so Magnum DI assesses the call itself.
+        return None, ([Issue("reasoning", "Assess the phone call the person describes in their question: who the caller claimed to be, "
+                                          "what they asked for, and what the person should do.", list(texts))] if final else [])
     if not final:
         return None, []
     issues = magnum_issues(plan_, texts, found)

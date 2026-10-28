@@ -33,3 +33,13 @@ for (const c of cases) test(c.id, () => { const r = run(c.asks, c.claim, c.t); a
 test("Acceptance 1 wording", () => { const r = run(["transfer"], "bank"); assert.match(r.verdict, /Do not transfer the money/); assert.match(r.recommendation, /Hang up and contact your bank independently/); });
 test("Verify Caller never relies on caller-supplied details", () => { for (const claim of ["bank", "government", "family", "unknown"] as CallClaim[]) assert.match(run(["nothing"], claim).verifyCaller, /yourself|already|saved|find|official/i); });
 test("Unknown number alone is not a scam", () => { assert.equal(analyseCall({ asks: ["nothing"], claim: "unknown", number: "+61 400 000 000" }).state, "resting"); });
+
+test("the call's details for an investigation are the person's plain sentences, never the screen's option ids", async () => {
+  const { describeCall } = await import("../src/domain/callAnalysis.ts");
+  const text = describeCall({ asks: ["code", "password"], claim: "bank", number: "0412 345 678", transcript: "bank wants my code", brandName: "CommBank" });
+  assert.equal(text, "The caller said they were from my bank (CommBank).\nThey asked me to give a verification code.\nThey asked me to give a password or PIN.\n"
+    + "The number that called: 0412 345 678\nWhat the caller said, in my words: bank wants my code");
+  assert.ok(!/Caller said: bank|Asked for: code/.test(text));
+  assert.equal(describeCall({ asks: ["transfer"], claim: "delivery" }), "The caller said they were from a delivery or parcel company.\nThey asked me to transfer money.");
+  assert.equal(analyseCall({ asks: ["bankdetails"], claim: "delivery" }).verifyCaller.startsWith("Hang up. Track the parcel"), true);
+});

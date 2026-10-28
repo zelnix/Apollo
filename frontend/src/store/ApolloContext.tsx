@@ -31,7 +31,7 @@ import type { OfficialVerdict } from "@/src/domain/officialContacts";
 import { reportTriageOutcome } from "@/src/api/triageTelemetry";
 import { numberLookupFailure } from "@/src/domain/triage/limitedCause";
 import { extractPhoneCandidates, phoneIncompleteChecks, phoneTriageReputation, phoneWhyLines, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
-import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
+import { analyseCall, describeCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { nativeClassificationAttribution, nativeClassificationProvenance, nativeClassificationWhyLine, triggersInvestigation, type NativeClassificationFact } from "@/src/domain/nativeClassification";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { evaluateTriage } from "@/src/domain/triage/engine";
@@ -1411,14 +1411,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       let investigationCaseId: string | null = existingCaseId;
       let escalationNote: string | null = null;
       if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || triggersInvestigation(nativeFact)) && !investigationCaseId) {
-        const callSummary = [
-          nativeFact ? `${nativeFact.provider} classified this number as "${nativeFact.classification}" (${nativeFact.provider}'s own rating, not Apollo's)` : null,
-          input.claim ? `Caller said: ${input.claim}` : null,
-          input.brandName ? `Claimed brand: ${input.brandName}` : null,
-          input.number ? `Number: ${input.number}` : null,
-          input.asks.length ? `Asked for: ${input.asks.join(", ")}` : null,
-          input.transcript ? `Transcript: ${input.transcript}` : null,
-        ].filter(Boolean).join("\n");
+        // The call in the person's own plain sentences, so TC FlyBy can compare it with the phone-scam patterns.
+        const callSummary = describeCall(input, nativeFact ? `${nativeFact.provider} classified this number as "${nativeFact.classification}" (${nativeFact.provider}'s own rating, not Apollo's)` : null);
         try {
           const remote = await apiPost<{ case?: { id?: string | null } }>("/investigations", "call_investigation", {
             gate: "call",

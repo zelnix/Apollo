@@ -268,11 +268,12 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
     if (response) {
       // Higgins' plain English when it passed its Fidelity Check; otherwise Apollo's own wording.
       const plain = shownPlainEnglish(response);
-      if (plain) return plainReport(plain, investigation?.sources, response.sourceIds);
+      if (plain) return plainReport(plain, investigation?.sources, response.sourceIds, investigation?.evidenceItems);
       return buildReport({
         overview: scrubMessage(response.overview), explanationMarkdown: scrubMessage(response.explanationMarkdown), attentionReason: response.attentionReason,
         findings: response.findings, uncertainties: response.uncertainties, scope: response.scope,
         sources: investigation?.sources, sourceIds: response.sourceIds, alreadySaid: [investigation?.settledReason?.sentence],
+        evidence: investigation?.evidenceItems,
       });
     }
     const headline = (event.headline || "").trim();

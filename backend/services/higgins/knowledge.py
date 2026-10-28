@@ -192,7 +192,7 @@ async def _weights(coll) -> tuple[int, dict[str, int]]:
         return cached[1], cached[2]
     held: dict[str, int] = {}
     n = 0
-    async for doc in coll.find({"kind": _NOT_GENERAL}, {"_id": 0, "title": 1, "body": 1}):
+    async for doc in coll.find(_GENERAL, {"_id": 0, "title": 1, "body": 1}):
         n += 1
         for concept in set(concepts(f"{doc.get('title') or ''} {doc.get('body') or ''}")):
             held[concept] = held.get(concept, 0) + 1
@@ -204,6 +204,9 @@ async def _weights(coll) -> tuple[int, dict[str, int]]:
 TECHNICAL_KINDS = ("exploited_vulnerability", "attack_technique")
 # The Official Organisation Directory is reference data the checks read (services/org_directory.py), never quoted as an answer.
 _NOT_GENERAL = {"$nin": ["gemini_answer", *TECHNICAL_KINDS, "official_organisation"]}
+# What a general question or related reading may use: every general kind, except the phone-call scam patterns, which
+# are TC FlyBy's matching rules for a call check (patterns.py), not library articles.
+_GENERAL = {"kind": _NOT_GENERAL, "pattern.channel": {"$exists": False}}
 _TECHNICAL_ID = re.compile(r"\b(CVE-\d{4}-\d{4,}|T\d{4}(?:\.\d{3})?)\b", re.I)
 
 
@@ -386,7 +389,7 @@ async def search(question: str, limit: int = 2, *, collection=None) -> list[dict
     if not query:
         return []
     try:
-        rows = await coll.find({"$text": {"$search": search_words(question)}, "kind": _NOT_GENERAL},
+        rows = await coll.find({"$text": {"$search": search_words(question)}, **_GENERAL},
                                {"_id": 0, "score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001 — a missing index means no match, never a crash
         return []
@@ -423,7 +426,7 @@ async def related(text: str, limit: int = 2) -> list[dict]:
     if not query_terms:
         return []
     try:
-        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}, "kind": _NOT_GENERAL},
+        rows = await db.higgins_knowledge.find({"$text": {"$search": " ".join(query_terms)}, **_GENERAL},
                                                {"_id": 0, "sketch": 0, "score": {"$meta": "textScore"}}
                                                ).sort([("score", {"$meta": "textScore"})]).limit(25).to_list(25)
     except Exception:  # noqa: BLE001

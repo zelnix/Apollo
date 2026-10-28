@@ -85,3 +85,17 @@ test("other sections an investigation writes keep their heading; sources are the
 test("sentences split at a full stop followed by a space, never inside an address", () => {
   assert.deepEqual(sentences("It is not linkt.com.au. Check it."), ["It is not linkt.com.au.", "Check it."]);
 });
+
+test("How Apollo checked names each item in plain words, never by its evidence reference", () => {
+  const id = "3f2a9c1e-1111-2222-3333-444455556666";
+  const scope = `Examined: the question you asked (4 words); evidence ${id} · kind=text · Call details (6 words). No website was opened, no sender was contacted and no account was accessed.`;
+  const r = buildReport({ overview: "A caller asked for a code.", scope });
+  const how = r.how.join(" ");
+  assert.ok(!how.includes(id) && !how.includes("kind=") && !how.includes("evidence "), how);
+  assert.match(how, /Examined: the question you asked \(4 words\); the call details \(6 words\)\./);
+  // A bare id is named from the case's own items; one it doesn't know is still never shown as a code.
+  const bare = buildReport({ overview: "x", scope: `Magnum DI examined evidence ${id} and [${id.replace("3f2a", "9d8e")}].`, evidence: [{ id, label: "Submitted message text", kind: "text" }] });
+  assert.equal(bare.how.join(" "), "Magnum DI examined the submitted message text and an item in this case.");
+  const kindOnly = buildReport({ overview: "x", scope: `[evidence ${id} · kind=image] was read directly.` });
+  assert.equal(kindOnly.how.join(" "), "The picture you sent was read directly.");
+});
