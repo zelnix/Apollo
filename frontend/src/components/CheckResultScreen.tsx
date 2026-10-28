@@ -10,13 +10,14 @@ import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import ExternalLink from "lucide-react-native/icons/external-link";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/checkResult";
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
+import { luddishCheckResult } from "@/src/domain/luddish";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
@@ -34,6 +35,7 @@ const useStyles = makeStyles((c) => ({
   sectionLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
   headline: { fontFamily: fonts.displayBold, fontSize: 22, lineHeight: 28, color: c.onSurface, letterSpacing: -0.3 },
   higginsText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
+  plainNote: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted, fontStyle: "italic", marginTop: 2 },
 
   itemRow: { gap: 4, paddingVertical: spacing.sm },
   itemDivider: { borderTopWidth: 1, borderTopColor: c.divider },
@@ -81,6 +83,8 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
   // Two independent sections: opening the technical evidence must not also open the checklist.
   const [checkedOpen, setCheckedOpen] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
+  // Higgins speaks Luddish (L1): plain words, the evidence unchanged. The full investigation details stay as recorded.
+  const plain = useMemo(() => luddishCheckResult(result), [result]);
 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
@@ -105,18 +109,23 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
             <Pill tone={result.tone} label={result.checkType} testID="check-result-tone" />
             <Pill tone="neutral" label={`Confidence: ${result.confidence}`} testID="check-result-confidence" />
           </View>
-          <Text style={s.headline} testID="check-result-headline">{result.headline}</Text>
+          <Text style={s.headline} testID="check-result-headline">{plain.headline}</Text>
 
               <View style={{ gap: spacing.xs }}>
                 <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
-                <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
+                <Text style={s.higginsText} testID="check-result-higgins">{plain.higginsSays}</Text>
+                {plain.notes.length ? (
+                  <View testID="check-result-plain-notes">
+                    {plain.notes.map((note, i) => <Text key={i} style={s.plainNote}>{note}</Text>)}
+                  </View>
+                ) : null}
               </View>
 
-              {result.whatToDo || result.whatToDoLinks?.length ? (
+              {plain.whatToDo || result.whatToDoLinks?.length ? (
                 <View style={{ gap: spacing.xs }}>
                   <Text style={s.sectionLabel}>WHAT TO DO</Text>
-                  {result.whatToDo ? (
-                    <LinkifiedText style={s.higginsText} text={result.whatToDo} testID="check-result-whattodo" />
+                  {plain.whatToDo ? (
+                    <LinkifiedText style={s.higginsText} text={plain.whatToDo} testID="check-result-whattodo" />
                   ) : null}
                   {result.whatToDoLinks?.length ? (
                     <View style={{ gap: 2, marginTop: result.whatToDo ? spacing.xs : 0 }}>
@@ -156,6 +165,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
                   <CheckItemRow
                     key={item.id}
                     item={item}
+                    finding={plain.items[item.id] ?? item.finding}
                     open={!!itemsOpen[item.id]}
                     onToggle={() => toggleItem(item.id)}
                     showDivider={i > 0}
@@ -236,7 +246,7 @@ function formatRaw(raw: Record<string, unknown>): string {
   return entries.map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join("\n");
 }
 
-function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; open: boolean; onToggle: () => void; showDivider: boolean }) {
+function CheckItemRow({ item, finding, open, onToggle, showDivider }: { item: CheckItem; finding: string; open: boolean; onToggle: () => void; showDivider: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
   const hasRaw = !!item.raw && Object.keys(item.raw).length > 0;
@@ -253,7 +263,7 @@ function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; 
         <Text style={s.itemName}>{item.name}</Text>
         <Pill tone={STATUS_TONE[item.status]} label={STATUS_LABEL[item.status]} testID={`check-item-${item.id}-status`} />
       </View>
-      {item.finding ? <Text style={s.itemFinding}>{item.finding}</Text> : null}
+      {finding ? <Text style={s.itemFinding}>{finding}</Text> : null}
       {hasRaw ? (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
           <Text style={[s.checkType, { fontSize: 12 }]}>{open ? "Hide details" : "Show details"}</Text>

@@ -29,7 +29,8 @@ import { Body, Button, Card, DevTag, Pill } from "@/src/components/ui";
 import { clearHandoffTransfers, takeHandoff } from "@/src/domain/handoffTransfer";
 import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
-import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
+import { askHiggins, clearHigginsHistory, higginsHistory, isQuoted, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
+import { luddishChat } from "@/src/domain/luddish";
 import { resolveNavLinks } from "@/src/higgins/appMap";
 import { buildDeviceSnapshot, loadSnapshotExtras, type SnapshotExtras } from "@/src/higgins/deviceSnapshot";
 import { readDeviceCapabilityState, type DeviceCapabilityReading } from "@/src/security/deviceCapabilityState";
@@ -129,6 +130,8 @@ export default function Ask() {
   const conversationId = useRef(Crypto.randomUUID()); const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null); const inputRef = useRef<TextInput>(null); const contextRecorded = useRef<string | null>(null); const stick = useRef(true);
   const caseBusy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   const busy = caseBusy || chatBusy;
+  // Higgins speaks Luddish (L1): plain words, the evidence unchanged. An answer in a source's own words stays as it is.
+  const shownChat = useMemo(() => new Map(chatMessages.filter((m) => m.role === "higgins" && !m.quoted).map((m) => [m.id, luddishChat(m.content)])), [chatMessages]);
   const latestUserMessage = useMemo(() => [...chatMessages].reverse().find((message) => message.role === "user")?.content ?? "", [chatMessages]);
 
   useEffect(() => {
@@ -283,7 +286,7 @@ export default function Ask() {
     }
     void askHiggins(message, conversationId.current, turnId, previousTurnIds, snapshotRef.current).then((reply) => {
       const links = resolveNavLinks(reply.navigation);
-      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined }]; void saveLocalChat(next); return next; });
+      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId, links: links.length ? links : undefined, ...(isQuoted(reply) ? { quoted: true } : {}) }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
     }).catch(() => setChatError("Higgins couldn't answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
@@ -584,7 +587,7 @@ export default function Ask() {
           : <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowHiggins} onLayout={(e) => noteRow(message.id, e.nativeEvent.layout.y, e.nativeEvent.layout.height)}>
               <HigginsAvatar size={26} style={s.miniAvatar} />
               <View style={{ flexShrink: 1 }}>
-                <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View>
+                <View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{shownChat.get(message.id) ?? message.content}</Text></View>
                 {message.links?.length ? <View style={s.linkRow} testID={`ask-links-${message.id}`}>
                   {message.links.map((link, index) => <Pressable key={link.route} testID={`ask-link-${message.id}-${index}`} accessibilityRole="button" accessibilityLabel={`Open ${link.label}`} style={s.linkChip} onPress={() => router.push(link.route as never)}>
                     <Text style={s.linkText} numberOfLines={1}>{link.label}</Text>

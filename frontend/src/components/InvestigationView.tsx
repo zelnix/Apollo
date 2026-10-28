@@ -34,6 +34,7 @@ import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
+import { luddishText } from "@/src/domain/luddish";
 import { assessmentLabel, investigationHistory, investigatorName, outcomeLabel, outcomeTone, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -696,7 +697,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {/* ── Conversation history (all turns) ── */}
     {turns.slice(0, -1).map((turn) => <View key={turn.turnId} style={s.turn} testID={`inv-turn-${turn.turnId}`}>
       <View style={s.user}><Text style={s.text}>{turn.question}</Text></View>
-      <Text style={s.text}>{scrubMessage(turn.response.overview)}</Text>
+      <Text style={s.text}>{luddishText(scrubMessage(turn.response.overview))}</Text>
     </View>)}
     {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
 
@@ -781,7 +782,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
                 <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
                 <View style={s.actionContent}>
                   <Text style={s.actionTitle}>{action.label}</Text>
-                  <Text style={s.actionDescription}>{scrubMessage(stepText(response, actionIndex))}</Text>
+                  <Text style={s.actionDescription}>{luddishText(scrubMessage(stepText(response, actionIndex)))}</Text>
                 </View>
                 {isExecutable(action) ? <ChevronRight size={18} color={colors.muted} /> : null}
               </Pressable>
@@ -822,7 +823,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             }} />
             <Button testID="inv-reports-toggle" variant="ghost" label={`${reportsOpen ? "Hide" : "Manage"} saved reports (${reports.length}${reportNext !== null ? "+" : ""})`} onPress={() => setReportsOpen((v) => !v)} />
             {reportsOpen ? <View style={{ gap: spacing.sm }} testID="inv-reports-list">{reports.map((report) => <View key={report.reportId} style={s.source} testID={`inv-report-${report.reportId}`}>
-              <Text style={s.text}>{scrubMessage(report.overview)}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} \u00B7 historical snapshot</Text>
+              <Text style={s.text}>{luddishText(scrubMessage(report.overview))}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} \u00B7 historical snapshot</Text>
               <Button testID={`inv-report-delete-${report.reportId}`} variant="ghost" label="Delete saved report" onPress={() => {
                 void deleteLocalReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
                   .catch(() => setReportNote("That report could not be deleted."));
@@ -951,7 +952,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       <Card style={s.card}>
         <View style={s.higginsExplanation}>
           <Text style={s.higginsExplainLabel}>Higgins</Text>
-          <Text style={s.higginsExplainText} testID="inv-followup-answer">{scrubMessage(item.answer)}</Text>
+          <Text style={s.higginsExplainText} testID="inv-followup-answer">{luddishText(scrubMessage(item.answer))}</Text>
         </View>
         <Text style={s.muted}>{`From ${investigator}'s finished investigation. Nothing new was analysed.`}</Text>
       </Card>

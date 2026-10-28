@@ -21,6 +21,8 @@ export interface OfficialVerdict {
   domains: string[];
   /** The organisation's own page the verdict was traced to. */
   source_url: string | null;
+  /** On a warning: the organisation's main published number, for "Call the real number". */
+  call: OfficialContactRef | null;
 }
 export interface OrganisationNames { name: string; aliases: string[] }
 
@@ -29,6 +31,11 @@ const STATUSES: OfficialStatus[] = ["official", "published", "lookalike", "share
 const WARNINGS: OfficialStatus[] = ["lookalike", "shared_service", "not_official", "not_published"];
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 const https = (v: unknown): string | null => { const s = str(v); return s && /^https:\/\//i.test(s) ? s : null; };
+function contactRef(r: unknown): OfficialContactRef | null {
+  const ref = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+  const v = str(ref.value);
+  return v ? { value: v, label: str(ref.label) ?? "", source_url: https(ref.source_url) } : null;
+}
 
 /** One verdict as the server sent it, or null when it isn't one (an unreadable verdict is never shown). */
 export function parseOfficialVerdict(raw: unknown, fallback?: { kind: OfficialKind; value: string }): OfficialVerdict | null {
@@ -42,13 +49,10 @@ export function parseOfficialVerdict(raw: unknown, fallback?: { kind: OfficialKi
   return {
     kind, value, name, status: o.status as OfficialStatus,
     label: str(o.label) ?? "", domain: str(o.domain), official_domain: str(o.official_domain), detail: str(o.detail),
-    use_instead: refs.flatMap((r) => {
-      const ref = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
-      const v = str(ref.value);
-      return v ? [{ value: v, label: str(ref.label) ?? "", source_url: https(ref.source_url) }] : [];
-    }),
+    use_instead: refs.flatMap((r) => { const ref = contactRef(r); return ref ? [ref] : []; }),
     domains: Array.isArray(o.domains) ? o.domains.filter((d): d is string => typeof d === "string") : [],
     source_url: https(o.source_url),
+    call: contactRef(o.call),
   };
 }
 
@@ -95,6 +99,8 @@ export interface OfficialContactLine {
   useInstead: { label: string; url: string }[];
   /** Where ApolloSG found it: the organisation's own page. */
   source: { label: string; url: string } | null;
+  /** On a warning: "Call the real number" — the organisation's main published number, dialled with one tap. */
+  call: { number: string; url: string; caption: string; accessibility: string } | null;
 }
 
 const dial = (n: string) => `tel:${n.replace(/[^\d+]/g, "")}`;
@@ -106,11 +112,17 @@ const labelled = (label: string) => (label ? ` (${label})` : "");
 export function officialContactLines(verdicts: OfficialVerdict[]): OfficialContactLine[] {
   const lines = verdicts.map((v, i): OfficialContactLine => {
     const where = v.domain ?? v.value;
+    const warning = isOfficialWarning(v);
+    // The number to call instead: the directory's main published number, or (for a number) the first one it publishes.
+    const real = warning ? v.call ?? (v.kind === "phone" ? v.use_instead[0] ?? null : null) : null;
+    const call = real ? { number: real.value, url: dial(real.value), accessibility: `Call ${v.name} on ${real.value}`,
+      caption: `${upper(v.name)}'s published number: ${real.value}${labelled(real.label)}` } : null;
     const own = v.official_domain ? [{ label: `Use ${v.official_domain}, ${v.name}'s own website`, url: `https://${v.official_domain}` }] : [];
-    const instead = v.use_instead.map((c) => ({ label: `${c.value}${c.label ? ` · ${c.label}` : ""}`, url: contactUrl(v.kind, c.value) }));
-    const page = v.source_url ?? v.use_instead.find((c) => c.source_url)?.source_url ?? null;
+    const instead = v.use_instead.filter((c) => !(v.kind === "phone" && c.value === real?.value))
+      .map((c) => ({ label: `${c.value}${c.label ? ` · ${c.label}` : ""}`, url: contactUrl(v.kind, c.value) }));
+    const page = v.source_url ?? real?.source_url ?? v.use_instead.find((c) => c.source_url)?.source_url ?? null;
     const source = page ? { label: `${upper(v.name)}'s own page, where ApolloSG checked this`, url: page } : null;
-    const base = { id: `official-${v.kind}-${i}`, warning: isOfficialWarning(v), source };
+    const base = { id: `official-${v.kind}-${i}`, warning, source, call };
     switch (v.status) {
       case "official":
         return { ...base, title: "Official website", text: `${where} is ${v.name}'s own website.`, useInstead: [] };

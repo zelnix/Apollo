@@ -2,7 +2,7 @@
 
 How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
-_Last reviewed against the code: 2026-10-27._
+_Last reviewed against the code: 2026-10-28._
 
 _Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers), with the second-round corrections the same day (LINK-11, CORR-08, text copied elsewhere, Magnum DI correcting a provisional concern). Status: approved by the owner, then the code was audited against it and brought into line the same day: both engines decide from each rule's class, so ROUTE and COVERAGE rules no longer make a Possible Threat; CORR-08 needs a harmful payload; a failed lookup never supplies a rule's evidence; TC FlyBy treats weak signals as weak; Magnum DI can't go below TC FlyBy's concern without resolving evidence; and ABN, ACN and licence numbers reach only their register question. The EXPLAIN class was added for Higgins' explanation rules, and each one was checked against the code._
 
@@ -692,6 +692,20 @@ If the answer fails, the check fails honestly. The raw reply is kept only in the
 
 #### Plain English and the Fidelity Check
 Every finished TC FlyBy or Magnum DI result is explained in plain English by the **Higgins Plain-English Renderer** and checked by the **Fidelity Check** before it is shown. Both have their own sections below.
+
+#### Higgins Luddish L1 (on the phone)
+Luddish L1 is the one language layer everywhere Higgins speaks on the phone: check results, reports (Ask Higgins and a threat's Overview) and Ask Higgins answers. It is fixed rules only: no AI and no network. **It changes the language, never the evidence.**
+- **Order:** Evidence Lock → Luddish Dictionary and Knowledge → Luddish Rules → Composer → Grammar and Punctuation → Readability Check → Evidence Fidelity Check → Higgins.
+- **Evidence Lock:** the state, every finding (with who established it and how firmly), what isn't certain, what to do and who blocked it are frozen first. A lock that changed is never explained in plain words.
+- **Dictionary:** one approved name and meaning for each term. A term is swapped for plain words only where they mean exactly the same ("URL" → "web address", "malicious" → "harmful"); every other term is kept and explained.
+- **Knowledge:** general background, each entry with its source. Knowledge can explain evidence; it never becomes case evidence, and is never shown as a finding.
+- **Rules:** one approved set of words for each state, never stronger or weaker than the state Apollo recorded. A state is never guessed: anything unrecognised is "unable to determine".
+- **Composer:** Finding → Meaning → Importance → Limitation → Action. Apollo's own steps are used when it recorded any; "you don't need to do anything" only when nothing needs doing.
+- **Grammar and Punctuation:** the Plain-English Renderer's swaps, plus a few that mean exactly the same; contractions; a long sentence split only where a full stop changes nothing. Links, addresses, numbers, dates, amounts and quoted words are held aside and put back word for word.
+- **Readability:** the target is Year 7–8 (Flesch–Kincaid grade 8 or under, no sentence over 25 words). A sentence that is still hard keeps its exact words, with a plain note beside it: the dictionary's meaning of its hard terms, or the state's "In short" line. Evidence fidelity outranks readability.
+- **Evidence Fidelity Check:** a line is shown in plain words only when nothing changed: the same meaning, the same "not", the same numbers, every "because" and "so", every identifier and quote, and no more certain, safer, milder or more alarming. Otherwise that line is shown in Apollo's own words.
+- **Never reworded:** a scam alert, a Learn article and ApolloSG's KB stay in the source's own words, and the full technical details stay exactly as recorded.
+- At most 2 plain notes are shown beside one result.
 
 ### Higgins Plain-English Renderer {#plain-english-renderer}
 

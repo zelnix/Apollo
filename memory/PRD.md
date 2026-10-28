@@ -1,3 +1,33 @@
+## Higgins Luddish L1 — P0 done: engine + everywhere Higgins speaks + before/after list (2026-10-28)
+**Owner's choices:** L1 first (validate with before/after), then question buttons; all five buttons (What does this mean? ·
+Why does it matter? · How sure is Higgins? · What should I do? · Show the technical detail), each only when it makes sense;
+a sentence that can't reach Year 7–8 keeps its exact wording + a plain note (fidelity outranks readability); L1 is the common
+layer for check results, reports and Ask Higgins; "Show the technical detail" is NEVER rewritten (original wording + attribution).
+No testing agent (owner's rule).
+- Engine `frontend/src/domain/luddish/` (pure TS, no AI): `lock.ts` (Evidence Lock, frozen + fingerprint) → `dictionary.ts`
+  (one name per concept, server GLOSSARY word for word, exact plain swaps only; +"authenticated") / `knowledge.ts` (sourced
+  background, never evidence) → `rules.ts` (approved wording per state, never stronger; likely_scam means now "…though Apollo
+  can't be certain.") → `compose.ts` (Finding → Meaning → Importance → Limitation → Action, terms, knowledge, technical =
+  locked wording, readability, fidelity; any failure → Apollo's words throughout) → `grammar.ts` (server PLAIN_SWAPS word for
+  word + own swaps, a/an fix, snake_case codes → words, safe splits at "; " ", but " ", so " and a single " — ") →
+  `readability.ts` (Flesch–Kincaid, target grade 8, ≤25 words/sentence, labels <6 words ungraded, contractions read as two
+  words) → `fidelity.ts` (identifiers, quotes, meaning, negation, numbers, because/so, tone lists, state wording, knowledge-as-
+  evidence, notes, technical). Public API `index.ts`: `luddish`, `luddishText`, `luddishCheckResult`, `luddishReport`, `luddishChat`, `compose`.
+- Wired: `CheckResultScreen` (headline, Higgins text, what to do, item findings, ≤2 plain notes `check-result-plain-notes`;
+  full investigation details untouched), `ReportBody` (all sections; severity + sources untouched; finding explain; notes
+  `${ids}-plain-notes`), Ask Higgins chat bubbles (`luddishChat`; answers whose evidenceBasis is a source's own words —
+  `QUOTED_BASES` in chatClient — are flagged `quoted` and never reworded), InvestigationView (earlier turns, steps, saved
+  reports, follow-up answers), patrol/[id] steps.
+- Rule book: "Higgins Luddish L1 (on the phone)" subsection under Higgins (explanation); stamped.
+- Before/after: `frontend/scripts/luddishBeforeAfter.ts` (real analysers/adapters + backend TC FlyBy wording dumped from
+  test_higgins_wording scenarios) → `/app/memory/luddish_before_after.md` (127 texts: 30 reworded, 10 notes only, 87 already
+  plain; prose grade 5.7 → 5.6; 82→83 of 103 at target; every fidelity check passed).
+- Tests: new `frontend/tests/luddish.test.ts` (20). Frontend 1148/1148; tsc clean; test_rulebook 27 passed.
+- NEXT (P1): question buttons on each result from `compose()` sections (Brief → Explain → Detailed), shown only when
+  meaningful; technical detail = `explanation.technical` verbatim; typed Ask Higgins questions ("what is DMARC") via
+  `lookupTerm` + knowledge. P2: Magnum DI Phase 5 check (already wired per earlier entry — re-verify only).
+
+
 ## ApolloSG Free Knowledge Base — Phases 3–5 verified; "not the official contact" on every result (2026-10-27)
 **Owner's choices:** plan order as proposed; Claude/OpenAI stay blocked until the owner adds keys (don't ask again);
 delete preview data right away if counts match. No testing agent (owner's rule) — pytest + node tests + preview screenshots.

@@ -170,6 +170,11 @@ def _contact(item: dict, key: str) -> dict:
     return {"value": item[key], "label": item.get("label") or "", "source_url": item.get("source_url")}
 
 
+def _call(entry: dict) -> dict | None:
+    """The organisation's main published number: what every warning's "Call the real number" button dials."""
+    return _contact(entry["phones"][0], "number") if entry.get("phones") else None
+
+
 def number_verdict(number: str, claimed: str | None = None) -> dict | None:
     """What the directory says about a number: an organisation's published contact, or (when the material or caller
     names a listed organisation) not one of that organisation's published numbers, with the ones to use instead."""
@@ -178,7 +183,8 @@ def number_verdict(number: str, claimed: str | None = None) -> dict | None:
         return {"status": "published", "name": hit["name"], "label": hit.get("label") or "", "source_url": hit.get("source_url")}
     entry = find(claimed)
     if entry and entry["phones"]:
-        return {"status": "not_published", "name": entry["name"], "use_instead": [_contact(p, "number") for p in entry["phones"][:3]]}
+        return {"status": "not_published", "name": entry["name"], "use_instead": [_contact(p, "number") for p in entry["phones"][:3]],
+                "call": _call(entry)}
     return None
 
 
@@ -190,7 +196,7 @@ def email_verdict(address: str, claimed: str | None = None) -> dict | None:
     domain = (address or "").lower().split("@")[-1]
     if entry and brand_domains.registrable(domain) not in brand_domains.official_domains(entry["name"]):
         return {"status": "not_published", "name": entry["name"], "use_instead": [_contact(e, "address") for e in entry["emails"][:2]],
-                "domains": list(brand_domains.official_domains(entry["name"]))[:3]}
+                "domains": list(brand_domains.official_domains(entry["name"]))[:3], "call": _call(entry)}
     return None
 
 
@@ -219,14 +225,14 @@ def site_verdict(host: str, claimed: str | None = None) -> dict | None:
             official = brand_domains.official_domains(name)
             return {"status": kind, "name": name, "domain": brand_domains.registrable(host), "official_domain": official[0] if official else None,
                     "detail": brand_domains.SIGN_WORDS.get(detail) if kind == "lookalike" else f"{detail} is a link or website service anyone can use",
-                    "source_url": source(entry)}
+                    "source_url": source(entry), "call": _call(entry)}
     from services.higgins.teddy.official import official_domain
     entry = find(claimed)
     # Another organisation's or a government website, or the organisation's own country site, is never "not official".
     if entry and not official_domain(host) and brand_domains.classify(entry["name"], host)[0] != "country_site":
         official = brand_domains.official_domains(entry["name"])
         return {"status": "not_official", "name": entry["name"], "domain": brand_domains.registrable(host),
-                "official_domain": official[0] if official else None, "source_url": source(entry)}
+                "official_domain": official[0] if official else None, "source_url": source(entry), "call": _call(entry)}
     return None
 
 

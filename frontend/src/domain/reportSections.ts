@@ -19,6 +19,8 @@ export interface Report {
   uncertain: string[];
   how: string[];
   sources: SourceReference[];
+  /** Higgins Luddish L1's plain notes beside the answer: approved dictionary meanings, never evidence. */
+  notes?: string[];
 }
 
 export interface ReportInput {

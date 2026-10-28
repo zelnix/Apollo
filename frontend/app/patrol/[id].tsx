@@ -67,6 +67,7 @@ import { ReportBody } from "@/src/components/report/ReportBody";
 import { ReportHeader } from "@/src/components/report/ReportHeader";
 import { checkKind } from "@/src/components/report/checkKind";
 import { buildReport, plainReport, shownPlainEnglish, stepText } from "@/src/domain/reportSections";
+import { luddishText } from "@/src/domain/luddish";
 import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { FamilyNotes } from "@/src/components/FamilyNotes";
@@ -316,7 +317,7 @@ function OverviewContent({ event, status, shownWhatToDo, original, investigation
               <View style={[s.actionIconWrap, { backgroundColor: "#DBEAFE" }]}><Shield size={20} color={colors.brandPrimary} /></View>
               <View style={{ flex: 1, gap: 2 }}>
                 {step.title ? <Text style={s.actionTitle}>{scrubMessage(step.title)}</Text> : null}
-                <Text style={step.title ? s.actionDescription : s.reportBody}>{scrubMessage(step.body)}</Text>
+                <Text style={step.title ? s.actionDescription : s.reportBody}>{luddishText(scrubMessage(step.body))}</Text>
               </View>
             </View>
           ))}

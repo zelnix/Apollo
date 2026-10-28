@@ -212,6 +212,16 @@ def test_published_contacts_and_the_not_the_official_contact_warning(fake_direct
     assert [(v["kind"], v["status"]) for v in found] == [("site", "not_official"), ("phone", "not_published")]
 
 
+def test_every_warning_carries_the_organisations_main_published_number_to_call(fake_directory):
+    d = fake_directory
+    main = {"value": "13 99 99", "label": "General enquiries", "source_url": "https://www.testbank.com.au/contact"}
+    assert d.number_verdict("0412 345 678", "Testbank")["call"] == main
+    assert d.email_verdict("support@gmail.com", "Testbank")["call"] == main
+    assert d.site_verdict("testbank-verify.net")["call"] == main
+    assert d.site_verdict("secure-login.xyz", "Testbank")["call"] == main
+    assert "call" not in d.number_verdict("13 99 99") and "call" not in d.site_verdict("testbank.com.au")   # its own: no warning
+
+
 def test_an_unconfirmed_number_never_counts(fake_directory):
     d = fake_directory
     stale = {**FAKE, "phones": [{**FAKE["phones"][0], "confirmed_at": now_utc() - d.CONFIRM_WINDOW - timedelta(days=1)}], "emails": []}

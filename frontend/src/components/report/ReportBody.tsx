@@ -6,6 +6,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { scrubMessage } from "@/src/domain/messageVoice";
 import { reusedLine } from "@/src/domain/checkedAgo";
+import { luddishReport } from "@/src/domain/luddish";
 import type { Report } from "@/src/domain/reportSections";
 import type { SourceReference } from "@/src/investigation/types";
 import { HigginsAvatar } from "@/src/components/HigginsAvatar";
@@ -39,13 +40,15 @@ function SourceRow({ source, testID }: { source: SourceReference; testID: string
   );
 }
 
-export function ReportBody({ report, time, ids }: {
+export function ReportBody({ report: given, time, ids }: {
   report: Report;
   time: string | null;
   /** testID prefix: "inv" on Ask Higgins, "tc-overview" on a threat. */
   ids: string;
 }) {
   const s = useStyles();
+  // Higgins speaks Luddish (L1): plain words, the evidence unchanged. Sources keep their own titles.
+  const report = React.useMemo(() => luddishReport(given), [given]);
   return (
     <View style={{ gap: spacing.sm }}>
       <View style={s.header}>
@@ -60,6 +63,11 @@ export function ReportBody({ report, time, ids }: {
         <Text key={`a${i}`} style={s.body} testID={i === 0 ? `${ids}-answer` : `${ids}-answer-${i}`}>{scrubMessage(para)}</Text>
       ))}
       {report.severity ? <Text style={s.severity} testID={`${ids}-severity`}>{report.severity}</Text> : null}
+      {report.notes?.length ? (
+        <View testID={`${ids}-plain-notes`}>
+          {report.notes.map((note, i) => <Text key={`n${i}`} style={s.explain}>{note}</Text>)}
+        </View>
+      ) : null}
 
       {report.found.length ? (
         <View testID={`${ids}-findings`}>

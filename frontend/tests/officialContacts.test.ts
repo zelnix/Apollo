@@ -31,9 +31,28 @@ test("a number that isn't the organisation's own is a warning, with its publishe
   assert.equal(lines[0].warning, true, "warnings come first");
   assert.equal(lines[0].title, "Not the official number");
   assert.match(lines[0].text, /This says it's from CommBank, but 0412 345 678 isn't one of CommBank's published numbers/);
-  assert.deepEqual(lines[0].useInstead, [{ label: "13 22 21 · General enquiries", url: "tel:132221" }]);
+  assert.deepEqual(lines[0].call, { number: "13 22 21", url: "tel:132221", accessibility: "Call CommBank on 13 22 21",
+    caption: "CommBank's published number: 13 22 21 (General enquiries)" }, "the warning's own Call button dials the real number");
+  assert.deepEqual(lines[0].useInstead, [], "the number on the Call button isn't listed again");
   assert.equal(lines[0].source?.url, "https://www.commbank.com.au/support/contact-us.html");
   assert.equal(lines[1].text, "13 22 21 is CommBank's published number (General enquiries).");
+  assert.equal(lines[1].call, null, "only a warning has a Call button");
+});
+
+test("every warning — a website, a number or an address — calls the organisation's main published number", () => {
+  const call = { value: "13 28 61", label: "Tax enquiries", source_url: "https://www.ato.gov.au/about-ato/contact-us" };
+  const lines = officialContactLines([
+    parseOfficialVerdict({ kind: "site", value: "ato-refund.net", status: "lookalike", name: "the ATO", domain: "ato-refund.net", official_domain: "ato.gov.au", call })!,
+    parseOfficialVerdict({ kind: "email", value: "ato@gmail.com", status: "not_published", name: "the ATO", domains: ["ato.gov.au"], use_instead: [], call })!,
+    parseOfficialVerdict({ kind: "phone", value: "0412 000 111", status: "not_published", name: "the ATO", use_instead: [call], call })!,
+  ]);
+  for (const line of lines) {
+    assert.equal(line.warning, true);
+    assert.deepEqual(line.call, { number: "13 28 61", url: "tel:132861", accessibility: "Call the ATO on 13 28 61", caption: "The ATO's published number: 13 28 61 (Tax enquiries)" });
+  }
+  assert.equal(lines[0].source?.url, "https://www.ato.gov.au/about-ato/contact-us", "the page the number came from");
+  const none = officialContactLines([parseOfficialVerdict({ kind: "site", value: "x-ato.net", status: "lookalike", name: "the ATO", domain: "x-ato.net" })!]);
+  assert.equal(none[0].call, null, "no published number on the directory: no Call button");
 });
 
 test("websites and addresses get their own wording", () => {
