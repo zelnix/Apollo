@@ -430,7 +430,7 @@ function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; fac
 }
 
 /** The Evidence tab: the case's material facts, strongest first, each with who found and confirmed it → the original,
- *  as it arrived (inert) → Evidence trail → Copy / Share (components/report/CaseEvidenceTab, built from
+ *  as it arrived (inert) → Copy / Share (components/report/CaseEvidenceTab, built from
  *  domain/caseEvidence). Nothing is reconstructed from Magnum prose or Higgins' explanation. */
 function EvidenceContent({ event, investigation }: { event: PatrolEvent; investigation: DeviceInvestigation | null }) {
   // The recorded facts of the finding — what Apollo found, never why it matters: the finding statement itself,

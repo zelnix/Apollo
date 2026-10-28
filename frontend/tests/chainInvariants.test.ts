@@ -190,7 +190,7 @@ test("every screen says the case result's verdict and severity — for every out
     assert.match(eventBrief(event).line1, new RegExp(`${HERO[o]}\\.$`), at);
 
     // Evidence: a result recorded without an Evidence record lists its findings word for word, with the confidence recorded.
-    const ev = caseEvidence({ event, investigation: inv, trace: null, records: [], facts: [] });
+    const ev = caseEvidence({ event, investigation: inv, facts: [] });
     const found = caseFindings(resp as never);
     assert.deepEqual(ev.facts.map((f) => [f.text, f.confidence]).sort(), found.map((f) => [f.text, f.confidence]).sort(), at);
 

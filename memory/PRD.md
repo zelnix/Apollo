@@ -18,7 +18,8 @@
   Triage/Apollo recorded (headline excluded). A DNS/enforcement block = a fact "Found by Apollo on this device" (high when packet-verified).
 - `CaseEvidenceTab.tsx`: summary card and "Evidence from this device"/"Investigation findings" cards removed → fact cards (testIDs
   `tc-evidence-fact-<i>`, `-text`, `-mark` = "Points the other way" / "Weak signal" / confidence, `-found-by`, `-toggle`, `-detail`),
-  empty state `tc-evidence-empty`, then the Original Source (inert, `tc-evidence-artefact`), evidence profile, trail, Copy/Share.
+  empty state `tc-evidence-empty`, then the Original Source (inert, `tc-evidence-artefact`), evidence profile, Copy/Share.
+  Evidence trail card removed at the owner's request (2026-10-28; `evidenceTrail`/`TrailStage` deleted from domain/caseEvidence.ts).
 - Threat Case header: the "What you submitted/detected" card scrolls away; the tab bar stays pinned (`stickyHeaderIndices`), card back at top.
 - Rule book: two new Threats-list rules (Evidence tab facts; inert original) + stamped.
 - Tests: new `backend/tests/test_case_evidence.py` (8); `frontend/tests/caseEvidence.test.ts` rewritten (8); chainInvariants updated.
