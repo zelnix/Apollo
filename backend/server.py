@@ -299,6 +299,14 @@ async def lifespan(_: FastAPI):
                 raise
             except Exception:  # noqa: BLE001
                 logger.warning("official organisation directory loop failed")
+            try:
+                # Descriptive phone names (Google Play's supported devices list), once a week.
+                from services import device_models
+                await device_models.run_if_due()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("device model names loop failed")
             await asyncio.sleep(3600)
 
     threat_feeds_task = asyncio.create_task(threat_feeds_loop(), name="apollo-threat-feeds")

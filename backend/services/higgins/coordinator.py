@@ -32,6 +32,7 @@ from typing import Optional
 
 from core.db import db, now_utc
 from services import device_stats
+from services.higgins import case_evidence
 from services.higgins import evidence as ev
 from services.higgins import explain, history, outcomes
 from services.higgins import ai_settings
@@ -136,10 +137,23 @@ async def _with_history(owner: str, case: dict, response: HigginsResponse) -> tu
         return response, {}
 
 
+def _with_evidence(case: dict, response: HigginsResponse, record: dict, provider_result: ProviderResult) -> HigginsResponse:
+    """The result with its Evidence record (services/higgins/case_evidence.py): each fact once, with who found it first
+    and who established it too. A failure leaves the Evidence record unrecorded (None) — never reconstructed later."""
+    try:
+        facts = case_evidence.build(response, record, answered_by=provider_result.answered_by,
+                                    simulated=bool(provider_result.simulated or (record.get("search") or {}).get("simulated")))
+    except Exception:  # noqa: BLE001 — the Evidence record never fails an investigation
+        log.warning("case_evidence_failed case=%s", case["case_id"], exc_info=True)
+        return response
+    return response.model_copy(update={"evidence": facts})
+
+
 async def _commit(owner: str, case: dict, job: dict, payload: dict, response: HigginsResponse, provider_result: ProviderResult,
                   evidence_ids: set[str], source_ids: set[str]) -> Outcome:
     response, record = await _with_history(owner, case, response)
     response, fidelity = await _plain_english(owner, case, response, provider_result.answered_by)
+    response = _with_evidence(case, response, record, provider_result)
     commit = TurnCommit(turn_id=job["turn_id"], case_id=case["case_id"], input_revision=job["input_revision"], committed_revision=response.revision,
                         question=payload["message"], answer_to_question_id=payload.get("answerToQuestionId"), response=response, provider=provider_result,
                         evidence_ids=sorted(evidence_ids), source_ids=sorted(source_ids), committed_at=now_utc())

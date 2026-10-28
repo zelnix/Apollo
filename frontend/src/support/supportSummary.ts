@@ -113,7 +113,7 @@ export function renderSupportSummaryText(s: SupportSummary, reference: string): 
     `Bundle published: ${s.app.bundlePublishedAt}`,
     `Last native update: ${s.app.lastNativeUpdateAt}`, "",
     "DEVICE INFORMATION",
-    `Device: ${s.device.manufacturer} ${s.device.model}`,
+    `Device: ${s.device.name}`,
     `Operating System: ${s.device.os} ${s.device.osVersion}`,
     `Device Type: ${s.device.deviceType}`,
     `Architecture: ${s.device.architecture}`, "",
@@ -158,7 +158,7 @@ export function renderReportHtml(s: SupportSummary, reference: string): string {
     <h2>Application</h2>
     ${[["Version", s.app.version], ["Build", s.app.build], ["Build ID", s.app.buildId], ["Update ID", s.app.updateId], ["Environment", s.app.environment], ["App first installed", s.app.installedAt], ["Bundle published", s.app.bundlePublishedAt], ["Last native update", s.app.lastNativeUpdateAt]].map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}
     <h2>Device</h2>
-    ${[["Device", `${s.device.manufacturer} ${s.device.model}`], ["Operating System", `${s.device.os} ${s.device.osVersion}`], ["Device Type", s.device.deviceType], ["Architecture", s.device.architecture]].map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}
+    ${[["Device", s.device.name], ["Operating System", `${s.device.os} ${s.device.osVersion}`], ["Device Type", s.device.deviceType], ["Architecture", s.device.architecture]].map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}
     <h2>Protection &amp; Services</h2>
     <table>${pRows}</table>
     <h2>Device Checkup</h2>

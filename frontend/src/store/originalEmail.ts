@@ -99,6 +99,19 @@ export async function keepOriginalEmail(caseKeys: (string | null | undefined)[],
   }
 }
 
+/** The exact bytes of the original email kept for any of these case keys (a binary string), or null when none is kept. */
+export async function readKeptOriginalEmail(caseKeys: string[]): Promise<string | null> {
+  const record = (await readIndex()).find((r) => r.caseKeys.some((k) => caseKeys.includes(k)));
+  if (!record) return null;
+  try {
+    if (Platform.OS === "web") {
+      const b64 = await storage.getItem<string | null>(webKey(record.sha256), null);
+      return b64 ? b64ToBinary(b64) : null;
+    }
+    return record.uri ? b64ToBinary(await FS.readAsStringAsync(record.uri, { encoding: FS.EncodingType.Base64 })) : null;
+  } catch { return null; }
+}
+
 export async function listOriginalEmails(caseKey: string): Promise<OriginalEmailRecord[]> {
   return (await readIndex()).filter((r) => r.caseKeys.includes(caseKey));
 }

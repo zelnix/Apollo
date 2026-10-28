@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { buildHigginsInfo, buildProtectionRows, buildSupportSummary, renderEmailBody, renderReportHtml, renderSupportSummaryText } from "../src/support/supportSummary.ts";
 
 const app = { version: "1.1.9", build: "159", buildId: "1.0.0", updateId: "abc-123", environment: "production", nativeBuild: true, installedAt: "1 Jun 2026, 10:00", bundlePublishedAt: "7 Jun 2026, 09:00", lastNativeUpdateAt: "Unavailable" };
-const device = { manufacturer: "Google", model: "Pixel 8", deviceType: "Phone", os: "Android", osVersion: "15", architecture: "arm64-v8a" };
+const device = { name: "Google Pixel 8", manufacturer: "Google", model: "Pixel 8", deviceType: "Phone", os: "Android", osVersion: "15", architecture: "arm64-v8a" };
 const protection = { running: true, requested: true, operational: true, enforcementMethod: "dns_filter" as const, coverage: "DNS-level filtering", coverageScope: ["dns:ipv4"], lastVerified: "2026-06-07T09:00:00.000Z", degradedReason: null, visibility: "full" as const, since: null, adapterLabel: "Android", checkedAt: "2026-06-07T09:00:00.000Z" };
 
 test("protection rows: a verified-running service reads 'Active and verified', never fabricated", () => {

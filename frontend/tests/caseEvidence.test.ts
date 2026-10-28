@@ -1,11 +1,12 @@
-// The Threat Case Evidence tab (domain/caseEvidence.ts): source evidence kept apart from what TC FlyBy and Magnum DI
-// found, one status per piece from its own record, only stages that happened on the trail, and the findings in the
-// case result's own words. Run: cd /app/frontend && node --test tests/caseEvidence.test.ts
+// The Threat Case Evidence tab (domain/caseEvidence.ts): the material facts the case established, strongest first,
+// each with who found it first and who confirmed it; what points the other way listed and marked; a block this device
+// recorded listed like any other fact; no "Found by" line where the record doesn't say; never the submitted item again.
+// Run: cd /app/frontend && node --test tests/caseEvidence.test.ts
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { caseFindings } from "../src/domain/caseBriefing.ts";
-import { caseEvidence, evidenceSummaryLine, evidenceTrail } from "../src/domain/caseEvidence.ts";
+import { caseEvidence, evidenceTrail, factStrength, provenanceLine } from "../src/domain/caseEvidence.ts";
 import type { PatrolEvent } from "../src/domain/types.ts";
 
 function ev(partial: Partial<PatrolEvent> = {}): PatrolEvent {
@@ -30,6 +31,10 @@ const item = (over: Record<string, unknown>) => ({
 });
 
 const finding = { id: "f1", text: "commbank-cancel.co carries CommBank's name, but it isn't CommBank's domain.", basis: "observation", confidence: "high", evidenceIds: ["EV-1", "EV-2"], sourceIds: [] };
+const fact = (over: Record<string, unknown>) => ({
+  id: "c1.1", text: "t", stance: "supporting", discoveredBy: "tc_flyby", corroboratedBy: [], weak: false, basis: "observation",
+  confidence: "medium", evidenceIds: [], sourceIds: [], findingIds: [], ruleId: null, establishedAt: "2026-10-28T01:12:20Z", simulated: false, ...over,
+});
 const response = (over: Record<string, unknown> = {}) => ({
   revision: 1, overview: "Concerning.", explanationMarkdown: "", assessment: "concern_found", outcome: "concerning", attention: "review",
   attentionReason: null, findings: [finding], uncertainties: [], scope: "", sourceIds: [], remainingEvidenceIds: [], actions: [],
@@ -38,69 +43,81 @@ const response = (over: Record<string, unknown> = {}) => ({
 const investigation = (over: Record<string, unknown> = {}, resp: Record<string, unknown> = {}) => ({
   caseId: "case-1", gates: ["text"], status: "complete", createdAt: "2026-10-28T01:12:00Z", completedAt: "2026-10-28T01:12:30Z",
   committedAt: "2026-10-28T01:12:30Z", question: "", sources: [], turns: [], patrolEventId: "e1", answeredBy: "teddy",
-  evidenceItems: [item({}), item({ id: "EV-2", displayId: "EV-2", kind: "url", parentId: "EV-1", label: "URL from message", coverage: { status: "examined", unit: "items", total: 1, examined: 1, materialGap: false } })],
+  evidenceItems: [item({}), item({ id: "EV-2", displayId: "EV-2", kind: "url", parentId: "EV-1", label: "URL from message", coverage: { status: "examined", unit: "items", total: 1, examined: 1, materialGap: false } }),
+    item({ id: "EV-C", clientItemId: "teddy-di-checks", origin: "apollo_inference", kind: "observation", label: "TC FlyBy fly-by checks" })],
   response: response(resp), ...over,
 }) as never;
 
-const build = (e: PatrolEvent, inv: never | null) => caseEvidence({ event: e, investigation: inv, trace: null, records: [], facts: [e.headline] });
+const build = (e: PatrolEvent, inv: never | null, facts: string[] = [e.headline]) => caseEvidence({ event: e, investigation: inv, trace: null, records: [], facts });
 
-test("a message and the link taken out of it are named plainly, by where they came from", () => {
-  const out = build(ev(), investigation());
-  assert.deepEqual(out.device.map((p) => p.name), ["Message you submitted", "Link in the message"]);
-  assert.match(out.device[0].description, /^The message you sent Apollo to check — 168 characters, read in full\.$/);
-  assert.equal(out.device[1].description, "A link found in the message you sent Apollo to check.");
-  for (const p of out.device) assert.doesNotMatch(`${p.name} ${p.description}`, /submitted message text|URL from message/i);
-  // Only the item the case is about opens its full original.
-  assert.deepEqual(out.device.map((p) => p.primary), [true, false]);
+test("each fact says who found it first and who confirmed it — never the item you submitted as a fact", () => {
+  const evidence = [
+    fact({ id: "c1.1", text: "commbank-cancel.co was registered on 2026-10-20.", weak: true, evidenceIds: ["EV-C"] }),
+    fact({ id: "c2.1", text: "commbank-cancel.co isn't one of CommBank's published domains.", confidence: "high", corroboratedBy: ["magnum_di"], findingIds: ["f1"], evidenceIds: ["EV-C", "EV-2"] }),
+    fact({ id: "c3.1", text: "It claims a rebate (“Energy Bill Relief”).", discoveredBy: "higgins_triage", corroboratedBy: ["tc_flyby", "magnum_di"], evidenceIds: ["EV-1"] }),
+  ];
+  const out = build(ev(), investigation({}, { evidence }));
+  assert.deepEqual(out.facts.map((f) => provenanceLine(f)), [
+    "Found by TC FlyBy · Confirmed by Magnum DI",
+    "Found by Higgins Triage · Confirmed by TC FlyBy, Magnum DI",
+    "Found by TC FlyBy",
+  ]);
+  for (const f of out.facts) assert.doesNotMatch(f.text, /you submitted|Submitted message text|checked$/i);
+  assert.deepEqual(out.facts[0].basedOn, ["TC FlyBy's checks", "a link in the message you submitted"]);
+  assert.deepEqual(out.facts[1].basedOn, ["the message you submitted"]);
 });
 
-test("each piece's status comes from its own record — read in full and relied on is Supporting, never Verified", () => {
-  const out = build(ev(), investigation());
-  assert.deepEqual(out.device.map((p) => p.status), ["supporting", "supporting"]);
-  // A device's own reading is the only device evidence that is Verified.
-  const observed = build(ev(), investigation({ evidenceItems: [item({ origin: "device_observation", label: "observation:wifi.ssid" })] }));
-  assert.equal(observed.device[0].status, "verified");
-  assert.equal(observed.device[0].source, "This device");
-  // Not read in full, a preview sample, or relied on by no finding: Unconfirmed.
-  const partial = build(ev(), investigation({ evidenceItems: [item({ coverage: { status: "partial", unit: "characters", total: 168, examined: 40, materialGap: true } })] }));
-  assert.equal(partial.device[0].status, "unconfirmed");
-  const sample = build(ev(), investigation({ evidenceItems: [item({ simulation: { kind: "preview_device", label: "Sample", fixtureId: "x" } })] }));
-  assert.equal(sample.device[0].status, "unconfirmed");
-  const unused = build(ev(), investigation({}, { findings: [{ ...finding, evidenceIds: [] }] }));
-  assert.equal(unused.device[0].status, "unconfirmed");
+test("strongest first: firmer, confirmed by more stages, seen directly; weak signals and side-less facts last", () => {
+  const evidence = [
+    fact({ id: "a", text: "A weak one.", weak: true }),
+    fact({ id: "b", text: "A side-less one.", stance: "neutral" }),
+    fact({ id: "c", text: "Points the other way.", stance: "contrary" }),
+    fact({ id: "d", text: "Confirmed twice.", corroboratedBy: ["magnum_di"] }),
+    fact({ id: "e", text: "Decisive.", confidence: "high" }),
+  ];
+  const out = build(ev(), investigation({}, { evidence }));
+  assert.deepEqual(out.facts.map((f) => f.id), ["e", "d", "c", "b", "a"]);
+  assert.ok(factStrength(out.facts[0]) > factStrength(out.facts[1]));
 });
 
-test("findings keep the case result's words and investigator; contrary findings are shown but never counted", () => {
+test("what points the other way is listed with the rest and marked, never dropped", () => {
+  const out = build(ev(), investigation({}, { evidence: [fact({ id: "x", text: "Google Safe Browsing doesn't list commbank-cancel.co.", stance: "contrary" })] }));
+  assert.equal(out.facts.length, 1);
+  assert.equal(out.facts[0].stance, "contrary");
+});
+
+test("a result recorded before the Evidence record: its findings word for word, with no Found by line", () => {
   const inv = investigation();
   const out = build(ev(), inv);
   const found = caseFindings((inv as { response: never }).response);
-  assert.deepEqual(out.findings.map((f) => f.text), found.map((f) => f.text));
-  assert.equal(out.findings[0].by, "TC FlyBy");
-  assert.deepEqual(out.findings[0].basedOn, ["Message you submitted (above)", "Link in the message (above)"]);
-  const magnum = build(ev({ investigation_answered_by: "magnum" }), investigation({ answeredBy: "magnum" }));
-  assert.equal(magnum.findings[0].by, "Magnum DI");
-
-  const briefing = {
-    version: 1, subject: null, headline: "h", summary: "s", supporting: [], contrary: [], unresolved: [], status: "Concerning",
-    statusCode: "concerning", attention: "review", statusReason: "", userActionRequired: false, actionReason: null, recommendedAction: null,
-    fidelity: { status: "PASS", failures: [] },
-    findings: [
-      { id: "f1", subject: null, subjectType: null, organisation: null, check: "", result: "", finding: finding.text, evidenceIds: ["EV-1"], sourceIds: [], materiality: "material", confidence: "high", basis: "observation", stance: "supporting" },
-      { id: "f2", subject: null, subjectType: null, organisation: null, check: "", result: "", finding: "The sender number is a real CommBank number.", evidenceIds: ["EV-1"], sourceIds: [], materiality: "material", confidence: "high", basis: "observation", stance: "contrary" },
-    ],
-  };
-  const mixed = build(ev(), investigation({}, { briefing }));
-  assert.equal(mixed.findings.length, 2);
-  assert.equal(mixed.findings[1].status, null);
-  // The message (cited) + the supporting finding; the link no finding cites is Unconfirmed; the contrary one is in no count.
-  assert.deepEqual(mixed.counts, { verified: 0, supporting: 2, unconfirmed: 1 });
+  assert.deepEqual(out.facts.map((f) => f.text), found.map((f) => f.text));
+  assert.equal(out.facts[0].foundBy, null);
+  assert.equal(provenanceLine(out.facts[0]), null, "who found it wasn't recorded, so it isn't guessed");
+  const twice = build(ev(), investigation({}, { findings: [finding, { ...finding, id: "f2" }] }));
+  assert.equal(twice.facts.length, 1, "the same words are listed once");
 });
 
-test("the summary says how many pieces support the finding — Unconfirmed pieces never do", () => {
-  assert.equal(evidenceSummaryLine({ total: 2, counts: { verified: 1, supporting: 1, unconfirmed: 0 } }), "2 pieces of evidence support this finding");
-  assert.equal(evidenceSummaryLine({ total: 3, counts: { verified: 0, supporting: 1, unconfirmed: 2 } }), "1 piece of evidence supports this finding");
-  assert.equal(evidenceSummaryLine({ total: 2, counts: { verified: 0, supporting: 0, unconfirmed: 2 } }), "2 pieces of evidence recorded, none of it confirmed");
-  assert.equal(evidenceSummaryLine({ total: 0, counts: { verified: 0, supporting: 0, unconfirmed: 0 } }), "No evidence was recorded for this finding");
+test("a recorded empty Evidence record is not replaced with the findings", () => {
+  assert.deepEqual(build(ev(), investigation({}, { evidence: [] })).facts, []);
+});
+
+test("no investigation yet: what Higgins Triage recorded, without the case's headline", () => {
+  const e = ev({ investigation_case_id: null, investigation_completed_at: null, triage_investigation: { rules: [] } as never });
+  const out = build(e, null, [e.headline, "It asks you to reply YES.", "It asks you to reply YES."]);
+  assert.deepEqual(out.facts.map((f) => [f.text, provenanceLine(f)]), [["It asks you to reply YES.", "Found by Higgins Triage"]]);
+});
+
+test("a block this device recorded is a fact like any other, found by Apollo on this device", () => {
+  const enforcement = { enforced_action: "dns_block", destination_domain: "bad.example", result: "connection_dropped", observed_at: "2026-10-28T01:00:00Z",
+    mechanism: "local_vpn_dns", confidence: "high" } as never;
+  const e = ev({ origin: "apollo", category: "connection", investigation_case_id: null, investigation_completed_at: null, enforcement_evidence: enforcement, verified_block: true });
+  const out = build(e, null, [e.headline, "bad.example is on Apollo's blocklist."]);
+  assert.equal(out.facts[0].id, "block", "an observed, matched block is the firmest fact");
+  assert.equal(out.facts[0].text, "Apollo dns block on bad.example — connection dropped.");
+  assert.equal(provenanceLine(out.facts[0]), "Found by Apollo on this device");
+  assert.equal(provenanceLine(out.facts[1]), "Found by Apollo on this device");
+  const unproved = build({ ...e, verified_block: false }, null, []);
+  assert.equal(unproved.facts[0].confidence, "low");
 });
 
 test("the trail lists only the stages that happened", () => {
@@ -115,12 +132,4 @@ test("the trail lists only the stages that happened", () => {
   assert.deepEqual(escalated.map((s) => `${s.name}: ${s.status}`), ["Higgins Triage: Completed", "TC FlyBy: Escalated to Magnum DI", "Magnum DI: Completed"]);
   const running = evidenceTrail({ event: ev({ investigation_completed_at: null }), trace: null, records: [] });
   assert.deepEqual(running.map((s) => `${s.name}: ${s.status}`), ["TC FlyBy: In progress"]);
-});
-
-test("a case no investigation answered shows its own item, never an investigation finding", () => {
-  const out = build(ev({ investigation_case_id: null, investigation_completed_at: null, origin: "apollo", evidence_provenance: "dns_observation", category: "connection" }), null);
-  assert.equal(out.findings.length, 0);
-  assert.equal(out.device.length, 1);
-  assert.equal(out.device[0].status, "verified");
-  assert.equal(out.collectedFrom, "Collected from this device.");
 });

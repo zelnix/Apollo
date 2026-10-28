@@ -27,6 +27,7 @@ import type { DeviceProtectionsOverall } from "@/src/domain/deviceProtectionType
 import { whatToDoNow } from "@/src/domain/deviceProtectionChanges";
 import { assessDeviceProtections, useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { useDeviceModelName } from "@/src/telemetry/deviceModelName";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -80,9 +81,11 @@ export default function DeviceProtectionsScreen() {
     void assessDeviceProtections(true).catch(() => undefined).finally(() => setRechecking(false));
   }, []);
 
-  const deviceModel = Device.modelName || Device.deviceName || "This device";
+  // The descriptive name ("Samsung Galaxy Z Fold6"); the model code it reports goes beside the system.
+  const device = useDeviceModelName();
+  const deviceModel = device.name || Device.deviceName || "This device";
   const osLabel = Platform.OS === "android" ? `Android ${Device.osVersion || ""}`.trim() : Platform.OS === "ios" ? `iOS ${Device.osVersion || ""}`.trim() : "Browser preview";
-  const maker = Device.manufacturer || (Platform.OS === "ios" ? "Apple" : "");
+  const maker = device.code ?? (Device.manufacturer || (Platform.OS === "ios" ? "Apple" : ""));
 
   const changed = new Set(assessment?.unseen.map((c) => c.protectionId) ?? []);
   const open = (id: string) => router.push({ pathname: "/capability/[id]", params: { id } });
@@ -126,7 +129,7 @@ export default function DeviceProtectionsScreen() {
           <View style={s.deviceRow}>
             <View style={s.deviceIconWrap}><Smartphone size={26} color={colors.gold} /></View>
             <View style={s.deviceInfo}>
-              <Text style={s.deviceName} numberOfLines={1}>{deviceModel}</Text>
+              <Text style={s.deviceName} numberOfLines={2} testID="device-prot-name">{deviceModel}</Text>
               <Text style={s.deviceOs}>{[maker, osLabel].filter(Boolean).join(" · ")}</Text>
             </View>
             <Pill tone={pill.tone} label={pill.label} compact testID="device-prot-status" />

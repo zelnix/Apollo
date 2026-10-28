@@ -109,8 +109,6 @@ const useStyles = makeStyles((c) => ({
   sourceHeaderMetaBold: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.onSurfaceSecondary },
   sourceContentBlock: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: c.border },
   sourceContentText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurface },
-  sourceOriginalBanner: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, backgroundColor: c.restingTint, borderRadius: radius.sm, marginTop: spacing.xs },
-  sourceOriginalText: { fontFamily: fonts.textMedium, fontSize: 12, color: c.restingText },
 
   // ── History tab ──
   timelineItem: { flexDirection: "row" as const, gap: spacing.md },
@@ -258,7 +256,6 @@ function evidenceSourceInfo(ev: EvidenceItem): {
   iconBg: string;
   iconColor: string;
   metaLines: string[];
-  originalUrl: string | null;
 } {
   const meta: string[] = [];
   let originalUrl: string | null = null;
@@ -277,7 +274,6 @@ function evidenceSourceInfo(ev: EvidenceItem): {
         title: domain || "Website / Link",
         Icon: Globe, iconBg: "#DBEAFE", iconColor: "#1E3A5F",
         metaLines: [originalUrl ?? label, ...(prov?.sourceDescription ? [prov.sourceDescription] : []), ev.collectedAt ? `Captured: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean),
-        originalUrl,
       };
     }
     case "text": {
@@ -290,21 +286,21 @@ function evidenceSourceInfo(ev: EvidenceItem): {
         const senderMatch = label.match(/from:\s*(.+?)(?:\s*[|·]|$)/i);
         meta.push(senderMatch ? `From: ${senderMatch[1].trim()}` : "Email");
         if (subjectMatch) meta.push(`Subject: ${subjectMatch[1].trim()}`);
-        return { title: "Email", Icon: Mail, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [...meta, ev.collectedAt ? `Received: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean), originalUrl: null };
+        return { title: "Email", Icon: Mail, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [...meta, ev.collectedAt ? `Received: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean) };
       }
       if (isMessage || isCall) {
         const phoneMatch = label.match(/\+?\d[\d\s().-]{7,}\d/);
         if (phoneMatch) meta.push(`From: ${phoneMatch[0].trim()}`);
-        return { title: isCall ? "Call" : "Message", Icon: isCall ? Phone : MessageSquare, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [...meta, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+        return { title: isCall ? "Call" : "Message", Icon: isCall ? Phone : MessageSquare, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [...meta, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean) };
       }
-      return { title: "Text content", Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [prov?.sourceDescription ?? label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+      return { title: "Text content", Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [prov?.sourceDescription ?? label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean) };
     }
     case "image":
-      return { title: "Screenshot", Icon: Search, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [label || "User screenshot", ev.collectedAt ? `Captured: ${new Date(ev.collectedAt).toLocaleString()}` : "", ev.mediaType ?? ""].filter(Boolean), originalUrl: null };
+      return { title: "Screenshot", Icon: Search, iconBg: "rgba(212,120,10,0.15)", iconColor: "#D4780A", metaLines: [label || "User screenshot", ev.collectedAt ? `Captured: ${new Date(ev.collectedAt).toLocaleString()}` : "", ev.mediaType ?? ""].filter(Boolean) };
     case "document": case "file": case "attachment":
-      return { title: prov?.originalFilename ?? "File", Icon: FileText, iconBg: "#E4F0E8", iconColor: "#2E7D32", metaLines: [prov?.originalFilename ?? label, ev.mediaType ?? "", ev.byteLength ? formatEvBytes(ev.byteLength) : "", ev.collectedAt ? `Uploaded: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean), originalUrl: null };
+      return { title: prov?.originalFilename ?? "File", Icon: FileText, iconBg: "#E4F0E8", iconColor: "#2E7D32", metaLines: [prov?.originalFilename ?? label, ev.mediaType ?? "", ev.byteLength ? formatEvBytes(ev.byteLength) : "", ev.collectedAt ? `Uploaded: ${new Date(ev.collectedAt).toLocaleString()}` : ""].filter(Boolean) };
     default:
-      return { title: ev.kind.charAt(0).toUpperCase() + ev.kind.slice(1), Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean), originalUrl: null };
+      return { title: ev.kind.charAt(0).toUpperCase() + ev.kind.slice(1), Icon: FileText, iconBg: "#DBEAFE", iconColor: "#1E3A5F", metaLines: [label, ev.collectedAt ? new Date(ev.collectedAt).toLocaleString() : ""].filter(Boolean) };
   }
 }
 
@@ -500,14 +496,6 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
       {imageUri ? (
         <Pressable onPress={() => onViewFull(ev.id)} style={{ borderRadius: radius.md, overflow: "hidden" }}>
           <Image source={{ uri: imageUri }} style={{ width: "100%", aspectRatio: 16 / 9 }} resizeMode="contain" testID={`inv-ev-image-${ev.id}`} />
-        </Pressable>
-      ) : null}
-
-      {/* URL/link — original URL preserved and tappable */}
-      {info.originalUrl ? (
-        <Pressable onPress={() => void WebBrowser.openBrowserAsync(info.originalUrl!)} style={s.sourceOriginalBanner}>
-          <Globe size={14} color={colors.restingText} />
-          <Text style={s.sourceOriginalText} numberOfLines={1}>Open original: {info.originalUrl}</Text>
         </Pressable>
       ) : null}
 
@@ -779,7 +767,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {/* ━━━━ TAB 2: EVIDENCE — Original Source Material ━━━━ */}
       {activeTab === "evidence" ? (
         <View style={{ gap: spacing.md }} testID="inv-tab-evidence-content">
-          {caseData ? <EvidenceArtefactCard caseKeys={[caseData.id]} onAvailable={setHasLocalOriginal} packTitle={`Apollo investigation ${caseData.id.slice(0, 8)}`} packDate={caseData.createdAt} packSummary={caseData.response ? {
+          {caseData ? <EvidenceArtefactCard caseKeys={[eventId, caseData.id]} onAvailable={setHasLocalOriginal} packTitle={`Apollo investigation ${caseData.id.slice(0, 8)}`} packDate={caseData.createdAt} packSummary={caseData.response ? {
             overview: caseData.response.overview || null,
             findings: caseData.response.findings.map((f) => f.text),
             steps: caseData.response.actions.map((a) => a.instruction ? `${a.label}: ${a.instruction}` : a.label),

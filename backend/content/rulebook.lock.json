@@ -17,7 +17,7 @@
   "backend/services/higgins/capacity.py": "a44ef9b8ae5dd140c01ece754f0a3c9a73d6346eb25d92f1847f5b886dc6a832",
   "backend/services/higgins/chat.py": "ed124d31c28e787562e9c10a9ff6dee33641b4589f5b06579b27f548669f5e9c",
   "backend/services/higgins/context.py": "19d96c58347bd8fc120f3e343ce43f3d203ae43ca8e14aa8aaf7b4d8242a42eb",
-  "backend/services/higgins/coordinator.py": "346d6db8995741f95fb445ddf51f34dee96cf38309f4908fd16191ea28ea4fc0",
+  "backend/services/higgins/coordinator.py": "bb1be5cdae67f2e880a1e9b5c6564dd96252894ee72d2ea7a82a4ab1096b81d4",
   "backend/services/higgins/explain/__init__.py": "42bff2560139e10c56c66169142f7cfa1eef4308902b0071fc18593776e52a57",
   "backend/services/higgins/explain/facts.py": "32936584966906a391838704c7475286fb9af4bc2a981fc02fd76890ec31b60b",
   "backend/services/higgins/explain/fidelity.py": "389d38618998c89c1ea01f0db6a9a001fed65ef3dcbded368622f92d95da1fd1",
@@ -83,7 +83,7 @@
   "frontend/src/domain/triage/callEvidence.ts": "ccd7e1922a219e6c804854050248a40f5d19a397d0ae21a592f55fa956a1fa97",
   "frontend/src/domain/triage/emailEvidence.ts": "1df31e3e5fcc0c30209ce7fe0a0f9762da1da0f4d588d2bf49c276bc569364b3",
   "frontend/src/domain/triage/emailIntake.ts": "6aeb28102a2f687bda91e85b4831cd1faf31f341a87d5db80c530dcb58bbfd96",
-  "frontend/src/domain/triage/emailOriginal.ts": "837708c3d79094d239a0f0c6d98a92431220becfccb70f206cf6cae9582d17c9",
+  "frontend/src/domain/triage/emailOriginal.ts": "5a39d8e2a99a89102cc4d1735a769e504ae13a05efa305add918b8c1e0df4a55",
   "frontend/src/domain/triage/evidenceProfile.ts": "9a86e5005f96452554abb4af888d018b43e5b56f32c56ffe6f94922025ec5c65",
   "frontend/src/domain/triage/fileEvidence.ts": "2028305d63a0dc490c92a8a21f4f80681b2655db7226dda14e9d6444ae581933",
   "frontend/src/domain/triage/imageEvidence.ts": "0f9826d34930408ac4da2e80fd26fc2cc3f8f09a7892b7c24173a0f47ce57871",
@@ -100,6 +100,6 @@
   "frontend/src/investigation/resubmit.ts": "61a4514e43d3a51953a96f599272eb0991daca2c0cad4dc844144ef93e75cb3c",
   "frontend/src/store/accountMonitorStore.ts": "9ee2216343eb2aea79723b9db3644e1b11705445d9c886f1cadc46862dc12334",
   "frontend/src/store/imageEvidence.ts": "e5f735386a1bb0258aa3253bbf3909743453eaeb9b9128871914789dd3100bba",
-  "frontend/src/store/originalEmail.ts": "784d2afdfc38c4f1c97626327d84000555b35ebb3dfac23061a5f6f863a4c348",
+  "frontend/src/store/originalEmail.ts": "fddeefd090a25fc717e6d516e192da050beffe2e415f6edc7ce9fde89e1e180f",
   "frontend/src/store/personalDataStore.ts": "b4c904662d8e1f45c33d0ae7da5a79ce488e3aa9fb36d66d7e3ac6c4cd4a3596"
 }

@@ -64,6 +64,15 @@ async def device_me(request: Request):
     return {"device_id": d["device_id"], "token_expires_at": d.get("token_expires_at"), "created_at": d.get("created_at")}
 
 
+@router.get("/devices/model-name")
+async def device_model_name(request: Request):
+    """This phone's descriptive name ("Samsung Galaxy Z Fold6"), from the manufacturer and model it already reported.
+    `name` is null when the list of supported devices doesn't name that model."""
+    from services import device_models
+    d = request.state.device
+    return {"name": await device_models.name_for(d.get("manufacturer"), d.get("model")), "model": d.get("model")}
+
+
 @router.post("/devices/token/rotate")
 async def rotate_token(request: Request):
     """Atomic: the old token stops working in the same update that installs the new one."""

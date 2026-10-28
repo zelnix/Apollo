@@ -1,5 +1,35 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Evidence tab: facts with provenance, strongest first + inert original + full model names + header scroll (2026-10-28)
+**Owner's choices:** plan order as proposed; confirmations shown as "Found by X · Confirmed by Y, Z". No testing agent (owner's rule) — pytest + node tests + tsc + preview screenshots.
+- Earlier in this job (before the fork): Original Email viewer made inert (`domain/inertEmail.ts`, `components/evidence/InertEmailView(.web).tsx`,
+  `ArtefactLayouts` `InertText`): links visible but do nothing, no scripts, no remote fetches, text only when no usable HTML. Device models
+  shown by marketing name (`backend/services/device_models.py`, `frontend/src/telemetry/deviceModelName.ts`; SM-F956B → Samsung Galaxy Z Fold6).
+- Backend Evidence record: `services/higgins/case_evidence.py` `build()` runs at commit (`coordinator._with_evidence`, after history + plain
+  English) → `HigginsResponse.evidence: list[EvidenceFact] | None` (None = recorded before the record existed, never reconstructed).
+  `EvidenceFact`: text, stance (supporting/contrary/neutral vs the outcome), discoveredBy (higgins_triage/tc_flyby/magnum_di),
+  corroboratedBy, weak, basis, confidence, evidenceIds, sourceIds, findingIds, ruleId, establishedAt, simulated.
+  Sources: TC FlyBy check record (live facts; `missing`/KB excluded; triage rule facts only when they quote the material — a rule's name is
+  its conclusion), then the result's findings (bare conclusions and unavailable/not-applicable findings excluded). Same fact = same
+  identity (explain.facts, impersonation≈official_domain), same meaning, or the same quoted words; exact same words = relayed (no
+  confirmation). Side: briefing stance wins where it takes one; else the check's signal; else a result finding supports a directed outcome.
+- Frontend `domain/caseEvidence.ts` rewritten: `facts` (FactPiece) + `trail`; `provenanceLine`, `factStrength`, `orderFacts` (confidence,
+  confirmations, observed; weak and side-less last). Legacy results: findings word for word, no "Found by". No investigation: what Higgins
+  Triage/Apollo recorded (headline excluded). A DNS/enforcement block = a fact "Found by Apollo on this device" (high when packet-verified).
+- `CaseEvidenceTab.tsx`: summary card and "Evidence from this device"/"Investigation findings" cards removed → fact cards (testIDs
+  `tc-evidence-fact-<i>`, `-text`, `-mark` = "Points the other way" / "Weak signal" / confidence, `-found-by`, `-toggle`, `-detail`),
+  empty state `tc-evidence-empty`, then the Original Source (inert, `tc-evidence-artefact`), evidence profile, trail, Copy/Share.
+- Threat Case header: the "What you submitted/detected" card scrolls away; the tab bar stays pinned (`stickyHeaderIndices`), card back at top.
+- Rule book: two new Threats-list rules (Evidence tab facts; inert original) + stamped.
+- Tests: new `backend/tests/test_case_evidence.py` (8); `frontend/tests/caseEvidence.test.ts` rewritten (8); chainInvariants updated.
+  Frontend 1170/1170, tsc clean. Preview: link case → 1 fact "Found by TC FlyBy" with previous-reports raise; pasted email → 3 facts
+  "Found by Higgins Triage" + inert original; header scroll verified.
+- Observed, NOT changed (owner decision pending): a Message check that opens an investigation sends no message text
+  (`message.tsx`/`email.tsx` pass `contextFromEvent` without `original_evidence`), so TC FlyBy answers it as a general question from the
+  KB ("No threat", empty Evidence tab). Link-check Threat Case top card reads "checked link" instead of the address.
+  Playwright `.click()` on Threat Case tabs hangs the screenshot tool (JS `el.click()` works; the page isn't blocked).
+
+
 ## Device isolation + cross-device intelligence through ApolloSG's previous reports only + no artificial consensus (2026-10-28)
 **Owner's choices:** plan order as proposed (KB rules → regression → Evidence Lock source check); a previous report is shown as
 a statement plus its confidence; mixed reports say "mixed previous reports"; on screen never "KB"/"knowledge base" and never

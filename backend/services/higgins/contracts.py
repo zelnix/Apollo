@@ -261,6 +261,31 @@ class HistoryNote(Wire):
     finding_ids: list[str] = Field(default_factory=list)
 
 
+Stage = Literal["higgins_triage", "tc_flyby", "magnum_di"]
+
+
+class EvidenceFact(Wire):
+    """One material fact the investigation established (services/higgins/case_evidence.py), recorded at commit from
+    the case's own records: the stage that first established it and the later stages that established it too.
+    stance: supporting / contrary ("points the other way") relative to the outcome, or neutral. A lookup that found
+    nothing or didn't answer is never evidence either way, so it is never a fact."""
+    id: str
+    text: str
+    stance: Literal["supporting", "contrary", "neutral"]
+    discovered_by: Stage
+    corroborated_by: list[Stage] = Field(default_factory=list)
+    weak: bool = False
+    basis: Literal["observation", "user_report", "inference"] = "observation"
+    confidence: Optional[Literal["low", "medium", "high"]] = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    # The result's findings this fact stands for (their related history is shown beside it).
+    finding_ids: list[str] = Field(default_factory=list)
+    rule_id: Optional[str] = None
+    established_at: Optional[datetime] = None
+    simulated: bool = False
+
+
 class HigginsResponse(Wire):
     revision: int
     overview: str
@@ -281,6 +306,8 @@ class HigginsResponse(Wire):
     plain_english: Optional[PlainEnglish] = None
     briefing: Optional[CaseBriefing] = None
     history: list[HistoryNote] = Field(default_factory=list)
+    # None: recorded before the Evidence record existed (never reconstructed). [] : recorded, nothing established.
+    evidence: Optional[list[EvidenceFact]] = None
 
 
 class Inventory(Wire):

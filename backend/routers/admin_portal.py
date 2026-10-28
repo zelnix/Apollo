@@ -3637,7 +3637,7 @@ _COUNT_COLUMNS = (("tc_flyby", "TC FlyBy"), ("magnum_di", "Magnum DI"), ("ask_hi
                   ("device_checks", "Device checks"), ("learn_read", "Learn with Higgins read"), ("scam_alerts_read", "Scam alerts read"))
 
 
-def _device_row(d: dict) -> str:
+def _device_row(d: dict, name: str | None) -> str:
     from services import device_stats
     esc = html_mod.escape
     n = device_stats.counts(d)
@@ -3645,8 +3645,12 @@ def _device_row(d: dict) -> str:
     cells = "".join(f"<td class='num'>{n[key]:,}</td>" for key, _ in _COUNT_COLUMNS)
     kind = device_stats.record_type(d)
     badge = f"<span class='kind kind-{'phone' if kind == 'Phone' else 'other'}'>{esc(kind)}</span>"
+    # The descriptive name ("Samsung Galaxy Z Fold6") with the model code the phone reported beside it.
+    code = d.get("model")
+    model_cell = esc(name or code or "—") + (f" <span class='kind'>{esc(code)}</span>" if name and code and name != code else "")
     return (f"<tr><td><code title='{esc(d['device_id'])}'>{esc(d['device_id'][:8])}</code></td><td>{badge}</td>"
-            f"<td>{esc(d.get('manufacturer') or '—')}</td><td>{esc(d.get('model') or '—')}</td>"
+            f"<td>{esc(d.get('manufacturer') or '—')}</td>"
+            f"<td>{model_cell}</td>"
             f"<td>{esc(d.get('os_name') or _OS_NAMES.get(d.get('platform') or '', d.get('platform') or '—'))}</td>"
             f"<td>{esc(d.get('os_version') or '—')}</td><td>{esc(d.get('country') or '—')}</td><td>{installed}</td>"
             f"<td>{esc(d.get('app_version') or '—')}</td>{cells}<td>{_t(d.get('last_seen_at'), 'short')}</td></tr>")
@@ -3693,6 +3697,8 @@ async def device_list_page(request: Request):
     rows = await db.devices.find(query, {"_id": 0, "token_hash": 0}).sort("last_seen_at", -1) \
         .skip((page - 1) * _DEVICE_PAGE_SIZE).limit(_DEVICE_PAGE_SIZE).to_list(_DEVICE_PAGE_SIZE)
     sums = await device_stats.totals(query)
+    from services import device_models
+    names = [await device_models.name_for(d.get("manufacturer"), d.get("model")) for d in rows]
     label = ("Real phones" if view == "real" else "All records") + (f" ({_OS_NAMES[platform]})" if platform in _PLATFORMS else "")
     cards = _stat_card(f"{total:,}", label) + "".join(_stat_card(f"{sums[key]:,}", label) for key, label in _COUNT_COLUMNS)
     if view == "real":
@@ -3716,7 +3722,7 @@ async def device_list_page(request: Request):
     <h2>Devices</h2>
     <div class="topbar-row"><span>{views} &nbsp;·&nbsp; {filters}</span>{pager}</div>
     <div class="table-scroll"><table data-testid="device-table"><thead><tr>{head}</tr></thead>
-    <tbody>{"".join(_device_row(d) for d in rows) or '<tr><td colspan="16" style="color:var(--muted);">No devices.</td></tr>'}</tbody></table></div>
+    <tbody>{"".join(_device_row(d, n) for d, n in zip(rows, names)) or '<tr><td colspan="16" style="color:var(--muted);">No devices.</td></tr>'}</tbody></table></div>
     <p style="color:var(--muted);font-size:0.82em;">Newest activity first. <b>Real phones</b> are the ApolloSG app on Android or iPhone using the
     phone's own protection, except Google's test phones (Play pre-launch testing, reported by the phone or marked by an admin).
     <b>All records</b> also shows web, test and script registrations. Make, model, system, country (from the phone's

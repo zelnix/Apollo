@@ -231,7 +231,12 @@ function parseParams(value: string): { value: string; params: Record<string, str
 }
 
 // ── MIME ───────────────────────────────────────────────────────────────────────
-interface Walk { parts: MimePart[]; texts: { type: string; text: string }[]; attachments: { name: string; type: string; bin: string }[] }
+interface Walk {
+  parts: MimePart[]; texts: { type: string; text: string }[]; attachments: { name: string; type: string; bin: string }[];
+  /** Pictures carried inside the message itself (Content-ID), which its HTML shows as cid: images. */
+  inline: InlineImage[];
+}
+export interface InlineImage { cid: string; type: string; bin: string }
 
 function splitMultipart(body: string, boundary: string): string[] {
   const delimiter = `--${boundary}`;
@@ -268,6 +273,8 @@ function walk(fields: HeaderField[], body: string, path: string, depth: number, 
   const decoded = encoding === "base64" ? b64ToBinary(body) : encoding === "quoted-printable" ? qpDecode(body) : body;
   const dispositionValue = disposition.value || null;
   w.parts.push({ path, type, disposition: dispositionValue, filename, encoding, size: decoded.length });
+  const cid = first(fields, "content-id")?.trim().replace(/^<|>$/g, "");
+  if (cid && type.startsWith("image/")) w.inline.push({ cid, type, bin: decoded });
   const attachment = dispositionValue === "attachment" || type === "message/rfc822" || (!!filename && !type.startsWith("text/"));
   if (attachment) w.attachments.push({ name: filename ?? (type === "message/rfc822" ? "attached message.eml" : "unnamed attachment"), type, bin: decoded });
   else if (type === "text/plain" || type === "text/html") w.texts.push({ type, text: decodeCharset(decoded, ct.params.charset) });
@@ -287,7 +294,7 @@ const domainOf = (value: string | null | undefined) => (value ? value.replace(/^
 export async function parseOriginalEmail(raw: string, hash: Hasher): Promise<ParsedOriginal> {
   const { head, body } = splitHeaderBody(raw);
   const fields = parseHeaderFields(head);
-  const w: Walk = { parts: [], texts: [], attachments: [] };
+  const w: Walk = { parts: [], texts: [], attachments: [], inline: [] };
   walk(fields, body, "1", 0, w);
 
   const plain = w.texts.filter((t) => t.type === "text/plain").map((t) => t.text).join("\n\n").trim();
@@ -328,6 +335,19 @@ export async function parseOriginalEmail(raw: string, hash: Hasher): Promise<Par
     attachments, urls, domains,
   };
   return { technical, bodyText, fullHeaders: received.length > 0 && !!from && (!!messageId || !!technical.date), sha256: await hash(binaryToBytes(raw)), byteLength: raw.length };
+}
+
+/** The message's own bodies, decoded: its HTML part (as an email client would show it), its plain-text part, and the
+ *  pictures carried inside it. Nothing is fetched or rewritten here. */
+export interface EmailBody { html: string | null; plain: string | null; inline: InlineImage[] }
+
+export function readEmailBody(raw: string): EmailBody {
+  const { head, body } = splitHeaderBody(raw);
+  const w: Walk = { parts: [], texts: [], attachments: [], inline: [] };
+  walk(parseHeaderFields(head), body, "1", 0, w);
+  const html = w.texts.filter((t) => t.type === "text/html").map((t) => t.text).join("\n").trim();
+  const plain = w.texts.filter((t) => t.type === "text/plain").map((t) => t.text).join("\n\n").trim();
+  return { html: html || null, plain: plain || null, inline: w.inline };
 }
 
 /** Same organisation: the registrable domains match (mail.example.com.au ~ example.com.au). */

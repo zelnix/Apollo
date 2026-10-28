@@ -77,7 +77,7 @@ const useStyles = makeStyles((c) => ({
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface, flex: 1 },
   // Tab bar
-  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.divider, paddingHorizontal: spacing.md },
+  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.divider, paddingHorizontal: spacing.md, backgroundColor: c.surface },
   tab: { flexGrow: 1, flexBasis: "auto", paddingVertical: spacing.md, paddingHorizontal: spacing.sm, alignItems: "center", justifyContent: "center" },
   tabActive: { borderBottomWidth: 2, borderBottomColor: c.brandPrimary },
   tabText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.muted },
@@ -429,9 +429,9 @@ function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; fac
   );
 }
 
-/** The Evidence tab: Evidence summary → Evidence from this device → Investigation findings → Evidence trail →
- *  Copy / Share (components/report/CaseEvidenceTab, built from domain/caseEvidence). Source evidence is kept apart
- *  from what TC FlyBy and Magnum DI found; nothing is reconstructed from Magnum prose or Higgins' explanation. */
+/** The Evidence tab: the case's material facts, strongest first, each with who found and confirmed it → the original,
+ *  as it arrived (inert) → Evidence trail → Copy / Share (components/report/CaseEvidenceTab, built from
+ *  domain/caseEvidence). Nothing is reconstructed from Magnum prose or Higgins' explanation. */
 function EvidenceContent({ event, investigation }: { event: PatrolEvent; investigation: DeviceInvestigation | null }) {
   // The recorded facts of the finding — what Apollo found, never why it matters: the finding statement itself,
   // Apollo's recorded signals, and evidence the deterministic Triage investigation actually captured. Checks that
@@ -570,25 +570,27 @@ export default function ThreatCaseScreen() {
         </Text>
       </View>
 
-      {/* What started this case, and when (shared with Ask Higgins) — the result is in Overview. Tagged whenever
-          its input or an outside source behind it was simulated. */}
-      <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.xs }}>
-        <SourceSummaryCard origin={event.origin ?? investigation?.origin} at={event.occurred_at}
-          caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]}
-          event={event} evidence={investigation?.evidenceItems} simulated={isSimulated(event)} testID="tc-source-summary" />
-      </View>
+      {/* The top card scrolls away with the content and comes back only at the top; the tab bar stays pinned. */}
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }} stickyHeaderIndices={[1]} testID="tc-scroll">
+        {/* What started this case, and when (shared with Ask Higgins) — the result is in Overview. Tagged whenever
+            its input or an outside source behind it was simulated. */}
+        <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.xs }}>
+          <SourceSummaryCard origin={event.origin ?? investigation?.origin} at={event.occurred_at}
+            caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]}
+            event={event} evidence={investigation?.evidenceItems} simulated={isSimulated(event)} testID="tc-source-summary" />
+        </View>
 
-      {/* Tab bar */}
-      <View style={s.tabBar} testID="tc-tab-bar">
-        {TAB_LABELS.map(({ id: tabId, label }) => (
-          <Pressable key={tabId} style={[s.tab, activeTab === tabId && s.tabActive]} onPress={() => setActiveTab(tabId)} accessibilityRole="tab" accessibilityState={{ selected: activeTab === tabId }} testID={`tc-tab-${tabId}`}>
-            <Text style={[s.tabText, activeTab === tabId && s.tabTextActive]} numberOfLines={1}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
+        {/* Tab bar */}
+        <View style={s.tabBar} testID="tc-tab-bar">
+          {TAB_LABELS.map(({ id: tabId, label }) => (
+            <Pressable key={tabId} style={[s.tab, activeTab === tabId && s.tabActive]} onPress={() => setActiveTab(tabId)} accessibilityRole="tab" accessibilityState={{ selected: activeTab === tabId }} testID={`tc-tab-${tabId}`}>
+              <Text style={[s.tabText, activeTab === tabId && s.tabTextActive]} numberOfLines={1}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
 
-      {/* Tab content */}
-      <ScrollView contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xl }} testID="tc-scroll">
+        {/* Tab content */}
+        <View style={{ paddingTop: spacing.sm }}>
         {activeTab === "overview" && report ? (
           <BriefContent event={event} status={status} verdict={verdict} shownWhatToDo={shownWhatToDo} original={original} investigation={investigation} report={report} />
         ) : activeTab === "evidence" ? (
@@ -601,6 +603,7 @@ export default function ThreatCaseScreen() {
             how={report ? luddishReport(report).how : []} presented={result ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null}
             history={investigation?.response?.history} />
         ) : null}
+        </View>
       </ScrollView>
     </View>
   );

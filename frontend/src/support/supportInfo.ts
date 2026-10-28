@@ -10,6 +10,7 @@ import { Platform } from "react-native";
 
 import { APP_ENV } from "@/src/config/appEnvironment";
 import { IS_NATIVE_HOST } from "@/src/security/securityAdapter";
+import { deviceModelName } from "@/src/telemetry/deviceModelName";
 
 export const UNAVAILABLE = "Unavailable";
 
@@ -25,6 +26,8 @@ export interface SupportAppInfo {
   lastNativeUpdateAt: string;
 }
 export interface SupportDeviceInfo {
+  /** What to call this device: its descriptive name, with the model code it reports ("Samsung Galaxy Z Fold6 (SM-F956B)"). */
+  name: string;
   manufacturer: string;
   model: string;
   deviceType: string;
@@ -66,7 +69,9 @@ export async function collectAppDeviceInfo(): Promise<{ app: SupportAppInfo; dev
 
   let deviceType = UNAVAILABLE;
   try { deviceType = DEVICE_TYPE[await Device.getDeviceTypeAsync()] ?? "Unknown"; } catch { /* keep Unavailable */ }
+  const named = await deviceModelName();
   const device: SupportDeviceInfo = {
+    name: named.name ? `${named.name}${named.code ? ` (${named.code})` : ""}` : `${Device.manufacturer ?? ""} ${Device.modelName ?? ""}`.trim() || UNAVAILABLE,
     manufacturer: Device.manufacturer ?? UNAVAILABLE,
     model: Device.modelName ?? UNAVAILABLE,
     deviceType,

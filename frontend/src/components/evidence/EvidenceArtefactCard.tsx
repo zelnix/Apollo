@@ -5,12 +5,10 @@
 // captured headers, and the provenance. Everything on screen is captured material; nothing about
 // the source app is reconstructed.
 import * as Clipboard from "expo-clipboard";
-import * as WebBrowser from "expo-web-browser";
 import Camera from "lucide-react-native/icons/camera";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CopyIcon from "lucide-react-native/icons/copy";
-import ExternalLink from "lucide-react-native/icons/external-link";
 import FileText from "lucide-react-native/icons/file-text";
 import Globe from "lucide-react-native/icons/globe";
 import Info from "lucide-react-native/icons/info";
@@ -28,12 +26,16 @@ import { Image, Modal, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConversationArtefact, EmailArtefact, FieldRows, PostArtefact, ScreenshotArtefact, useArtefactStyles, type ArtefactImage, type LayoutProps } from "./ArtefactLayouts";
+import { InertEmailView } from "./InertEmailView";
 import { InfoButton } from "@/src/components/InfoButton";
 import { Button } from "@/src/components/ui";
 import { describeArtefact, describeRedaction, redactView, type EvidenceLayout } from "@/src/domain/evidencePresentation";
+import { inertEmail, type InertEmail } from "@/src/domain/inertEmail";
 import { phoneFindingLine, type EvidencePhoneResult } from "@/src/domain/phoneNumbers";
 import { purposeLimitedUrl, redactInvestigationSecrets } from "@/src/domain/privacy";
+import { readEmailBody } from "@/src/domain/triage/emailOriginal";
 import { listImageEvidence, removeOriginal, subscribeImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
+import { readKeptOriginalEmail } from "@/src/store/originalEmail";
 import { getOriginalSource, subscribeOriginalSource, type OriginalSource } from "@/src/store/originalSource";
 import { shareEvidencePack, type PackSummary } from "@/src/utils/evidencePack";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -85,6 +87,8 @@ const useStyles = makeStyles((c) => ({
   viewerBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   viewerTitle: { flex: 1, fontFamily: fonts.textMedium, fontSize: 15, color: "#FFFFFF" },
   viewerClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  emailViewer: { flex: 1, backgroundColor: c.surface },
+  emailViewerTitle: { flex: 1, fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
 }));
 
 const LAYOUT_ICON: Record<EvidenceLayout, React.ComponentType<{ size: number; color: string }>> = {
@@ -98,6 +102,7 @@ const SOURCE_INFO = {
   title: "Original Source",
   body: [
     "This is the material Apollo investigated, exactly as it was captured — not a summary and not anything ApolloSG wrote.",
+    "Links, buttons, pictures, phone numbers and addresses in it look as they did, but touching them does nothing: nothing opens, dials, downloads or connects. Where each link really goes is listed under Details.",
     "It is kept on this phone only. It is never uploaded for storage, and it is deleted when you delete this case or wipe ApolloSG's data.",
   ],
 };
@@ -150,6 +155,8 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
   const [tab, setTab] = useState<EmailTab>("email");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [full, setFull] = useState<ArtefactImage | null>(null);
+  const [email, setEmail] = useState<InertEmail | null>(null);
+  const [emailFull, setEmailFull] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -181,6 +188,17 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
     return subscribeImageEvidence(() => void load());
   }, [keyList]);
 
+  // An email's kept original (.eml / original source): its own HTML part, made inert, is how it is shown. Without
+  // one (no HTML part, or only the text was kept) the email's text is shown instead.
+  useEffect(() => {
+    let live = true;
+    void readKeptOriginalEmail(keyList ? keyList.split("|") : [])
+      .then((raw) => (raw ? inertEmail(readEmailBody(raw)) : null))
+      .catch(() => null)
+      .then((found) => { if (live) setEmail(found); });
+    return () => { live = false; };
+  }, [keyList]);
+
   // An image-only case has no text original, but the picture kept on this phone IS the original.
   const source = useMemo<OriginalSource | null>(
     () => src ?? (records.length ? { kind: "screenshot", capturedAt: records[0].createdAt, origin: "this_device" } : null),
@@ -199,8 +217,6 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
     }
     return r.originalUri ? [{ uri: r.originalUri, label: "Original on this device" }] : [];
   }), [records, mode]);
-
-  const openLink = useCallback((url: string) => { void WebBrowser.openBrowserAsync(url); }, []);
 
   const copyText = useCallback(() => {
     const parts = [shown?.subject, shown?.body, mode === "redacted" && source?.url ? purposeLimitedUrl(source.url) : source?.url].filter(Boolean);
@@ -229,9 +245,11 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
   const sentCopyIdentical = !redaction.changed;
   const Icon = view.layout === "message" ? (KIND_ICON[source.kind] ?? MessageSquare) : LAYOUT_ICON[view.layout];
 
+  // The original email is drawn from its own HTML; the copy that left this phone was its text, so Redacted shows that.
+  const shownEmail = view.layout === "email" && mode === "original" ? email : null;
   const layoutProps: LayoutProps & { s: typeof a } = {
-    view: shown, body: shown.body, url, record: source.data, images, side: mode === "side",
-    onOpenLink: openLink, onViewImage: setFull, s: a,
+    view: shown, body: shown.body, url, record: source.data, images, side: mode === "side", email: shownEmail,
+    onViewImage: setFull, s: a,
   };
   // Side by side only makes sense where there are two versions of a picture to compare.
   const modes: Mode[] = view.layout === "screenshot" && records.length ? ["original", "redacted", "side"] : ["original", "redacted"];
@@ -299,15 +317,13 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
       <View style={s.actions}>
         {images.length ? (
           <View style={s.action}><Button testID={`${testID}-fullscreen`} variant="secondary" label="View full screen" icon={<Maximize2 size={16} color={colors.brand} />} onPress={() => setFull(images[0])} /></View>
+        ) : shownEmail && tab === "email" ? (
+          <View style={s.action}><Button testID={`${testID}-email-fullscreen`} variant="secondary" label="View full screen" icon={<Maximize2 size={16} color={colors.brand} />} onPress={() => setEmailFull(true)} /></View>
         ) : null}
         {shown.body || url ? (
           <View style={s.action}><Button testID={`${testID}-copy`} variant="secondary" label="Copy text" icon={<CopyIcon size={16} color={colors.brand} />} onPress={copyText} /></View>
         ) : null}
       </View>
-      {shown.links.length || url ? (
-        <Button testID={`${testID}-open`} variant="ghost" label="Open in browser" icon={<ExternalLink size={16} color={colors.brand} />}
-          onPress={() => openLink(shown.links[0] ?? url ?? "")} accessibilityHint="Opens the captured link in your browser" />
-      ) : null}
       {note ? <Text style={s.note} testID={`${testID}-note`}>{note}</Text> : null}
 
       {/* ── Source details ── */}
@@ -373,6 +389,17 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
             <Pressable onPress={() => setFull(null)} accessibilityRole="button" accessibilityLabel="Close full screen" hitSlop={12} style={s.viewerClose} testID={`${testID}-viewer-close`}><X size={22} color="#FFFFFF" /></Pressable>
           </View>
           {full ? <Image source={{ uri: full.uri }} style={{ flex: 1 }} resizeMode="contain" /> : null}
+        </View>
+      </Modal>
+
+      {/* ── The email as it appeared, full screen (still inert) ── */}
+      <Modal visible={emailFull && !!shownEmail} animationType="slide" onRequestClose={() => setEmailFull(false)} statusBarTranslucent>
+        <View style={[s.emailViewer, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID={`${testID}-email-viewer`}>
+          <View style={s.viewerBar}>
+            <Text style={s.emailViewerTitle} numberOfLines={1}>{shown.subject ?? "Original email"}</Text>
+            <Pressable onPress={() => setEmailFull(false)} accessibilityRole="button" accessibilityLabel="Close full screen" hitSlop={12} style={s.viewerClose} testID={`${testID}-email-viewer-close`}><X size={22} color={colors.onSurface} /></Pressable>
+          </View>
+          {shownEmail ? <InertEmailView email={shownEmail} style={{ flex: 1 }} /> : null}
         </View>
       </Modal>
     </View>

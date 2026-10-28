@@ -1,13 +1,17 @@
 // The artefact itself, drawn the way it arrived: an email, a screenshot, a message thread, a chat or
 // a post. Every value on screen comes from what Apollo captured — see domain/evidencePresentation.
 // Nothing the source app displayed but Apollo never captured is drawn here.
+// Inert Source Principle: links, numbers, addresses and buttons inside the source look as they did but do nothing
+// when touched. Where a link really goes is evidence, listed separately under Details.
 import Paperclip from "lucide-react-native/icons/paperclip";
 import User from "lucide-react-native/icons/user";
 import React from "react";
 import { Image, Platform, Pressable, Text, View } from "react-native";
 
+import { InertEmailView } from "./InertEmailView";
 import type { ArtefactView } from "@/src/domain/evidencePresentation";
 import { linksIn } from "@/src/domain/evidencePresentation";
+import { inertEmailNote, type InertEmail } from "@/src/domain/inertEmail";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export interface ArtefactImage { uri: string; label: string }
@@ -22,9 +26,13 @@ export interface LayoutProps {
   images: ArtefactImage[];
   /** Screenshots only: show the original and the sent copy next to each other. */
   side?: boolean;
-  onOpenLink: (url: string) => void;
+  /** Email only: the kept original's own HTML, made inert — shown instead of its text when it has one. */
+  email?: InertEmail | null;
   onViewImage: (image: ArtefactImage) => void;
 }
+
+/** Height of the email as it appeared, inside the card (it scrolls within; full screen shows all of it). */
+export const EMAIL_VIEW_HEIGHT = 480;
 
 const useStyles = makeStyles((c) => ({
   // ── Shared frame: the artefact sits inside a bordered "as received" surface ──
@@ -75,22 +83,27 @@ const useStyles = makeStyles((c) => ({
 
   link: { fontFamily: fonts.textMedium, color: c.brandPrimary, textDecorationLine: "underline" },
   empty: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.muted, padding: spacing.md },
+  emailView: { height: EMAIL_VIEW_HEIGHT, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border },
+  inertNote: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.muted },
 }));
 
 type Styles = ReturnType<typeof useStyles>;
 
-/** Captured text with its links tappable. The text itself is never altered. */
-function LinkedText({ text, style, onOpenLink, s, testID }: { text: string; style: object; onOpenLink: (url: string) => void; s: Styles; testID?: string }) {
+/** Captured text with its links drawn as links, exactly as written — inert: touching one does nothing. */
+function InertText({ text, style, s, testID }: { text: string; style: object; s: Styles; testID?: string }) {
   const urls = linksIn(text);
   if (!urls.length) return <Text style={style} selectable testID={testID}>{text}</Text>;
   const pattern = new RegExp(`(${urls.map((u) => u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
   return (
     <Text style={style} selectable testID={testID}>
-      {text.split(pattern).map((part, i) => (urls.includes(part)
-        ? <Text key={i} style={s.link} onPress={() => onOpenLink(part)} accessibilityRole="link">{part}</Text>
-        : <Text key={i}>{part}</Text>))}
+      {text.split(pattern).map((part, i) => <Text key={i} style={urls.includes(part) ? s.link : undefined}>{part}</Text>)}
     </Text>
   );
+}
+
+/** Each link the email carried: what it displayed, and where it actually goes. */
+export function emailLinkRows(email: InertEmail): string {
+  return email.links.map((l) => `Displayed text: \u201c${l.text || "(no text)"}\u201d\nActual destination: ${l.href}`).join("\n\n");
 }
 
 function initial(name: string | null): string | null {
@@ -117,7 +130,7 @@ export function FieldRows({ fields, s }: { fields: { label: string; value: strin
 // ── Message / chat ────────────────────────────────────────────────────────────
 
 /** The default layout: the thread as it arrived. Used for every type without one of its own. */
-export function ConversationArtefact({ view, body, url, record, images, onOpenLink, onViewImage, s }: LayoutProps & { s: Styles }) {
+export function ConversationArtefact({ view, body, url, record, images, onViewImage, s }: LayoutProps & { s: Styles }) {
   const text = body ?? url ?? null;
   const hasRecord = record !== undefined && record !== null;
   // Nothing to attribute (a link, a file) → no sender strip: an empty header is noise, not evidence.
@@ -137,7 +150,7 @@ export function ConversationArtefact({ view, body, url, record, images, onOpenLi
         {view.occurredAt ? <View style={s.dateChip}><Text style={s.dateChipText}>{view.occurredAt}</Text></View> : null}
         {text ? (
           <View style={s.bubble}>
-            <LinkedText text={text} style={s.bubbleText} onOpenLink={onOpenLink} s={s} testID="evidence-artefact-body" />
+            <InertText text={text} style={s.bubbleText} s={s} testID="evidence-artefact-body" />
           </View>
         ) : null}
         {images.map((img) => (
@@ -159,7 +172,7 @@ export function ConversationArtefact({ view, body, url, record, images, onOpenLi
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 
-export function EmailArtefact({ view, body, images, onOpenLink, onViewImage, tab, s }: LayoutProps & { tab: "email" | "headers" | "details"; s: Styles }) {
+export function EmailArtefact({ view, body, images, email, onViewImage, tab, s }: LayoutProps & { tab: "email" | "headers" | "details"; s: Styles }) {
   const { colors } = useTheme();
   if (tab === "headers") {
     return (
@@ -170,7 +183,8 @@ export function EmailArtefact({ view, body, images, onOpenLink, onViewImage, tab
   }
   if (tab === "details") {
     const rows = [
-      view.links.length ? { label: "Links", value: view.links.join("\n") } : null,
+      email?.links.length ? { label: "Links", value: emailLinkRows(email) }
+        : view.links.length ? { label: "Links", value: view.links.join("\n") } : null,
       view.attachments.length ? { label: "Attachments", value: view.attachments.join("\n") } : null,
       ...view.fields.filter((f) => /auth|provider|mailbox|spf|dkim|dmarc/i.test(f.label)),
     ].filter((r): r is { label: string; value: string } => !!r);
@@ -192,7 +206,11 @@ export function EmailArtefact({ view, body, images, onOpenLink, onViewImage, tab
       </View>
       <View style={s.emailBody}>
         {view.subject ? <Text style={s.subject} selectable>{view.subject}</Text> : null}
-        {body ? <LinkedText text={body} style={s.bodyText} onOpenLink={onOpenLink} s={s} testID="evidence-artefact-body" /> : <Text style={s.empty}>No message body was captured.</Text>}
+        {/* The email as it appeared (its HTML, inert). Its text only when the kept original has no HTML part. */}
+        {email ? <>
+          <InertEmailView email={email} style={s.emailView} testID="evidence-artefact-email-html" />
+          <Text style={s.inertNote} testID="evidence-artefact-email-inert-note">{inertEmailNote(email)}</Text>
+        </> : body ? <InertText text={body} style={s.bodyText} s={s} testID="evidence-artefact-body" /> : <Text style={s.empty}>No message body was captured.</Text>}
         {images.map((img) => (
           <Pressable key={img.uri} onPress={() => onViewImage(img)} accessibilityRole="imagebutton" accessibilityLabel={`View ${img.label}`}>
             <Image source={{ uri: img.uri }} style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: radius.sm }} resizeMode="contain" />
@@ -216,7 +234,7 @@ export function EmailArtefact({ view, body, images, onOpenLink, onViewImage, tab
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
 
-export function ScreenshotArtefact({ view, body, images, side, onOpenLink, onViewImage, s }: LayoutProps & { s: Styles }) {
+export function ScreenshotArtefact({ view, body, images, side, onViewImage, s }: LayoutProps & { s: Styles }) {
   const [main, ...rest] = images;
   // The image's own proportions, read from the file — so the screenshot isn't letterboxed in a box
   // that was never its shape.
@@ -254,7 +272,7 @@ export function ScreenshotArtefact({ view, body, images, side, onOpenLink, onVie
       {body ? (
         <View style={s.emailBody}>
           <Text style={s.sectionLabel}>Captured with the image</Text>
-          <LinkedText text={body} style={s.bodyText} onOpenLink={onOpenLink} s={s} testID="evidence-artefact-body" />
+          <InertText text={body} style={s.bodyText} s={s} testID="evidence-artefact-body" />
         </View>
       ) : null}
       {view.occurredAt ? <View style={[s.emailBody, { paddingTop: 0 }]}><Text style={s.headerMeta}>{view.occurredAt}</Text></View> : null}
@@ -264,7 +282,7 @@ export function ScreenshotArtefact({ view, body, images, side, onOpenLink, onVie
 
 // ── Social post ───────────────────────────────────────────────────────────────
 
-export function PostArtefact({ view, body, url, images, onOpenLink, onViewImage, s }: LayoutProps & { s: Styles }) {
+export function PostArtefact({ view, body, url, images, onViewImage, s }: LayoutProps & { s: Styles }) {
   return (
     <View style={s.frame} testID="evidence-artefact-post">
       <View style={s.postHeader}>
@@ -275,8 +293,8 @@ export function PostArtefact({ view, body, url, images, onOpenLink, onViewImage,
         </View>
       </View>
       <View style={s.postBody}>
-        {body ? <LinkedText text={body} style={s.bodyText} onOpenLink={onOpenLink} s={s} testID="evidence-artefact-body" /> : null}
-        {url && !body?.includes(url) ? <Text style={[s.bodyText, s.link]} onPress={() => onOpenLink(url)} accessibilityRole="link">{url}</Text> : null}
+        {body ? <InertText text={body} style={s.bodyText} s={s} testID="evidence-artefact-body" /> : null}
+        {url && !body?.includes(url) ? <Text style={[s.bodyText, s.link]} selectable>{url}</Text> : null}
         {!body && !url ? <Text style={s.empty}>No post content was captured.</Text> : null}
       </View>
       {images.map((img) => (

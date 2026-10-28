@@ -255,7 +255,7 @@ export default function SupportScreen() {
           <View style={s.row}><Text style={s.label}>Build ID</Text><Text style={s.value}>{appDevice.data.app.buildId}</Text></View>
           <InfoRow label="Update ID" value={appDevice.data.app.updateId} />
           <View style={s.row}><Text style={s.label}>Environment</Text><Text style={s.value} testID="support-environment">{appDevice.data.app.environment}{appDevice.data.app.nativeBuild ? "" : " · preview"}</Text></View>
-          <InfoRow label="Device" value={`${appDevice.data.device.manufacturer} ${appDevice.data.device.model}`} />
+          <InfoRow label="Device" value={appDevice.data.device.name} />
           <InfoRow label="Device Type" value={appDevice.data.device.deviceType} />
           <InfoRow label="Operating System" value={`${appDevice.data.device.os} ${appDevice.data.device.osVersion}`} />
           <InfoRow label="Architecture" value={appDevice.data.device.architecture} />
