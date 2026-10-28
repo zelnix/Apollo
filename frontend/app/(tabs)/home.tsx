@@ -6,11 +6,12 @@ import Globe from "lucide-react-native/icons/globe";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Shield from "lucide-react-native/icons/shield";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { Image } from "expo-image";
@@ -25,9 +26,10 @@ import { RetrofitModal, hasRetrofitRun } from "@/src/components/RetrofitModal";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
-import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, toneColor } from "@/src/components/ui";
+import { PostureSummary, postureColors } from "@/src/components/protection/PostureSummary";
+import { agoLabel } from "@/src/domain/alertFreshness";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { buildHeroBriefs, eventBrief, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
@@ -39,27 +41,10 @@ import {
   STATUS_COLORS,
 } from "@/src/domain/threatCase";
 import { ProtectionChangeBanner } from "@/src/components/device/ProtectionChangeBanner";
-import { getBaseline } from "@/src/store/firstCheckStore";
 import { getOriginalSource, subscribeOriginalSource } from "@/src/store/originalSource";
 import { useApollo } from "@/src/store/ApolloContext";
-import { useDeviceProtections } from "@/src/store/deviceProtectionStore";
-import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
-import { useProtectionHealth } from "@/src/protection/healthStore";
-
-/** Short chip for the Home protection cards. Counts only what a real read said. */
-type CardOverall = "action" | "review" | "check" | "protected" | "unread" | "checking";
-const CARD_CHIP: Record<CardOverall, string> = {
-  action: "Needs attention", review: "Review", check: "To check", protected: "Protected", unread: "Not checked", checking: "Checking",
-};
-function chipColors(overall: CardOverall, c: ThemeColors) {
-  switch (overall) {
-    case "action": return { dot: c.biting, bg: c.bitingTint, text: c.bitingText };
-    case "review": return { dot: c.growling, bg: c.growlingTint, text: c.growlingText };
-    case "check": return { dot: c.gold, bg: c.goldTint, text: c.onSurface };
-    case "protected": return { dot: c.resting, bg: c.restingTint, text: c.restingText };
-    default: return { dot: c.muted, bg: c.unknownTint, text: c.unknownText };
-  }
-}
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { useProtectionPosture } from "@/src/protection/useProtectionPosture";
 
 /** Apollo is an animated character — one state → one GIF.  Matches ApolloHero.tsx. */
 const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = {
@@ -166,24 +151,15 @@ const useStyles = makeStyles((c) => ({
   heroLine1: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: c.onSurface },
   heroLine2: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
 
-  // ── Two side-by-side cards ──
-  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
-  halfCard: {
-    flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
-    borderWidth: 0.25,
-  },
-  halfCardIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  halfCardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface, flex: 1 },
-  halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
-  scoreChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, borderWidth: 0.5 },
-  scoreDot: { width: 6, height: 6, borderRadius: 3 },
-  scoreText: { fontFamily: fonts.textSemibold, fontSize: 11 },
-  halfCardBtn: {
-    borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
-    alignItems: "center", justifyContent: "center", marginTop: "auto",
-  },
-  halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
+  // ── "Your protection" card: the overall answer, then Apollo's and the device's protections ──
+  postureCard: { marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radius.lg, borderWidth: 1, overflow: "hidden" },
+  postureTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.lg },
+  postureHalves: { flexDirection: "row", borderTopWidth: 0.5, borderTopColor: c.divider, backgroundColor: c.surfaceSecondary },
+  postureHalf: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, minHeight: 64 },
+  postureHalfDivider: { borderLeftWidth: 0.5, borderLeftColor: c.divider },
+  postureHalfIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  postureHalfTitle: { fontFamily: fonts.textSemibold, fontSize: 13, lineHeight: 18, color: c.onSurface },
+  postureHalfLine: { fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.onSurfaceSecondary },
 
   // ── Section headers ──
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.sm },
@@ -232,8 +208,11 @@ export default function Home() {
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
   const compact = screenW < 380;
-  const { resolution, capabilities, protection, adapterLabel, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
-  const health = useProtectionHealth();
+  const { resolution, capabilities, protection, events, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
+  // One overall answer, decided by the Protection Posture engine — the Protection screen shows the same one.
+  const { posture, apolloLine, deviceLine, health, recheck, rechecking } = useProtectionPosture();
+  const posturePalette = postureColors(posture.status, colors);
+  const checkedLine = health.checkedAt ? `Protection status checked ${agoLabel(Date.parse(health.checkedAt), Date.now())}` : "Protection status not checked yet";
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
 
   // ── Refresh data whenever Home regains focus (e.g. after handling an item) ──
@@ -242,26 +221,6 @@ export default function Home() {
       void refresh(0);
     }, [refresh])
   );
-
-  // The last time Higgins actually completed a Device Check on this device. Read from the stored
-  // check itself — opening the app never counts as a check.
-  const [lastHigginsCheckAt, setLastHigginsCheckAt] = React.useState<string | null>(null);
-  useFocusEffect(
-    React.useCallback(() => {
-      let active = true;
-      void getBaseline().then((baseline) => { if (active) setLastHigginsCheckAt(baseline?.checkedAt ?? null); }).catch(() => undefined);
-      return () => { active = false; };
-    }, [])
-  );
-
-  // Exception-first summaries for the two protection cards. The Device read happens once per open
-  // (and on return to Apollo); a failed or absent read produces "Not checked" — never a green light.
-  const deviceProtections = useDeviceProtections();
-  const apolloSummary = React.useMemo(
-    () => summariseApolloProtections(groupApolloProtections(health.gates), health.checking),
-    [health.gates, health.checking],
-  );
-  const deviceSummary = deviceProtections?.summary ?? null;
 
   // ── Auto-retrofit on first load ──
   const [showRetrofit, setShowRetrofit] = React.useState(false);
@@ -441,20 +400,20 @@ export default function Home() {
           </Pressable>
         ) : null}
 
-        {/* Last completed Higgins check — links to the Device Check result */}
-        <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
+        {/* When Apollo last read its protections — "Check again" reads them and the device's own settings now. */}
+        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.sm }}>
           <Pressable
-            testID="home-higgins-check"
+            testID="home-protection-checked"
             accessibilityRole="button"
-            accessibilityLabel={lastHigginsCheckAt ? `Protection checked by Apollo ${timeAgo(lastHigginsCheckAt)}. Open the result.` : "Apollo hasn't checked this device yet. Run a check."}
-            onPress={() => router.push("/recheck")}
+            accessibilityLabel={`${checkedLine}. Check again.`}
+            onPress={recheck}
+            disabled={rechecking}
             style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <ShieldCheck size={16} color={colors.resting} />
-            <Text style={s.checkedText} numberOfLines={2} testID="home-higgins-check-text">
-              {lastHigginsCheckAt ? `Protection checked by Apollo · ${timeAgo(lastHigginsCheckAt)}` : "Apollo hasn't checked this device yet"}
-            </Text>
-            <Text style={s.checkedAction}>{lastHigginsCheckAt ? "View" : "Run check"}</Text>
+            <ShieldCheck size={18} color={colors.resting} />
+            <Text style={s.checkedText} numberOfLines={2} testID="home-protection-checked-text">{checkedLine}</Text>
+            {rechecking ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <RefreshCw size={16} color={colors.brandPrimary} />}
+            <Text style={s.checkedAction} testID="home-protection-recheck">Check again</Text>
           </Pressable>
         </View>
 
@@ -466,51 +425,53 @@ export default function Home() {
           <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
         </View>
 
-        {/* ── Two Side-by-Side Cards — what needs you first, healthy items as a count ── */}
-        <View style={[s.twoCards, compact && { gap: spacing.sm, paddingHorizontal: spacing.lg }]}>
-          {/* Apollo Protections Card */}
+        {/* ── Your protection — the overall answer, then Apollo's protections and the device's own ── */}
+        <View style={[s.postureCard, { backgroundColor: posturePalette.wash, borderColor: posturePalette.tint }]} testID="home-posture-card">
           <Pressable
-            testID="home-protection-card"
+            testID="home-posture"
             accessibilityRole="button"
-            accessibilityLabel={`Apollo Protections. ${apolloSummary.headline}. ${apolloSummary.detail}`}
+            accessibilityLabel={`Your protection: ${posture.title}. ${posture.reason}`}
+            accessibilityHint="Opens Protection"
             onPress={() => router.push("/(tabs)/protection")}
-            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [s.postureTop, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={s.halfCardTitleRow}>
-              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
-                <ShieldCheck size={compact ? 14 : 16} color={colors.brand} />
-              </View>
-              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]} numberOfLines={2}>Apollo Protections</Text>
+            <View style={{ flex: 1 }}>
+              <PostureSummary posture={posture} reasonLines={3} testID="home-posture-summary" />
             </View>
-            <HomeCardChip overall={apolloSummary.overall} label={apolloSummary.overall === "action" || apolloSummary.overall === "review" || apolloSummary.overall === "check" ? apolloSummary.headline : CARD_CHIP[apolloSummary.overall]} testID="home-protection-chip" />
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3} testID="home-protection-summary">{apolloSummary.detail}</Text>
-            <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
-              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: colors.onBrand }]}>View</Text>
-            </View>
+            <ChevronRight size={20} color={colors.onSurface} />
           </Pressable>
-
-          {/* Device Protections Card */}
-          <Pressable
-            testID="home-device-card"
-            accessibilityRole="button"
-            accessibilityLabel={`Device Protections. ${deviceSummary ? `${deviceSummary.headline}. ${deviceSummary.detail}` : "Reading this device."}`}
-            onPress={() => router.push("/device-protection")}
-            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
-          >
-            <View style={s.halfCardTitleRow}>
-              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: colors.goldTint }]}>
-                <Smartphone size={compact ? 14 : 16} color={colors.gold} />
+          <View style={s.postureHalves}>
+            <Pressable
+              testID="home-protection-card"
+              accessibilityRole="button"
+              accessibilityLabel={`Apollo protections. ${apolloLine}.`}
+              onPress={() => router.push("/(tabs)/protection")}
+              style={({ pressed }) => [s.postureHalf, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <View style={[s.postureHalfIcon, { backgroundColor: colors.navyTint }]}>
+                <ShieldCheck size={18} color={colors.brand} />
               </View>
-              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]} numberOfLines={2}>Device Protections</Text>
-            </View>
-            <HomeCardChip overall={deviceSummary?.overall ?? "checking"} label={CARD_CHIP[deviceSummary?.overall ?? "checking"]} testID="home-device-capability-score" />
-            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3} testID="home-device-summary">
-              {deviceSummary ? [deviceSummary.headline, deviceSummary.detail].filter(Boolean).join(". ").replace(/\.\./g, ".") : "Reading this device’s settings…"}
-            </Text>
-            <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
-              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>View</Text>
-            </View>
-          </Pressable>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.postureHalfTitle, compact && { fontSize: 12 }]}>Apollo protections</Text>
+                <Text style={s.postureHalfLine} testID="home-protection-summary">{apolloLine}</Text>
+              </View>
+            </Pressable>
+            <Pressable
+              testID="home-device-card"
+              accessibilityRole="button"
+              accessibilityLabel={`Device protections. ${deviceLine}.`}
+              onPress={() => router.push("/device-protection")}
+              style={({ pressed }) => [s.postureHalf, s.postureHalfDivider, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <View style={[s.postureHalfIcon, { backgroundColor: colors.goldTint }]}>
+                <Smartphone size={18} color={colors.gold} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.postureHalfTitle, compact && { fontSize: 12 }]}>Device protections</Text>
+                <Text style={s.postureHalfLine} testID="home-device-summary">{deviceLine}</Text>
+              </View>
+            </Pressable>
+          </View>
         </View>
 
         {/* ── Important For You — priority subset of Threats + one scam alert ── */}
@@ -618,30 +579,4 @@ function ThreatCard({ event, kept, compact, testID }: { event: PatrolEvent; kept
       </View>
     </Pressable>
   );
-}
-
-/** The status chip on a Home protection card. */
-function HomeCardChip({ overall, label, testID }: { overall: CardOverall; label: string; testID: string }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const palette = chipColors(overall, colors);
-  return (
-    <View style={[s.scoreChip, { backgroundColor: palette.bg, borderColor: palette.dot, alignSelf: "flex-start" }]} testID={testID}>
-      <View style={[s.scoreDot, { backgroundColor: palette.dot }]} />
-      <Text style={[s.scoreText, { color: palette.text }]} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
-
-/** Simple relative time label */
-function timeAgo(iso: string): string {
-  const diff = Date.now() - Date.parse(iso);
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  return `${days} days ago`;
 }

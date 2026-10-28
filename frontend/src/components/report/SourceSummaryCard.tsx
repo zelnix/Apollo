@@ -22,7 +22,7 @@ import { Image, Pressable, Text, useWindowDimensions, View, type StyleProp, type
 
 import { toneText, toneTint } from "@/src/components/ui";
 import {
-  detectionFacts, originHeading, previewFromEvent, previewFromEvidence, previewFromOriginal,
+  detectionFacts, isAddress, originHeading, previewFromEvent, previewFromEvidence, previewFromOriginal, shortenMiddle,
   type DetectionFact, type PreviewIcon, type SourcePreview,
 } from "@/src/domain/caseSourceSummary";
 import { formatDateTime } from "@/src/domain/threatCase";

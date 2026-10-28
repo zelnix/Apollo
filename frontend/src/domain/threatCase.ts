@@ -54,6 +54,19 @@ export function caseGroupKey(event: PatrolEvent): string {
   return event.case_key ?? event.patrol_record?.logicalIssueKey ?? (investigation ? `inv:${investigation}` : event.event_id);
 }
 
+/** One row per case, the latest record of each first — what the Threats list shows. */
+export function threatCases(events: PatrolEvent[]): PatrolEvent[] {
+  const seen = new Set<string>();
+  return [...events]
+    .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+    .filter((event) => {
+      const key = caseGroupKey(event);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 // ── Status ──────────────────────────────────────────────────────────────────
 
 export type ThreatCaseStatus =

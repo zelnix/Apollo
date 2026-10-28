@@ -1,13 +1,11 @@
-// Device Protections + Apollo Protections: exception-first grouping, change detection and the Home banner.
+// Device Protections: exception-first grouping, change detection and the Home banner.
 // Run: node --test tests/deviceProtections.test.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { apolloProtectionGroup, groupApolloProtections, summariseApolloProtections } from "../src/domain/apolloProtections.ts";
 import { changeBanner, diffProtectionSnapshots, protectionSnapshot, unseenChanges, whatToDoNow, type ProtectionChange } from "../src/domain/deviceProtectionChanges.ts";
 import { groupDeviceProtections, summariseDeviceProtections } from "../src/domain/deviceProtectionTypes.ts";
 import { EMPTY_SECURITY_READ, securityProtectionRows, type SecurityStateRead } from "../src/domain/deviceSecurityCatalogue.ts";
-import type { GatePresentation } from "../src/domain/gates";
 
 const NOW = Date.parse("2026-06-15T12:00:00.000Z");
 const read = (over: Partial<SecurityStateRead> = {}): SecurityStateRead => ({ ...EMPTY_SECURITY_READ, ...over });
@@ -145,34 +143,5 @@ test("the Home banner opens the one changed protection, or the list when several
     change("d", "other_vpn", "better", "2026-06-15T09:00:00.000Z"),
   ])!;
   assert.match(allFixed.todo, /^Nothing to do/);
-});
-
-// ── Apollo Protections ───────────────────────────────────────────
-
-const gate = (id: string, tone: GatePresentation["tone"], statusLabel: GatePresentation["statusLabel"]) =>
-  ({ id, title: id, tone, statusLabel }) as unknown as GatePresentation;
-
-test("every Gate lands in exactly one group, and unconfirmed is never protected", () => {
-  assert.equal(apolloProtectionGroup({ tone: "action", statusLabel: "Action needed" }), "needsAttention");
-  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Setup required" }), "needsAttention");
-  assert.equal(apolloProtectionGroup({ tone: "unverified", statusLabel: "Unable to verify" }), "needsChecking");
-  assert.equal(apolloProtectionGroup({ tone: "limited", statusLabel: "Limited" }), "needsChecking");
-  assert.equal(apolloProtectionGroup({ tone: "off", statusLabel: "Off" }), "needsChecking");
-  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Check in progress" }), "needsChecking");
-  assert.equal(apolloProtectionGroup({ tone: "good", statusLabel: "Watching" }), "protected");
-  assert.equal(apolloProtectionGroup({ tone: "neutral", statusLabel: "Manual check" }), "protected");
-  assert.equal(apolloProtectionGroup({ tone: "unavailable", statusLabel: "Unavailable" }), "notAvailable");
-});
-
-test("Apollo Protections summary leads with what needs the person", () => {
-  const gates = [gate("call", "neutral", "Setup required"), gate("site", "action", "Action needed"), gate("link", "neutral", "Manual check"), gate("network", "good", "Watching")];
-  const groups = groupApolloProtections(gates);
-  assert.deepEqual(groups.needsAttention.map((g) => g.id), ["site", "call"]);
-  const summary = summariseApolloProtections(groups, false);
-  assert.equal(summary.overall, "action");
-  assert.equal(summary.headline, "2 need attention");
-  assert.equal(summary.detail, "site, call. 2 protected.");
-  assert.equal(summariseApolloProtections(groupApolloProtections([gate("network", "good", "Watching")]), false).headline, "All protected");
-  assert.equal(summariseApolloProtections(groups, true).overall, "checking");
 });
 

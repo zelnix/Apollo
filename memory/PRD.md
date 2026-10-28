@@ -1,5 +1,32 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Overall Protection Posture engine + new Home/Protection screens + open-case search (2026-10-28)
+**Owner's choices:** engine → screens → search; search covers OPEN cases only, on a separate screen; bottom tabs unchanged.
+No testing agent (owner's rule) — node tests + tsc + preview screenshots.
+- Engine `src/domain/protectionPosture.ts` (pure): each Apollo protection → importance (essential site/link/text;
+  important call/email/network; additional account/file/app/device) × gap → effect; device rows → DEVICE_IMPACT. Worst
+  condition decides: unknown (first reading, or >½ essentials unconfirmed) → at_risk (critical) → reduced (material) →
+  mostly (moderate) → well. Minor never lowers the status. Reason codes (e.g. ESSENTIAL_NOT_SET_UP:text) + one fixed sentence.
+  Fixes while testing: the device's own protection stands in ONLY when Apollo's is unsupported (not set up/off = the gap);
+  a verified "review" device setting counts its full impact (only critical→material). Area rows: minor = covered.
+  `areaRows`, `areaCounts`, `countLine`. Hook `src/protection/useProtectionPosture.ts` (health + device assessment, recheck).
+- Protection tab (`app/(tabs)/protection.tsx`, title "Protection"): Your protection card (status + reason; owner removed
+  "Last checked/Check" from it), Apollo Protections (5 area rows → /protection-details), Device Protections counts
+  (Protected / Needs attention / Need checking / Optional → /device-protection). "What needs your attention" section was
+  built then REMOVED at the owner's request (component + attentionFindings + finding.action deleted).
+  Components: `src/components/protection/{PostureSummary,AreaList,DeviceCounts}.tsx`.
+- Home: "Protection status checked X ago · Check again" row (re-reads protections + device; replaced the Higgins
+  device-check row — /recheck still reachable from Check It) and one "Your protection" card with Apollo/Device halves
+  (testIDs home-posture-card, home-protection-card, home-device-card). Old two cards + `apolloProtections.ts` deleted.
+- Case search: Threats header search icon (`threats-search`) → `app/patrol/search.tsx`; `src/domain/caseSearch.ts`
+  (`openCases`, `matchCase`, `searchCases`): sender (name/address/number, +61↔0), website (host, with/without scheme/www;
+  links inside the text), message words (all terms, any order, subject + kept original text or preview; NFKC so "ﬁ"=fi).
+  Local only. `threatCases()` moved to threatCase.ts (Threats list uses it).
+- Also fixed: SourceSummaryCard used `isAddress`/`shortenMiddle` without importing them (tsc error, runtime crash).
+- Tests: new `tests/protectionPosture.test.ts` (15), `tests/caseSearch.test.ts` (5); deviceProtections Apollo tests removed
+  with the module. Frontend 1198/1198; tsc clean.
+
+
 ## Evidence tab: facts with provenance, strongest first + inert original + full model names + header scroll (2026-10-28)
 **Owner's choices:** plan order as proposed; confirmations shown as "Found by X · Confirmed by Y, Z". No testing agent (owner's rule) — pytest + node tests + tsc + preview screenshots.
 - Earlier in this job (before the fork): Original Email viewer made inert (`domain/inertEmail.ts`, `components/evidence/InertEmailView(.web).tsx`,

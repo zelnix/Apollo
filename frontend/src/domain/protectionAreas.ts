@@ -80,7 +80,7 @@ export const CAPABILITY_LABELS: Record<GateId, string> = {
   network: "Internet monitoring",
 };
 
-const AREA_META: Record<ProtectionAreaId, { title: string; description: string }> = {
+export const AREA_META: Record<ProtectionAreaId, { title: string; description: string }> = {
   websites_links: {
     title: "Websites & Links",
     description: "Helps protect you from harmful websites, phishing links and dangerous destinations.",

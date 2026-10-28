@@ -36,11 +36,11 @@ import {
   threatCaseStatus,
   STATUS_LABELS,
   STATUS_COLORS,
-  caseGroupKey,
   categoryLabel,
   formatDateTime,
   isSimulated,
   threatCaseId,
+  threatCases as allThreatCases,
   type ThreatCaseStatus,
 } from "@/src/domain/threatCase";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
@@ -262,20 +262,8 @@ export default function ThreatsScreen() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>("latest");
 
-  // Deduplicate by Threat Case ID (same case = same list entry)
-  const threatCases = useMemo(() => {
-    const seen = new Set<string>();
-    const deduped: PatrolEvent[] = [];
-    // Sort by timestamp first so we keep the latest event for each case
-    const sorted = [...events].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
-    for (const event of sorted) {
-      const caseKey = caseGroupKey(event);
-      if (seen.has(caseKey)) continue;
-      seen.add(caseKey);
-      deduped.push(event);
-    }
-    return deduped;
-  }, [events]);
+  // One row per Threat Case (same case = same list entry), the latest record of each.
+  const threatCases = useMemo(() => allThreatCases(events), [events]);
 
   // Compute status counts for filter chips
   const statusCounts = useMemo(() => {
@@ -325,6 +313,16 @@ export default function ThreatsScreen() {
           <Text style={[s.titleText, { flexShrink: 1 }]}>Threats</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Search your open cases"
+            onPress={() => router.push("/patrol/search")}
+            hitSlop={6}
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            testID="threats-search"
+          >
+            <Search size={22} color={colors.onSurface} />
+          </Pressable>
           <AlertsButton testID="threats-alerts" />
           <InfoButton info={THREATS_INFO} testID="threats-info" />
           <AppMenuButton testID="threats-menu" />
