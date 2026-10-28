@@ -95,16 +95,56 @@ export function healthLabel(state: DeviceProtectionState, health: ProtectionHeal
 export type ProtectionArea = "calls_messages" | "apps" | "privacy" | "web" | "access" | "updates" | "recovery";
 
 export const PROTECTION_AREA_LABEL: Record<ProtectionArea, string> = {
-  calls_messages: "Calls, messages and spam",
-  apps: "Apps and app privileges",
-  privacy: "Permissions and privacy",
-  web: "Browser, web and network",
-  access: "Device and account security",
-  updates: "Updates and system integrity",
-  recovery: "Anti-theft and find my device",
+  calls_messages: "Calls, Messages & Spam",
+  apps: "Apps & App Privileges",
+  privacy: "Permissions & Privacy",
+  web: "Browser, Web & Network",
+  access: "Device & Account Security",
+  updates: "Updates & System Integrity",
+  recovery: "Anti-Theft & Recovery",
 };
 
-export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["access", "apps", "privacy", "calls_messages", "web", "updates", "recovery"];
+export const PROTECTION_AREA_DESCRIPTION: Record<ProtectionArea, string> = {
+  calls_messages: "Device settings for call and message protection, including spam filtering.",
+  apps: "Device settings that control apps, files and powerful app access.",
+  privacy: "Device settings that control what apps can access, and your privacy.",
+  web: "Device settings for safe browsing, network security and internet connections.",
+  access: "Screen lock, biometrics, encryption and account security settings.",
+  updates: "Security updates and other settings that protect your device and system.",
+  recovery: "Find my device and recovery settings if your device is lost or stolen.",
+};
+
+export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["calls_messages", "apps", "privacy", "web", "access", "updates", "recovery"];
+
+/** What the Device Protections tab says about one category. */
+export type DeviceAreaStatus = "attention" | "unconfirmed" | "protected" | "optional" | "unavailable" | "unread";
+export interface DeviceAreaRow { id: ProtectionArea; title: string; description: string; status: DeviceAreaStatus; label: string; note: string }
+
+/**
+ * One row per category for the Device Protections tab: issues first, then what Apollo couldn't read, then how much of
+ * it is protected. Only a real read can say "Protected"; categories with nothing on this device are dropped.
+ */
+export function deviceAreaRows(device: DeviceProtectionRow[] | "reading" | "not_here"): DeviceAreaRow[] {
+  const row = (id: ProtectionArea, status: DeviceAreaStatus, label: string, note: string): DeviceAreaRow =>
+    ({ id, title: PROTECTION_AREA_LABEL[id], description: PROTECTION_AREA_DESCRIPTION[id], status, label, note });
+  if (device === "reading") return PROTECTION_AREA_ORDER.map((id) => row(id, "unread", "Reading", "Reading this device…"));
+  if (device === "not_here") return PROTECTION_AREA_ORDER.map((id) => row(id, "unread", "Not checked", "Read on your phone"));
+  const groups = groupDeviceProtections(device);
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return PROTECTION_AREA_ORDER.flatMap((id) => {
+    const inArea = (list: DeviceProtectionRow[]) => list.filter((r) => r.area === id);
+    const available = inArea(device).filter((r) => r.health !== "not_available");
+    if (!inArea(device).length) return [];
+    const issues = inArea(groups.needsAttention).length;
+    const toCheck = inArea(groups.needsChecking).length;
+    const ok = available.filter((r) => r.health === "protected").length;
+    if (issues) return [row(id, "attention", "Needs attention", plural(issues, "issue", "issues"))];
+    if (toCheck) return [row(id, "unconfirmed", "Need checking", `${plural(toCheck, "item", "items")} to check`)];
+    if (ok) return [row(id, "protected", "Protected", `${ok} of ${available.length} protected`)];
+    if (available.length) return [row(id, "optional", "Optional", plural(available.length, "optional extra", "optional extras"))];
+    return [row(id, "unavailable", "Not available", "Not on this device")];
+  });
+}
 
 /**
  * Rows grouped by category, in reading order. Empty categories are dropped.

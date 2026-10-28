@@ -11,8 +11,13 @@ No testing agent (owner's rule) — node tests + tsc + preview screenshots.
   a verified "review" device setting counts its full impact (only critical→material). Area rows: minor = covered.
   `areaRows`, `areaCounts`, `countLine`. Hook `src/protection/useProtectionPosture.ts` (health + device assessment, recheck).
 - Protection tab (`app/(tabs)/protection.tsx`, title "Protection"): Your protection card (status + reason; owner removed
-  "Last checked/Check" from it), Apollo Protections (5 area rows → /protection-details), Device Protections counts
-  (Protected / Needs attention / Need checking / Optional → /device-protection). "What needs your attention" section was
+  "Last checked/Check" from it), then two tabs (`protection-tab-apollo` / `protection-tab-device`, `?tab=device` opens
+  the second; Home's Device half links there). Apollo tab: 5 area rows → /protection-details. Device tab: four counts
+  (on a phone), "Device protection areas" — 7 categories from `deviceAreaRows()` in deviceProtectionTypes.ts (Needs
+  attention "N issues" → Need checking "N items to check" → Protected "X of Y protected" → Optional → Not available;
+  web/reading = "Not checked") → `/device-protection?area=<id>` (that screen filters to the category) — plus an info note.
+  Category titles/descriptions/order now live in PROTECTION_AREA_LABEL/DESCRIPTION/ORDER (mockup order).
+  "What needs your attention" section was
   built then REMOVED at the owner's request (component + attentionFindings + finding.action deleted).
   Components: `src/components/protection/{PostureSummary,AreaList,DeviceCounts}.tsx`.
 - Home: "Protection status checked X ago · Check again" row (re-reads protections + device; replaced the Higgins

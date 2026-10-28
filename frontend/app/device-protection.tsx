@@ -8,7 +8,7 @@
  *
  * The device CHECK itself lives at /device.
  */
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Device from "expo-device";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
@@ -23,7 +23,7 @@ import { CapabilityTables } from "@/src/components/device/CapabilityTable";
 import { ProtectionGroup, ProtectionListRow, healthRowTone } from "@/src/components/ProtectionList";
 import { Body, Pill, type Tone } from "@/src/components/ui";
 import { allCapabilityRows, type DeviceProtectionRow } from "@/src/domain/deviceCapabilities";
-import type { DeviceProtectionsOverall } from "@/src/domain/deviceProtectionTypes";
+import { PROTECTION_AREA_LABEL, PROTECTION_AREA_ORDER, groupDeviceProtections, type DeviceProtectionsOverall } from "@/src/domain/deviceProtectionTypes";
 import { whatToDoNow } from "@/src/domain/deviceProtectionChanges";
 import { assessDeviceProtections, useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -75,6 +75,9 @@ export default function DeviceProtectionsScreen() {
   const router = useRouter();
   const assessment = useDeviceProtections();
   const [rechecking, setRechecking] = useState(false);
+  // Opened from a category on the Protection screen: only that category's protections are listed.
+  const params = useLocalSearchParams<{ area?: string }>();
+  const area = PROTECTION_AREA_ORDER.find((a) => a === params.area) ?? null;
 
   const recheck = useCallback(() => {
     setRechecking(true);
@@ -104,9 +107,13 @@ export default function DeviceProtectionsScreen() {
     />
   ));
 
-  const groups = assessment?.groups;
+  const inArea = <T extends { area: string }>(list: T[]) => (area ? list.filter((r) => r.area === area) : list);
+  const deviceRows = assessment ? inArea(assessment.reading.view.deviceProtects) : [];
+  const areaIds = new Set(deviceRows.map((r) => r.id));
+  const unseen = (assessment?.unseen ?? []).filter((c) => !area || areaIds.has(c.protectionId));
+  const groups = assessment ? (area ? groupDeviceProtections(deviceRows) : assessment.groups) : undefined;
   const summary = assessment?.summary;
-  const capabilities = assessment ? allCapabilityRows(assessment.reading.view) : [];
+  const capabilities = assessment ? inArea(allCapabilityRows(assessment.reading.view)) : [];
   const onDevice = assessment?.reading.hasNativeHost ?? Platform.OS !== "web";
   const pill = OVERALL_PILL[summary?.overall ?? "unread"];
 
@@ -117,7 +124,7 @@ export default function DeviceProtectionsScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Back" testID="device-prot-back" onPress={() => goBackOrHome(router)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Text style={s.headerTitle}>Device Protections</Text>
+          <Text style={s.headerTitle} numberOfLines={1} testID="device-prot-title">{area ? PROTECTION_AREA_LABEL[area] : "Device Protections"}</Text>
           <AlertsButton testID="device-prot-alerts" />
           <AppMenuButton testID="device-prot-menu" />
         </View>
@@ -165,17 +172,17 @@ export default function DeviceProtectionsScreen() {
           <ProtectionGroup
             title="What Apollo checks on a device"
             intro="ApolloSG is open in a browser preview, so it can’t read this device’s settings. Each protection below still shows what it is and how to check it."
-            count={assessment.reading.view.deviceProtects.length}
+            count={deviceRows.length}
             collapsible
             testID="device-prot-catalogue"
           >
-            {rows(assessment.reading.view.deviceProtects, "device-prot-catalogue-row")}
+            {rows(deviceRows, "device-prot-catalogue-row")}
           </ProtectionGroup>
         ) : (
           <>
-            {assessment.unseen.length ? (
-              <ProtectionGroup title="Changed since you last looked" count={assessment.unseen.length} testID="device-prot-changes">
-                {assessment.unseen.map((change, i) => (
+            {unseen.length ? (
+              <ProtectionGroup title="Changed since you last looked" count={unseen.length} testID="device-prot-changes">
+                {unseen.map((change, i) => (
                   <ProtectionListRow
                     key={change.id}
                     first={i === 0}

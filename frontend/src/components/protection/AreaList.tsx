@@ -1,19 +1,29 @@
-// Apollo Protections on the Protection screen: one row per protection area, its status and who covers it.
-import { useRouter } from "expo-router";
+// The Protection screen's category lists — Apollo's protection areas and the device's own — one row each with
+// its status pill and a short note (who covers it, or how many issues / items to check).
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Globe from "lucide-react-native/icons/globe";
 import Grid2x2 from "lucide-react-native/icons/grid-2x2";
+import KeyRound from "lucide-react-native/icons/key-round";
+import Lock from "lucide-react-native/icons/lock";
 import Mail from "lucide-react-native/icons/mail";
+import MapPin from "lucide-react-native/icons/map-pin";
 import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Wifi from "lucide-react-native/icons/wifi";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 
-import type { AreaRow, AreaStatus } from "@/src/domain/protectionPosture";
+import type { DeviceAreaStatus, ProtectionArea } from "@/src/domain/deviceProtectionTypes";
+import type { AreaStatus } from "@/src/domain/protectionPosture";
 import type { ProtectionAreaId } from "@/src/domain/protectionAreas";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 
-const AREA_ICON: Record<ProtectionAreaId, { Icon: typeof Globe; fg: keyof ThemeColors; bg: keyof ThemeColors }> = {
+export type ListStatus = AreaStatus | DeviceAreaStatus;
+export interface StatusListRow { id: string; title: string; description: string; status: ListStatus; label: string; note: string }
+interface RowIcon { Icon: typeof Globe; fg: keyof ThemeColors; bg: keyof ThemeColors }
+
+export const APOLLO_AREA_ICONS: Record<ProtectionAreaId, RowIcon> = {
   websites_links: { Icon: Globe, fg: "groupAccounts", bg: "groupAccountsTint" },
   email_accounts: { Icon: Mail, fg: "biting", bg: "bitingTint" },
   messages_calls: { Icon: MessageSquare, fg: "groupData", bg: "groupDataTint" },
@@ -21,13 +31,25 @@ const AREA_ICON: Record<ProtectionAreaId, { Icon: typeof Globe; fg: keyof ThemeC
   apps_files: { Icon: Grid2x2, fg: "groupAlerts", bg: "groupAlertsTint" },
 };
 
-export function areaStatusColors(status: AreaStatus, c: ThemeColors) {
+export const DEVICE_AREA_ICONS: Record<ProtectionArea, RowIcon> = {
+  calls_messages: { Icon: Phone, fg: "biting", bg: "bitingTint" },
+  apps: { Icon: Grid2x2, fg: "groupAlerts", bg: "groupAlertsTint" },
+  privacy: { Icon: KeyRound, fg: "groupData", bg: "groupDataTint" },
+  web: { Icon: Globe, fg: "groupAccounts", bg: "groupAccountsTint" },
+  access: { Icon: Lock, fg: "groupProtection", bg: "groupProtectionTint" },
+  updates: { Icon: RefreshCw, fg: "groupAccounts", bg: "groupAccountsTint" },
+  recovery: { Icon: MapPin, fg: "groupProtection", bg: "groupProtectionTint" },
+};
+
+function statusColors(status: ListStatus, c: ThemeColors) {
   switch (status) {
     case "at_risk": return { dot: c.biting, bg: c.bitingTint, text: c.bitingText };
     case "attention": return { dot: c.growling, bg: c.growlingTint, text: c.growlingText };
     case "check": return { dot: c.gold, bg: c.goldTint, text: c.onSurface };
+    case "unconfirmed": return { dot: c.brand, bg: c.unknownTint, text: c.onSurface };
     case "protected": return { dot: c.resting, bg: c.restingTint, text: c.restingText };
     case "ready": return { dot: c.brand, bg: c.navyTint, text: c.onSurface };
+    case "optional": return { dot: c.muted, bg: c.unknownTint, text: c.onSurfaceSecondary };
     default: return { dot: c.muted, bg: c.unknownTint, text: c.unknownText };
   }
 }
@@ -47,22 +69,23 @@ const useStyles = makeStyles((c) => ({
   note: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, textAlign: "right" },
 }));
 
-export function AreaList({ rows, testID }: { rows: AreaRow[]; testID: string }) {
+export function AreaList({ rows, icons, onOpen, testID }: {
+  rows: StatusListRow[]; icons: Record<string, RowIcon>; onOpen: (id: string) => void; testID: string;
+}) {
   const s = useStyles();
   const { colors } = useTheme();
-  const router = useRouter();
   return (
     <View style={s.card} testID={testID}>
       {rows.map((row, i) => {
-        const icon = AREA_ICON[row.id];
-        const palette = areaStatusColors(row.status, colors);
+        const icon = icons[row.id];
+        const palette = statusColors(row.status, colors);
         const id = `${testID}-${row.id}`;
         return (
           <Pressable
             key={row.id}
             accessibilityRole="button"
             accessibilityLabel={`${row.title}. ${row.label}, ${row.note}.`}
-            onPress={() => router.push(`/protection-details?category=${row.id}` as never)}
+            onPress={() => onOpen(row.id)}
             style={({ pressed }) => [s.row, i > 0 && s.divider, { backgroundColor: pressed ? colors.surfaceTertiary : "transparent" }]}
             testID={id}
           >

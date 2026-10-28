@@ -2,6 +2,7 @@
 // decided once by `protectionPosture` so both screens always say the same thing.
 import { useCallback, useMemo, useState } from "react";
 
+import { deviceAreaRows } from "@/src/domain/deviceProtectionTypes";
 import { areaCounts, areaRows, countLine, protectionPosture } from "@/src/domain/protectionPosture";
 import { assessDeviceProtections, useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { runProtectionHealthCheck } from "./healthCoordinator";
@@ -25,7 +26,8 @@ export function useProtectionPosture() {
       ? { protected: g.protectedRows.length, attention: g.needsAttention.length, toCheck: g.needsChecking.length, optional: g.optional.length }
       : null;
     const deviceLine = !assessment ? "Reading this device…" : deviceCounts ? countLine(deviceCounts) : "Read in the app on your phone";
-    return { posture, areas, apolloLine: countLine(areaCounts(areas)), deviceCounts, deviceLine, deviceRead: !!assessment };
+    const deviceAreas = deviceAreaRows(device);
+    return { posture, areas, apolloLine: countLine(areaCounts(areas)), deviceCounts, deviceLine, deviceAreas, deviceRead: !!assessment };
   }, [health.gates, health.checking, health.checkedAt, assessment]);
 
   const recheck = useCallback(() => {

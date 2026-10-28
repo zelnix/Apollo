@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { changeBanner, diffProtectionSnapshots, protectionSnapshot, unseenChanges, whatToDoNow, type ProtectionChange } from "../src/domain/deviceProtectionChanges.ts";
-import { groupDeviceProtections, summariseDeviceProtections } from "../src/domain/deviceProtectionTypes.ts";
+import { deviceAreaRows, groupDeviceProtections, summariseDeviceProtections, type DeviceProtectionRow } from "../src/domain/deviceProtectionTypes.ts";
 import { EMPTY_SECURITY_READ, securityProtectionRows, type SecurityStateRead } from "../src/domain/deviceSecurityCatalogue.ts";
 
 const NOW = Date.parse("2026-06-15T12:00:00.000Z");
@@ -33,6 +33,29 @@ test("verified deviations come first, unread settings need checking, healthy one
 test("maker-specific protections are only offered on that maker's devices", () => {
   assert.ok(rows().some((r) => r.id === "samsung_auto_blocker"));
   assert.ok(!securityProtectionRows("android", read(), NOW, { manufacturer: "google", osVersion: "15", model: "Pixel 9" }).some((r) => r.id === "samsung_auto_blocker"));
+});
+
+// ── Device protection areas (the Device Protections tab) ─────────
+
+test("each category leads with its issues, then what needs checking, then how much is protected", () => {
+  const base = rows({ screenLockSecure: false });
+  const byId = (list: DeviceProtectionRow[]) => Object.fromEntries(deviceAreaRows(list).map((r) => [r.id, r]));
+  const areas = byId(base);
+  assert.deepEqual(deviceAreaRows(base).map((r) => r.id), ["calls_messages", "apps", "privacy", "web", "access", "updates", "recovery"]);
+  assert.equal(areas.access.title, "Device & Account Security");
+  assert.equal(areas.access.label, "Needs attention");
+  assert.equal(areas.access.note, "1 issue");
+  assert.equal(areas.apps.label, "Need checking");
+  assert.match(areas.apps.note, /^\d+ items? to check$/);
+  // A category where everything readable is set as recommended counts what is protected out of what is there.
+  const recovery = base.map((r) => (r.area === "recovery" ? { ...r, health: r.optional ? "check_manually" as const : "protected" as const } : r));
+  const total = recovery.filter((r) => r.area === "recovery" && r.health !== "not_available").length;
+  const ok = recovery.filter((r) => r.area === "recovery" && r.health === "protected").length;
+  assert.equal(byId(recovery).recovery.label, "Protected");
+  assert.equal(byId(recovery).recovery.note, `${ok} of ${total} protected`);
+  // Nothing is "Protected" without a real read.
+  for (const r of deviceAreaRows("not_here")) assert.deepEqual([r.status, r.label, r.note], ["unread", "Not checked", "Read on your phone"]);
+  assert.ok(deviceAreaRows("reading").every((r) => r.status === "unread"));
 });
 
 test("the summary counts only what was read, and says when nothing could be", () => {

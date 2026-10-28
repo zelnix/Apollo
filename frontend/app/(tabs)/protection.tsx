@@ -1,16 +1,17 @@
 // Protection — how ApolloSG and the device work together. One overall answer from the Protection Posture engine,
-// then Apollo's protection areas and the device's own protections as counts.
-import { useRouter } from "expo-router";
+// then two tabs: Apollo's protection areas, and the device's own protections (counts + categories).
+import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
-import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import Info from "lucide-react-native/icons/info";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppMenuButton } from "@/src/components/AppMenu";
 import { FitTitle } from "@/src/components/FitTitle";
 import { WebsiteProtectionNotices } from "@/src/components/WebsiteProtectionNotices";
-import { AreaList } from "@/src/components/protection/AreaList";
+import { APOLLO_AREA_ICONS, AreaList, DEVICE_AREA_ICONS } from "@/src/components/protection/AreaList";
 import { DeviceCounts } from "@/src/components/protection/DeviceCounts";
 import { PostureSummary, postureColors } from "@/src/components/protection/PostureSummary";
 import { agoLabel } from "@/src/domain/alertFreshness";
@@ -32,7 +33,20 @@ const useStyles = makeStyles((c) => ({
   failedBanner: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", borderWidth: 1, borderRadius: radius.md, padding: spacing.md, backgroundColor: c.growlingWash, borderColor: c.growling },
   failedTitle: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20, color: c.onSurface },
   failedText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
+  tabs: { flexDirection: "row", padding: 4, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
+  tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.sm },
+  tabActive: { backgroundColor: c.surface, borderWidth: 0.5, borderColor: c.border },
+  tabText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurfaceSecondary },
+  tabTextActive: { fontFamily: fonts.textSemibold, color: c.onSurface },
+  tabBody: { gap: spacing.lg },
+  reading: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md },
+  info: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, backgroundColor: c.surfaceSecondary, borderWidth: 0.5, borderColor: c.border },
+  infoTitle: { fontFamily: fonts.textMedium, fontSize: 13, lineHeight: 18, color: c.onSurface },
+  infoText: { fontFamily: fonts.text, fontSize: 12.5, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
+
+const TABS = [{ id: "apollo", label: "Apollo Protections" }, { id: "device", label: "Device Protections" }] as const;
+type TabId = (typeof TABS)[number]["id"];
 
 function Section({ title, sub, children, testID }: { title: string; sub: string; children: React.ReactNode; testID: string }) {
   const s = useStyles();
@@ -50,7 +64,10 @@ export default function ProtectionScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { posture, areas, deviceCounts, deviceRead, health } = useProtectionPosture();
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<TabId>(params.tab === "device" ? "device" : "apollo");
+  useEffect(() => { if (params.tab === "device" || params.tab === "apollo") setTab(params.tab); }, [params.tab]);
+  const { posture, areas, deviceCounts, deviceAreas, deviceRead, health } = useProtectionPosture();
   const palette = postureColors(posture.status, colors);
   const checkedAgo = health.checkedAt ? agoLabel(Date.parse(health.checkedAt), Date.now()) : null;
 
@@ -93,13 +110,51 @@ export default function ProtectionScreen() {
           <PostureSummary posture={posture} testID="protection-posture" />
         </View>
 
-        <Section title="Apollo Protections" sub="How ApolloSG protects you from scams, threats and online risks." testID="protection-apollo">
-          <AreaList rows={areas} testID="protection-area" />
-        </Section>
+        <View style={s.tabs} accessibilityRole="tablist" testID="protection-tabs">
+          {TABS.map((t) => {
+            const selected = tab === t.id;
+            return (
+              <Pressable
+                key={t.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setTab(t.id)}
+                style={[s.tab, selected && s.tabActive]}
+                testID={`protection-tab-${t.id}`}
+              >
+                <Text style={[s.tabText, selected && s.tabTextActive]} numberOfLines={1}>{t.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
-        <Section title="Device Protections" sub="Your device's own protections and settings that support your safety." testID="protection-device">
-          <DeviceCounts counts={deviceCounts} read={deviceRead} testID="protection-device-counts" />
-        </Section>
+        {tab === "apollo" ? (
+          <View style={s.section} testID="protection-apollo">
+            <Text style={s.sectionSub}>How ApolloSG protects you from scams, threats and online risks.</Text>
+            <AreaList rows={areas} icons={APOLLO_AREA_ICONS} onOpen={(id) => router.push(`/protection-details?category=${id}` as never)} testID="protection-area" />
+          </View>
+        ) : (
+          <View style={s.tabBody} testID="protection-device">
+            {deviceCounts ? (
+              <DeviceCounts counts={deviceCounts} testID="protection-device-counts" />
+            ) : !deviceRead ? (
+              <View style={s.reading} testID="protection-device-reading">
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
+                <Text style={s.sectionSub}>Reading this device…</Text>
+              </View>
+            ) : null}
+            <Section title="Device protection areas" sub="Key device settings and protections that support your safety." testID="protection-device-areas">
+              <AreaList rows={deviceAreas} icons={DEVICE_AREA_ICONS} onOpen={(id) => router.push(`/device-protection?area=${id}` as never)} testID="protection-device-area" />
+            </Section>
+            <View style={s.info} testID="protection-device-info">
+              <Info size={20} color={colors.onSurfaceSecondary} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={s.infoTitle}>These are your device&apos;s own protections and settings.</Text>
+                <Text style={s.infoText}>ApolloSG can only read your device&apos;s settings in the app on your phone.</Text>
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );

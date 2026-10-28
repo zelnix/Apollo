@@ -460,7 +460,7 @@ export default function Home() {
               testID="home-device-card"
               accessibilityRole="button"
               accessibilityLabel={`Device protections. ${deviceLine}.`}
-              onPress={() => router.push("/device-protection")}
+              onPress={() => router.push("/(tabs)/protection?tab=device")}
               style={({ pressed }) => [s.postureHalf, s.postureHalfDivider, { opacity: pressed ? 0.85 : 1 }]}
             >
               <View style={[s.postureHalfIcon, { backgroundColor: colors.goldTint }]}>
