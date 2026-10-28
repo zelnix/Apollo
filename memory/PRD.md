@@ -1,5 +1,11 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## "Ask Higgins about this" buttons removed from the Findings Brief (2026-10-28)
+- Owner: remove the question buttons from the Findings Brief on BOTH the Threat Case (`patrol/[id].tsx`) and Ask Higgins
+  (`InvestigationView.tsx`). Check result screens (`CheckResultScreen.tsx`) keep `ResultQuestions` — not asked.
+- Removed the now-unused `explanation`/`shown` plumbing and `briefShown()` (FindingsBrief). `tests/luddish.test.ts`
+  now asserts the buttons are absent from both Findings Briefs. tsc clean; all frontend tests pass.
+
 ## Screens checked on phone sizes + email top card folded (2026-10-28)
 **Owner's choices:** only check and fix the screens (single-source fix and boundary tests NOT started); an expanded
 email shows its text without links. No testing agent (owner's rule) — node tests + tsc + preview screenshots at 300/360/390.

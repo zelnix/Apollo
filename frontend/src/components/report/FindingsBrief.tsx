@@ -71,12 +71,6 @@ export function briefSections(report: Report, verdict: Pick<BriefVerdict, "label
   };
 }
 
-/** Everything the brief puts on screen, so the question buttons under it never repeat any of it. */
-export function briefShown(report: Report, verdict: BriefVerdict, steps: BriefStep[]): string[] {
-  const b = briefSections(report, verdict);
-  return [...b.summary, ...b.findings, ...b.uncertain, ...steps.flatMap((step) => [step.text, luddishText(scrubMessage(step.text), true)])];
-}
-
 const useStyles = makeStyles((c) => ({
   section: { flexDirection: "row", gap: spacing.md, borderRadius: radius.lg, padding: spacing.md, borderWidth: 0.25, borderColor: c.border },
   circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },

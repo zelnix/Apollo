@@ -305,19 +305,13 @@ test("every answer comes from an approved place: the checked explanation, the st
   }
 });
 
-test("the question buttons are on every result: check results, investigations in Ask Higgins and a threat's Overview", () => {
+test("the question buttons are on check results only — not on the Findings Brief of Ask Higgins or a threat (owner, 2026-10-28)", () => {
   assert.match(read("../src/components/CheckResultScreen.tsx"), /<ResultQuestions explanation=\{plain\.explanation\} shown=\{shown\} testID="check-result-questions" \/>/);
-  const view = read("../src/components/InvestigationView.tsx");
-  assert.match(view, /isFinished\(response\) && !isGeneralAnswer\(response\) \? compose\(lockFromInvestigation\(response, investigator\)\)/);
-  assert.match(view, /<ResultQuestions explanation=\{explanation\} shown=\{shown\} testID="inv-questions" \/>/);
-  const patrol = read("../app/patrol/[id].tsx");
-  assert.match(patrol, /isGeneralAnswer\(response\) \? null :/, "a general question answered from the library has nothing to explain");
+  assert.doesNotMatch(read("../src/components/InvestigationView.tsx"), /ResultQuestions/);
+  assert.doesNotMatch(read("../app/patrol/[id].tsx"), /ResultQuestions/);
   assert.equal(isGeneralAnswer({ outcome: null, findings: [] }), true);
   assert.equal(isGeneralAnswer({ outcome: "concerning", findings: [] }), false);
   assert.equal(isGeneralAnswer({ outcome: undefined, findings: [{ id: "f", text: "x", basis: "observation", confidence: "high", evidenceIds: [], sourceIds: [] }] }), false, "an older result with findings is still explained");
-  assert.match(patrol, /<ResultQuestions explanation=\{explanation\} shown=\{shown\} testID="tc-overview-questions" \/>/);
-  assert.match(patrol, /if \(!hasRecordedFindings\(event\)\) return null;/, "never from a privacy-protected summary");
-  assert.match(patrol, /limited \? "limited" : undefined/, "a Limited Triage result is never explained as safe");
 });
 
 test("typed questions about a word are answered on the phone from the dictionary and the Knowledge Library", () => {

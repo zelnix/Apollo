@@ -29,15 +29,13 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport } from "@/src/components/DiReport";
-import { ResultQuestions } from "@/src/components/ResultQuestions";
-import { FindingsBrief, briefShown, investigationVerdict, type BriefStep } from "@/src/components/report/FindingsBrief";
+import { FindingsBrief, investigationVerdict, type BriefStep } from "@/src/components/report/FindingsBrief";
 import { SourceList } from "@/src/components/report/SourceList";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { SourceSummaryCard } from "@/src/components/report/SourceSummaryCard";
 import { ServerCopyNote } from "@/src/components/ServerCopyNote";
 import { buildReport, plainReport, shownPlainEnglish, stepText } from "@/src/domain/reportSections";
-import { compose, isGeneralAnswer, lockFromInvestigation, luddishReport, luddishText } from "@/src/domain/luddish";
-import { isFinished } from "@/src/higgins/followUp";
+import { luddishReport, luddishText } from "@/src/domain/luddish";
 import { investigationHistory, investigatorName, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
@@ -652,8 +650,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const verdict = useMemo(() => (response ? investigationVerdict(response) : null), [response]);
   // Whoever actually settled this result: TC FlyBy or Magnum DI.
   const investigator = investigatorName(caseData?.answeredBy);
-  // The question buttons under the report: Luddish's explanation of the finished result, and what the screen already says.
-  const explanation = useMemo(() => isFinished(response) && !isGeneralAnswer(response) ? compose(lockFromInvestigation(response, investigator)) : null, [response, investigator]);
   // What you can do: the investigation's own steps. One Apollo can carry out (open a setting, a verified source) is tappable.
   const pressAction = (action: ActionProposal) => {
     if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
@@ -669,7 +665,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const steps: BriefStep[] = response?.actions.map((action, i) => ({
     id: action.id, text: stepText(response, i) || action.label, onPress: isExecutable(action) ? () => pressAction(action) : undefined,
   })) ?? [];
-  const shown = report && verdict ? briefShown(report, verdict, steps) : [];
 
   return <View style={{ gap: spacing.md }} testID={testID}>
 
@@ -708,7 +703,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {activeTab === "overview" ? (
         <View style={{ gap: spacing.md }} testID="inv-tab-overview-content">
           {report && verdict ? <View testID="inv-overview"><FindingsBrief report={report} verdict={verdict} steps={steps} ids="inv" /></View> : null}
-          {explanation ? <ResultQuestions explanation={explanation} shown={shown} testID="inv-questions" /> : null}
           {response?.outcome ? <OutcomeExplainerLink outcome={response.outcome} testID="inv-outcome-explainer" /> : null}
         <Card style={[s.card, { gap: spacing.md }]} testID="inv-overview-more">
           {!response && failure ? (

@@ -61,14 +61,12 @@ import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefact
 import { CaseEvidenceProfile } from "@/src/components/CaseEvidenceProfile";
 import { LIMITED_CAUTION, LIMITED_TODO, plainTriageText } from "@/src/domain/triage/contract";
 import { investigatorName, looksLikeInternalCode } from "@/src/domain/messageVoice";
-import { FindingsBrief, briefShown, investigationVerdict, riskPill, type BriefStep, type BriefVerdict } from "@/src/components/report/FindingsBrief";
+import { FindingsBrief, investigationVerdict, riskPill, type BriefStep, type BriefVerdict } from "@/src/components/report/FindingsBrief";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { SourceSummaryCard } from "@/src/components/report/SourceSummaryCard";
 import { ServerCopyNote } from "@/src/components/ServerCopyNote";
 import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
-import { compose, isGeneralAnswer, lockFromInvestigation, lockFromIssue, luddishReport } from "@/src/domain/luddish";
-import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
-import { ResultQuestions } from "@/src/components/ResultQuestions";
+import { luddishReport } from "@/src/domain/luddish";
 import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySummary";
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { FamilyNotes } from "@/src/components/FamilyNotes";
@@ -240,14 +238,6 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
   const response = investigation?.response ?? null;
   const limited = !response && event.triage_investigation?.outcome === "LIMITED_UNABLE_TO_DETERMINE";
 
-  // The question buttons under the report: Luddish's explanation of the investigation, or of what Apollo recorded on
-  // its own (only when it recorded findings, never from a privacy-protected summary).
-  const explanation = useMemo(() => {
-    if (response) return isGeneralAnswer(response) ? null : compose(lockFromInvestigation(response, investigatorName(investigation?.answeredBy)));
-    if (!hasRecordedFindings(event)) return null;
-    return compose(lockFromIssue(contextFromEvent(event, gateForCategory(event.category)), limited ? "limited" : undefined));
-  }, [response, investigation?.answeredBy, event, limited]);
-
   // What to do — the investigation's own steps, or an explicit statement that nothing needs doing.
   const action = (shownWhatToDo || "").trim();
   const noAction = !action || /^no action required\.?$/i.test(action) || (limited && /^(nothing to (do|worry)|no action)/i.test(action));
@@ -265,7 +255,6 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
   const verdict: BriefVerdict = response
     ? { ...investigationVerdict(response), status: statusPill }
     : { label: STATUS_LABELS[status], tone: limited ? "sniffing" : recordedTone(event.state), risk: limited ? null : riskPill(event.state), caution: limited ? LIMITED_CAUTION : null };
-  const shown = briefShown(report, verdict, steps);
   // "Send to family": the result, what happened, what to do and the website or number — nothing else.
   const summary: FamilySummary = {
     eventId: event.event_id, state: event.state, result: verdict.label ?? STATUS_LABELS[status],
@@ -279,7 +268,6 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
     <View style={s.content} testID="tc-overview-briefing">
       {/* The Findings Brief — the same component as Ask Higgins. */}
       <FindingsBrief report={report} verdict={verdict} steps={steps} ids="tc-overview" />
-      {explanation ? <ResultQuestions explanation={explanation} shown={shown} testID="tc-overview-questions" /> : null}
       {response?.outcome ? <OutcomeExplainerLink outcome={response.outcome} testID="tc-overview-outcome-explainer" /> : null}
 
       <FamilyNotes eventId={event.event_id} />
