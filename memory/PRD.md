@@ -1,3 +1,5 @@
+## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
+
 ## Call checks get a real scam assessment + plain "How Apollo checked" (2026-10-28)
 **Owner's choices:** plan as proposed; old evidence codes become plain words on screen but stay under "Show the technical
 detail"; full scam warning for bank/card asking for a code, fake police/tax office/government, fake tech support, delivery
