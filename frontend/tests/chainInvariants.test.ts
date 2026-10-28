@@ -13,13 +13,13 @@ import test from "node:test";
 import { investigationVerdict, resultVerdict, riskPill } from "../src/domain/briefVerdict.ts";
 import { caseFindings, caseResult, eventBriefing, threatResult } from "../src/domain/caseBriefing.ts";
 import { caseEvidence } from "../src/domain/caseEvidence.ts";
-import { buildCaseSources } from "../src/domain/caseSources.ts";
+import { caseAuditTrail } from "../src/domain/caseAuditTrail.ts";
 import { buildDecisionTrace } from "../src/domain/diTrace.ts";
 import { eventBrief } from "../src/domain/homeHeroBrief.ts";
 import { investigationPatch } from "../src/domain/investigationCaseUpdate.ts";
 import { compose, lockFromInvestigation } from "../src/domain/luddish/index.ts";
 import { lockedTexts, lockIntact } from "../src/domain/luddish/lock.ts";
-import { buildTimeline, threatCaseStatus } from "../src/domain/threatCase.ts";
+import { threatCaseStatus } from "../src/domain/threatCase.ts";
 import type { PatrolEvent } from "../src/domain/types.ts";
 
 const OUTCOMES = ["confirmed_threat", "likely_scam", "concerning", "unable_to_determine", "no_scam_indicators"] as const;
@@ -190,22 +190,20 @@ test("every screen says the case result's verdict and severity — for every out
     assert.match(eventBrief(event).line1, new RegExp(`${HERO[o]}\\.$`), at);
 
     // Evidence: a result recorded without an Evidence record lists its findings word for word, with the confidence recorded.
-    const ev = caseEvidence({ event, investigation: inv, facts: [] });
+    const ev = caseEvidence({ event, investigation: inv, trace: null, records: [], facts: [] });
     const found = caseFindings(resp as never);
     assert.deepEqual(ev.facts.map((f) => [f.text, f.confidence]).sort(), found.map((f) => [f.text, f.confidence]).sort(), at);
 
-    // History: the investigation's entry says the same verdict and finding count.
-    const timeline = buildTimeline(event, buildCaseSources({ event, investigation: inv }), {
-      completedAt: "2026-10-28T01:00:31Z", verdict: r.verdict, findingCount: found.length, answeredBy: "teddy",
-    });
-    assert.ok(timeline.some((e) => e.description === `Verdict: ${r.verdict}. ${found.length} findings recorded.`), at);
+    // History: the verdict entry says the same verdict the Findings Brief shows.
+    const trail = caseAuditTrail({ event, investigation: inv, trace: null, records: [], verdict: r.verdict });
+    assert.ok(trail.some((e) => e.description === `Verdict: ${r.verdict}.`), at);
 
     // DI: what Higgins presented is the same verdict and risk.
     const steps = buildDecisionTrace({ trace: { triage: null, flyby: null, magnum: null, answeredBy: "teddy", outcome: o, completion: "complete",
       settledReason: null, higgins: { status: "PASS", mode: "plain", attempts: 1 } }, records: [], triage: null, hasCase: true,
     presented: { verdict: brief.label, risk: brief.risk?.label ?? null } });
-    const higgins = steps.find((s) => s.id === "higgins")!;
-    assert.equal(higgins.details[0], `Verdict presented: ${r.verdict}${riskPill(r.severity) ? ` · ${riskPill(r.severity)!.label}` : ""}`, at);
+    const lock = steps.find((s) => s.id === "lock")!;
+    assert.equal(lock.details[0], `Locked verdict: ${r.verdict}${riskPill(r.severity) ? ` · ${riskPill(r.severity)!.label}` : ""}`, at);
   }
 });
 

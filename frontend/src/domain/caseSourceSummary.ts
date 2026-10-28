@@ -69,6 +69,19 @@ export function withoutLinks(text: string): string {
 
 const MAX_LINE = 160;
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+/** A web address on the folded card: shortened in the middle, so where it starts (the website) and where it ends
+ *  both stay visible. The full address is on the opened card. */
+const ADDRESS = /^(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S+$|^[^\s/@]+\.[a-z]{2,}(?:[/?#]\S*)?$/i;
+export const isAddress = (line: string): boolean => ADDRESS.test(line.trim());
+export const ADDRESS_LINE = 56;
+export function shortenMiddle(text: string, max = ADDRESS_LINE): string {
+  if (text.length <= max) return text;
+  const head = Math.ceil((max - 1) * 0.6);
+  return `${text.slice(0, head)}…${text.slice(text.length - (max - 1 - head))}`;
+}
+const shortLine = (line: string) => (ADDRESS.test(line) ? shortenMiddle(line) : clip(line, MAX_LINE));
+/** A label that only says what kind of thing it is ("checked link"), never the thing itself. */
+const GENERIC_LABEL = /^(?:checked|submitted|url from) (?:link|number|message|url)(?: text)?$/i;
 /** Text as it was written: its line breaks kept, runs of spaces and blank lines closed up. */
 const asWritten = (text: string) => text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean).join("\n");
 /** The one-line parts, each once, and the text itself. `dedupe`: a part the text already holds is left to the text
@@ -77,7 +90,7 @@ const compose = (head: (string | null | undefined)[], text?: string | null, dedu
   const body = text ? asWritten(text) : "";
   const parts = [...new Set(head.map((l) => (l ?? "").replace(/\s+/g, " ").trim()).filter(Boolean))]
     .filter((l) => !dedupe || !body.includes(clip(l, MAX_LINE).replace(/…$/, ""))).slice(0, 3);
-  return { lines: parts.map((l) => clip(l, MAX_LINE)), fullLines: parts, body: body || null };
+  return { lines: parts.map(shortLine), fullLines: parts, body: body || null };
 };
 
 const ICON_OF_KIND: Record<OriginalSourceKind, PreviewIcon> = {
@@ -165,7 +178,9 @@ export function previewFromEvidence(items: EvidenceItem[]): SourcePreview | null
   const first = items.find((e) => e.origin === "user_submission" || e.origin === "device_observation");
   if (!first) return null;
   const info = ITEM_KIND[first.kind] ?? { kind: "Item", icon: "item" as const };
-  const c = compose([first.provenance?.originalFilename ?? first.label]);
+  // The item's name: its file name, or the address or text it was labelled with — never a label that only names its kind.
+  const name = first.provenance?.originalFilename ?? (GENERIC_LABEL.test(first.label.trim()) ? null : first.label);
+  const c = compose([name]);
   return { ...info, ...c, received: null, details: detailsOf(info.kind, [detail("Collected", first.collectedAt, true)], c.fullLines, c.body) };
 }
 

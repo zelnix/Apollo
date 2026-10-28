@@ -27,7 +27,6 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { plainTriageText } from "@/src/domain/triage/contract";
 import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { buildHeroBriefs, eventBrief, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
@@ -222,7 +221,6 @@ const useStyles = makeStyles((c) => ({
   activitySub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   threatLine1: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: c.onSurface },
   threatLine2: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  activityTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary },
   findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
 }));
 
@@ -288,10 +286,12 @@ export default function Home() {
   const heroCases = React.useMemo(() => heroEvents(attention, resolution.drivingEvent, resolution.state), [attention, resolution.drivingEvent, resolution.state]);
   // "Important for you" uses the same briefing (with more room), so its cases' kept originals are read too.
   const priorityThreats = React.useMemo(() => buildPriorityThreats(events), [events]);
+  // Most recent consumer event for the "Recent activity" section (shown as the same card as "Important for you").
+  const recentEvent = React.useMemo(() => events.find(isConsumerPatrolEvent) ?? null, [events]);
   const keptCases = React.useMemo(() => {
-    const byId = new Map([...heroCases, ...priorityThreats].map((e) => [e.event_id, e]));
+    const byId = new Map([...heroCases, ...priorityThreats, ...(recentEvent ? [recentEvent] : [])].map((e) => [e.event_id, e]));
     return [...byId.values()];
-  }, [heroCases, priorityThreats]);
+  }, [heroCases, priorityThreats, recentEvent]);
   const [kept, setKept] = React.useState<Record<string, KeptIdentifiers | null>>({});
   React.useEffect(() => {
     let active = true;
@@ -334,12 +334,6 @@ export default function Home() {
       }),
     [stepHero],
   );
-
-  // Most recent consumer event for the "Recent activity" section
-  const recentEvent = React.useMemo(() => {
-    const consumer = events.filter(isConsumerPatrolEvent);
-    return consumer.length > 0 ? consumer[0] : null;
-  }, [events]);
 
   const state = resolution.state;
   const stateLabel = STATE_LABEL[state] ?? "Apollo is Patrolling";
@@ -534,40 +528,9 @@ export default function Home() {
 
               {/* Personal threats first — these take precedence. Each card has the hero's two-line structure, with more
                   room: what it is, where it came from and what was found; then when, and Higgins' recommendation. */}
-              {priorityThreats.map((event) => {
-                const si = threatSourceIcon(event.category, event.source_metadata);
-                const IconEl = si.Icon;
-                const status = threatCaseStatus(event);
-                const statusColor = STATUS_COLORS[status];
-                const brief = eventBrief(event, new Date(), kept[event.event_id] ?? null, "card");
-                return (
-                  <Pressable
-                    key={event.event_id}
-                    testID={`home-threat-${event.event_id}`}
-                    onPress={() => router.push(`/patrol/${encodeURIComponent(event.event_id)}` as any)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${brief.line1} ${brief.line2} ${STATUS_LABELS[status]}.`}
-                    accessibilityHint="Opens the full case"
-                    style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, alignItems: "flex-start" }]}
-                  >
-                    <View style={[s.activityIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: si.bg }]}>
-                      <IconEl size={compact ? 14 : 16} color={si.fg} />
-                    </View>
-                    <View style={{ flex: 1, gap: spacing.xs }}>
-                      <Text style={[s.threatLine1, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={4} testID={`home-threat-${event.event_id}-line1`}>{brief.line1}</Text>
-                      <Text style={[s.threatLine2, compact && { fontSize: 12, lineHeight: 17 }]} numberOfLines={3} testID={`home-threat-${event.event_id}-line2`}>{brief.line2}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 2 }}>
-                        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
-                          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
-                        </View>
-                        <View style={{ flex: 1 }} />
-                        <Text style={s.findingLink}>View threat</Text>
-                        <ChevronRight size={14} color={colors.brand} />
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              })}
+              {priorityThreats.map((event) => (
+                <ThreatCard key={event.event_id} event={event} kept={kept[event.event_id] ?? null} compact={compact} testID={`home-threat-${event.event_id}`} />
+              ))}
 
               {/* One highest-priority scam alert — after personal threats */}
               <PriorityScamNotice compact />
@@ -584,22 +547,7 @@ export default function Home() {
             </Pressable>
           </View>
           {recentEvent ? (
-            <Pressable
-              testID="home-recent-activity"
-              accessibilityRole="button"
-              onPress={() => router.push(`/patrol/${encodeURIComponent(recentEvent.event_id)}` as any)}
-              style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }]}
-            >
-              <View style={s.activityIconWrap}>
-                <MessageSquare size={16} color={colors.onSurfaceSecondary} />
-              </View>
-              <View style={s.activityContent}>
-                <Text style={s.activityText} numberOfLines={1}>{recentEvent.headline || "Apollo recorded activity"}</Text>
-                <Text style={s.activitySub} numberOfLines={1}>{plainTriageText(recentEvent.what_happened) || "Tap to see details."}</Text>
-              </View>
-              <Text style={s.activityTime}>{timeAgo(recentEvent.occurred_at)}</Text>
-              <ChevronRight size={16} color={colors.onSurfaceSecondary} />
-            </Pressable>
+            <ThreatCard event={recentEvent} kept={kept[recentEvent.event_id] ?? null} compact={compact} testID="home-recent-activity" />
           ) : (
             <View style={s.activityCard} testID="home-no-recent-activity">
               <View style={s.activityIconWrap}>
@@ -630,6 +578,45 @@ export default function Home() {
       </ScrollView>
       <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} auto />
     </View>
+  );
+}
+
+/** One case as Home shows it — in "Important for you" and in "Recent activity" alike: what it is, where it came from
+ *  and what was found; then when, and Higgins' recommendation; its status and "View threat". */
+function ThreatCard({ event, kept, compact, testID }: { event: PatrolEvent; kept: KeptIdentifiers | null; compact: boolean; testID: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const si = threatSourceIcon(event.category, event.source_metadata);
+  const IconEl = si.Icon;
+  const status = threatCaseStatus(event);
+  const statusColor = STATUS_COLORS[status];
+  const brief = eventBrief(event, new Date(), kept, "card");
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => router.push(`/patrol/${encodeURIComponent(event.event_id)}` as any)}
+      accessibilityRole="button"
+      accessibilityLabel={`${brief.line1} ${brief.line2} ${STATUS_LABELS[status]}.`}
+      accessibilityHint="Opens the full case"
+      style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, alignItems: "flex-start" }]}
+    >
+      <View style={[s.activityIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: si.bg }]}>
+        <IconEl size={compact ? 14 : 16} color={si.fg} />
+      </View>
+      <View style={{ flex: 1, gap: spacing.xs }}>
+        <Text style={[s.threatLine1, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={4} testID={`${testID}-line1`}>{brief.line1}</Text>
+        <Text style={[s.threatLine2, compact && { fontSize: 12, lineHeight: 17 }]} numberOfLines={3} testID={`${testID}-line2`}>{brief.line2}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 2 }}>
+          <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
+            <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }} testID={`${testID}-status`}>{STATUS_LABELS[status]}</Text>
+          </View>
+          <View style={{ flex: 1 }} />
+          <Text style={s.findingLink}>View threat</Text>
+          <ChevronRight size={14} color={colors.brand} />
+        </View>
+      </View>
+    </Pressable>
   );
 }
 

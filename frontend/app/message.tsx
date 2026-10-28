@@ -27,7 +27,7 @@ import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import type { MessageVia } from "@/src/domain/triage/messageEvidence";
-import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
+import { contextFromEvent, gateForCategory, messageOriginalEvidence } from "@/src/domain/higginsHandoff";
 import { screenImage } from "@/src/domain/imagePrivacy";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
@@ -140,6 +140,8 @@ export default function CheckMessage() {
   const [messagePicker, setMessagePicker] = useState(false);
   const [samplePicker, setSamplePicker] = useState(false);
   const [text, setText] = useState(String(sharedText));
+  // The message exactly as it was checked: an investigation opened from the result carries it as its evidence.
+  const [checked, setChecked] = useState<{ text: string; sender: string } | null>(null);
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
@@ -180,7 +182,7 @@ export default function CheckMessage() {
     if (!safeText.trim()) return;
     if (safeText !== t) setText(safeText);
     setBusy("checking"); setError(null); setResult(null);
-    try { const outcome = await checkMessage(snd, safeText, { via, receivedAt, simulated }); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
+    try { const outcome = await checkMessage(snd, safeText, { via, receivedAt, simulated }); setChecked({ text: safeText, sender: snd }); setResult(outcome); return outcome; } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); return null; } finally { setBusy("idle"); }
   };
   useEffect(() => {
     if (sharedText && ready && setupDone && !autoRan.current) {
@@ -287,7 +289,11 @@ export default function CheckMessage() {
         {result.event ? (
           <InvestigationCheckScreen
             result={model}
-            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationContext={{
+              ...contextFromEvent(result.event, gateForCategory(result.event.category)),
+              // The same material ApolloSG's own investigation of a message receives: its text and its links.
+              original_evidence: checked ? messageOriginalEvidence(checked.sender, checked.text, a.signals.urls) : [],
+            }}
             investigationQuestion={askPrompt}
             submissionId={result.event.event_id}
             eventId={result.event.event_id}

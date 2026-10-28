@@ -144,11 +144,11 @@ async def save_di_record(*, correlation_id: str | None, owner: str | None, inves
 
 
 def wire(record: dict) -> dict:
-    """Shape one stored record for the DI tab. The provider and model are never sent to the app: the
-    DI tab names Magnum DI only (the admin portal keeps the model)."""
+    """Shape one stored record for the app's DI tab: what happened, never how much it cost. Token counts, cost, timings,
+    the prompts sent and the full reply are Apollo's own diagnostics: they stay in the Admin Portal (`admin_records`).
+    The provider and model are never sent to the app: the DI tab names Magnum DI only."""
     created = record.get("created_at")
-    request = dict(record.get("request") or {})
-    request["tools"] = [_TOOL_NAMES.get(t, t) for t in request.get("tools") or []]
+    request = record.get("request") or {}
     return {
         "investigationId": record.get("investigation_id") or (record.get("correlation_id") or "").removeprefix("case-"),
         "engine": record.get("engine", "Magnum DI"),
@@ -158,11 +158,17 @@ def wire(record: dict) -> dict:
         "status": record.get("status"),
         "failureCode": record.get("failure_code"),
         "occurredAt": _iso(created),
-        "request": request,
-        "response": record.get("response") or {},
-        "processing": record.get("processing") or {},
+        # What was handed over, described: the attachments' screening and form, and whether web search was on.
+        "request": {"attachments": request.get("attachments") or [], "attachmentCount": request.get("attachmentCount", 0),
+                    "tools": [_TOOL_NAMES.get(t, t) for t in request.get("tools") or []]},
         "notice": "SIMULATED — the preview stood in for the outside service Magnum DI calls; everything else ran exactly as in production" if record.get("simulated") else None,
     }
+
+
+async def admin_records(case_id: str) -> list[dict]:
+    """Every stored DI transaction for one case, in full (prompts, reply, tokens, cost, model) — the Admin Portal only."""
+    cursor = db.di_transactions.find({"correlation_id": f"case-{case_id}"}, {"_id": 0, "owner": 0}).sort("created_at", 1)
+    return [doc async for doc in cursor]
 
 
 # Tool and route names as the DI tab shows them — no provider's product name (older records say google_search).
@@ -199,13 +205,15 @@ async def decision_trace(owner: str, case_id: str) -> dict:
         "answeredBy": routing.get("answeredBy"),
         "outcome": routing.get("outcome"),
         "completion": routing.get("completion"),
-        "settledReason": rulebook.settled_reason(routing),
+        # The settling rule by name and sentence; its rule-book code stays in the Admin Portal.
+        "settledReason": {k: reason[k] for k in ("rule", "by", "sentence")} if (reason := rulebook.settled_reason(routing)) else None,
         "higgins": {"status": fidelity.get("status"), "mode": fidelity.get("mode"), "attempts": fidelity.get("attempts")} if fidelity else None,
     }
 
 
 async def get_di_records(owner: str, case_id: str) -> list[dict]:
-    """Records for one case. Access is authorised by the caller (it resolves the case for this
-    device first); the stored owner is Magnum DI's internal owner id and is kept for diagnostics."""
-    cursor = db.di_transactions.find({"correlation_id": f"case-{case_id}"}).sort("created_at", 1)
+    """Magnum DI's own records for one case. TC FlyBy's search call is recorded under the same case but is not
+    Magnum DI: it stays in the Admin Portal, so a case TC FlyBy settled never shows Magnum DI as engaged. Access is
+    authorised by the caller (it resolves the case for this device first)."""
+    cursor = db.di_transactions.find({"correlation_id": f"case-{case_id}", "purpose": {"$ne": "teddy_search"}}).sort("created_at", 1)
     return [wire(doc) async for doc in cursor]

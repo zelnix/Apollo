@@ -562,6 +562,8 @@ class CreateCase(Wire):
     device_profile: Optional[DeviceProfile] = None
     # Who started it, as the phone records it: the person submitted it ("user") or Apollo detected it ("apollo").
     origin: Optional[Literal["user", "apollo"]] = None
+    # The check's own Threats record on the phone: the case's result updates that record, never files a twin.
+    patrol_event_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9._:-]{1,80}$")
 
 
 class TextSubmission(Wire):

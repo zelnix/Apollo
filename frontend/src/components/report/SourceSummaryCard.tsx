@@ -162,6 +162,8 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
   const tone = detectedTone(event?.state);
   const facts = detected && event ? detectionFacts(event, original) : [];
   const wide = width >= 600;
+  // About two lines of a web address beside the tile at this screen width (the third line is slack for wrapping).
+  const addressFit = Math.max(28, Math.floor((width - 184) / 7.5) * 2);
   const BadgeIcon = detected ? TriangleAlert : origin === "user" ? MessageCircleMore : Search;
   const badgeBg = detected ? tint(colors, tone) : origin === "user" ? colors.groupAccountsTint : colors.sniffingTint;
   const badgeFg = detected ? ink(colors, tone) : origin === "user" ? colors.groupAccounts : colors.sniffingText;
@@ -189,9 +191,15 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
           <View style={s.preview}>
             <PreviewTile icon={preview.icon} picture={picture} kind={preview.kind} testID={testID} />
             <View style={s.previewText}>
-              {(open ? preview.fullLines : preview.lines).map((line, i) => (
-                <Text key={`${i}-${line}`} style={s.line} numberOfLines={open ? undefined : 2} selectable={open} testID={`${testID}-line-${i}`}>{line}</Text>
-              ))}
+              {(open ? preview.fullLines : preview.lines).map((line, i) => {
+                // A web address, folded: shortened in the middle to what fits this screen, so its start and end both show.
+                const address = !open && isAddress(preview.fullLines[i] ?? line);
+                return (
+                  <Text key={`${i}-${line}`} style={s.line} numberOfLines={open ? undefined : address ? 3 : 2} selectable={open} testID={`${testID}-line-${i}`}>
+                    {address ? shortenMiddle(preview.fullLines[i] ?? line, addressFit) : line}
+                  </Text>
+                );
+              })}
               {email ? (
                 <Text style={s.line} numberOfLines={open ? undefined : 2} testID={`${testID}-received`}>
                   {preview.received ? `Received ${formatDateTime(preview.received) || preview.received}` : "Date received: not recorded"}

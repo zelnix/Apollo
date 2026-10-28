@@ -40,6 +40,15 @@ export interface HigginsIssueContext {
   event_id?: string; // Patrol issue this case belongs to
 }
 
+/** A checked message as its investigation receives it: the text (with its sender) and the links in it. */
+export function messageOriginalEvidence(sender: string, text: string, urls: string[]): HigginsOriginalEvidence[] {
+  if (!text.trim()) return [];
+  return [
+    { kind: "text", value: sender.trim() ? `From: ${sender.trim()}\n\n${text}` : text, label: "Submitted message text" },
+    ...urls.slice(0, 10).map((u) => ({ kind: "url" as const, value: u, label: "URL from message" })),
+  ];
+}
+
 const recent = new Map<string, number>();
 
 function protectedValues(values: string[] | undefined): string[] {

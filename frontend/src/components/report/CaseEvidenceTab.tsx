@@ -1,19 +1,22 @@
 // The Threat Case Evidence tab: the material facts the case established, strongest first, each saying who found it and
-// who confirmed it — then the original, as it arrived (inert), and Copy / Share.
+// who confirmed it — then the original, as it arrived (inert), the evidence trail and Copy / Share.
 // Every line comes from domain/caseEvidence.ts (the case's own records); nothing here re-decides a verdict or a status.
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleCheck from "lucide-react-native/icons/circle-check";
+import Network from "lucide-react-native/icons/network";
 import Search from "lucide-react-native/icons/search";
 import Shield from "lucide-react-native/icons/shield";
 import React, { useMemo, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 
 import { CaseEvidenceProfile } from "@/src/components/CaseEvidenceProfile";
+import { useDiTransactions } from "@/src/components/DiReport";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
-import { caseEvidence, provenanceLine, type FactPiece } from "@/src/domain/caseEvidence";
+import { caseEvidence, provenanceLine, type FactPiece, type TrailStage } from "@/src/domain/caseEvidence";
 import { RAISED_LABEL } from "@/src/domain/caseHistory";
+import { heroWhen } from "@/src/domain/homeHeroBrief";
 import { formatDateTime } from "@/src/domain/threatCase";
 import type { PatrolEvent } from "@/src/domain/types";
 import type { DeviceInvestigation } from "@/src/investigation/deviceStore";
@@ -24,6 +27,11 @@ type Icon = React.ComponentType<{ size: number; color: string }>;
 const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   card: { padding: spacing.md, borderRadius: radius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, gap: spacing.md },
+  head: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  headText: { flex: 1, gap: 2 },
+  title: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  sub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   // Fact cards
   fact: { padding: spacing.md, borderRadius: radius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, gap: spacing.sm },
   factContrary: { borderColor: c.ears_upText },
@@ -41,6 +49,13 @@ const useStyles = makeStyles((c) => ({
   detail: { gap: 4, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
   link: { fontFamily: fonts.textMedium, fontSize: 12, lineHeight: 17, color: c.brandPrimary },
   empty: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
+  // Trail
+  trail: { flexDirection: "row", alignItems: "stretch", gap: 4 },
+  stage: { flex: 1, minWidth: 0, flexDirection: "row", gap: 6, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border },
+  stageText: { flex: 1, minWidth: 0, gap: 2 },
+  stageName: { fontFamily: fonts.textSemibold, fontSize: 13, lineHeight: 17, color: c.onSurface },
+  stageMeta: { fontFamily: fonts.text, fontSize: 11, lineHeight: 15, color: c.onSurfaceSecondary },
+  arrow: { justifyContent: "center" },
 }));
 
 const CONFIDENCE_LABEL = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" } as const;
@@ -121,6 +136,39 @@ function FactCard({ fact, index }: { fact: FactPiece; index: number }) {
   );
 }
 
+function Trail({ stages }: { stages: TrailStage[] }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const tone = {
+    done: { bg: colors.surfaceSecondary, fg: colors.groupAccounts },
+    escalated: { bg: colors.ears_upTint, fg: colors.ears_upText },
+    failed: { bg: colors.barkingTint, fg: colors.barkingText },
+    pending: { bg: colors.surfaceSecondary, fg: colors.muted },
+  };
+  return (
+    <View style={s.trail} testID="tc-evidence-trail-stages">
+      {stages.map((stage, i) => {
+        const triage = stage.id === "triage" && stage.tone === "done";
+        const t = triage ? { bg: colors.restingTint, fg: colors.restingText } : tone[stage.tone];
+        const IconEl = triage ? CircleCheck : stage.tone === "failed" ? CircleAlert : Search;
+        return (
+          <React.Fragment key={stage.id}>
+            {i ? <View style={s.arrow}><ChevronRight size={14} color={colors.muted} /></View> : null}
+            <View style={[s.stage, { backgroundColor: t.bg }]} testID={`tc-evidence-trail-${stage.id}`}>
+              <IconEl size={16} color={t.fg} />
+              <View style={s.stageText}>
+                <Text style={s.stageName}>{stage.name}</Text>
+                <Text style={s.stageMeta}>{stage.at ? heroWhen(stage.at) : "Time not recorded"}</Text>
+                <Text style={s.stageMeta} testID={`tc-evidence-trail-${stage.id}-status`}>{stage.status}</Text>
+              </View>
+            </View>
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
 export function CaseEvidenceTab({ event, investigation, facts, footer }: {
   event: PatrolEvent; investigation: DeviceInvestigation | null;
   /** What Higgins Triage / Apollo recorded about the item. */
@@ -129,8 +177,11 @@ export function CaseEvidenceTab({ event, investigation, facts, footer }: {
   footer: React.ReactNode;
 }) {
   const s = useStyles();
+  const { colors } = useTheme();
   const caseId = event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null;
-  const ev = useMemo(() => caseEvidence({ event, investigation, facts }), [event, investigation, facts]);
+  const di = useDiTransactions(caseId);
+  const ev = useMemo(() => caseEvidence({ event, investigation, trace: di.trace, records: di.records, facts }),
+    [event, investigation, di.trace, di.records, facts]);
   const running = !!caseId && !event.investigation_completed_at;
 
   return (
@@ -138,8 +189,11 @@ export function CaseEvidenceTab({ event, investigation, facts, footer }: {
       {/* 1. The facts, strongest first. */}
       {ev.facts.length ? ev.facts.map((f, i) => <FactCard key={f.id} fact={f} index={i} />) : (
         <View style={s.card} testID="tc-evidence-empty">
-          <Text style={s.empty}>{running ? "Higgins is still investigating. The evidence appears here as it is established."
-            : "No material evidence was recorded for this case."}</Text>
+          <Text style={s.empty} testID={!running && ev.messageNotSaved ? "tc-evidence-not-saved" : undefined}>
+            {running ? "Higgins is still investigating. The evidence appears here as it is established."
+              : ev.messageNotSaved ? "The message wasn't saved with this investigation, so there was nothing to examine. To investigate it, check the message again."
+                : "No material evidence was recorded for this case."}
+          </Text>
         </View>
       )}
 
@@ -149,6 +203,20 @@ export function CaseEvidenceTab({ event, investigation, facts, footer }: {
         packSummary={{ overview: event.what_happened || null, findings: event.why ?? [], steps: event.what_to_do ? [event.what_to_do] : [], uncertainties: [] }}
         testID="tc-evidence-artefact" />
       <CaseEvidenceProfile event={event} />
+
+      {/* 3. Evidence trail — only the stages that happened. */}
+      {ev.trail.length ? (
+        <View style={s.card} testID="tc-evidence-trail">
+          <View style={s.head}>
+            <View style={[s.circle, { backgroundColor: colors.groupDataTint }]}><Network size={22} color={colors.groupData} /></View>
+            <View style={s.headText}>
+              <Text style={s.title}>Evidence trail</Text>
+              <Text style={s.sub}>How evidence was used in this investigation</Text>
+            </View>
+          </View>
+          <Trail stages={ev.trail} />
+        </View>
+      ) : null}
 
       {footer}
     </View>

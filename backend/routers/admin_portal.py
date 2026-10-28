@@ -1755,6 +1755,71 @@ def _fidelity_drilldown_html(case: dict | None) -> str:
     """
 
 
+def _triage_rules_html(triage: dict | None) -> str:
+    """Higgins Triage's rule-catalogue record for this case: the codes the app's DI tab no longer shows."""
+    if not triage:
+        return ""
+    rows = "".join(
+        f"<tr><td><code>{html_mod.escape(str(r.get('ruleId', '')))}</code></td><td>{html_mod.escape(str(r.get('title', '')))}</td>"
+        f"<td>{html_mod.escape(str(r.get('result', '')))}{(' &middot; ' + html_mod.escape(str(r['coverageGap']))) if r.get('coverageGap') else ''}</td>"
+        f"<td style='white-space:normal;font-size:0.82em;'>{html_mod.escape('; '.join(str(e) for e in r.get('evidence') or [])[:300])}</td></tr>"
+        for r in triage.get("rules") or [] if r.get("applicable"))
+    gaps = "<br>".join(f"<code>{html_mod.escape(str(g.get('code', '')))}</code> &middot; rules {html_mod.escape(', '.join(g.get('ruleIds') or []))}"
+                       for g in triage.get("coverageGaps") or [])
+    return f"""
+    <h2 data-testid="triage-rules-drilldown">Higgins Triage &mdash; Rule Catalogue</h2>
+    <table>
+        <tbody>
+            <tr><td style="color:var(--muted);width:180px;">Outcome</td><td><code>{html_mod.escape(str(triage.get('outcome', '')))}</code></td></tr>
+            <tr><td style="color:var(--muted);">Catalogue</td><td>v{html_mod.escape(str(triage.get('catalogueVersion', '—')))} &middot; source {html_mod.escape(str(triage.get('sourceType', '—')))}</td></tr>
+            <tr><td style="color:var(--muted);">Rules</td><td>{len(triage.get('rulesChecked') or [])} of {len(triage.get('rulesApplicable') or [])} applicable checked &middot; met: {html_mod.escape(', '.join(triage.get('rulesMet') or []) or 'none')}</td></tr>
+            <tr><td style="color:var(--muted);">Coverage Gaps</td><td>{gaps or 'None'}</td></tr>
+            <tr><td style="color:var(--muted);">Evaluated</td><td>{_to_local(triage.get('evaluatedAt'))}</td></tr>
+        </tbody>
+    </table>
+    <table style="margin-top:8px;">
+        <thead><tr><th>Rule</th><th>Title</th><th>Result</th><th>Evidence</th></tr></thead>
+        <tbody>{rows or '<tr><td colspan="4" style="color:var(--muted);">No applicable rules recorded</td></tr>'}</tbody>
+    </table>
+    """
+
+
+def _di_transactions_html(records: list[dict]) -> str:
+    """Every AI transaction recorded for this case in full (Magnum DI's, and TC FlyBy's search call): status, tokens,
+    cost, timing, the prompts sent and the complete reply. The app's DI tab shows only whether Magnum DI ran and what
+    it was handed."""
+    if not records:
+        return '<h2>AI Transactions</h2><p style="color:var(--muted);">No AI call was recorded for this case: Magnum DI was not engaged.</p>'
+    blocks = ""
+    for i, r in enumerate(records):
+        p = r.get("processing") or {}
+        req = r.get("request") or {}
+        cost = p.get("cost") or {}
+        amount = cost.get("amountUsd")
+        cost_line = "not recorded" if amount is None else f"US${amount:.6f} ({html_mod.escape(str(cost.get('basis', '')))})"
+        tokens_basis = "simulated" if p.get("tokensAreSimulated") else "estimated" if p.get("tokensAreEstimates") else "measured"
+        num = lambda v: "—" if v is None else f"{v:,}"  # noqa: E731
+        response = r.get("response") or {}
+        blocks += f"""
+        <div class="s-card" style="margin-bottom:12px;" data-testid="di-transaction-{i}">
+            <div class="s-card-head"><strong>Transaction {i + 1}</strong> &nbsp; {'TC FlyBy search' if r.get('purpose') == 'teddy_search' else 'Magnum DI'} &middot; {_to_local(r.get('created_at'))}
+                &middot; {html_mod.escape(str(r.get('status') or 'not recorded'))}{(' (' + html_mod.escape(str(r['failure_code'])) + ')') if r.get('failure_code') else ''}
+                &middot; {'Simulated' if r.get('simulated') else 'Live'} &middot; {html_mod.escape(str(r.get('environment', '')))}</div>
+            <table style="margin-top:8px;"><tbody>
+                <tr><td style="color:var(--muted);width:180px;">Model</td><td>{html_mod.escape(str(r.get('model_requested') or '—'))} &middot; {html_mod.escape(str(r.get('provider') or '—'))}</td></tr>
+                <tr><td style="color:var(--muted);">Tokens ({tokens_basis})</td><td data-testid="di-tokens-{i}">prompt {num(p.get('promptTokens'))} &middot; output {num(p.get('outputTokens'))} &middot; total {num(p.get('totalTokens'))} &middot; cached {num(p.get('cachedTokens'))}</td></tr>
+                <tr><td style="color:var(--muted);">Cost</td><td data-testid="di-cost-{i}">{cost_line}</td></tr>
+                <tr><td style="color:var(--muted);">Duration</td><td>{num(p.get('durationMs'))} ms &middot; {num(p.get('geminiCalls'))} call(s) &middot; {num(p.get('retries'))} retr(ies)</td></tr>
+                <tr><td style="color:var(--muted);">Request</td><td>{num(req.get('requestBytes'))} bytes &middot; {req.get('attachmentCount', 0)} attachment(s) &middot; tools: {html_mod.escape(', '.join(req.get('tools') or []) or 'none')}</td></tr>
+                <tr><td style="color:var(--muted);">Finish Reason</td><td>{html_mod.escape(str(response.get('finishReason') or '—'))}</td></tr>
+            </tbody></table>
+            <details style="margin-top:8px;"><summary>System prompt</summary><pre style="white-space:pre-wrap;font-size:0.8em;">{html_mod.escape(req.get('systemPrompt') or '(none)')}</pre></details>
+            <details style="margin-top:4px;"><summary>Question and evidence sent</summary><pre style="white-space:pre-wrap;font-size:0.8em;" data-testid="di-prompt-{i}">{html_mod.escape(req.get('investigationPrompt') or 'not recorded')}</pre></details>
+            <details style="margin-top:4px;"><summary>Complete reply</summary><pre style="white-space:pre-wrap;font-size:0.8em;" data-testid="di-reply-{i}">{html_mod.escape(response.get('text') or 'not recorded')}</pre></details>
+        </div>"""
+    return f'<h2 data-testid="di-transactions">AI Transactions ({len(records)})</h2>{blocks}'
+
+
 def _investigation_desc(case: dict, gate_str: str) -> str:
     """Build a non-sensitive investigation description."""
     status = case.get("status", "unknown")
@@ -2493,12 +2558,20 @@ async def investigation_drilldown(request: Request, case_id: str):
     </div>
     """
 
+    # Magnum DI's full transactions and Higgins Triage's rule codes: the app's DI tab shows neither.
+    from services.higgins.di_record import admin_records
+    di_records = await admin_records(case_id)
+    triage_doc = await db.triage_investigations.find_one({"investigation_case_id": case_id}, {"_id": 0, "record": 1},
+                                                         sort=[("evaluated_at", -1)])
+
     body = f"""
     {provenance_html}
     {_routing_drilldown_html(case)}
+    {_triage_rules_html((triage_doc or {}).get("record"))}
     {_fidelity_drilldown_html(case)}
     {time_html}
     {summary_html}
+    {_di_transactions_html(di_records)}
     {calls_html}
     """
 

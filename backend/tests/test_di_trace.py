@@ -83,6 +83,69 @@ def test_the_di_record_never_carries_the_model_or_provider_tool_name():
     assert "gemini" not in repr(wired).lower() and "AI call" not in repr(wired)
 
 
+def test_the_app_gets_no_tokens_cost_prompts_or_reply():
+    """Token counts, cost, timings, the prompts and the full reply are the Admin Portal's, never the phone's."""
+    wired = di_record.wire({"correlation_id": "case-1", "simulated": False, "status": "success", "created_at": AT,
+                            "request": {"systemPrompt": "sys", "investigationPrompt": "the evidence", "requestBytes": 900, "tools": ["web_search"],
+                                        "attachmentCount": 1, "attachments": [{"mimeType": "image/png", "sizeBytes": 10, "privacyScreening": "completed_before_boundary",
+                                                                               "redactionStatus": "post_redaction_derivative", "transmittedForm": "image/png"}]},
+                            "response": {"text": "{\"verdict\": 1}", "finishReason": "STOP"},
+                            "processing": {"promptTokens": 10, "outputTokens": 5, "totalTokens": 15, "cost": {"amountUsd": 0.1}, "durationMs": 9}})
+    assert set(wired) == {"investigationId", "engine", "environment", "mode", "simulated", "status", "failureCode", "occurredAt", "request", "notice"}
+    assert set(wired["request"]) == {"attachments", "attachmentCount", "tools"}
+    assert wired["request"]["attachmentCount"] == 1 and wired["request"]["attachments"][0]["mimeType"] == "image/png"
+    shown = repr(wired)
+    for hidden in ("the evidence", "sys", "verdict", "Tokens", "cost", "900", "durationMs"):
+        assert hidden not in shown
+
+
+@pytest.mark.anyio
+async def test_the_settling_rule_reaches_the_app_without_its_rule_book_code(cases):
+    cases(_routing(resolved=False))
+    reason = (await di_record.decision_trace("owner-1", "case-1"))["settledReason"]
+    assert set(reason) == {"rule", "by", "sentence"}
+
+
+def test_the_admin_portal_shows_tokens_cost_prompt_and_reply_in_full():
+    from routers.admin_portal import _di_transactions_html, _triage_rules_html
+    page = _di_transactions_html([{"created_at": AT, "status": "success", "simulated": False, "environment": "Production", "model_requested": "m-1",
+                                   "request": {"investigationPrompt": "the <evidence>", "requestBytes": 900},
+                                   "response": {"text": "full reply", "finishReason": "STOP"},
+                                   "processing": {"promptTokens": 1200, "outputTokens": 30, "totalTokens": 1230, "cost": {"amountUsd": 0.0004, "basis": "estimated"}}}])
+    assert "prompt 1,200" in page and "US$0.000400" in page and "full reply" in page and "the &lt;evidence&gt;" in page
+    assert "not engaged" in _di_transactions_html([])
+    triage = evaluate({"source_type": "message", "unresolved_concern": True}, investigation_id="tri-2").wire()
+    rules = _triage_rules_html(triage)
+    assert triage["outcome"] in rules and f"v{triage['catalogueVersion']}" in rules
+
+
+@pytest.mark.anyio
+async def test_tc_flybys_search_call_is_never_shown_as_magnum_di(monkeypatch):
+    seen = {}
+
+    class _Cursor:
+        def __init__(self, docs):
+            self.docs = docs
+
+        def sort(self, *_a):
+            return self
+
+        def __aiter__(self):
+            async def gen():
+                for d in self.docs:
+                    yield d
+            return gen()
+
+    class _Coll:
+        def find(self, query, *_a):
+            seen["query"] = query
+            return _Cursor([])
+
+    monkeypatch.setattr(di_record.db, "di_transactions", _Coll(), raising=False)
+    assert await di_record.get_di_records("owner-1", "case-1") == []
+    assert seen["query"] == {"correlation_id": "case-case-1", "purpose": {"$ne": "teddy_search"}}
+
+
 def test_a_limited_triage_is_plain_english_and_never_nothing_to_worry_about():
     investigation = evaluate({"source_type": "message", "unresolved_concern": True})
     assert investigation.outcome is Outcome.LIMITED

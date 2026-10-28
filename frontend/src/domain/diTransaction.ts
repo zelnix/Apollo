@@ -1,7 +1,7 @@
-// The Deep Investigation (DI) transaction: Magnum DI's real processing record for a case — what was
-// prepared for Magnum DI, what came back (live, or the preview simulator) and the processing
-// statistics — plus the recorded decision path. It is NOT evidence: evidence stays the original
-// source Apollo received. The provider and model are never part of it.
+// The Deep Investigation (DI) record as the app receives it: whether Magnum DI ran, live or on the preview
+// simulator, and what it was handed — plus the recorded decision path. It is NOT evidence: evidence stays the
+// original source Apollo received. Token counts, cost, timings, the prompts, the full reply, rule-book codes, the
+// provider and the model are Apollo's own diagnostics: they stay in the Admin Portal and never reach the phone.
 
 import type { TriageInvestigationRecord } from "./triage/contract.ts";
 
@@ -23,30 +23,7 @@ export interface DiTransaction {
   status: string | null;
   failureCode: string | null;
   occurredAt: string | null;
-  request: {
-    systemPrompt?: string;
-    investigationPrompt?: string;
-    attachments?: DiAttachment[];
-    attachmentCount?: number;
-    tools?: string[];
-    requestBytes?: number;
-  };
-  response: { text?: string; finishReason?: string | null };
-  processing: {
-    promptTokens?: number | null;
-    outputTokens?: number | null;
-    totalTokens?: number | null;
-    cachedTokens?: number | null;
-    tokensAreEstimates?: boolean;
-    tokensAreSimulated?: boolean;
-    attachmentCount?: number;
-    requestBytes?: number | null;
-    durationMs?: number | null;
-    geminiCalls?: number | null;
-    retries?: number | null;
-    cacheStatus?: string | null;
-    cost?: { amountUsd?: number; basis?: string; note?: string };
-  };
+  request: { attachments?: DiAttachment[]; attachmentCount?: number; tools?: string[] };
   notice: string | null;
 }
 
@@ -70,7 +47,7 @@ export interface FlybyTrace {
   simulated: boolean | null;
 }
 
-/** The recorded decision path: Higgins Triage → TC FlyBy → Magnum DI → Higgins. A stage with no
+/** The recorded decision path: Higgins Triage → TC FlyBy → Magnum DI → Evidence Lock. A stage with no
  *  record is null — never inferred. */
 export interface DiTrace {
   triage: TriageInvestigationRecord | null;
@@ -79,14 +56,9 @@ export interface DiTrace {
   answeredBy: string | null;
   outcome: string | null;
   completion: string | null;
-  settledReason: { ruleId: string; rule: string; by: string; sentence: string } | null;
+  /** The settling rule by name and sentence (its rule-book code stays in the Admin Portal). */
+  settledReason: { rule: string; by: string; sentence: string } | null;
   higgins: { status: "PASS" | "FAIL" | null; mode: string | null; attempts: number | null } | null;
-}
-
-/** How a number should be labelled in the DI tab: measured, estimated, or simulated. */
-export function provenanceLabel(simulated: boolean, estimated: boolean | undefined): string {
-  if (simulated) return "Simulated";
-  return estimated ? "Estimated" : "Measured";
 }
 
 export function formatBytes(bytes: number | null | undefined): string {

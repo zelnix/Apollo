@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { caseFindings } from "../src/domain/caseBriefing.ts";
-import { caseEvidence, factStrength, provenanceLine } from "../src/domain/caseEvidence.ts";
+import { caseEvidence, evidenceTrail, factStrength, provenanceLine } from "../src/domain/caseEvidence.ts";
 import type { PatrolEvent } from "../src/domain/types.ts";
 
 function ev(partial: Partial<PatrolEvent> = {}): PatrolEvent {
@@ -48,7 +48,7 @@ const investigation = (over: Record<string, unknown> = {}, resp: Record<string, 
   response: response(resp), ...over,
 }) as never;
 
-const build = (e: PatrolEvent, inv: never | null, facts: string[] = [e.headline]) => caseEvidence({ event: e, investigation: inv, facts });
+const build = (e: PatrolEvent, inv: never | null, facts: string[] = [e.headline]) => caseEvidence({ event: e, investigation: inv, trace: null, records: [], facts });
 
 test("each fact says who found it first and who confirmed it — never the item you submitted as a fact", () => {
   const evidence = [
@@ -118,4 +118,28 @@ test("a block this device recorded is a fact like any other, found by Apollo on 
   assert.equal(provenanceLine(out.facts[1]), "Found by Apollo on this device");
   const unproved = build({ ...e, verified_block: false }, null, []);
   assert.equal(unproved.facts[0].confidence, "low");
+});
+
+test("the trail lists only the stages that happened", () => {
+  const triage = { evaluatedAt: "2026-10-28T01:12:01Z" } as never;
+  const flyby = { ranAt: "2026-10-28T01:12:10Z", resolved: true } as never;
+  const settled = evidenceTrail({ event: ev(), trace: { triage, flyby, magnum: null } as never, records: [] });
+  assert.deepEqual(settled.map((s) => `${s.name}: ${s.status}`), ["Higgins Triage: Completed", "TC FlyBy: Completed"]);
+  const escalated = evidenceTrail({
+    event: ev({ investigation_answered_by: "magnum" }), trace: { triage, flyby: { ranAt: "2026-10-28T01:12:10Z", resolved: false }, magnum: { at: "2026-10-28T01:12:20Z" } } as never,
+    records: [{ status: "success", failureCode: null, simulated: false, occurredAt: "2026-10-28T01:12:20Z" }] as never,
+  });
+  assert.deepEqual(escalated.map((s) => `${s.name}: ${s.status}`), ["Higgins Triage: Completed", "TC FlyBy: Escalated to Magnum DI", "Magnum DI: Completed"]);
+  const running = evidenceTrail({ event: ev({ investigation_completed_at: null }), trace: null, records: [] });
+  assert.deepEqual(running.map((s) => `${s.name}: ${s.status}`), ["TC FlyBy: In progress"]);
+});
+
+test("a message case whose investigation never received the message says it wasn't saved", () => {
+  const without = investigation({ evidenceItems: [item({ id: "EV-C", clientItemId: "teddy-di-checks", origin: "apollo_inference", kind: "observation", label: "TC FlyBy fly-by checks" })] }, { evidence: [] });
+  const out = build(ev(), without);
+  assert.deepEqual(out.facts, []);
+  assert.equal(out.messageNotSaved, true);
+  assert.equal(build(ev(), investigation({}, { evidence: [] })).messageNotSaved, false, "the message went with it");
+  assert.equal(build(ev({ category: "link" }), without).messageNotSaved, false, "only message cases");
+  assert.equal(build(ev({ investigation_case_id: null }), null).messageNotSaved, false, "no investigation, nothing missing");
 });

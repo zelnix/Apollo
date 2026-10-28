@@ -37,6 +37,7 @@ import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { CheckingModal } from "@/src/components/CheckingModal";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { extractUrl } from "@/src/share/classifyShare";
+import { shortenMiddle } from "@/src/domain/caseSourceSummary";
 import { getShareIntake } from "@/src/share/shareIntake";
 
 const useStyles = makeStyles((c) => ({
@@ -251,7 +252,7 @@ export default function CheckLink() {
         {liveEvent ? (
           <InvestigationCheckScreen
             result={model}
-            investigationContext={{ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] }}
+            investigationContext={{ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: shortenMiddle(input.trim(), 80) }] : [])] }}
             investigationQuestion={askPrompt}
             submissionId={outcome.submissionId}
             eventId={liveEvent.event_id}

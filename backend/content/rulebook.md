@@ -943,7 +943,7 @@ The same count applies to another outcome's label (OUTCOME_CONFLICT) and to the 
 
 A renderer error never fails an investigation. It is recorded as RENDERER_ERROR and Apollo's own wording is shown.
 
-**Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case. The DI tab shows the Fidelity Check result as the last step of the decision path.
+**Staff see** PASS or FAIL on every case in the admin portal, what the person was shown, each attempt's reasons, and both texts side by side while the server still holds the case. The DI tab's last step, the Evidence Lock, says whether Higgins' plain English matched the locked result. The DI tab shows no token counts, costs, Magnum DI's prompts or full reply, or rule-book codes: staff see those in the admin portal's investigation drill-down.
 
 ### Settling rules: the reason shown on each result {#settling-rules}
 

@@ -344,7 +344,8 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     if not gate and body.submissions:
         gate = _infer_gate_from_submissions(body.submissions, body.question)
 
-    case = await repo.create_case(owner, gate, body.device_profile.wire() if body.device_profile else None, initiator="user_check", origin=body.origin)
+    case = await repo.create_case(owner, gate, body.device_profile.wire() if body.device_profile else None, initiator="user_check", origin=body.origin,
+                                  client_submission_id=body.patrol_event_id)
     for item in body.submissions:
         if item.kind == "url":
             await ev.ingest_url(owner, case, item.client_item_id, item.value, label=item.label)
@@ -566,9 +567,10 @@ async def get_case(case_id: str, request: Request):
 
 @router.get("/investigations/{case_id}/di")
 async def get_di_transactions(case_id: str, request: Request):
-    """The Magnum DI processing record(s) for this case — what was prepared for Magnum DI, what came back
-    (live or the preview simulator) and the processing statistics — plus the recorded decision path
-    (Triage → TC FlyBy → Magnum DI → Higgins). Evidence is untouched by this view."""
+    """How this case was investigated, for the DI tab: the recorded decision path (Higgins Triage → TC FlyBy →
+    Magnum DI → Evidence Lock) and each Magnum DI transaction described — whether it finished, live or the preview
+    simulator, and what it was handed. Token counts, cost, the prompts, the full reply and rule-book codes stay in
+    the Admin Portal. Evidence is untouched by this view."""
     from services.higgins.di_record import decision_trace, get_di_records
     owner = owner_of(request)
     # Authorise against the case document itself: the DI record outlives the evidence retention

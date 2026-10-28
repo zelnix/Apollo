@@ -49,7 +49,7 @@ export interface DeviceRequest { id: string; caseId: string; caseRevision: numbe
 export interface DeviceResult { requestId: string; caseRevision: number; capabilityId: string; status: "observed" | "unavailable" | "permission_required" | "denied" | "failed"; observedAt: string | null; values: Record<string, string | number | boolean | string[] | null>; simulation: { kind: "preview_device"; label: string; fixtureId: string } | null; unavailableReason: UnavailableReason | null }
 export interface TurnCommit { turnId: string; caseId: string; inputRevision: number; committedRevision: number; question: string; answerToQuestionId: string | null; response: HigginsResponse; committedAt: string }
 export interface Submission { clientItemId: string; kind: "text" | "url"; value: string; label?: string }
-export interface CreateCase { gate: Gate | null; question: string; submissions: Submission[]; initialFindingRefs: string[]; initialFindings: string[]; deviceProfile: DeviceProfile | null; origin?: CaseOrigin }
+export interface CreateCase { gate: Gate | null; question: string; submissions: Submission[]; initialFindingRefs: string[]; initialFindings: string[]; deviceProfile: DeviceProfile | null; origin?: CaseOrigin; /** The check's own Threats record: the case updates it, never files a second one. */ patrolEventId?: string | null }
 
 export type InvestigationEvent =
   | { sequence: number; jobId: string; caseId: string; revision: number; at: string; type: "progress"; payload: { phase: "ingest" | "observe" | "research" | "assess" | "respond"; message: string } }

@@ -23,21 +23,18 @@ import {
   caseGroupKey,
   STATUS_LABELS,
   STATUS_COLORS,
-  categoryLabel,
-  buildTimeline,
   formatDateTime,
   isSimulated,
   type ThreatCaseStatus,
-  type TimelineEntry,
 } from "@/src/domain/threatCase";
+import { caseAuditTrail, type AuditTone } from "@/src/domain/caseAuditTrail";
 import type { PatrolEvent } from "@/src/domain/types";
 import type { HigginsResponse } from "@/src/investigation/types";
-import { caseFindings, threatResult } from "@/src/domain/caseBriefing";
+import { threatResult } from "@/src/domain/caseBriefing";
 import { hasRecordedFindings } from "@/src/domain/caseFacts";
-import { subjectLabel } from "@/src/domain/threatSubject";
 import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
-import { DiReport } from "@/src/components/DiReport";
+import { DiReport, useDiTransactions } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
 import { CaseEvidenceTab } from "@/src/components/report/CaseEvidenceTab";
 import { LIMITED_CAUTION, LIMITED_TODO, plainTriageText } from "@/src/domain/triage/contract";
@@ -430,7 +427,7 @@ function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; fac
 }
 
 /** The Evidence tab: the case's material facts, strongest first, each with who found and confirmed it → the original,
- *  as it arrived (inert) → Copy / Share (components/report/CaseEvidenceTab, built from
+ *  as it arrived (inert) → Evidence trail → Copy / Share (components/report/CaseEvidenceTab, built from
  *  domain/caseEvidence). Nothing is reconstructed from Magnum prose or Higgins' explanation. */
 function EvidenceContent({ event, investigation }: { event: PatrolEvent; investigation: DeviceInvestigation | null }) {
   // The recorded facts of the finding — what Apollo found, never why it matters: the finding statement itself,
@@ -455,46 +452,30 @@ function EvidenceContent({ event, investigation }: { event: PatrolEvent; investi
 
 function HistoryContent({ event, investigation: inv, verdict }: { event: PatrolEvent; investigation: DeviceInvestigation | null; verdict: string | null }) {
   const s = useStyles();
-  const { events } = useApollo();
-  // The investigation's entry says the same verdict and finding count as the Findings Brief and Evidence.
-  const timeline = buildTimeline(event, buildCaseSources({ event, investigation: inv }), {
-    completedAt: inv?.committedAt ?? null,
-    verdict,
-    findingCount: inv?.response ? caseFindings(inv.response).length : undefined,
-    answeredBy: inv?.answeredBy ?? null,
-  });
-  const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
-
-  // Merge related events into timeline chronologically
-  const relatedEntries: TimelineEntry[] = related.map((r, i) => ({
-    id: `tl-related-${i}`,
-    timestamp: r.occurred_at,
-    title: `Related: ${r.headline && !looksLikeInternalCode(r.headline) ? r.headline : categoryLabel(r.category) + " event"}`,
-    description: subjectLabel(r) ?? "Connected event recorded.",
-    dotColor: "#6B7280",
-    iconId: "content" as const,
-  }));
-  const fullTimeline = [...timeline, ...relatedEntries].sort((a, b) => {
-    if (!a.timestamp) return 1;
-    if (!b.timestamp) return -1;
-    return Date.parse(a.timestamp) - Date.parse(b.timestamp);
-  });
+  const { colors } = useTheme();
+  const di = useDiTransactions(event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null);
+  // Only what this case recorded, oldest first (domain/caseAuditTrail). Sources are on Evidence; related cases on the Findings Brief.
+  const trail = useMemo(() => caseAuditTrail({ event, investigation: inv, trace: di.trace, records: di.records, verdict }),
+    [event, inv, di.trace, di.records, verdict]);
+  const dot: Record<AuditTone, string> = {
+    start: colors.brandPrimary, check: colors.sniffingText, escalated: colors.ears_upText, done: colors.restingText,
+    warning: colors.barkingText, closed: colors.muted,
+  };
 
   return (
     <View style={s.content}>
-      {/* Timeline */}
       <Card style={{ gap: 0 }} testID="tc-history-timeline">
-        {fullTimeline.map((entry, i) => (
-          <View key={entry.id} style={s.timelineRow}>
+        {trail.map((entry, i) => (
+          <View key={entry.id} style={s.timelineRow} testID={`tc-history-${entry.id}`}>
             <View style={s.timelineDotCol}>
-              <View style={[s.timelineDot, { backgroundColor: entry.dotColor }]} />
-              {i < fullTimeline.length - 1 ? <View style={s.timelineLine} /> : null}
+              <View style={[s.timelineDot, { backgroundColor: dot[entry.tone] }]} />
+              {i < trail.length - 1 ? <View style={s.timelineLine} /> : null}
             </View>
             <View style={s.timelineContent}>
-              {entry.timestamp ? (
-                <Text style={s.timelineTime}>{formatDateTime(entry.timestamp)}</Text>
+              {entry.at ? (
+                <Text style={s.timelineTime}>{formatDateTime(entry.at)}</Text>
               ) : (
-                <Text style={s.timelineInProgress}>In progress</Text>
+                <Text style={s.timelineInProgress}>{entry.pending ? "In progress" : "Time not recorded"}</Text>
               )}
               <Text style={s.timelineTitle}>{entry.title}</Text>
               <Text style={s.timelineDesc}>{entry.description}</Text>
@@ -601,7 +582,7 @@ export default function ThreatCaseScreen() {
           <DiReport caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null} triage={event.triage_investigation ?? null}
             settledReason={investigation?.response ? investigation.settledReason : null} settledEvent={investigation?.settledReason ? null : event}
             how={report ? luddishReport(report).how : []} presented={result ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null}
-            history={investigation?.response?.history} />
+            history={investigation?.response?.history} response={investigation?.response ?? null} sources={investigation?.sources ?? []} />
         ) : null}
         </View>
       </ScrollView>

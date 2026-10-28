@@ -21,7 +21,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
-import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
+import { contextFromEvent, gateForCategory, messageOriginalEvidence } from "@/src/domain/higginsHandoff";
 import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
 import { simulation } from "@/src/simulation";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
@@ -149,7 +149,11 @@ export default function TextGuard() {
         {result.event ? (
           <InvestigationCheckScreen
             result={model}
-            investigationContext={contextFromEvent(result.event, gateForCategory(result.event.category))}
+            investigationContext={{
+              ...contextFromEvent(result.event, gateForCategory(result.event.category)),
+              // The message exactly as it was checked goes with the investigation, so its Evidence tab has it.
+              original_evidence: messageOriginalEvidence(sender, text, a.signals.urls),
+            }}
             investigationQuestion={askPrompt}
             submissionId={result.event.event_id}
             eventId={result.event.event_id}

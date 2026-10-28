@@ -11,6 +11,8 @@ import type { DeviceInvestigation } from "../investigation/deviceStore";
 import type { EvidenceFact, EvidenceItem, EvidenceStage, HigginsResponse, SourceReference } from "../investigation/types";
 import { caseFindings } from "./caseBriefing.ts";
 import { raisedBy, type RaisedFrom } from "./caseHistory.ts";
+import type { DiTrace, DiTransaction } from "./diTransaction.ts";
+import { settledByFlyby } from "./messageVoice.ts";
 import type { PatrolEvent } from "./types";
 
 export type FactStance = "supporting" | "contrary" | "neutral";
@@ -49,8 +51,20 @@ export interface FactPiece {
   device: boolean;
 }
 
+export interface TrailStage {
+  id: "triage" | "flyby" | "magnum";
+  name: string;
+  /** "Completed", "Escalated to Magnum DI", "Didn't finish", "In progress"… as recorded. */
+  status: string;
+  tone: "done" | "escalated" | "failed" | "pending";
+  at: string | null;
+}
+
 export interface CaseEvidence {
   facts: FactPiece[];
+  trail: TrailStage[];
+  /** A message case whose investigation never received the message (opened before checks sent it along). */
+  messageNotSaved: boolean;
 }
 
 const clean = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
@@ -175,14 +189,45 @@ function blockFact(e: PatrolEvent): FactPiece | null {
 
 interface Ctx { byId: Map<string, EvidenceItem>; refs: Map<string, SourceReference>; category: string; at: string | null }
 
+// ── Evidence trail ───────────────────────────────────────────────────────────
+
+/** Only the stages that actually happened, each with what it recorded. */
+export function evidenceTrail(input: { event: PatrolEvent; trace: DiTrace | null; records: DiTransaction[] }): TrailStage[] {
+  const { event, trace, records } = input;
+  const out: TrailStage[] = [];
+  const triage = trace?.triage ?? event.triage_investigation ?? null;
+  const flyby = trace?.flyby ?? null;
+  const hasCase = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
+  if (triage || flyby) out.push({ id: "triage", name: "Higgins Triage", status: "Completed", tone: "done", at: triage?.evaluatedAt ?? flyby?.ranAt ?? null });
+  if (flyby) {
+    out.push({ id: "flyby", name: "TC FlyBy", status: flyby.resolved ? "Completed" : "Escalated to Magnum DI", tone: flyby.resolved ? "done" : "escalated", at: flyby.ranAt });
+  } else if (hasCase && event.investigation_completed_at && settledByFlyby(event.investigation_answered_by)) {
+    out.push({ id: "flyby", name: "TC FlyBy", status: "Completed", tone: "done", at: event.investigation_completed_at });
+  }
+  if (records.length) {
+    const last = records[records.length - 1];
+    const failed = !!last.failureCode || (last.status ?? "success") !== "success";
+    out.push({ id: "magnum", name: "Magnum DI", status: failed ? "Didn't finish" : last.simulated ? "Completed (simulated)" : "Completed",
+      tone: failed ? "failed" : "done", at: trace?.magnum?.at ?? last.occurredAt ?? null });
+  } else if (trace?.magnum) {
+    out.push({ id: "magnum", name: "Magnum DI", status: "Completed", tone: "done", at: trace.magnum.at });
+  } else if (!flyby && hasCase && event.investigation_completed_at && event.investigation_answered_by && !settledByFlyby(event.investigation_answered_by)) {
+    out.push({ id: "magnum", name: "Magnum DI", status: "Completed", tone: "done", at: event.investigation_completed_at });
+  }
+  if (hasCase && !event.investigation_completed_at && !out.some((s) => s.id !== "triage")) {
+    out.push({ id: "flyby", name: "TC FlyBy", status: "In progress", tone: "pending", at: null });
+  }
+  return out;
+}
+
 // ── The whole tab ────────────────────────────────────────────────────────────
 
 export function caseEvidence(input: {
-  event: PatrolEvent; investigation: DeviceInvestigation | null;
+  event: PatrolEvent; investigation: DeviceInvestigation | null; trace: DiTrace | null; records: DiTransaction[];
   /** What Higgins Triage / Apollo recorded about the item (its met rules' evidence and recorded signals). */
   facts: string[];
 }): CaseEvidence {
-  const { event, investigation, facts } = input;
+  const { event, investigation, trace, records, facts } = input;
   const response = investigation?.response ?? null;
   const ctx: Ctx = {
     byId: new Map((investigation?.evidenceItems ?? []).map((i) => [i.id, i])),
@@ -192,5 +237,7 @@ export function caseEvidence(input: {
   const found = !response ? recordedOnThePhone(event, facts)
     : Array.isArray(response.evidence) ? recordedFacts(response, response.evidence, ctx) : earlierFindings(response, ctx);
   const block = blockFact(event);
-  return { facts: orderFacts(block ? [...found, block] : found) };
+  const messageNotSaved = event.category === "message" && !!investigation
+    && !(investigation.evidenceItems ?? []).some((i) => i.origin === "user_submission");
+  return { facts: orderFacts(block ? [...found, block] : found), trail: evidenceTrail({ event, trace, records }), messageNotSaved };
 }

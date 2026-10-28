@@ -904,7 +904,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {activeTab === "di" && showTabs ? (
       <View testID="inv-tab-di-content">
         <DiReport caseId={caseData?.id ?? null} triage={event?.triage_investigation ?? null} settledReason={response ? caseData?.settledReason : null} how={report ? luddishReport(report).how : []}
-          presented={verdict ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null} history={response?.history} />
+          presented={verdict ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null} history={response?.history}
+          response={response ?? null} sources={sources} />
       </View>
     ) : null}
 

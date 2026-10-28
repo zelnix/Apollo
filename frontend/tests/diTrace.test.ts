@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import type { HigginsResponse, SourceReference } from "../src/investigation/types.ts";
 import type { DiTrace, DiTransaction } from "../src/domain/diTransaction.ts";
-import { buildDecisionTrace } from "../src/domain/diTrace.ts";
-import { diRequestText, diResponseText } from "../src/domain/diTransactionText.ts";
+import { buildDecisionTrace, checkLine, outsideResearch } from "../src/domain/diTrace.ts";
 import { LIMITED_CAUTION, plainTriageText, type TriageInvestigationRecord } from "../src/domain/triage/contract.ts";
 import { evaluateTriage } from "../src/domain/triage/engine.ts";
 
@@ -17,9 +18,7 @@ const limited: TriageInvestigationRecord = {
 function record(partial: Partial<DiTransaction> = {}): DiTransaction {
   return {
     investigationId: "case-1", engine: "Magnum DI", environment: "Production", mode: "Live", simulated: false, status: "success",
-    failureCode: null, occurredAt: "2026-06-10T09:02:00.000Z",
-    request: { investigationPrompt: "Investigate.", tools: ["web_search"], attachmentCount: 0, requestBytes: 120 },
-    response: { text: "{}", finishReason: "STOP" }, processing: { geminiCalls: 1, retries: 0 }, notice: null, ...partial,
+    failureCode: null, occurredAt: "2026-06-10T09:02:00.000Z", request: { tools: ["web_search"], attachmentCount: 0 }, notice: null, ...partial,
   };
 }
 
@@ -27,84 +26,114 @@ const flybyTrace = (resolved: boolean): DiTrace => ({
   triage: null, answeredBy: resolved ? "teddy_official" : "magnum_di", outcome: resolved ? "concerning" : "likely_scam", completion: "complete",
   flyby: {
     ranAt: null, resolved, answeredBy: resolved ? "teddy_official" : "magnum_di", outcome: resolved ? "concerning" : null, basis: resolved ? "impersonation" : null,
-    messageType: "sms", pattern: null, checks: [{ kind: "link", status: "checked", route: "official_source" }], searchCalls: 0, searchQueries: 0,
+    messageType: "sms", pattern: null, checks: [{ kind: "link", status: "resolved", route: "official_source" }], searchCalls: 0, searchQueries: 0,
     cacheHits: 0, magnumNeeded: !resolved, magnumSearch: false, gaps: [], issues: resolved ? [] : [{ capability: "reasoning", text: "Weigh the money request." }], simulated: false,
   },
   magnum: resolved ? null : { webSearch: false, searchQueries: 0, itemsSent: 3, simulated: false, at: null },
   settledReason: resolved
-    ? { ruleId: "FLYBY-IMPERSONATION", rule: "Corroborated impersonation", by: "TC FlyBy", sentence: "Settled by TC FlyBy — corroborated impersonation: x." }
-    : { ruleId: "MAGNUM-REASONING", rule: "Reasoning", by: "Magnum DI", sentence: "Settled by Magnum DI — reasoning: y." },
+    ? { rule: "Corroborated impersonation", by: "TC FlyBy", sentence: "Settled by TC FlyBy — corroborated impersonation: x." }
+    : { rule: "Reasoning", by: "Magnum DI", sentence: "Settled by Magnum DI — reasoning: y." },
   higgins: { status: "PASS", mode: "plain", attempts: 1 },
 });
 
-test("a Triage-only Limited case: stops at Triage, Magnum DI not engaged, never shown as safe", () => {
-  const steps = buildDecisionTrace({ trace: null, records: [], triage: limited, hasCase: false });
-  assert.deepEqual(steps.map((s) => s.id), ["triage", "flyby", "magnum", "higgins"]);
+const CODES = /\b[A-Z]{2,}(?:_[A-Z]+)+\b|\bM0\d\b|catalogue|tokens?\b|cost|US\$|\b[a-z]+_[a-z_]+\b/i;
+const everyLine = (steps: ReturnType<typeof buildDecisionTrace>) => steps.flatMap((s) => [s.label, s.summary, ...s.details]);
+
+test("the path runs Higgins Triage → TC FlyBy → Magnum DI → Evidence Lock", () => {
+  const steps = buildDecisionTrace({ trace: flybyTrace(false), records: [record()], triage: null, hasCase: true });
+  assert.deepEqual(steps.map((s) => s.name), ["Higgins Triage", "TC FlyBy", "Magnum DI", "Evidence Lock"]);
+});
+
+test("a Triage-only Limited case: stops at Triage, Magnum DI not engaged, never shown as safe, no codes", () => {
+  const steps = buildDecisionTrace({ trace: null, records: [], triage: limited, hasCase: false, presented: { verdict: "Unable to determine", risk: null } });
   assert.equal(steps[0].status, "ran");
-  assert.match(steps[0].summary, /Stopped here — Magnum DI was not engaged\./);
-  assert.ok(steps[0].details.includes("Outcome: LIMITED_UNABLE_TO_DETERMINE"), "the DI keeps the code");
-  assert.ok(steps[0].details.some((d) => d.includes("EMAIL_HEADERS_UNAVAILABLE")));
+  assert.match(steps[0].summary, /It stopped here, so Magnum DI was not engaged\.$/);
   assert.equal(steps[1].status, "not_engaged");
   assert.equal(steps[2].summary, "Magnum DI was not engaged.");
-  assert.match(steps[3].summary, /caution/);
-  assert.ok(steps.every((s) => !/nothing to worry|\bAI\b/i.test(s.summary)));
+  assert.match(steps[3].summary, /^Higgins Triage's result was locked/);
+  assert.ok(steps[3].details.some((d) => /never shown as safe/.test(d)));
+  for (const line of everyLine(steps)) assert.doesNotMatch(line, CODES, line);
 });
 
-test("TC FlyBy settled: Higgins Triage is read from TC FlyBy's record, Magnum DI was not engaged", () => {
+test("TC FlyBy settled: Triage read from TC FlyBy's record, its checks in plain words, Magnum DI not engaged", () => {
   const steps = buildDecisionTrace({ trace: flybyTrace(true), records: [], triage: null, hasCase: true });
-  assert.equal(steps[0].name, "Higgins Triage");
-  assert.equal(steps[0].status, "ran");
   assert.equal(steps[0].label, "Ran with TC FlyBy");
   assert.equal(steps[0].summary, "Higgins Triage prepared what was sent and planned 1 check for TC FlyBy.");
-  assert.ok(steps[0].details.includes("Checks planned: link"));
-  assert.equal(steps[1].status, "settled");
+  assert.deepEqual(steps[0].details, ["Planned to check: the website."]);
   assert.equal(steps[1].label, "Settled · Concerning");
   assert.match(steps[1].summary, /^Settled by TC FlyBy/);
+  assert.deepEqual(steps[1].details, ["The website: checked with official sources"]);
   assert.equal(steps[2].summary, "Magnum DI was not engaged — TC FlyBy settled the case.");
-  assert.match(steps[3].summary, /TC FlyBy's result in plain English/);
+  assert.match(steps[3].summary, /^TC FlyBy's result was locked before Higgins explained it/);
+  for (const line of everyLine(steps)) assert.doesNotMatch(line, CODES, line);
 });
 
-test("Higgins Triage's message rules met are shown as warning signs from TC FlyBy's record", () => {
-  const trace = flybyTrace(false);
-  trace.flyby!.checks.push({ kind: "triage_rules", status: "resolved", route: "triage_rules" });
-  const [triage] = buildDecisionTrace({ trace, records: [record()], triage: null, hasCase: true });
-  assert.equal(triage.label, "Warning signs found");
-  assert.match(triage.summary, /planned 1 check for TC FlyBy; its message rules flagged warning signs\.$/);
-});
-
-test("a case with no Triage or TC FlyBy record says so for each, under Higgins Triage's name", () => {
-  const steps = buildDecisionTrace({ trace: null, records: [record({ simulated: true, mode: "Simulated" })], triage: null, hasCase: true });
-  assert.equal(steps[0].name, "Higgins Triage");
-  assert.equal(steps[0].summary, "No Higgins Triage record is stored for this case.");
-  assert.equal(steps[1].summary, "No TC FlyBy record is stored for this case.");
-});
-
-test("escalated to Magnum DI: the reason, the investigation and Higgins' Fidelity Check", () => {
-  const steps = buildDecisionTrace({ trace: flybyTrace(false), records: [record()], triage: null, hasCase: true });
-  assert.equal(steps[1].status, "escalated");
+test("escalated to Magnum DI: what was left for it, what it was given, and the lock", () => {
+  const response = { evidence: [{ stance: "supporting" }, { stance: "contrary" }, { stance: "supporting" }] } as unknown as HigginsResponse;
+  const steps = buildDecisionTrace({ trace: flybyTrace(false), records: [record({ request: { attachmentCount: 1 } })], triage: null, hasCase: true,
+    presented: { verdict: "Likely scam", risk: "High risk" }, response });
   assert.equal(steps[1].label, "Escalated to Magnum DI");
-  assert.ok(steps[1].details.includes("Needs reasoning: Weigh the money request."));
-  assert.equal(steps[2].status, "ran");
+  assert.ok(steps[1].details.includes("Left for Magnum DI: Weigh the money request."));
   assert.equal(steps[2].summary, "Magnum DI investigated 3 evidence items without web search.");
-  assert.equal(steps[3].label, "Fidelity Check PASS");
+  assert.ok(steps[2].details.includes("Given 3 evidence items."));
+  assert.ok(steps[2].details.some((d) => /1 picture or file sent, each screened/.test(d)));
+  assert.equal(steps[3].label, "Locked");
+  assert.deepEqual(steps[3].details.slice(0, 2), ["Locked verdict: Likely scam · High risk", "Locked 3 facts, 1 pointing the other way."]);
+  assert.match(steps[3].details[2], /checked against the locked result and matched it/);
+  for (const line of everyLine(steps)) assert.doesNotMatch(line, CODES, line);
 });
 
 test("escalated but no Magnum DI record yet, a failed call and a simulated answer are each said plainly", () => {
   assert.equal(buildDecisionTrace({ trace: flybyTrace(false), records: [], triage: null, hasCase: true })[2].status, "pending");
   const failed = buildDecisionTrace({ trace: flybyTrace(false), records: [record({ status: "failed", failureCode: "provider_timeout" })], triage: null, hasCase: true })[2];
   assert.equal(failed.status, "failed");
-  assert.match(failed.summary, /provider_timeout/);
+  assert.equal(failed.summary, "Magnum DI was engaged but didn't finish (provider timeout).");
   const simulated = buildDecisionTrace({ trace: flybyTrace(false), records: [record({ simulated: true, mode: "Simulated" })], triage: null, hasCase: true })[2];
   assert.equal(simulated.status, "simulated");
   assert.match(simulated.summary, /the preview stood in for the outside service Magnum DI calls/);
 });
 
-test("the copied request and response name Magnum DI only — no provider, model or 'AI'", () => {
-  for (const text of [diRequestText(record()), diResponseText(record()), diResponseText(record({ simulated: true, mode: "Simulated" }))]) {
-    assert.doesNotMatch(text, /gemini|google|\bAI\b/i);
-    assert.match(text, /Magnum DI/);
+test("a case with no Triage or TC FlyBy record says so for each; no result yet means nothing locked", () => {
+  const steps = buildDecisionTrace({ trace: null, records: [], triage: null, hasCase: true });
+  assert.equal(steps[0].summary, "No Higgins Triage record is stored for this case.");
+  assert.equal(steps[1].summary, "No TC FlyBy record is stored for this case.");
+  assert.equal(steps[3].summary, "There's no result to lock yet.");
+});
+
+test("check lines are plain words for every recorded status", () => {
+  assert.equal(checkLine({ kind: "phone", status: "not_found", route: "web_search" }), "The phone number: no record found");
+  assert.equal(checkLine({ kind: "claim", status: "resolved", route: "web_search" }), "A claim it makes: checked with a web search");
+  assert.equal(checkLine({ kind: "message_analysis", status: "needs_reasoning", route: null }), "The message as a whole: left for Magnum DI");
+});
+
+test("outside research lists each source with the facts it supports or points against", () => {
+  const sources: SourceReference[] = [
+    { id: "s1", url: "https://www.scamwatch.gov.au/alert", title: "Scamwatch alert", retrievedAt: "2026-06-10T09:00:00Z", retrieval: "fetched", authority: "official", authorityBasis: "" },
+    { id: "s2", url: "https://example.com/about", title: "", retrievedAt: "", retrieval: "search_result", authority: "independent", authorityBasis: "" },
+    { id: "s3", url: "", title: "Threat-list lookup", retrievedAt: "", retrieval: "fetched", authority: "independent", authorityBasis: "" },
+  ];
+  const response = { evidence: [
+    { text: "The link is on a scam warning.", stance: "supporting", sourceIds: ["s1"] },
+    { text: "The business is registered.", stance: "contrary", sourceIds: ["s2", "s1"] },
+  ] } as unknown as HigginsResponse;
+  const rows = outsideResearch(sources, response);
+  assert.deepEqual(rows.map((r) => r.id), ["s1", "s2", "s3"]);
+  assert.deepEqual(rows[0].supports, ["The link is on a scam warning."]);
+  assert.deepEqual(rows[0].against, ["The business is registered."]);
+  assert.equal(rows[0].site, "scamwatch.gov.au");
+  assert.equal(rows[0].standing, "Official source");
+  assert.equal(rows[1].title, "example.com");
+  assert.equal(rows[1].how, "Found by a web search");
+  assert.equal(rows[2].site, null);
+  assert.deepEqual([rows[2].supports, rows[2].against, rows[2].other], [[], [], []]);
+  assert.deepEqual(outsideResearch([], response), []);
+});
+
+test("the DI tab shows no token counts, cost, raw replies or rule-book codes", () => {
+  const src = readFileSync(new URL("../src/components/DiReport.tsx", import.meta.url), "utf8");
+  for (const hidden of [/Tokens/, /Cost/, /investigationPrompt|Complete response|response\.text/, /ruleId|catalogueVersion|RESULT_LABEL/, /TriageSummary/]) {
+    assert.doesNotMatch(src, hidden);
   }
-  assert.match(diRequestText(record()), /Tools: web search/);
 });
 
 test("Coverage Gap codes become plain English for the person", () => {

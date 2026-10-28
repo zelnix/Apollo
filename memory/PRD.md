@@ -18,8 +18,8 @@
   Triage/Apollo recorded (headline excluded). A DNS/enforcement block = a fact "Found by Apollo on this device" (high when packet-verified).
 - `CaseEvidenceTab.tsx`: summary card and "Evidence from this device"/"Investigation findings" cards removed → fact cards (testIDs
   `tc-evidence-fact-<i>`, `-text`, `-mark` = "Points the other way" / "Weak signal" / confidence, `-found-by`, `-toggle`, `-detail`),
-  empty state `tc-evidence-empty`, then the Original Source (inert, `tc-evidence-artefact`), evidence profile, Copy/Share.
-  Evidence trail card removed at the owner's request (2026-10-28; `evidenceTrail`/`TrailStage` deleted from domain/caseEvidence.ts).
+  empty state `tc-evidence-empty`, then the Original Source (inert, `tc-evidence-artefact`), evidence profile, Evidence trail
+  (`tc-evidence-trail`), Copy/Share. (The trail card was removed, then restored at the owner's request, 2026-10-28.)
 - Threat Case header: the "What you submitted/detected" card scrolls away; the tab bar stays pinned (`stickyHeaderIndices`), card back at top.
 - Rule book: two new Threats-list rules (Evidence tab facts; inert original) + stamped.
 - Tests: new `backend/tests/test_case_evidence.py` (8); `frontend/tests/caseEvidence.test.ts` rewritten (8); chainInvariants updated.
@@ -4410,3 +4410,9 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Pending owner decisions: confirm in Play Console that 1.1.23 had a pre-launch run on a OnePlus 8 Pro. Approve, or
   decline, cleaning up the copied records and changing the counter or filters. No counting logic has been changed.
 
+## 2026-10-28 — Message evidence follow-up
+- Text Guard (`app/text-guard.tsx`) now sends the checked message with the investigation it opens, the same as Check a Message
+  (shared helper `messageOriginalEvidence` in `domain/higginsHandoff.ts`: the text with its sender, plus up to 10 links).
+- Older message cases whose investigation never got the message: the empty Evidence tab now says the message wasn't saved
+  with this investigation and to check it again (`caseEvidence().messageNotSaved`, testID `tc-evidence-not-saved`).
+- Tests: caseEvidence.test.ts +1; full frontend suite 1195/1195; backend di_trace/case_evidence/admin/rulebook pass.

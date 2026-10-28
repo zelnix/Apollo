@@ -24,6 +24,8 @@ export function createCaseInput(context: HigginsIssueContext | null, question: s
       submissions: originals.flatMap((item) => item.kind === "file" ? [] : [{ clientItemId: Crypto.randomUUID(), kind: item.kind, value: item.value, label: item.label ?? "" }]),
       initialFindingRefs: [],
       initialFindings: context ? initialFindings(context) : [],
+      // The check's own Threats record, so the case's result updates that one record instead of filing a twin.
+      patrolEventId: context?.event_id ?? null,
     },
     files: originals.flatMap((item) => item.kind === "file" ? [{ uri: item.uri, name: item.name, mediaType: item.mediaType }] : []),
   };
