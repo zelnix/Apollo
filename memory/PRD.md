@@ -1,5 +1,12 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Related cases moved to the Findings Brief (2026-10-28)
+- Threat Case: History's "Related items (N)" card removed; the Findings Brief now always ends with "Related cases (N)"
+  (`RelatedCases`, testID `tc-related-cases`, rows `tc-related-case-<id>`), listing every case sharing the scent, with
+  the empty state "No related cases. Related emails, messages or links will appear here." Related events stay in the
+  History timeline. Old `ScentSection` removed.
+- Hero: a text or call with no number reads "(no # found)"; the roomier "Important for you" cards say "(no number found)".
+
 ## Home hero two-line briefing + verdict card + email fold + Close Case (2026-10-28)
 - **Home hero** (`src/domain/homeHeroBrief.ts`, `app/(tabs)/home.tsx`): each slide is two lines —
   `{Type}: {subject} from {source}, {finding}.` / `{28 Oct, 4:42 pm}. {Higgins' recommendation}.`
@@ -15,7 +22,7 @@
 - **Verdict card** (FindingsBrief): titled like the other cards ("Verdict: Likely scam", 17px) with small pills underneath;
   its icon is a judge's gavel (lucide `gavel`) in the tone colour.
 - **Hero numbers**: a text message or call always names its number — recorded on the case, the kept original's From, or
-  "(no number provided)" when none was given. `clip()` no longer drops a whole word when the cut falls between words.
+  "(no # found)" when none was given. `clip()` no longer drops a whole word when the cut falls between words.
 - **Important for you** (home.tsx): each card uses the hero's structure via `eventBrief(..., "card")` — longer identifier
   limits (`LIMIT.card`), line 1 up to 4 rows, line 2 (date + recommendation) up to 3; icon left, status pill + "View threat"
   underneath. Kept originals are loaded for hero + priority cases. Old `threatTitle`/`threatIdentity` removed.

@@ -281,8 +281,8 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
       {/* Repeat checks of this device: one case, every check listed. */}
       {event.case_key ? <CaseCheckRuns event={event} original={original} /> : null}
 
-      {/* Connected incidents */}
-      {event.scent_id ? <ScentSection event={event} /> : null}
+      {/* Cases Apollo connected to this one. */}
+      <RelatedCases event={event} />
     </View>
   );
 }
@@ -439,30 +439,29 @@ function ReopenCase({ event }: { event: PatrolEvent }) {
   );
 }
 
-function ScentSection({ event }: { event: PatrolEvent }) {
+function RelatedCases({ event }: { event: PatrolEvent }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
   const { events } = useApollo();
-  const related = events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id);
-  if (!related.length) return null;
+  const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
   return (
-    <Card style={{ gap: spacing.sm }} testID="tc-related-items">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+    <Card style={{ gap: spacing.sm }} testID="tc-related-cases">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
         <View style={s.factIcon}><Link2 size={14} color="#6B7280" /></View>
-        <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.onSurface }}>
-          ApolloSG connected {related.length} related {related.length === 1 ? "event" : "events"} to this threat.
-        </Text>
+        <Text style={s.relatedTitle}>Related cases ({related.length})</Text>
       </View>
-      {related.slice(0, 3).map((r) => (
-        <Pressable key={r.event_id} onPress={() => router.push(`/patrol/${r.event_id}`)} style={s.relatedRow}>
+      {related.length ? related.map((r) => (
+        <Pressable key={r.event_id} onPress={() => router.push(`/patrol/${r.event_id}`)} style={s.relatedRow} accessibilityRole="button" testID={`tc-related-case-${r.event_id}`}>
           <Text style={s.relatedTitle} numberOfLines={1}>
             {r.headline && !looksLikeInternalCode(r.headline) ? r.headline : categoryLabel(r.category) + " event"}
           </Text>
           <Text style={s.relatedSub}>{formatDateTime(r.occurred_at)}</Text>
           <ChevronRight size={16} color={colors.muted} />
         </Pressable>
-      ))}
+      )) : (
+        <Text style={s.relatedSub}>No related cases. Related emails, messages or links will appear here.</Text>
+      )}
     </Card>
   );
 }
@@ -1049,19 +1048,6 @@ function HistoryContent({ event }: { event: PatrolEvent }) {
         ))}
         {/* When the files sent for this result leave Apollo's server. */}
         {inv?.response ? <ServerCopyNote caseId={inv.caseId} testID="tc-history-server-copy" /> : null}
-      </Card>
-
-      {/* Related items */}
-      <Card style={{ gap: spacing.xs }} testID="tc-history-related">
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={s.factIcon}><Link2 size={14} color="#6B7280" /></View>
-          <Text style={s.relatedTitle}>Related items ({related.length})</Text>
-        </View>
-        <Text style={s.relatedSub}>
-          {related.length > 0
-            ? "Related emails, messages or links will appear here."
-            : "No related items. Related emails, messages or links will appear here."}
-        </Text>
       </Card>
     </View>
   );

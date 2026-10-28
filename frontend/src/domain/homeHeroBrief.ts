@@ -49,8 +49,10 @@ export function clip(value: string | null | undefined, max: number): string | nu
 const quoted = (v: string | null | undefined, max: number) => { const c = clip(v, max); return c ? `\u201C${c}\u201D` : null; };
 const noStop = (v: string) => v.replace(/[.!?…]+$/, "").trim();
 
-/** A text or a call always says which number it came from; when Apollo wasn't given one, it says so. */
-const NO_NUMBER = "no number provided";
+/** A text or a call always says which number it came from; when Apollo wasn't given one, it says so — tightly on
+ *  the hero, in full where there's room. */
+const NO_NUMBER = "\u0000no-number";
+const NO_NUMBER_SAID: Record<"hero" | "card", string> = { hero: "no # found", card: "no number found" };
 
 /** How long each identifier may run: the hero is tight; an "Important for you" card has a little more room. */
 export type BriefRoom = "hero" | "card";
@@ -127,7 +129,7 @@ export function heroWhen(iso: string | null | undefined, now: Date = new Date())
 export function eventBrief(e: PatrolEvent, now: Date = new Date(), kept: KeptIdentifiers | null = null, room: BriefRoom = "hero"): HeroBrief {
   const { what, from } = identify(e, kept, room);
   const type = TYPE[e.category] ?? "Security check";
-  const source = from === NO_NUMBER ? ` (${NO_NUMBER})` : from ? ` from ${from}` : "";
+  const source = from === NO_NUMBER ? ` (${NO_NUMBER_SAID[room]})` : from ? ` from ${from}` : "";
   const line1 = `${type}${what ? `: ${what}` : ""}${source}${what || from ? "," : ""} ${finding(e)}.`;
   const when = heroWhen(e.occurred_at, now);
   return { id: `event:${e.event_id}`, line1, line2: `${when ? `${when}. ` : ""}${action(e)}.`, route: `/patrol/${encodeURIComponent(e.event_id)}` };
