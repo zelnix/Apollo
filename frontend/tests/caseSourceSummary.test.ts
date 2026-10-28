@@ -59,3 +59,17 @@ test("withoutLinks replaces web addresses only", () => {
   assert.equal(withoutLinks("Call 13 22 21 or see https://x.co/a?b=1."), "Call 13 22 21 or see [link].");
   assert.equal(withoutLinks("Email me at jo@example.com"), "Email me at jo@example.com");
 });
+
+test("every source type has more to show when its card is opened: its lines in full and what else was recorded", () => {
+  const question = "I joined a free wifi called 'Airport_Free_WiFi' at the shops and afterwards my banking app asked me to sign in again with my card number and PIN, which it never does";
+  const typed = previewFromEvent({ event_id: "e2", category: "message", state: "sniffing",
+    source_metadata: { type: "text", url: `https://example.top/${"x".repeat(200)}`, user_question: question } } as unknown as PatrolEvent)!;
+  assert.ok(typed.lines[0].endsWith("…") && !typed.fullLines[0].endsWith("…"));          // folded: shortened; open: in full
+  assert.deepEqual(typed.details.map((d) => d.label), ["Type", "Question asked"]);       // the link is already a line
+  assert.equal(typed.details[1].value, question);
+  const sms = previewFromOriginal({ kind: "text", capturedAt: "2026-10-28T09:00:00.000Z", origin: "this_device", fields: [{ label: "From", value: "0419 841 238" }], text: "Rebates drop next week. Reply YES." });
+  assert.deepEqual(sms.details.map((d) => [d.label, d.value]), [["Type", sms.kind], ["From", "0419 841 238"], ["Captured on this device", "2026-10-28T09:00:00.000Z"]]);
+  assert.equal(sms.details[2].time, true);
+  const email = previewFromOriginal(EMAIL);
+  assert.ok(!email.details.some((d) => /^(From|Subject|Received)$/.test(d.label)));      // already in the summary
+});

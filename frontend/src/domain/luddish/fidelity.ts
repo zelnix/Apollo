@@ -199,7 +199,10 @@ export function checkExplanation(lock: EvidenceLock, ex: CheckedExplanation): Fi
 // Who established a finding, and how firmly — fixed words, never reworded.
 const BASIS_TEXT: Record<string, string> = { observed: "Seen directly by {by}", inferred: "{by}'s reading of the evidence, not seen directly", reported: "From what you told Apollo", recorded: "Recorded by {by}" };
 const CONFIDENCE_TEXT: Record<string, string> = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
+const RAISED_TEXT: Record<string, string> = { this_device: "this device's earlier cases", previous_reports: "ApolloSG's previous reports" };
 
 export function findingDetail(f: EvidenceLock["findings"][number]): string {
-  return [BASIS_TEXT[f.basis].replace("{by}", f.by ?? "Apollo"), f.confidence ? CONFIDENCE_TEXT[f.confidence] : null].filter(Boolean).join(" · ");
+  const raised = (f.raisedBy ?? []).map((r) => RAISED_TEXT[r]);
+  return [BASIS_TEXT[f.basis].replace("{by}", f.by ?? "Apollo"), f.confidence ? CONFIDENCE_TEXT[f.confidence] : null,
+    raised.length ? `Confidence raised by ${raised.join(" and ")} (not evidence)` : null].filter(Boolean).join(" · ");
 }

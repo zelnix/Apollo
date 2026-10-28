@@ -8,16 +8,9 @@
 // This turns the stored result into the case's own content: the overview, the findings, the
 // recommended action and the severity the investigation actually reached. Pure and unit-tested.
 import type { DeviceInvestigation } from "../investigation/deviceStore";
-import { eventBriefing } from "./caseBriefing.ts";
+import { caseResult, eventBriefing } from "./caseBriefing.ts";
 import { withEvidenceModel } from "./evidenceModel.ts";
-import type { ApolloState, PatrolEvent } from "./types";
-
-/** The severity the investigation reached — never higher than what it concluded. */
-export function investigationState(assessment: string, attention: string): ApolloState {
-  if (assessment === "concern_found") return attention === "urgent" || attention === "action_needed" ? "barking" : "growling";
-  if (assessment === "uncertain") return attention === "urgent" || attention === "action_needed" ? "barking" : "ears_up";
-  return "resting";
-}
+import type { PatrolEvent } from "./types";
 
 /** First sentence of the overview — the specific statement, not a category name. */
 export function headlineFrom(overview: string): string {
@@ -61,7 +54,9 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
   const fromBriefing = briefing?.from === "briefing" && !!briefing.headline && !!briefing.summary;
   const findings = (fromBriefing ? briefing!.findings : (response.findings ?? []).map((f) => f.text.trim())).filter(Boolean).slice(0, 6);
   const overview = response.overview.replace(/\s+/g, " ").trim();
-  const state = investigationState(response.assessment, response.attention);
+  // The case's severity is the case result's — the same one the Findings Brief shows — never worked out again here.
+  const result = caseResult(response);
+  const state = result.severity;
   const whatToDo = fromBriefing && briefing!.recommendedAction?.instruction ? briefing!.recommendedAction.instruction : actionFrom(inv);
   const headline = fromBriefing ? briefing!.headline : headlineFrom(overview);
   const whatHappened = fromBriefing ? briefing!.summary : bodyFrom(overview);
@@ -82,8 +77,8 @@ export function investigationPatch(event: PatrolEvent, inv: DeviceInvestigation 
     ...withEvidenceModel(event),
     state,
     // A finished investigation leaves the case open unless it found nothing at all.
-    status: event.status === "blocked" || event.status === "trusted" ? event.status : state === "resting" ? "resolved" : "active",
-    resolved_at: state === "resting" ? event.resolved_at ?? inv.committedAt : event.resolved_at,
+    status: event.status === "blocked" || event.status === "trusted" ? event.status : result.noConcern ? "resolved" : "active",
+    resolved_at: result.noConcern ? event.resolved_at ?? inv.committedAt : event.resolved_at,
     headline,
     what_happened: whatHappened,
     why: findings.length ? findings : event.why,

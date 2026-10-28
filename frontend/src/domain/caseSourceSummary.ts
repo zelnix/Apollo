@@ -29,12 +29,36 @@ export interface SourcePreview {
   icon: PreviewIcon;
   /** The short summary, one line each: an email's sender and subject, a link, a number. */
   lines: string[];
+  /** The same lines in full, never shortened: what the expanded card shows. */
+  fullLines: string[];
   /** When an email arrived, as recorded: an ISO time, or the mailbox's own wording. */
   received: string | null;
   /** The material's own text, its line breaks kept. An email's is shown only when the person expands the card, and
    *  without its links (those are on the Evidence tab). */
   body: string | null;
+  /** Everything else recorded about the material, shown when the card is expanded (every source type expands).
+   *  `time`: the value is a recorded time, shown as a date. */
+  details: SourceDetail[];
 }
+
+export interface SourceDetail { label: string; value: string; time?: boolean }
+
+const detail = (label: string, value: string | number | null | undefined, time = false): SourceDetail | null => {
+  const v = typeof value === "number" ? String(value) : (value ?? "").replace(/\s+/g, " ").trim();
+  return v ? { label, value: v, ...(time ? { time } : {}) } : null;
+};
+/** The type first, then each recorded detail once, leaving out what the summary lines or the text already say. */
+const detailsOf = (kind: string, items: (SourceDetail | null)[], shown: string[], body: string | null): SourceDetail[] => {
+  const said = [...shown, body ?? ""].join("\n");
+  const out = [{ label: "Type", value: kind }, ...items.filter((d): d is SourceDetail => !!d)];
+  const seen = new Set<string>();
+  return out.filter((d) => {
+    const key = `${d.label.toLowerCase()}|${d.value}`;
+    if (seen.has(key) || (d.label !== "Type" && said.includes(d.value))) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const LINK = /\b(?:https?:\/\/|www\.)[^\s<>"'()[\]]+/gi;
 /** Text with every web address replaced by "[link]": what an email says, without its links. A full stop or comma
@@ -45,16 +69,15 @@ export function withoutLinks(text: string): string {
 
 const MAX_LINE = 160;
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
-const oneLine = (text: string) => clip(text.replace(/\s+/g, " ").trim(), MAX_LINE);
 /** Text as it was written: its line breaks kept, runs of spaces and blank lines closed up. */
 const asWritten = (text: string) => text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean).join("\n");
 /** The one-line parts, each once, and the text itself. `dedupe`: a part the text already holds is left to the text
  *  (an email's sender and subject always stay, since its text is folded away). */
 const compose = (head: (string | null | undefined)[], text?: string | null, dedupe = true) => {
   const body = text ? asWritten(text) : "";
-  const lines = [...new Set(head.map((l) => oneLine(l ?? "")).filter(Boolean))]
-    .filter((l) => !dedupe || !body.includes(l.replace(/…$/, ""))).slice(0, 3);
-  return { lines, body: body || null };
+  const parts = [...new Set(head.map((l) => (l ?? "").replace(/\s+/g, " ").trim()).filter(Boolean))]
+    .filter((l) => !dedupe || !body.includes(clip(l, MAX_LINE).replace(/…$/, ""))).slice(0, 3);
+  return { lines: parts.map((l) => clip(l, MAX_LINE)), fullLines: parts, body: body || null };
 };
 
 const ICON_OF_KIND: Record<OriginalSourceKind, PreviewIcon> = {
@@ -69,19 +92,31 @@ const asParagraphs = (text: string) => text.replace(/\r\n?/g, "\n").split("\n").
 /** An email's summary is its sender and subject only; its text (links removed) waits behind the expand button. */
 const emailHead = (sender: string | null | undefined, subject: string | null | undefined) =>
   [sender ? `From ${sender}` : null, subject ? `Subject: ${subject}` : null];
-const emailPreview = (head: (string | null)[], text: string | null | undefined) =>
-  ({ lines: compose(head, null, false).lines, body: text ? asParagraphs(withoutLinks(text)) || null : null });
+const emailPreview = (head: (string | null)[], text: string | null | undefined) => {
+  const { lines, fullLines } = compose(head, null, false);
+  return { lines, fullLines, body: text ? asParagraphs(withoutLinks(text)) || null : null };
+};
+const TIME_FIELD = /^(received|date|sent|time|captured|when)$/i;
 
 /** The original kept on the phone, shortened: an email's sender and subject, a link, and the text as written. */
 export function previewFromOriginal(src: OriginalSource, hasImage = false): SourcePreview {
   const view = describeArtefact(src, hasImage);
   const body = view.body ?? null;
   const icon = view.layout === "screenshot" ? "picture" : ICON_OF_KIND[src.kind] ?? "item";
-  if (view.layout === "email") return { kind: view.title, icon, ...emailPreview(emailHead(view.sender, view.subject), body), received: view.occurredAt };
+  const recorded = [
+    ...view.fields.map((f) => detail(f.label.trim(), f.value, TIME_FIELD.test(f.label.trim()))),
+    detail("Link", src.url),
+    detail(src.origin === "this_device" ? "Captured on this device" : "Received by ApolloSG", src.capturedAt, true),
+  ];
+  if (view.layout === "email") {
+    const p = emailPreview(emailHead(view.sender, view.subject), body);
+    return { kind: view.title, icon, ...p, received: view.occurredAt, details: detailsOf(view.title, recorded, [...p.fullLines, view.occurredAt ?? ""], null) };
+  }
   const url = src.url && !(body ?? "").includes(src.url) ? src.url : null;
   const fields = body || url ? [] : view.fields.filter((f) => !SHOWN_FIELD.test(f.label.trim())).slice(0, 2).map((f) => `${f.label}: ${f.value}`);
   const head = src.kind === "call" ? [view.sender, url, ...fields] : [url, ...fields];
-  return { kind: view.title, icon, ...compose(head, body), received: null };
+  const c = compose(head, body);
+  return { kind: view.title, icon, ...c, received: null, details: detailsOf(view.title, recorded, c.fullLines, c.body) };
 }
 
 const EVENT_KIND: Record<string, { kind: string; icon: PreviewIcon }> = {
@@ -105,11 +140,19 @@ export function previewFromEvent(event: PatrolEvent): SourcePreview | null {
   const type = eventType(event);
   const indicator = !m?.url ? (event.local_indicator ?? event.indicator_host) : null;
   const email = type === "email";
-  const { lines, body } = email
+  const { lines, fullLines, body } = email
     ? emailPreview(emailHead(m?.sender, m?.subject), m?.preview)
     : compose([m?.url, m?.attachment_names?.[0], m?.preview ? null : indicator], m?.preview);
   if (!lines.length && !body) return null;
-  return { ...(EVENT_KIND[type] ?? EVENT_KIND[event.category] ?? { kind: "Item", icon: "item" }), lines, body, received: email ? m?.received_at ?? null : null };
+  const info = EVENT_KIND[type] ?? EVENT_KIND[event.category] ?? { kind: "Item", icon: "item" as const };
+  const received = email ? m?.received_at ?? null : null;
+  const details = detailsOf(info.kind, [
+    detail("From", m?.sender), detail("Subject", m?.subject), detail("Reply-to", m?.reply_to), detail("Link", m?.url),
+    detail("Website", event.indicator_host ?? event.local_indicator), detail("Attachments", m?.attachment_names?.join(", ")),
+    detail("Pictures", m?.image_count), detail("Question asked", m?.user_question), detail("App", m?.provider),
+    detail("Received", m?.received_at, true),
+  ], [...fullLines, received ?? ""], email ? null : body);
+  return { ...info, lines, fullLines, body, received, details };
 }
 
 const ITEM_KIND: Record<string, { kind: string; icon: PreviewIcon }> = {
@@ -121,7 +164,9 @@ const ITEM_KIND: Record<string, { kind: string; icon: PreviewIcon }> = {
 export function previewFromEvidence(items: EvidenceItem[]): SourcePreview | null {
   const first = items.find((e) => e.origin === "user_submission" || e.origin === "device_observation");
   if (!first) return null;
-  return { ...(ITEM_KIND[first.kind] ?? { kind: "Item", icon: "item" }), ...compose([first.provenance?.originalFilename ?? first.label]), received: null };
+  const info = ITEM_KIND[first.kind] ?? { kind: "Item", icon: "item" as const };
+  const c = compose([first.provenance?.originalFilename ?? first.label]);
+  return { ...info, ...c, received: null, details: detailsOf(info.kind, [detail("Collected", first.collectedAt, true)], c.fullLines, c.body) };
 }
 
 // ── What Apollo detected: who it came from, what it was, what caught it and why ──

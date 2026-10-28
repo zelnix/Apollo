@@ -4,7 +4,7 @@
 import type { CheckResultModel } from "../checkResult.ts";
 import type { HigginsIssueContext } from "../higginsHandoff.ts";
 import type { HigginsResponse } from "../../investigation/types.ts";
-import { lockEvidence, type Basis, type EvidenceLock } from "./lock.ts";
+import { lockEvidence, type Basis, type EvidenceLock, type RaisedBy } from "./lock.ts";
 import { stateFromAssessment, stateFromOutcome, stateFromPatrol, stateFromTone, type StateId } from "./rules.ts";
 
 const OPEN_STATUSES = new Set(["incomplete", "unavailable", "error", "not_performed", "not_configured"]);
@@ -31,12 +31,16 @@ const BASIS: Record<string, Basis> = { observation: "observed", user_report: "re
  *  not a result about anything checked, so there's nothing for the question buttons to explain. */
 export const isGeneralAnswer = (response: Pick<HigginsResponse, "outcome" | "findings">): boolean => !response.outcome && !(response.findings ?? []).length;
 
-/** A finished TC FlyBy or Magnum DI result. */
+/** A finished TC FlyBy or Magnum DI result. A finding's confidence that related history raised keeps where the extra
+ *  weight came from (this device's earlier cases or ApolloSG's previous reports), so it never reads as the case's own
+ *  evidence; history notes themselves are never findings. */
 export function lockFromInvestigation(response: HigginsResponse, by: string): EvidenceLock {
+  const raisedBy = (id: string): RaisedBy[] => (response.history ?? [])
+    .filter((n) => n.findingIds.includes(id)).map((n) => (n.kind === "related_case" ? "this_device" : "previous_reports"));
   return lockEvidence({
     state: response.outcome ? stateFromOutcome(response.outcome) : stateFromAssessment(response.assessment),
     headline: response.overview,
-    findings: (response.findings ?? []).map((f) => ({ text: f.text, basis: BASIS[f.basis] ?? "recorded", confidence: f.confidence ?? null, by })),
+    findings: (response.findings ?? []).map((f) => ({ text: f.text, basis: BASIS[f.basis] ?? "recorded", confidence: f.confidence ?? null, by, raisedBy: raisedBy(f.id) })),
     reason: response.attentionReason,
     uncertainties: response.uncertainties ?? [],
     actions: (response.actions ?? []).map((a) => a.instruction || a.label).filter(Boolean),

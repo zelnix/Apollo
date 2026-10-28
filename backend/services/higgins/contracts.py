@@ -245,6 +245,22 @@ class CaseBriefing(Wire):
     fidelity: FidelityResult
 
 
+class HistoryNote(Wire):
+    """Related history beside a result (services/higgins/history.py): one of this device's own earlier cases, or a
+    previous encounter in concerning material. Context, never evidence: it never changes the outcome, attention or
+    findings — only, when it agrees with a concern, the confidence of the findings it lists."""
+    kind: Literal["previously_encountered", "related_case"]
+    match: Literal["website", "number", "email", "message", "file", "organisation", "connected"]
+    text: str
+    source: str
+    agrees: bool
+    subject: Optional[str] = None
+    event_id: Optional[str] = None
+    at: Optional[str] = None
+    outcome: Optional[str] = None
+    finding_ids: list[str] = Field(default_factory=list)
+
+
 class HigginsResponse(Wire):
     revision: int
     overview: str
@@ -264,6 +280,7 @@ class HigginsResponse(Wire):
     completion: Completion
     plain_english: Optional[PlainEnglish] = None
     briefing: Optional[CaseBriefing] = None
+    history: list[HistoryNote] = Field(default_factory=list)
 
 
 class Inventory(Wire):

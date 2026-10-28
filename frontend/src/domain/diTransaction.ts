@@ -70,7 +70,7 @@ export interface FlybyTrace {
   simulated: boolean | null;
 }
 
-/** The recorded decision path: Deterministic triage → TC FlyBy → Magnum DI → Higgins. A stage with no
+/** The recorded decision path: Higgins Triage → TC FlyBy → Magnum DI → Higgins. A stage with no
  *  record is null — never inferred. */
 export interface DiTrace {
   triage: TriageInvestigationRecord | null;

@@ -118,6 +118,9 @@ async def lifespan(_: FastAPI):
         await org_directory.seed()
         await org_directory.load()
         await observed_intel.ensure_indexes()
+        # This device's own case history (one-way codes only; services/higgins/history.py).
+        from services.higgins import history as case_history
+        await case_history.ensure_indexes()
     except Exception:  # noqa: BLE001 — the directory must never block startup
         logger.warning("official organisation directory setup failed", exc_info=True)
     # Caller reputation freshness index

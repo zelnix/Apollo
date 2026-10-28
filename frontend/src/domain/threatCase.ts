@@ -182,8 +182,8 @@ export interface TimelineEntry {
 export function buildTimeline(
   event: PatrolEvent,
   sources: CaseSource[] = [],
-  /** What the stored investigation recorded, when there is one. */
-  investigation: { completedAt?: string | null; conclusion?: string | null; findingCount?: number; answeredBy?: string | null } = {},
+  /** What the stored investigation recorded, when there is one: the case result's verdict and its findings. */
+  investigation: { completedAt?: string | null; verdict?: string | null; findingCount?: number; answeredBy?: string | null } = {},
 ): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const record = event.patrol_record;
@@ -293,14 +293,16 @@ export function buildTimeline(
       dotColor: "#2563EB",
       iconId: "gathering",
     });
-    const conclusion = (investigation.conclusion ?? "").replace(/\s+/g, " ").trim();
-    const findingCount = investigation.findingCount ?? (event.why ?? []).length;
+    // The same verdict and findings the Findings Brief and Evidence show (caseBriefing.caseResult / caseFindings).
+    const verdict = (investigation.verdict ?? "").trim();
+    const findingCount = investigation.findingCount ?? 0;
+    const answered = !!(investigation.completedAt || verdict);
     entries.push({
       id: `tl-${idx++}`,
       timestamp: investigation.completedAt ?? null,
-      title: investigation.completedAt || conclusion ? `${investigatorName(investigation.answeredBy)} answered` : "Waiting for the investigation",
-      description: conclusion
-        ? `${conclusion}${findingCount ? ` ${findingCount} finding${findingCount === 1 ? "" : "s"} recorded.` : ""}`
+      title: answered ? `${investigatorName(investigation.answeredBy)} answered` : "Waiting for the investigation",
+      description: answered
+        ? [verdict ? `Verdict: ${verdict}.` : "", `${findingCount} finding${findingCount === 1 ? "" : "s"} recorded.`].filter(Boolean).join(" ")
         : "The investigation hasn't answered yet.",
       dotColor: "#059669",
       iconId: "findings",

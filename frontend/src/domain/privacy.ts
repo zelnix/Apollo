@@ -15,7 +15,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
     "event_id", "result", "what_happened", "what_to_do", "involved_label", "involved", "case_ref", "occurred_at"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   // Shared investigation case (spec §8): opaque IDs, the person's question/message, explicitly submitted items and a device profile — never credentials.
-  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "unavailableReason", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters", "deviceExtractedText", "sanitizationDecision", "redactedRegions", "sanitizationTransformations"]),
+  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "origin", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "unavailableReason", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters", "deviceExtractedText", "sanitizationDecision", "redactedRegions", "sanitizationTransformations"]),
   // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
   voice: new Set(["device_id", "text", "scope_id"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
@@ -84,8 +84,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Tier 2 escalation after a deterministic Possible Threat. Same content the person already submitted
   // to the gate — the message/call details and Apollo's own deterministic findings. Nothing else.
   message_investigation: new Set(["device_id", "text", "sender", "urls", "local_state", "scenario", "signals", "claimed_brand", "client_submission_id", "gate"]),
-  call_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
-  number_risk_investigation: new Set(["gate", "question", "submissions", "initial_findings"]),
+  call_investigation: new Set(["gate", "question", "submissions", "initial_findings", "origin"]),
+  number_risk_investigation: new Set(["gate", "question", "submissions", "initial_findings", "origin"]),
 };
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */

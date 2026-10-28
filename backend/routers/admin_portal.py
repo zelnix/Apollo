@@ -3200,10 +3200,12 @@ async def _observed_section() -> str:
                        for r in s["subjects"])
     campaigns = "".join(f"<tr><td>{esc(r.get('a_name') or kinds.get(r.get('a_kind'), '?'))}</td><td>{esc(r.get('b_name') or kinds.get(r.get('b_kind'), '?'))}</td>"
                         f"<td style='text-align:right;'>{r['devices_30d']}</td><td>{_kb_when(r.get('last_verified_at'))}</td></tr>" for r in s["campaigns"])
-    return f"""<h2 id="observed" data-testid="observed-heading">ApolloSG observed patterns</h2>
-    <p style="font-size:0.9em;color:var(--muted);">What ApolloSG has seen in material it found concerning, kept as one-way codes and counts of separate
-    devices — never content. Seen on {s['threshold']} or more separate devices in the last {s['windowDays']} days it is a weak signal in checks
-    (never a concern on its own). A website's name is shown only once it reaches that threshold; numbers and addresses are never shown.</p>
+    return f"""<h2 id="observed" data-testid="observed-heading">ApolloSG previous reports</h2>
+    <p style="font-size:0.9em;color:var(--muted);">ApolloSG's cross-device intelligence, kept as one-way codes and per-device marks — never content.
+    Devices counted here are independent supporting findings only (findings made while ApolloSG already asserted the same thing are dependent and
+    never counted). With {s['threshold']} or more in the last {s['windowDays']} days and no contradicting finding, a device is told only "previously
+    reported as malicious — High confidence"; never a count, a time or another device's case. A website's name is shown only once it reaches that
+    threshold; numbers and addresses are never shown.</p>
     <div class="stats-grid">{_stat_card(f"{s['tracked']:,}", "Being counted")}{_stat_card(f"{s['atThreshold']:,}", f"Seen on {s['threshold']}+ devices")}
     {_stat_card(f"{len(s['campaigns']):,}", "Seen together (possible campaigns)")}</div>
     <table data-testid="observed-subjects"><tr><th>Kind</th><th>What</th><th>Devices (30 days)</th><th>First seen</th><th>Last seen</th></tr>

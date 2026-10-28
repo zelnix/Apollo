@@ -50,14 +50,33 @@ test("a Triage-only Limited case: stops at Triage, Magnum DI not engaged, never 
   assert.ok(steps.every((s) => !/nothing to worry|\bAI\b/i.test(s.summary)));
 });
 
-test("TC FlyBy settled: Magnum DI was not engaged", () => {
+test("TC FlyBy settled: Higgins Triage is read from TC FlyBy's record, Magnum DI was not engaged", () => {
   const steps = buildDecisionTrace({ trace: flybyTrace(true), records: [], triage: null, hasCase: true });
-  assert.equal(steps[0].status, "not_recorded");
+  assert.equal(steps[0].name, "Higgins Triage");
+  assert.equal(steps[0].status, "ran");
+  assert.equal(steps[0].label, "Ran with TC FlyBy");
+  assert.equal(steps[0].summary, "Higgins Triage prepared what was sent and planned 1 check for TC FlyBy.");
+  assert.ok(steps[0].details.includes("Checks planned: link"));
   assert.equal(steps[1].status, "settled");
   assert.equal(steps[1].label, "Settled · Concerning");
   assert.match(steps[1].summary, /^Settled by TC FlyBy/);
   assert.equal(steps[2].summary, "Magnum DI was not engaged — TC FlyBy settled the case.");
   assert.match(steps[3].summary, /TC FlyBy's result in plain English/);
+});
+
+test("Higgins Triage's message rules met are shown as warning signs from TC FlyBy's record", () => {
+  const trace = flybyTrace(false);
+  trace.flyby!.checks.push({ kind: "triage_rules", status: "resolved", route: "triage_rules" });
+  const [triage] = buildDecisionTrace({ trace, records: [record()], triage: null, hasCase: true });
+  assert.equal(triage.label, "Warning signs found");
+  assert.match(triage.summary, /planned 1 check for TC FlyBy; its message rules flagged warning signs\.$/);
+});
+
+test("a case with no Triage or TC FlyBy record says so for each, under Higgins Triage's name", () => {
+  const steps = buildDecisionTrace({ trace: null, records: [record({ simulated: true, mode: "Simulated" })], triage: null, hasCase: true });
+  assert.equal(steps[0].name, "Higgins Triage");
+  assert.equal(steps[0].summary, "No Higgins Triage record is stored for this case.");
+  assert.equal(steps[1].summary, "No TC FlyBy record is stored for this case.");
 });
 
 test("escalated to Magnum DI: the reason, the investigation and Higgins' Fidelity Check", () => {

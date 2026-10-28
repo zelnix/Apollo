@@ -1,5 +1,5 @@
 // The Deep Investigation (DI) tab: the complete, evidence-backed decision path for one case —
-// Deterministic triage → TC FlyBy → Magnum DI → Higgins — then three sections, closed until tapped:
+// Higgins Triage → TC FlyBy → Magnum DI → Higgins — then three sections, closed until tapped:
 // Apollo's deterministic rules, what was sent to Magnum DI, and Magnum DI's response. Diagnostic view:
 // internal codes are kept here (the Overview and Higgins translate them). The provider and model are
 // never shown. Shown on both the Threat Case screen and the Investigation Report. Evidence is never
@@ -18,10 +18,10 @@ import { SettledReasonLine } from "@/src/components/SettledReasonLine";
 import { TriageSummary } from "@/src/components/TriageSummary";
 import { Card } from "@/src/components/ui";
 import type { PatrolEvent } from "@/src/domain/types";
-import type { SettledReason } from "@/src/investigation/types";
+import type { HistoryNote, SettledReason } from "@/src/investigation/types";
 import { formatBytes, provenanceLabel, type DiTrace, type DiTransaction } from "@/src/domain/diTransaction";
 import { diRequestText, diResponseText, toolList } from "@/src/domain/diTransactionText";
-import { buildDecisionTrace, TRACE_ORDER, type TraceStatus, type TraceStep } from "@/src/domain/diTrace";
+import { buildDecisionTrace, TRACE_ORDER, type PresentedResult, type TraceStatus, type TraceStep } from "@/src/domain/diTrace";
 import { outcomeLabel as triageOutcomeLabel, type TriageInvestigationRecord } from "@/src/domain/triage/contract";
 import { incompletePlain } from "@/src/domain/triage/completeness";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -228,7 +228,7 @@ function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null
   const notApplicable = triage?.rules.filter((r) => !r.applicable) ?? [];
   return (
     <>
-      <Text style={s.subTitle}>Triage rule catalogue</Text>
+      <Text style={s.subTitle}>Higgins Triage rule catalogue</Text>
       {triage ? (
         <View testID="tc-di-rules-triage">
           <DiRow label="Outcome:" value={`${triage.outcome} — ${triageOutcomeLabel(triage)}`} />
@@ -240,7 +240,7 @@ function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null
           <DiRow label="Catalogue:" value={`v${triage.catalogueVersion} · source ${triage.sourceType}`} />
           <DiRow label="Investigation ID:" value={triage.investigationId} />
           <DiRow label="Evaluated:" value={triage.evaluatedAt ? formatDateTime(triage.evaluatedAt) : "not recorded"} />
-          <DiRow label="Magnum DI calls:" value={String(triage.geminiCalls ?? 0)} note="Triage never engages Magnum DI." />
+          <DiRow label="Magnum DI calls:" value={String(triage.geminiCalls ?? 0)} note="Higgins Triage never engages Magnum DI." />
           {applicable.map((rule) => (
             <View key={rule.ruleId} style={s.ruleRow} testID={`tc-di-rule-${rule.ruleId}`}>
               <Text style={s.evidenceFieldValue} selectable>
@@ -270,7 +270,11 @@ function RulesBody({ triage, trace }: { triage: TriageInvestigationRecord | null
           {triage.retries.map((r, i) => <DiRow key={i} label={`${r.check}:`} value={`${r.attempts} attempt(s) · ${r.outcome}`} />)}
         </View>
       ) : (
-        <Text style={s.sourceSub} testID="tc-di-rules-triage-none">No deterministic Triage record is stored for this case.</Text>
+        <Text style={s.sourceSub} testID="tc-di-rules-triage-none">
+          {flyby
+            ? "No separate Higgins Triage record — here Higgins Triage ran at the start of TC FlyBy, and its message rules and planned checks are in TC FlyBy's checks below."
+            : "No Higgins Triage record is stored for this case."}
+        </Text>
       )}
 
       <Text style={s.subTitle}>TC FlyBy checks</Text>
@@ -409,10 +413,14 @@ function ResponseBody({ records, trace, hasCase }: { records: DiTransaction[]; t
 
 // ── The DI tab ──────────────────────────────────────────────────────────────
 
-export function DiReport({ caseId, triage, settledReason, settledEvent, how }: {
+export function DiReport({ caseId, triage, settledReason, settledEvent, how, presented, history }: {
   caseId: string | null;
+  /** The verdict and severity Higgins presented — the case result the Findings Brief shows. */
+  presented?: PresentedResult | null;
   /** "How Apollo checked", in Higgins' plain words: the method behind the Findings Brief, kept here and not there. */
   how?: string[];
+  /** The related history TC FlyBy and Magnum DI had, with where each note came from (context, never evidence). */
+  history?: HistoryNote[];
   triage?: TriageInvestigationRecord | null;
   /** The rule that settled the result, as this phone recorded it ("Settled by TC FlyBy — …"). */
   settledReason?: SettledReason | null;
@@ -446,7 +454,7 @@ export function DiReport({ caseId, triage, settledReason, settledEvent, how }: {
 
   const hasCase = !!caseId;
   const triageRecord = state.trace?.triage ?? triage ?? null;
-  const steps = buildDecisionTrace({ trace: state.trace, records: state.records, triage: triageRecord, hasCase });
+  const steps = buildDecisionTrace({ trace: state.trace, records: state.records, triage: triageRecord, hasCase, presented });
   const rulesCount = triageRecord ? `${triageRecord.rules.filter((r) => r.applicable).length} rules · ${triageRecord.outcome}` : "No Triage record";
   const flybyNote = state.trace?.flyby ? ` · TC FlyBy ${state.trace.flyby.checks.length} check(s)` : "";
   const sentNote = state.records.length ? `${state.records.length} request(s) · ${state.records[0].mode}` : "Magnum DI was not engaged";
@@ -470,6 +478,18 @@ export function DiReport({ caseId, triage, settledReason, settledEvent, how }: {
         <Card testID="tc-di-how">
           <Text style={s.sectionTitle}>How Apollo checked</Text>
           {how.map((line, i) => <Text key={`${i}-${line}`} style={s.sourceSub} testID={`tc-di-how-${i}`}>{line}</Text>)}
+        </Card>
+      ) : null}
+
+      {history?.length ? (
+        <Card testID="tc-di-history">
+          <Text style={s.sectionTitle}>Related history</Text>
+          <Text style={s.sourceSub}>Context TC FlyBy and Magnum DI had, never evidence for this case. It can't change the verdict.</Text>
+          {history.map((n, i) => (
+            <Text key={`${i}-${n.text}`} style={s.sourceSub} testID={`tc-di-history-${i}`}>
+              {`${n.source}: ${n.text}${n.findingIds.length ? ` Raised the confidence of ${n.findingIds.length === 1 ? "one finding" : `${n.findingIds.length} findings`}.` : ""}`}
+            </Text>
+          ))}
         </Card>
       ) : null}
 

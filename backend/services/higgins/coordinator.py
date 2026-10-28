@@ -33,7 +33,7 @@ from typing import Optional
 from core.db import db, now_utc
 from services import device_stats
 from services.higgins import evidence as ev
-from services.higgins import explain, outcomes
+from services.higgins import explain, history, outcomes
 from services.higgins import ai_settings
 from services.higgins import provider
 from services.higgins.ai_request import Message, Part
@@ -123,8 +123,22 @@ async def _plain_english(owner: str, case: dict, response: HigginsResponse, answ
             explain.summary(plain, by=by, revision=response.revision, briefing=briefing))
 
 
+async def _with_history(owner: str, case: dict, response: HigginsResponse) -> tuple[HigginsResponse, dict]:
+    """The validated result with its related history beside it (services/higgins/history.py): history that agrees with
+    a concern raises the confidence of the findings about the same subject; nothing else in the result changes. A failure
+    leaves the result exactly as validated."""
+    try:
+        stored = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "teddy_ciphertext": 1}) or {}
+        record = repo.dec_json(stored["teddy_ciphertext"]) if stored.get("teddy_ciphertext") else {}
+        return history.weigh(response, record.get("history") or []), record
+    except Exception:  # noqa: BLE001 — history is context; it never fails an investigation
+        log.warning("history_weigh_failed case=%s", case["case_id"], exc_info=True)
+        return response, {}
+
+
 async def _commit(owner: str, case: dict, job: dict, payload: dict, response: HigginsResponse, provider_result: ProviderResult,
                   evidence_ids: set[str], source_ids: set[str]) -> Outcome:
+    response, record = await _with_history(owner, case, response)
     response, fidelity = await _plain_english(owner, case, response, provider_result.answered_by)
     commit = TurnCommit(turn_id=job["turn_id"], case_id=case["case_id"], input_revision=job["input_revision"], committed_revision=response.revision,
                         question=payload["message"], answer_to_question_id=payload.get("answerToQuestionId"), response=response, provider=provider_result,
@@ -144,14 +158,19 @@ async def _commit(owner: str, case: dict, job: dict, payload: dict, response: Hi
     if response.outcome:
         # Apollo's case outcome — the latest one, from whichever layer answered.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"routing.outcome": response.outcome}})
-        # Privacy-safe patterns: a concerning case's websites, numbers and addresses are counted as one-way codes per
-        # separate device (services/observed_intel.py). Never content; never a simulated result.
+        # ApolloSG's previous reports: this device's mark (supporting, contradicting, inconclusive or insufficient) on each
+        # of the case's subjects, as one-way codes (services/observed_intel.py). Never content; never a simulated result.
         try:
             from services import observed_intel
-            await observed_intel.record_case(owner, case["case_id"], response.outcome, answered_by=provider_result.answered_by,
+            await observed_intel.record_case(owner, case["case_id"], response.outcome, completion=response.completion,
                                              simulated=bool(provider_result.simulated or getattr(response, "simulated", False)))
         except Exception:  # noqa: BLE001 — counting never fails the investigation
             log.warning("observed_intel_record_failed case=%s", case["case_id"], exc_info=True)
+        # This device's own case history: one-way codes of the case's subjects and its result, read back only on this device.
+        try:
+            await history.record(owner, case, response.outcome, record.get("historyKeys") or [])
+        except Exception:  # noqa: BLE001
+            log.warning("case_history_record_failed case=%s", case["case_id"], exc_info=True)
     if fidelity:
         # The Fidelity Check of the latest result's plain English, for the admin portal: PASS/FAIL and why, no content.
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]},

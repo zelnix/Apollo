@@ -10,47 +10,14 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React, { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { caseOutcome, caseSeverity } from "@/src/domain/caseBriefing";
-import { isGeneralAnswer, luddishReport, luddishText } from "@/src/domain/luddish";
+import type { BriefVerdict } from "@/src/domain/briefVerdict";
+import { luddishReport, luddishText } from "@/src/domain/luddish";
 import { sentences } from "@/src/domain/luddish/patterns";
-import { assessmentLabel, scrubMessage } from "@/src/domain/messageVoice";
+import { scrubMessage } from "@/src/domain/messageVoice";
 import type { Report } from "@/src/domain/reportSections";
-import { riskLevel } from "@/src/domain/threatCase";
-import type { ApolloState } from "@/src/domain/types";
-import type { HigginsResponse } from "@/src/investigation/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-export type BriefTone = "barking" | "ears_up" | "sniffing" | "resting";
-export interface BriefVerdict {
-  /** Apollo's verdict ("Likely a scam"). None for an answer to a general question. */
-  label: string | null;
-  tone: BriefTone;
-  /** How serious Apollo recorded it as ("High risk"), when that says something. */
-  risk?: { label: string; color: string } | null;
-  /** A caution the verdict must carry: a Limited result is never shown as safe. */
-  caution?: string | null;
-  /** The case's status on a threat ("Needs you", "Keeping watch"). */
-  status?: { label: string; bg: string; fg: string } | null;
-}
 export interface BriefStep { id: string; text: string; onPress?: () => void }
-
-/** "High risk" for the state Apollo recorded; nothing when there is no risk to state. */
-export function riskPill(state: ApolloState | null | undefined): { label: string; color: string } | null {
-  if (!state || state === "resting") return null;
-  const risk = riskLevel(state);
-  return risk.label === "Unknown" || risk.label === "None" ? null : { label: `${risk.label} risk`, color: risk.color };
-}
-
-/** An investigation's verdict and how serious it is, read from its Case Briefing (else what the result recorded) —
- *  the one place Ask Higgins and a threat read them from. An answer to a general question has no verdict. */
-export function investigationVerdict(response: HigginsResponse): BriefVerdict {
-  const { label, tone } = caseOutcome(response);
-  return {
-    label: label ?? (isGeneralAnswer(response) ? null : assessmentLabel(response.assessment)),
-    tone: label ? tone : "sniffing",
-    risk: riskPill(caseSeverity(response)),
-  };
-}
 
 const ARTICLES = new Set(["a", "an", "the"]);
 const words = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((w) => w && !ARTICLES.has(w)).join(" ");

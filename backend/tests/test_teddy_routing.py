@@ -164,7 +164,7 @@ def _lookups(monkeypatch, *, verdict="clean", threats=(), age_days=4000):
 
     async def none_related(*_args, **_kwargs):
         return []
-    monkeypatch.setattr(observed_intel, "seen", not_seen)
+    monkeypatch.setattr(observed_intel, "assertion", not_seen)
     monkeypatch.setattr(observed_intel, "related", none_related)
 
 

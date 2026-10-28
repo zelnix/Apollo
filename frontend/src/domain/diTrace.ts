@@ -1,4 +1,4 @@
-// The DI tab's decision path: Deterministic triage → TC FlyBy → Magnum DI → Higgins.
+// The DI tab's decision path: Higgins Triage → TC FlyBy → Magnum DI → Higgins.
 // Pure: every step is built from what was recorded (the Triage record, the case's routing and the Magnum DI
 // transactions). A stage with no record says so — nothing is inferred. Diagnostic view: internal codes are
 // kept here on purpose. The provider and model never appear.
@@ -18,7 +18,7 @@ export interface TraceStep {
   details: string[];
 }
 
-export const TRACE_ORDER = "Deterministic triage → TC FlyBy → Magnum DI → Higgins";
+export const TRACE_ORDER = "Higgins Triage → TC FlyBy → Magnum DI → Higgins";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -27,9 +27,29 @@ export function diSucceeded(record: DiTransaction): boolean {
   return !record.failureCode && (record.status ?? "success") === "success";
 }
 
-function triageStep(triage: TriageInvestigationRecord | null, hasCase: boolean): TraceStep {
-  const name = "Deterministic triage";
-  if (!triage) return { id: "triage", name, status: "not_recorded", label: "No record", summary: "No deterministic Triage record is stored for this case.", details: [] };
+/** On the server, Higgins Triage runs at the start of TC FlyBy (it prepares what was sent and plans TC FlyBy's
+ *  checks), so a case with no Triage Investigation record of its own has its Triage in TC FlyBy's record. */
+function triageInFlyby(flyby: NonNullable<DiTrace["flyby"]>): TraceStep {
+  const rulesMet = flyby.checks.some((c) => c.kind === "triage_rules");
+  const planned = flyby.checks.filter((c) => c.kind !== "triage_rules");
+  const kinds = [...new Set(planned.map((c) => c.kind))];
+  return {
+    id: "triage", name: "Higgins Triage", status: "ran", label: rulesMet ? "Warning signs found" : "Ran with TC FlyBy",
+    summary: `Higgins Triage prepared what was sent and planned ${plural(planned.length, "check")} for TC FlyBy`
+      + (rulesMet ? "; its message rules flagged warning signs." : "."),
+    details: [
+      `Message type: ${flyby.messageType ?? "not recorded"}`,
+      `Checks planned: ${kinds.length ? kinds.join(", ") : "none"}`,
+      `Message rules: ${rulesMet ? "met (warning signs passed to TC FlyBy)" : "none met"}`,
+      "Recorded in TC FlyBy's record",
+    ],
+  };
+}
+
+function triageStep(triage: TriageInvestigationRecord | null, hasCase: boolean, flyby: DiTrace["flyby"] | null): TraceStep {
+  const name = "Higgins Triage";
+  if (!triage && flyby) return triageInFlyby(flyby);
+  if (!triage) return { id: "triage", name, status: "not_recorded", label: "No record", summary: "No Higgins Triage record is stored for this case.", details: [] };
   const gaps = triage.coverageGaps.map((g) => g.code);
   return {
     id: "triage", name, status: "ran", label: triageOutcomeLabel(triage),
@@ -115,12 +135,16 @@ function magnumStep(trace: DiTrace | null, records: DiTransaction[], hasCase: bo
   return { id: "magnum", name, status: "not_recorded", label: "No record", summary: "No Magnum DI record is stored for this case.", details: [] };
 }
 
-function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | null, hasCase: boolean): TraceStep {
+/** What Higgins presented, as the case result records it — the same verdict and severity the Findings Brief shows. */
+export interface PresentedResult { verdict: string | null; risk: string | null }
+
+function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | null, hasCase: boolean, presented: PresentedResult | null): TraceStep {
   const name = "Higgins";
   const who = investigatorName(trace?.answeredBy);
   const higgins = trace?.higgins;
+  const shown = presented?.verdict ? [`Verdict presented: ${presented.verdict}${presented.risk ? ` · ${presented.risk}` : ""}`] : [];
   if (higgins) {
-    const details = [`Fidelity Check: ${higgins.status ?? "not recorded"} · mode ${higgins.mode ?? "not recorded"} · ${higgins.attempts ?? 0} attempt(s)`];
+    const details = [...shown, `Fidelity Check: ${higgins.status ?? "not recorded"} · mode ${higgins.mode ?? "not recorded"} · ${higgins.attempts ?? 0} attempt(s)`];
     if (higgins.status === "PASS") {
       return {
         id: "higgins", name, status: "ran", label: higgins.mode === "repaired" ? "Fidelity Check PASS (repaired)" : "Fidelity Check PASS", details,
@@ -133,7 +157,7 @@ function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | 
       summary: `Higgins' plain English didn't pass the Fidelity Check, so ${who}'s own wording is shown.` };
   }
   if (trace?.answeredBy || trace?.outcome) {
-    return { id: "higgins", name, status: "ran", label: "Presented", details: [],
+    return { id: "higgins", name, status: "ran", label: "Presented", details: shown,
       summary: `Higgins presented ${who}'s result in its own wording. No Fidelity Check is recorded.` };
   }
   if (!hasCase && triage) {
@@ -147,7 +171,7 @@ function higginsStep(trace: DiTrace | null, triage: TriageInvestigationRecord | 
   return { id: "higgins", name, status: "pending", label: "Not yet", summary: "There's no result for Higgins to present yet.", details: [] };
 }
 
-export function buildDecisionTrace(input: { trace: DiTrace | null; records: DiTransaction[]; triage: TriageInvestigationRecord | null; hasCase: boolean }): TraceStep[] {
-  const { trace, records, triage, hasCase } = input;
-  return [triageStep(triage, hasCase), flybyStep(trace, hasCase), magnumStep(trace, records, hasCase), higginsStep(trace, triage, hasCase)];
+export function buildDecisionTrace(input: { trace: DiTrace | null; records: DiTransaction[]; triage: TriageInvestigationRecord | null; hasCase: boolean; presented?: PresentedResult | null }): TraceStep[] {
+  const { trace, records, triage, hasCase, presented = null } = input;
+  return [triageStep(triage, hasCase, trace?.flyby ?? null), flybyStep(trace, hasCase), magnumStep(trace, records, hasCase), higginsStep(trace, triage, hasCase, presented)];
 }

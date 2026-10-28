@@ -162,7 +162,7 @@ export const DICTIONARY: readonly LuddishTerm[] = [
   { id: "official_directory", term: "Official Organisation Directory", category: "apollosg", match: "Official Organisation Directory", exactCase: true,
     meaning: "ApolloSG's Official Organisation Directory lists major Australian organisations' own websites, numbers and addresses, checked against their own pages." },
   { id: "observed_patterns", term: "observed patterns", category: "apollosg", match: "observed (?:patterns|intelligence)|separate devices",
-    meaning: "ApolloSG counts how many separate phones saw the same website, number or address in concerning material. It keeps counts only, never content." },
+    meaning: "ApolloSG remembers, as one-way codes, what earlier checks found about a website, number, address, message or file. It never keeps content, and only says whether something was previously reported and how confident it is." },
 
   // ── ApolloSG ──
   { id: "apollosg", term: "ApolloSG", category: "apollosg", match: "ApolloSG", exactCase: true, familiar: true, meaning: "ApolloSG is this app: your scam protection." },

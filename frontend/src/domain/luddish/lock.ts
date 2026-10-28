@@ -6,6 +6,9 @@ import { fingerprint } from "./patterns.ts";
 import type { StateId } from "./rules.ts";
 
 export type Basis = "observed" | "inferred" | "reported" | "recorded";
+/** Context that raised a finding's confidence (never evidence): this device's own earlier cases, or ApolloSG's
+ *  previous reports from other devices. Kept apart so it never reads as the case's own evidence. */
+export type RaisedBy = "this_device" | "previous_reports";
 
 export interface LockedFinding {
   readonly text: string;
@@ -13,6 +16,8 @@ export interface LockedFinding {
   readonly confidence: "high" | "medium" | "low" | null;
   /** Who established it (TC FlyBy, Magnum DI, Apollo), when recorded. */
   readonly by: string | null;
+  /** What raised its confidence beyond what the case's own evidence gave it, as the result recorded it. */
+  readonly raisedBy: readonly RaisedBy[];
 }
 
 export interface EvidenceLock {
@@ -42,7 +47,7 @@ export interface LockInput {
   state: StateId;
   subject?: string | null;
   headline?: string | null;
-  findings?: { text: string; basis?: Basis | null; confidence?: LockedFinding["confidence"]; by?: string | null }[];
+  findings?: { text: string; basis?: Basis | null; confidence?: LockedFinding["confidence"]; by?: string | null; raisedBy?: RaisedBy[] | null }[];
   explanation?: string | null;
   reason?: string | null;
   uncertainties?: string[];
@@ -70,7 +75,8 @@ export function lockEvidence(input: LockInput): EvidenceLock {
     state: input.state,
     subject: clean(input.subject),
     headline: clean(input.headline),
-    findings: (input.findings ?? []).filter((f) => clean(f.text)).map((f) => ({ text: f.text.trim(), basis: f.basis ?? "recorded", confidence: f.confidence ?? null, by: clean(f.by) })),
+    findings: (input.findings ?? []).filter((f) => clean(f.text)).map((f) => ({ text: f.text.trim(), basis: f.basis ?? "recorded", confidence: f.confidence ?? null, by: clean(f.by),
+      raisedBy: [...new Set(f.raisedBy ?? [])] })),
     explanation: clean(input.explanation),
     reason: clean(input.reason),
     uncertainties: (input.uncertainties ?? []).map((u) => u.trim()).filter(Boolean),

@@ -8,29 +8,11 @@
  * Only shows states/actions supported by real data.
  */
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import Camera from "lucide-react-native/icons/camera";
-import Check from "lucide-react-native/icons/check";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
-import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import Clock from "lucide-react-native/icons/clock";
-import FileText from "lucide-react-native/icons/file-text";
-import Globe from "lucide-react-native/icons/globe";
-import Info from "lucide-react-native/icons/info";
-import Link2 from "lucide-react-native/icons/link-2";
-import Mail from "lucide-react-native/icons/mail";
-import MessageSquare from "lucide-react-native/icons/message-square";
-import Paperclip from "lucide-react-native/icons/paperclip";
-import Phone from "lucide-react-native/icons/phone";
-import Search from "lucide-react-native/icons/search";
-import Shield from "lucide-react-native/icons/shield";
-import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, Linking, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { Pressable, ScrollView, Share, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
 import * as Clipboard from "expo-clipboard";
 import { Body, Button, Card } from "@/src/components/ui";
@@ -48,22 +30,23 @@ import {
   type ThreatCaseStatus,
   type TimelineEntry,
 } from "@/src/domain/threatCase";
-import type { PatrolEvent, PatrolRecord, SourceMetadata, HigginsBriefing } from "@/src/domain/types";
-import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
-import { completenessLabel, evidenceSourceLabel, hasRecordedFindings, privacyNote, unverifiedSentence } from "@/src/domain/caseFacts";
-import { evidenceModel } from "@/src/domain/evidenceModel";
+import type { PatrolEvent } from "@/src/domain/types";
+import type { HigginsResponse } from "@/src/investigation/types";
+import { caseFindings, threatResult } from "@/src/domain/caseBriefing";
+import { hasRecordedFindings } from "@/src/domain/caseFacts";
 import { subjectLabel } from "@/src/domain/threatSubject";
-import { buildCaseSources, sourceHeading, type CaseSource } from "@/src/domain/caseSources";
+import { buildCaseSources, type CaseSource } from "@/src/domain/caseSources";
 import { buildEvidencePack } from "@/src/domain/evidencePack";
 import { DiReport } from "@/src/components/DiReport";
 import { recheckPlan } from "@/src/domain/recheckPlan";
-import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
-import { CaseEvidenceProfile } from "@/src/components/CaseEvidenceProfile";
+import { CaseEvidenceTab } from "@/src/components/report/CaseEvidenceTab";
 import { LIMITED_CAUTION, LIMITED_TODO, plainTriageText } from "@/src/domain/triage/contract";
-import { investigatorName, looksLikeInternalCode } from "@/src/domain/messageVoice";
-import { FindingsBrief, investigationVerdict, riskPill, type BriefStep, type BriefVerdict } from "@/src/components/report/FindingsBrief";
+import { looksLikeInternalCode } from "@/src/domain/messageVoice";
+import { FindingsBrief, type BriefStep } from "@/src/components/report/FindingsBrief";
+import { investigationVerdict, resultVerdict, riskPill, type BriefVerdict } from "@/src/domain/briefVerdict";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { SourceSummaryCard } from "@/src/components/report/SourceSummaryCard";
+import { RelatedCases } from "@/src/components/report/RelatedCases";
 import { ServerCopyNote } from "@/src/components/ServerCopyNote";
 import { buildReport, plainReport, shownPlainEnglish, stepText, type Report } from "@/src/domain/reportSections";
 import { luddishReport } from "@/src/domain/luddish";
@@ -71,10 +54,8 @@ import { involvedIn, shortText, type FamilySummary } from "@/src/domain/familySu
 import { ShareWithFamily } from "@/src/components/ShareWithFamily";
 import { FamilyNotes } from "@/src/components/FamilyNotes";
 import { comparableChecks, compareDeviceChecks, type DeviceCheckProgress } from "@/src/domain/deviceCheckProgress";
-import { redactInvestigationSecrets, purposeLimitedUrl } from "@/src/domain/privacy";
 import { getInvestigation, type DeviceInvestigation } from "@/src/investigation/deviceStore";
 import { getOriginalSource, type OriginalSource } from "@/src/store/originalSource";
-import { listImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -86,23 +67,6 @@ const TAB_LABELS: { id: TabKey; label: string }[] = [
   { id: "history", label: "History" },
   { id: "di", label: "DI" },
 ];
-
-// ── Source icon/label by type ────────────────────────────────────────────────
-
-function sourceIcon(cat: string, meta?: SourceMetadata | null) {
-  const t = meta?.type ?? cat;
-  switch (t) {
-    case "email": return { Icon: Mail, bg: "#DBEAFE", fg: "#1E3A5F", label: "Email" };
-    case "text": case "message": return { Icon: MessageSquare, bg: "#D1FAE5", fg: "#065F46", label: "Message" };
-    case "screenshot": return { Icon: Camera, bg: "#EDE9FE", fg: "#5B21B6", label: "Screenshot" };
-    case "link": case "website": return { Icon: Globe, bg: "#DBEAFE", fg: "#1E3A5F", label: "Website" };
-    case "call": return { Icon: Phone, bg: "#FEF3C7", fg: "#92400E", label: "Call" };
-    case "file": return { Icon: FileText, bg: "#DBEAFE", fg: "#1E3A5F", label: "File" };
-    case "app": return { Icon: Smartphone, bg: "#D1FAE5", fg: "#065F46", label: "App" };
-    case "device": case "network": return { Icon: Shield, bg: "#FEE2E2", fg: "#991B1B", label: "Device" };
-    default: return { Icon: Shield, bg: "#F3F4F6", fg: "#374151", label: "Security" };
-  }
-}
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
@@ -124,8 +88,6 @@ const useStyles = makeStyles((c) => ({
   reportLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.5, color: c.onSurfaceSecondary, textTransform: "uppercase", marginTop: spacing.xs },
   reportBody: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, marginTop: spacing.sm },
-  // Fact rows
-  factIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(107,114,128,0.08)" },
   // Evidence
   evidenceSection: { borderWidth: 1, borderColor: c.border, borderRadius: radius.lg, overflow: "hidden" },
   evidenceHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, backgroundColor: c.surfaceSecondary },
@@ -157,43 +119,10 @@ const useStyles = makeStyles((c) => ({
   timelineDesc: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, lineHeight: 19 },
   timelineInProgress: { fontFamily: fonts.textMedium, fontSize: 12, color: c.muted, fontStyle: "italic" },
   // Related items
-  relatedRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: c.divider },
-  relatedTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface, flex: 1 },
   relatedSub: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
   // Provenance note
   provenanceNote: { fontFamily: fonts.text, fontSize: 11, color: c.muted, fontStyle: "italic", marginTop: spacing.xs },
 }));
-
-// ── Collapsible evidence section ─────────────────────────────────────────────
-
-function CollapseSection({ icon, iconBg, iconFg, title, subtitle, badge, badgeColor, children, testID }: {
-  icon: React.ComponentType<{ size: number; color: string }>; iconBg: string; iconFg: string;
-  title: string; subtitle?: string; badge?: string; badgeColor?: string;
-  children: React.ReactNode; testID?: string;
-}) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const [open, setOpen] = useState(false);
-  const IconEl = icon;
-  return (
-    <View testID={testID}>
-      <Pressable style={s.collapseHeader} onPress={() => setOpen(!open)} accessibilityRole="button">
-        <View style={[s.collapseIcon, { backgroundColor: iconBg }]}><IconEl size={18} color={iconFg} /></View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <Text style={s.collapseTitle}>{title}</Text>
-            {badge ? <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: badgeColor ?? colors.barkingTint }}>
-              <Text style={{ fontFamily: fonts.textSemibold, fontSize: 11, color: badgeColor ? "#FFFFFF" : colors.barkingText }}>{badge}</Text>
-            </View> : null}
-          </View>
-          {subtitle ? <Text style={s.collapseSub}>{subtitle}</Text> : null}
-        </View>
-        {open ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />}
-      </Pressable>
-      {open ? <View style={s.collapseBody}>{children}</View> : null}
-    </View>
-  );
-}
 
 // ── Findings Brief Tab ───────────────────────────────────────────────────────
 
@@ -231,8 +160,19 @@ function recordedTone(state: PatrolEvent["state"]): BriefVerdict["tone"] {
   return state === "resting" ? "resting" : "sniffing";
 }
 
-function BriefContent({ event, status, shownWhatToDo, original, investigation, report }: {
-  event: PatrolEvent; status: ThreatCaseStatus; shownWhatToDo: string; original: OriginalSource | null; investigation: DeviceInvestigation | null; report: Report;
+/** The verdict a threat shows: its case result (caseBriefing.threatResult — the investigation's, or the copy its event
+ *  carries), read exactly as Ask Higgins reads it, with the case's status beside it. A threat no investigation answered
+ *  shows its status and recorded state; Limited is never safe. Home, History, Evidence and DI read the same result. */
+function threatVerdict(event: PatrolEvent, response: HigginsResponse | null, status: ThreatCaseStatus): BriefVerdict {
+  const statusPill = { label: STATUS_LABELS[status], bg: STATUS_COLORS[status].bg, fg: STATUS_COLORS[status].text };
+  const result = threatResult(event, response);
+  if (result) return { ...(response ? investigationVerdict(response) : resultVerdict(result)), status: statusPill };
+  const limited = event.triage_investigation?.outcome === "LIMITED_UNABLE_TO_DETERMINE";
+  return { label: STATUS_LABELS[status], tone: limited ? "sniffing" : recordedTone(event.state), risk: limited ? null : riskPill(event.state), caution: limited ? LIMITED_CAUTION : null };
+}
+
+function BriefContent({ event, status, verdict, shownWhatToDo, original, investigation, report }: {
+  event: PatrolEvent; status: ThreatCaseStatus; verdict: BriefVerdict; shownWhatToDo: string; original: OriginalSource | null; investigation: DeviceInvestigation | null; report: Report;
 }) {
   const s = useStyles();
   const response = investigation?.response ?? null;
@@ -249,12 +189,6 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
   const steps: BriefStep[] = !note && response?.actions.length
     ? response.actions.map((a, i) => ({ id: a.id, text: stepText(response, i) || a.label }))
     : [{ id: "todo", text: note ?? (noAction ? (limited ? LIMITED_TODO : "Nothing to do.") : plainTriageText(action)) }];
-  // The verdict: an investigation's, read from its Case Briefing exactly as Ask Higgins reads it, with the case's
-  // status beside it. A threat Apollo recorded on its own shows its status and recorded state; Limited is never safe.
-  const statusPill = { label: STATUS_LABELS[status], bg: STATUS_COLORS[status].bg, fg: STATUS_COLORS[status].text };
-  const verdict: BriefVerdict = response
-    ? { ...investigationVerdict(response), status: statusPill }
-    : { label: STATUS_LABELS[status], tone: limited ? "sniffing" : recordedTone(event.state), risk: limited ? null : riskPill(event.state), caution: limited ? LIMITED_CAUTION : null };
   // "Send to family": the result, what happened, what to do and the website or number — nothing else.
   const summary: FamilySummary = {
     eventId: event.event_id, state: event.state, result: verdict.label ?? STATUS_LABELS[status],
@@ -281,8 +215,8 @@ function BriefContent({ event, status, shownWhatToDo, original, investigation, r
       {/* Repeat checks of this device: one case, every check listed. */}
       {event.case_key ? <CaseCheckRuns event={event} original={original} /> : null}
 
-      {/* Cases Apollo connected to this one. */}
-      <RelatedCases event={event} />
+      {/* Cases on this device Apollo connected to this one, and what was previously encountered. */}
+      <RelatedCases event={event} response={response} ids="tc" />
     </View>
   );
 }
@@ -439,33 +373,6 @@ function ReopenCase({ event }: { event: PatrolEvent }) {
   );
 }
 
-function RelatedCases({ event }: { event: PatrolEvent }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const router = useRouter();
-  const { events } = useApollo();
-  const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
-  return (
-    <Card style={{ gap: spacing.sm }} testID="tc-related-cases">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-        <View style={s.factIcon}><Link2 size={14} color="#6B7280" /></View>
-        <Text style={s.relatedTitle}>Related cases ({related.length})</Text>
-      </View>
-      {related.length ? related.map((r) => (
-        <Pressable key={r.event_id} onPress={() => router.push(`/patrol/${r.event_id}`)} style={s.relatedRow} accessibilityRole="button" testID={`tc-related-case-${r.event_id}`}>
-          <Text style={s.relatedTitle} numberOfLines={1}>
-            {r.headline && !looksLikeInternalCode(r.headline) ? r.headline : categoryLabel(r.category) + " event"}
-          </Text>
-          <Text style={s.relatedSub}>{formatDateTime(r.occurred_at)}</Text>
-          <ChevronRight size={16} color={colors.muted} />
-        </Pressable>
-      )) : (
-        <Text style={s.relatedSub}>No related cases. Related emails, messages or links will appear here.</Text>
-      )}
-    </Card>
-  );
-}
-
 // ── Sources used ─────────────────────────────────────────────────────────────
 
 /** Loads the saved Magnum DI investigation for this case, when there is one. */
@@ -522,490 +429,38 @@ function EvidencePackButton({ event, facts, sources }: { event: PatrolEvent; fac
   );
 }
 
-/** Every source Apollo consulted and exactly what it returned. Recorded data only. Apollo's own Triage checks are how
- *  it checked, so they're on the DI tab, not here. */
-function SourcesSection({ sources: all }: { sources: CaseSource[] }) {
-  const s = useStyles();
-  const sources = all.filter((src) => src.id !== "triage");
-  if (sources.length === 0) return null;
-  return (
-    <View style={s.evidenceSection} testID="tc-evidence-sources">
-      <View style={s.evidenceHeader}>
-        <View style={[s.evidenceHeaderIcon, { backgroundColor: "#D1FAE5" }]}>
-          <Globe size={18} color="#065F46" />
-        </View>
-        <View style={s.evidenceHeaderText}>
-          <Text style={s.evidenceHeaderTitle}>Sources ApolloSG used</Text>
-          <Text style={s.evidenceHeaderSub}>What each source returned</Text>
-        </View>
-      </View>
-      <View style={s.evidenceBody}>
-        {sources.map((src, i) => (
-          <View key={src.id} style={s.evidenceOriginalContent} testID={`tc-evidence-source-${i}`}>
-            <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>
-              {sourceHeading(src)}
-            </Text>
-            <Text style={s.evidenceOriginalText} selectable>{src.returned}</Text>
-            {/* A check that didn't finish: what that left unverified, after what was checked, what happened and why. */}
-            {src.unverified ? (
-              <Text style={s.evidenceOriginalText} selectable testID={`tc-evidence-source-${i}-unverified`}>
-                {unverifiedSentence({ unverified: src.unverified })}
-              </Text>
-            ) : null}
-            {src.url ? (
-              <Pressable onPress={() => void Linking.openURL(src.url!)} accessibilityRole="link">
-                <Text style={s.evidenceLink}>{src.url}</Text>
-              </Pressable>
-            ) : null}
-            {src.at ? <Text style={s.provenanceNote}>{formatDateTime(src.at)}</Text> : null}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-// ── Evidence Tab ─────────────────────────────────────────────────────────────
-
-/** For investigation cases: show the privacy-protected evidence Magnum actually received.
- *  For deterministic cases (DNS block, etc.): show the local observation details.
- *  Never reconstruct evidence from Magnum prose, Higgins explanation, or metadata. */
-function EvidenceContent({ event }: { event: PatrolEvent }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const meta = event.source_metadata;
-  const record = event.patrol_record;
-  const si = sourceIcon(event.category, meta);
-  const briefing = record?.higginsBriefing;
-  const isInvestigation = !!event.investigation_case_id;
-  const subjectName = subjectLabel(event);
-  const recorded = hasRecordedFindings(event);
-  // The recorded facts of the finding — what Apollo found, never why it matters. Sources: the
-  // finding statement itself, Apollo's recorded signals, and evidence the deterministic Triage
-  // investigation actually captured. Deduplicated, no interpretation added. Checks that didn't finish
-  // aren't findings: they're listed under Sources, each with its recorded reason.
-  const observedFacts = Array.from(new Set([
+/** The Evidence tab: Evidence summary → Evidence from this device → Investigation findings → Evidence trail →
+ *  Copy / Share (components/report/CaseEvidenceTab, built from domain/caseEvidence). Source evidence is kept apart
+ *  from what TC FlyBy and Magnum DI found; nothing is reconstructed from Magnum prose or Higgins' explanation. */
+function EvidenceContent({ event, investigation }: { event: PatrolEvent; investigation: DeviceInvestigation | null }) {
+  // The recorded facts of the finding — what Apollo found, never why it matters: the finding statement itself,
+  // Apollo's recorded signals, and evidence the deterministic Triage investigation actually captured. Checks that
+  // didn't finish aren't findings: they're listed on the item, each with its recorded reason.
+  const observedFacts = useMemo(() => Array.from(new Set([
     (event.headline || "").trim(),
     ...(event.why ?? []).map((w) => w.trim()),
     ...(event.triage_investigation?.rules ?? [])
       .filter((r) => r.result === "met")
       .flatMap((r) => r.evidence)
       .map((e) => plainTriageText(e.trim())),
-  ].filter((line) => !!line && !looksLikeInternalCode(line) && !/^(Couldn't check|Not completed):/.test(line))));
-
-  // Load device investigation data for investigation-sourced cases
-  const [inv, setInv] = useState<DeviceInvestigation | null>(null);
-  const [origSrc, setOrigSrc] = useState<OriginalSource | null>(null);
-  const [imgEvidence, setImgEvidence] = useState<ImageEvidenceRecord | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  // The artefact card reports whether the exact original is on this phone; when it is, the older
-  // field-by-field views below are redundant and would show the same material twice.
-  const [hasLocalOriginal, setHasLocalOriginal] = useState(false);
-  const packSummary = {
-    overview: briefing?.meaning || event.what_happened || null,
-    findings: [...new Set([...(event.why ?? []), ...(briefing?.evidence_points ?? [])])],
-    steps: [...new Set([event.what_to_do, briefing?.action].filter((v): v is string => !!v && v !== "No action required."))],
-    uncertainties: [],
-  };
-
-  useEffect(() => {
-    if (!isInvestigation) { setLoaded(true); return; }
-    (async () => {
-      const caseId = event.investigation_case_id!;
-      const [investigation, original, imgRec] = await Promise.all([
-        getInvestigation(caseId).catch(() => null),
-        getOriginalSource(event.event_id).catch(() => null),
-        listImageEvidence(event.event_id).then((recs) => recs[0] ?? null).catch(() => null),
-      ]);
-      setInv(investigation);
-      setOrigSrc(original);
-      setImgEvidence(imgRec);
-      setLoaded(true);
-    })();
-  }, [isInvestigation, event.investigation_case_id, event.event_id]);
-
-  if (!loaded) return null;
-
-  // ── Investigation evidence: show what Magnum actually received ──
-  if (isInvestigation) {
-    return (
-      <View style={s.content}>
-        <CaseEvidenceProfile event={event} />
-        {/* The artefact itself, as it arrived, with the copy that was sent alongside it. */}
-        <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
-          packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />
-
-        {/* Primary: Evidence investigated by Magnum DI */}
-        {!hasLocalOriginal ? (
-        <View style={s.evidenceSection} testID="tc-evidence-investigated">
-          <View style={s.evidenceHeader}>
-            <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
-              <si.Icon size={18} color={si.fg} />
-            </View>
-            <View style={s.evidenceHeaderText}>
-              <Text style={s.evidenceHeaderTitle}>{`Evidence investigated by ${investigatorName(inv?.answeredBy)}`}</Text>
-            </View>
-          </View>
-
-          <View style={s.evidenceBody}>
-            {/* Show the actual protected evidence submitted to Magnum */}
-            <InvestigatedEvidenceView
-              inv={inv}
-              originalSource={origSrc}
-              imageEvidence={imgEvidence}
-              event={event}
-              meta={meta}
-            />
-
-            {/* Privacy protection notice */}
-            {inv?.evidenceItems?.some((e) => e.transformations?.length > 0) ? (
-              <Text style={s.provenanceNote} testID="tc-evidence-privacy-note">
-                Personal-data protection was applied before this evidence left your device. Credentials were removed; investigative indicators (scammer identifiers, URLs, sender details) were retained.
-              </Text>
-            ) : (
-              <Text style={s.provenanceNote}>
-                This evidence was submitted for investigation after ApolloSG&apos;s privacy protection step.
-              </Text>
-            )}
-          </View>
-        </View>
-        ) : null}
-
-        <View style={s.evidenceSection}>
-          <View style={s.evidenceBody}><CaseFactsRows event={event} /></View>
-        </View>
-        <SourcesSection sources={buildCaseSources({ event, investigation: inv })} />
-        <EvidencePackButton event={event} facts={observedFacts} sources={buildCaseSources({ event, investigation: inv })} />
-
-        {/* Analysis signals (from Magnum DI findings — NOT presented as evidence) */}
-        {briefing?.evidence_points && briefing.evidence_points.length > 0 ? (
-          <View style={s.evidenceSection}>
-            <CollapseSection
-              icon={Search} iconBg="#DBEAFE" iconFg="#1E3A5F"
-              title={`${si.label} analysis`}
-              subtitle={`Findings from ${investigatorName(inv?.answeredBy)}'s investigation`}
-              testID="tc-evidence-analysis"
-            >
-              {briefing.evidence_points.map((point, i) => (
-                <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <Text style={{ color: "#6B7280", marginTop: 1 }}>•</Text>
-                  <Text style={s.evidenceOriginalText}>{point}</Text>
-                </View>
-              ))}
-            </CollapseSection>
-          </View>
-        ) : null}
-
-        {/* Apollo detection evidence */}
-        {event.enforcement_evidence ? (
-          <View style={s.evidenceSection}>
-            <CollapseSection
-              icon={Shield} iconBg="#FEE2E2" iconFg="#991B1B"
-              title="Apollo detection evidence"
-              subtitle="When and how this was detected"
-              testID="tc-evidence-detection"
-            >
-              <EvidenceField label="Mechanism:" value={event.enforcement_evidence.mechanism.replace(/_/g, " ")} />
-              <EvidenceField label="Action:" value={event.enforcement_evidence.enforced_action.replace(/_/g, " ")} />
-              <EvidenceField label="Result:" value={event.enforcement_evidence.result.replace(/_/g, " ")} />
-              <EvidenceField label="Confidence:" value={event.enforcement_evidence.confidence} />
-              {event.enforcement_evidence.destination_domain ? (
-                <EvidenceField label="Destination:" value={event.enforcement_evidence.destination_domain} />
-              ) : null}
-              <EvidenceField label="Observed:" value={formatDateTime(event.enforcement_evidence.observed_at)} />
-            </CollapseSection>
-          </View>
-        ) : null}
-
-        {/* Supporting references */}
-        {event.supporting_references && event.supporting_references.length > 0 ? (
-          <View style={s.evidenceSection}>
-            <CollapseSection
-              icon={Globe} iconBg="#D1FAE5" iconFg="#065F46"
-              title={`Supporting references (${event.supporting_references.length})`}
-              testID="tc-evidence-refs"
-            >
-              {event.supporting_references.map((ref, i) => (
-                <Pressable key={i} onPress={() => void Linking.openURL(ref.url)} style={{ gap: 2 }}>
-                  <Text style={[s.evidenceFieldLabel, { width: "auto" }]}>{ref.label}</Text>
-                  <Text style={s.evidenceLink}>{ref.url}</Text>
-                </Pressable>
-              ))}
-            </CollapseSection>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
-
-  // ── Non-investigation (deterministic): show local observation as before ──
+  ].filter((line) => !!line && !looksLikeInternalCode(line) && !/^(Couldn't check|Not completed):/.test(line)))), [event]);
+  const sources = buildCaseSources({ event, investigation });
   return (
-    <View style={s.content}>
-      <CaseEvidenceProfile event={event} />
-      {/* The artefact itself, when the exact original is on this phone. */}
-      <EvidenceArtefactCard caseKeys={[event.event_id, event.investigation_case_id, event.patrol_record?.investigationCaseId]} onAvailable={setHasLocalOriginal}
-        packTitle={event.headline} packDate={event.occurred_at} packSummary={packSummary} phones={event.evidence_phones} testID="tc-evidence-artefact" />
-
-      <View style={s.evidenceSection} testID="tc-evidence-original">
-        <View style={s.evidenceHeader}>
-          <View style={[s.evidenceHeaderIcon, { backgroundColor: si.bg }]}>
-            <si.Icon size={18} color={si.fg} />
-          </View>
-          <View style={s.evidenceHeaderText}>
-            <Text style={s.evidenceHeaderTitle}>{si.label} observation</Text>
-            {subjectName ? (
-              <Text style={s.evidenceHeaderSub} numberOfLines={1} testID="tc-evidence-subject">{subjectName}</Text>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={s.evidenceBody}>
-          {/* What Apollo recorded about the source. Skipped when the exact original is shown above. */}
-          {!hasLocalOriginal ? <>
-          {meta?.sender ? <EvidenceField label="From:" value={meta.sender} /> : null}
-          {meta?.subject ? <EvidenceField label="Subject:" value={meta.subject} /> : null}
-          {meta?.received_at ? <EvidenceField label="Date:" value={formatDateTime(meta.received_at)} /> : null}
-          {meta?.preview ? (
-            <View style={s.evidenceOriginalContent}>
-              <Text style={s.evidenceOriginalText} selectable testID="tc-evidence-preview">{meta.preview}</Text>
-            </View>
-          ) : null}
-          {(meta?.url ?? event.local_indicator) ? (
-            <View style={s.evidenceOriginalContent}>
-              <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>Observed URL</Text>
-              <Text style={s.evidenceOriginalText} selectable testID="tc-evidence-url">
-                {meta?.url ?? event.local_indicator}
-              </Text>
-            </View>
-          ) : null}
-          {event.indicator_host && !meta?.url && !event.local_indicator ? (
-            <EvidenceField label="Domain:" value={event.indicator_host} />
-          ) : null}
-          </> : null}
-
-          {/* What Apollo found — the recorded facts of the finding only. No analysis and no
-              explanation: those belong on Overview. For cases with no sender/URL (device, app,
-              network) these facts ARE the evidence. */}
-          {recorded && observedFacts.length > 0 ? (
-            <View style={s.evidenceOriginalContent} testID="tc-evidence-found">
-              <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>What Apollo found</Text>
-              {observedFacts.map((line, i) => (
-                <View key={i} style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <Text style={{ color: "#6B7280", marginTop: 1 }}>•</Text>
-                  <Text style={[s.evidenceOriginalText, { flex: 1 }]} selectable testID={`tc-evidence-found-${i}`}>{line}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <EvidenceField label="Observed:" value={formatDateTime(event.occurred_at)} />
-          <CaseFactsRows event={event} />
-        </View>
-      </View>
-
-      <SourcesSection sources={buildCaseSources({ event, investigation: inv })} />
-      <EvidencePackButton event={event} facts={observedFacts} sources={buildCaseSources({ event, investigation: inv })} />
-
-      {/* Links found */}
-      {meta?.link_count !== null && meta?.link_count !== undefined ? (
-        <View style={s.evidenceSection}>
-          <CollapseSection
-            icon={Link2} iconBg="#DBEAFE" iconFg="#1E3A5F"
-            title={`Links found (${meta.link_count})`}
-            subtitle={meta.link_count > 0 ? "Links extracted from content" : "No links found"}
-            testID="tc-evidence-links"
-          >
-            {event.local_indicator ? <Text style={s.evidenceOriginalText} selectable>{event.local_indicator}</Text> : null}
-            {event.indicator_host ? <EvidenceField label="Domain:" value={event.indicator_host} /> : null}
-          </CollapseSection>
-        </View>
-      ) : null}
-
-      {/* Apollo detection evidence */}
-      {event.enforcement_evidence ? (
-        <View style={s.evidenceSection}>
-          <CollapseSection
-            icon={Shield} iconBg="#FEE2E2" iconFg="#991B1B"
-            title="Apollo detection evidence"
-            subtitle="When and how this was detected"
-            testID="tc-evidence-detection"
-          >
-            <EvidenceField label="Mechanism:" value={event.enforcement_evidence.mechanism.replace(/_/g, " ")} />
-            <EvidenceField label="Action:" value={event.enforcement_evidence.enforced_action.replace(/_/g, " ")} />
-            <EvidenceField label="Result:" value={event.enforcement_evidence.result.replace(/_/g, " ")} />
-            <EvidenceField label="Confidence:" value={event.enforcement_evidence.confidence} />
-            {event.enforcement_evidence.destination_domain ? (
-              <EvidenceField label="Destination:" value={event.enforcement_evidence.destination_domain} />
-            ) : null}
-            <EvidenceField label="Observed:" value={formatDateTime(event.enforcement_evidence.observed_at)} />
-          </CollapseSection>
-        </View>
-      ) : null}
-
-      {/* Supporting references */}
-      {event.supporting_references && event.supporting_references.length > 0 ? (
-        <View style={s.evidenceSection}>
-          <CollapseSection
-            icon={Globe} iconBg="#D1FAE5" iconFg="#065F46"
-            title={`Supporting references (${event.supporting_references.length})`}
-            testID="tc-evidence-refs"
-          >
-            {event.supporting_references.map((ref, i) => (
-              <Pressable key={i} onPress={() => void Linking.openURL(ref.url)} style={{ gap: 2 }}>
-                <Text style={[s.evidenceFieldLabel, { width: "auto" }]}>{ref.label}</Text>
-                <Text style={s.evidenceLink}>{ref.url}</Text>
-              </Pressable>
-            ))}
-          </CollapseSection>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-/** Shows the actual privacy-protected evidence that Magnum DI received.
- *  For text/URL: re-applies the same deterministic privacy function to the local original.
- *  For images: shows the sentUri (the copy actually uploaded after credential blackout).
- *  Never reconstructs evidence from Magnum prose, Higgins explanation, or metadata. */
-function InvestigatedEvidenceView({ inv, originalSource, imageEvidence, event, meta }: {
-  inv: DeviceInvestigation | null;
-  originalSource: OriginalSource | null;
-  imageEvidence: ImageEvidenceRecord | null;
-  event: PatrolEvent;
-  meta: SourceMetadata | null | undefined;
-}) {
-  const s = useStyles();
-
-  // If no device investigation stored, show unavailable notice
-  if (!inv) {
-    return (
-      <View style={s.evidenceOriginalContent}>
-        <Text style={s.provenanceNote} testID="tc-evidence-unavailable">
-          Investigation evidence unavailable — this case's record doesn't include the investigation data.
-        </Text>
-      </View>
-    );
-  }
-
-  // Build the protected evidence from the local original + deterministic privacy function
-  const protectedItems: { kind: string; label: string; content: string | null }[] = [];
-
-  // Text evidence: apply the same credential redaction Magnum received
-  if (originalSource?.text) {
-    protectedItems.push({
-      kind: "text",
-      label: originalSource.kind === "email" ? "Email content" : originalSource.kind === "text" ? "Message content" : "Text content",
-      content: redactInvestigationSecrets(originalSource.text),
-    });
-  }
-
-  // URL evidence: apply the same URL sanitization Magnum received
-  if (originalSource?.url) {
-    protectedItems.push({
-      kind: "url",
-      label: "URL submitted",
-      content: purposeLimitedUrl(originalSource.url),
-    });
-  }
-
-  // Structured fields from original (sender, subject, etc.) — these are investigative evidence, not personal data
-  if (originalSource?.fields?.length) {
-    for (const f of originalSource.fields) {
-      protectedItems.push({
-        kind: "field",
-        label: f.label,
-        content: redactInvestigationSecrets(f.value),
-      });
-    }
-  }
-
-  // Image evidence: show the actual copy Apollo sent (sentUri from imageEvidence store)
-  if (imageEvidence?.sentUri) {
-    protectedItems.push({
-      kind: "image",
-      label: "Screenshot/image sent for investigation",
-      content: imageEvidence.sentUri,
-    });
-  }
-
-  // Fall back to evidence items metadata if no local original was saved
-  if (protectedItems.length === 0 && inv.evidenceItems?.length > 0) {
-    for (const item of inv.evidenceItems.filter((e) => e.origin === "user_submission")) {
-      const transforms = item.transformations?.map((t) => t.description).join("; ") || null;
-      protectedItems.push({
-        kind: item.kind,
-        label: item.label || `${item.kind} evidence`,
-        content: transforms ? `[${item.kind}] — Privacy transformations applied: ${transforms}` : `[${item.kind} evidence submitted]`,
-      });
-    }
-  }
-
-  // If truly nothing is available
-  if (protectedItems.length === 0) {
-    return (
-      <View style={s.evidenceOriginalContent}>
-        <Text style={s.provenanceNote} testID="tc-evidence-unavailable">
-          Investigation evidence unavailable
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ gap: spacing.sm }}>
-      {protectedItems.map((item, i) => (
-        <View key={i} style={s.evidenceOriginalContent}>
-          <Text style={[s.evidenceFieldLabel, { width: "auto", marginBottom: 4 }]}>{item.label}</Text>
-          {item.kind === "image" && item.content ? (
-            <Image source={{ uri: item.content }} style={{ width: "100%", height: 200, borderRadius: radius.sm }} resizeMode="contain" />
-          ) : item.content ? (
-            <Text style={s.evidenceOriginalText} selectable testID={`tc-evidence-item-${i}`}>
-              {item.content}
-            </Text>
-          ) : null}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-/** What supplied the evidence, how complete the record is, and any privacy step — facts kept apart. Who started the
- *  case is the card at the top ("What you submitted" / "What Apollo detected"), so something the person submitted
- *  has no separate source row; what checked it is the DI tab's decision path. */
-function CaseFactsRows({ event }: { event: PatrolEvent }) {
-  const s = useStyles();
-  const privacy = privacyNote(event);
-  const submitted = evidenceModel(event).source === "device_submission";
-  return (
-    <View testID="tc-evidence-case-facts">
-      {!submitted ? <EvidenceField label="Evidence:" value={evidenceSourceLabel(event)} /> : null}
-      <EvidenceField label="Record:" value={completenessLabel(event)} />
-      {privacy ? <Text style={s.provenanceNote} testID="tc-evidence-privacy">{privacy}</Text> : null}
-    </View>
-  );
-}
-
-function EvidenceField({ label, value }: { label: string; value: string }) {
-  const s = useStyles();
-  return (
-    <View style={s.evidenceFieldRow}>
-      <Text style={s.evidenceFieldLabel}>{label}</Text>
-      <Text style={s.evidenceFieldValue} selectable>{value}</Text>
-    </View>
+    <CaseEvidenceTab event={event} investigation={investigation} facts={observedFacts}
+      footer={<EvidencePackButton event={event} facts={observedFacts} sources={sources} />} />
   );
 }
 
 // ── History Tab ──────────────────────────────────────────────────────────────
 
-function HistoryContent({ event }: { event: PatrolEvent }) {
+function HistoryContent({ event, investigation: inv, verdict }: { event: PatrolEvent; investigation: DeviceInvestigation | null; verdict: string | null }) {
   const s = useStyles();
-  const { colors } = useTheme();
-  const router = useRouter();
   const { events } = useApollo();
-  const inv = useCaseInvestigation(event);
+  // The investigation's entry says the same verdict and finding count as the Findings Brief and Evidence.
   const timeline = buildTimeline(event, buildCaseSources({ event, investigation: inv }), {
     completedAt: inv?.committedAt ?? null,
-    conclusion: inv?.response?.overview ?? null,
-    findingCount: inv?.response?.findings?.length,
+    verdict,
+    findingCount: inv?.response ? caseFindings(inv.response).length : undefined,
     answeredBy: inv?.answeredBy ?? null,
   });
   const related = event.scent_id ? events.filter((e) => e.scent_id === event.scent_id && e.event_id !== event.event_id) : [];
@@ -1091,6 +546,9 @@ export default function ThreatCaseScreen() {
 
   const caseId = threatCaseId(event);
   const status = threatCaseStatus(event);
+  // One result for every tab: the Findings Brief, Evidence, History and DI all read this.
+  const result = threatResult(event, investigation?.response ?? null);
+  const verdict = threatVerdict(event, investigation?.response ?? null, status);
 
   const hasInvestigation = !!(event.investigation_case_id ?? event.patrol_record?.investigationCaseId);
   const hasSubstantiveData = !!(event.what_happened && event.what_happened.length > 30);
@@ -1132,15 +590,16 @@ export default function ThreatCaseScreen() {
       {/* Tab content */}
       <ScrollView contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xl }} testID="tc-scroll">
         {activeTab === "overview" && report ? (
-          <BriefContent event={event} status={status} shownWhatToDo={shownWhatToDo} original={original} investigation={investigation} report={report} />
+          <BriefContent event={event} status={status} verdict={verdict} shownWhatToDo={shownWhatToDo} original={original} investigation={investigation} report={report} />
         ) : activeTab === "evidence" ? (
-          <EvidenceContent event={event} />
+          <EvidenceContent event={event} investigation={investigation} />
         ) : activeTab === "history" ? (
-          <HistoryContent event={event} />
+          <HistoryContent event={event} investigation={investigation} verdict={result ? verdict.label : null} />
         ) : activeTab === "di" ? (
           <DiReport caseId={event.investigation_case_id ?? event.patrol_record?.investigationCaseId ?? null} triage={event.triage_investigation ?? null}
             settledReason={investigation?.response ? investigation.settledReason : null} settledEvent={investigation?.settledReason ? null : event}
-            how={report ? luddishReport(report).how : []} />
+            how={report ? luddishReport(report).how : []} presented={result ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null}
+            history={investigation?.response?.history} />
         ) : null}
       </ScrollView>
     </View>

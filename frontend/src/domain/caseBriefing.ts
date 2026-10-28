@@ -26,15 +26,91 @@ export interface EventBriefing {
   /** "briefing": the server's checked Case Briefing. "response": an older result that has none — only the
    *  authoritative fields are projected (attention, its reason, what isn't certain), nothing is reworded. */
   from: "briefing" | "response";
+  /** The case result (caseResult), carried so Home and Threats show exactly what the Findings Brief shows. */
+  verdict?: string | null;
+  verdictCode?: string | null;
+  severity?: ApolloState | null;
 }
 
 const clean = (text: string | null | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
+
+// ── The case result: one authoritative verdict, severity and finding list ────────────────────────────────────────
+
+/** The result every surface shows for an investigated case — Home, Threats, the Findings Brief, Evidence, History and
+ *  DI — read once, here, from the Evidence Lock → Higgins Luddish result: its Case Briefing when it passed its Fidelity
+ *  Check, else what the committed result recorded. No surface works any of these out for itself. */
+export interface CaseResult {
+  /** "Likely scam": the briefing's status, else the recorded outcome's label. Null for an answer to a general question. */
+  verdict: string | null;
+  verdictCode: string | null;
+  tone: ReturnType<typeof outcomeTone>;
+  /** How serious: the attention the result recorded (urgent/action needed → barking, review → growling, none → resting). */
+  severity: ApolloState;
+  /** The result found nothing of concern, so the case closes on its own. */
+  noConcern: boolean;
+  from: "briefing" | "response";
+}
+
+const passed = (response: HigginsResponse): CaseBriefing | null => (response.briefing?.fidelity?.status === "PASS" ? response.briefing : null);
+
+export function caseResult(response: HigginsResponse): CaseResult {
+  const b = passed(response);
+  const code = b ? b.statusCode : response.outcome ?? null;
+  const attention = b?.attention ?? response.attention;
+  return {
+    verdict: (b?.status || null) ?? outcomeLabel(code),
+    verdictCode: code,
+    tone: outcomeTone(code),
+    severity: attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting",
+    noConcern: code ? code === "no_scam_indicators" : response.assessment === "no_concern_found_within_scope",
+    from: b ? "briefing" : "response",
+  };
+}
+
+/** A threat's result: its committed investigation's when this phone holds it, else the copy its event carries.
+ *  Null when no investigation has answered. */
+export function threatResult(event: Pick<PatrolEvent, "case_briefing">, response: HigginsResponse | null | undefined): CaseResult | null {
+  if (response) return caseResult(response);
+  const b = event.case_briefing;
+  if (!b || !b.severity) return null;
+  const code = b.verdictCode ?? null;
+  return { verdict: b.verdict ?? null, verdictCode: code, tone: outcomeTone(code), severity: b.severity, noConcern: code === "no_scam_indicators", from: b.from };
+}
+
+/** One finding exactly as the result recorded it — the briefing's (with its stance) when it passed, else the
+ *  committed result's. Evidence lists these, History counts them, the Findings Brief shows their plain words. */
+export interface CaseFinding {
+  id: string;
+  text: string;
+  basis: string;
+  confidence: string | null;
+  evidenceIds: string[];
+  sourceIds: string[];
+  /** Which way it points against the verdict; null when the result recorded no stance. */
+  stance: "supporting" | "contrary" | "context" | null;
+}
+
+export function caseFindings(response: HigginsResponse): CaseFinding[] {
+  const b = passed(response);
+  if (b) {
+    const byId = new Map((response.findings ?? []).map((f) => [f.id, f]));
+    return b.findings.filter((f) => clean(f.finding)).map((f) => ({
+      id: f.id, text: clean(f.finding), basis: byId.get(f.id)?.basis ?? f.basis, confidence: f.confidence || null,
+      evidenceIds: f.evidenceIds ?? [], sourceIds: f.sourceIds ?? [], stance: f.stance,
+    }));
+  }
+  return (response.findings ?? []).filter((f) => clean(f.text)).map((f) => ({
+    id: f.id, text: clean(f.text), basis: f.basis, confidence: f.confidence ?? null, evidenceIds: f.evidenceIds ?? [], sourceIds: f.sourceIds ?? [], stance: null,
+  }));
+}
 
 /** The briefing projection for a committed result. An older result without a briefing projects its authoritative
  *  fields only: a decision is owed only at an action-level attention with its recorded reason, or Magnum DI's
  *  pending question with its reason. */
 export function eventBriefing(response: HigginsResponse): EventBriefing | null {
   const b: CaseBriefing | null | undefined = response.briefing;
+  const result = caseResult(response);
+  const carried = { verdict: result.verdict, verdictCode: result.verdictCode, severity: result.severity };
   if (b && b.fidelity?.status === "PASS") {
     const reason = clean(b.actionReason);
     return {
@@ -42,7 +118,7 @@ export function eventBriefing(response: HigginsResponse): EventBriefing | null {
       findings: b.findings.map((f) => clean(f.finding)).filter(Boolean), unresolved: b.unresolved.map(clean).filter(Boolean),
       status: b.status, statusReason: clean(b.statusReason),
       userActionRequired: b.userActionRequired && !!reason, actionReason: reason || null,
-      recommendedAction: b.recommendedAction, from: "briefing",
+      recommendedAction: b.recommendedAction, from: "briefing", ...carried,
     };
   }
   const actionLevel = response.attention === "action_needed" || response.attention === "urgent";
@@ -53,7 +129,7 @@ export function eventBriefing(response: HigginsResponse): EventBriefing | null {
     headline: "", summary: "", subject: null, findings: [], unresolved: response.uncertainties.map(clean).filter(Boolean),
     status: "", statusReason: clean(response.attentionReason),
     userActionRequired: !!reason, actionReason: reason || null,
-    recommendedAction: recommended ? { label: recommended.label, instruction: recommended.instruction } : null, from: "response",
+    recommendedAction: recommended ? { label: recommended.label, instruction: recommended.instruction } : null, from: "response", ...carried,
   };
 }
 
@@ -85,23 +161,6 @@ export function briefed(event: PatrolEvent | undefined): EventBriefing | null {
 /** The briefing's first finding (its subject always named): the short form Home and notifications show. */
 export function firstFinding(b: EventBriefing): string {
   return (sentences(b.summary)[0] ?? b.summary).trim();
-}
-
-/** Apollo's case outcome as the person sees it ("Likely scam") and its tone: the briefing's status, or for a result
- *  recorded before briefings, the label of its recorded outcome. Never worked out from anything else. */
-export function caseOutcome(response: HigginsResponse | null | undefined): { label: string | null; tone: ReturnType<typeof outcomeTone> } {
-  const b = response?.briefing?.fidelity?.status === "PASS" ? response.briefing : null;
-  const code = b ? b.statusCode : response?.outcome;
-  return { label: (b?.status || null) ?? outcomeLabel(code), tone: outcomeTone(code) };
-}
-
-/** How serious the result is: the attention its Case Briefing recorded, or for a result recorded before briefings,
- *  the attention the result recorded. Never worked out from anything else. */
-export function caseSeverity(response: HigginsResponse | null | undefined): ApolloState | null {
-  if (!response) return null;
-  const b = response.briefing?.fidelity?.status === "PASS" ? response.briefing : null;
-  const attention = b?.attention ?? response.attention;
-  return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting";
 }
 
 /** Title and summary for a case card (Home and Threats): the briefing's when there is one, else what Apollo recorded. */

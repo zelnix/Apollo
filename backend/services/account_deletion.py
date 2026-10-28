@@ -51,6 +51,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
             ("investigation_upload_chunks", ["owner_id"]),
             ("investigation_idempotency", ["owner_id"]),
             ("investigation_device_requests", ["owner_id"]),
+            ("device_case_history", ["owner_id"]),
         ],
     },
     "patrol_activity": {

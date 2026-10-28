@@ -308,8 +308,8 @@ def test_a_pattern_counts_separate_devices_and_never_the_one_checking(monkeypatc
             assert doc["devices_30d"] == 2 and doc["hostname"] == "" and "device-alpha" not in str(doc)
             await observed_intel._add("observed", key, "device-charlie", now, {"subject_kind": "domain", "readable": name})
             assert (await scratch.threat_indicators.find_one({"key": key}))["hostname"] == name    # shown once 3 devices saw it
-            assert (await observed_intel.seen("domain", "scam-example-parcel.top"))["devices"] == 3
-            assert await observed_intel.seen("domain", "scam-example-parcel.top", exclude="device-charlie") is None
+            assert (await observed_intel.assertion("domain", "scam-example-parcel.top"))["level"] == "known_malicious"
+            assert (await observed_intel.assertion("domain", "scam-example-parcel.top", exclude="device-charlie"))["level"] == "suspected_malicious"
         finally:
             await client.drop_database(scratch.name)
             client.close()
@@ -346,6 +346,9 @@ def test_the_rule_book_states_the_directory_and_pattern_rules():
     from services import observed_intel, org_directory
     book = (Path(__file__).resolve().parents[1] / "content" / "rulebook.md").read_text()
     assert f"within the last {org_directory.CONFIRM_WINDOW.days} days" in book
-    assert f"once {observed_intel.THRESHOLD} separate devices have seen it" in book
-    assert f"on {observed_intel.THRESHOLD} or more separate devices (other than the one checking) in the last {observed_intel.WINDOW.days} days" in book
+    assert f"once {observed_intel.THRESHOLD} independent devices support it" in book
+    assert f"{observed_intel.THRESHOLD} or more independent supporting findings from other devices, unanimous: \"{observed_intel.SAID['known_malicious']}\"" in book
+    assert f"{observed_intel.MEDIUM}, unanimous: \"{observed_intel.SAID['suspected_malicious']}\"" in book
+    assert f"at least {observed_intel.THRESHOLD} together: \"{observed_intel.SAID['mixed']}\"" in book
+    assert f"marks older than {observed_intel.WINDOW.days} days are dropped" in book
     assert "Every check result" in book and "Google's test phones" in book

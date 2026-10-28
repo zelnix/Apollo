@@ -3,7 +3,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bodyFrom, headlineFrom, investigationPatch, investigationState } from "../src/domain/investigationCaseUpdate.ts";
+import { caseResult } from "../src/domain/caseBriefing.ts";
+import { bodyFrom, headlineFrom, investigationPatch } from "../src/domain/investigationCaseUpdate.ts";
 import { STATUS_LABELS, isSimulated, settledBy, threatCaseStatus } from "../src/domain/threatCase.ts";
 
 const placeholder = {
@@ -81,11 +82,19 @@ test("nothing is written when there is no stored response or nothing changed", (
   assert.equal(investigationPatch(patched, investigation()), null);
 });
 
-test("severity never exceeds what the investigation concluded", () => {
-  assert.equal(investigationState("concern_found", "urgent"), "barking");
-  assert.equal(investigationState("concern_found", "review"), "growling");
-  assert.equal(investigationState("uncertain", "review"), "ears_up");
-  assert.equal(investigationState("no_concern_found_within_scope", "none"), "resting");
+test("the case's severity is the case result's, the same one the Findings Brief shows", () => {
+  const cases: [string, string, string][] = [
+    ["concern_found", "urgent", "barking"],
+    ["concern_found", "review", "growling"],
+    ["uncertain", "review", "growling"],
+    ["no_concern_found_within_scope", "none", "resting"],
+  ];
+  for (const [assessment, attention, expected] of cases) {
+    const inv = investigation({ assessment, attention });
+    const patched = investigationPatch(placeholder, inv)!;
+    assert.equal(patched.state, expected);
+    assert.equal(patched.state, caseResult((inv as { response: never }).response).severity);
+  }
 });
 
 test("the headline is the first real sentence, never a category name", () => {

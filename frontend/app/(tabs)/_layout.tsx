@@ -17,7 +17,7 @@ const isIOS26 = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) 
 const NAV_ICON_SIZE = 25;
 const TAB_COUNT = 5;
 
-// Tab order: Home → Threats → Alerts → Higgins → Learn
+// Tab order: Home → Threats → Ask Higgins → Alerts → Learn
 // Hidden tabs (accessible via routes but not in the tab bar): check-it, guard, protection, settings
 export default function TabsLayout() {
   const { colors } = useTheme();
@@ -40,8 +40,8 @@ export default function TabsLayout() {
       <NativeTabs>
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label>{threatsBadge ? <NativeTabs.Trigger.Badge>{threatsBadge}</NativeTabs.Trigger.Badge> : null}</NativeTabs.Trigger>
-        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>{alertsTitle}</NativeTabs.Trigger.Label>{alertsBadge ? <NativeTabs.Trigger.Badge>{alertsBadge}</NativeTabs.Trigger.Badge> : null}</NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Ask Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>{alertsTitle}</NativeTabs.Trigger.Label>{alertsBadge ? <NativeTabs.Trigger.Badge>{alertsBadge}</NativeTabs.Trigger.Badge> : null}</NativeTabs.Trigger>
         <NativeTabs.Trigger name="learn"><NativeTabs.Trigger.Icon sf="book.fill" /><NativeTabs.Trigger.Label>{learnTitle}</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
@@ -87,8 +87,8 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
       <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats"), tabBarBadge: threatsBadge, tabBarBadgeStyle: badgeStyle, tabBarAccessibilityLabel: needYou ? `Threats, ${needYou} need you` : "Threats" }} />
-      <Tabs.Screen name="scams" options={{ title: alertsTitle, tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel(alertsTitle), tabBarBadge: alertsBadge, tabBarBadgeStyle: badgeStyle, tabBarAccessibilityLabel: newAlerts ? `${alertsTitle}, ${newAlerts} new serious alerts` : alertsTitle }} />
       <Tabs.Screen name="ask" options={{ title: "Ask Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Ask Higgins") }} />
+      <Tabs.Screen name="scams" options={{ title: alertsTitle, tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel(alertsTitle), tabBarBadge: alertsBadge, tabBarBadgeStyle: badgeStyle, tabBarAccessibilityLabel: newAlerts ? `${alertsTitle}, ${newAlerts} new serious alerts` : alertsTitle }} />
       <Tabs.Screen name="learn" options={{ title: learnTitle, tabBarButtonTestID: "tab-learn", tabBarIcon: tabIcon(BookOpen), tabBarLabel: tabLabel(learnTitle) }} />
       {/* Hidden tabs — still routable for deep links and backwards compatibility */}
       <Tabs.Screen name="check-it" options={{ href: null }} />

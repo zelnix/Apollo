@@ -95,7 +95,8 @@ const blocked = (e: PatrolEvent) => !!(e.verified_block && e.enforcement_evidenc
 const investigating = (e: PatrolEvent) => !!(e.investigation_case_id ?? e.patrol_record?.investigationCaseId) && !e.investigation_completed_at;
 
 function finding(e: PatrolEvent): string {
-  const status = clean(e.case_briefing?.status).toLowerCase();
+  // The case result's verdict — the one the Findings Brief shows (caseBriefing.caseResult).
+  const status = clean(e.case_briefing?.verdict ?? e.case_briefing?.status).toLowerCase();
   if (status) return STATUS_FINDING[status] ?? `detected as ${status}`;
   if (blocked(e)) return "blocked by Apollo";
   if (e.triage_investigation?.outcome === "LIMITED_UNABLE_TO_DETERMINE") return "not confirmed safe";
@@ -110,7 +111,7 @@ function action(e: PatrolEvent): string {
   if (recommended) return noStop(recommended);
   if (blocked(e)) return "No action needed";
   if (investigating(e)) return "Be careful until Higgins has finished";
-  if (clean(e.case_briefing?.status).toLowerCase() === "no scam indicators found") return "No action needed";
+  if (clean(e.case_briefing?.verdict ?? e.case_briefing?.status).toLowerCase() === "no scam indicators found") return "No action needed";
   const step = sentences(clean(e.what_to_do))[0];
   return step && step.length <= 40 && !looksLikeInternalCode(step) ? noStop(step) : "Be careful";
 }

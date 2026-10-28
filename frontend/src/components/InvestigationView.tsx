@@ -29,7 +29,9 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { EvidenceArtefactCard } from "@/src/components/evidence/EvidenceArtefactCard";
 import { DiReport } from "@/src/components/DiReport";
-import { FindingsBrief, investigationVerdict, type BriefStep } from "@/src/components/report/FindingsBrief";
+import { FindingsBrief, type BriefStep } from "@/src/components/report/FindingsBrief";
+import { RelatedCases } from "@/src/components/report/RelatedCases";
+import { investigationVerdict } from "@/src/domain/briefVerdict";
 import { SourceList } from "@/src/components/report/SourceList";
 import { OutcomeExplainerLink } from "@/src/components/OutcomeExplainerLink";
 import { SourceSummaryCard } from "@/src/components/report/SourceSummaryCard";
@@ -704,6 +706,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <View style={{ gap: spacing.md }} testID="inv-tab-overview-content">
           {report && verdict ? <View testID="inv-overview"><FindingsBrief report={report} verdict={verdict} steps={steps} ids="inv" /></View> : null}
           {response?.outcome ? <OutcomeExplainerLink outcome={response.outcome} testID="inv-outcome-explainer" /> : null}
+          {response?.history?.length ? <RelatedCases event={event} response={response} ids="inv" /> : null}
         <Card style={[s.card, { gap: spacing.md }]} testID="inv-overview-more">
           {!response && failure ? (
             <Text style={s.briefingText} testID="inv-overview">{higginsExplanation(failure as unknown as Record<string, unknown>, false)}</Text>
@@ -912,7 +915,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {/* ── DI tab: the Magnum DI processing record (evidence is untouched by this view) ── */}
     {activeTab === "di" && showTabs ? (
       <View testID="inv-tab-di-content">
-        <DiReport caseId={caseData?.id ?? null} triage={event?.triage_investigation ?? null} settledReason={response ? caseData?.settledReason : null} how={report ? luddishReport(report).how : []} />
+        <DiReport caseId={caseData?.id ?? null} triage={event?.triage_investigation ?? null} settledReason={response ? caseData?.settledReason : null} how={report ? luddishReport(report).how : []}
+          presented={verdict ? { verdict: verdict.label, risk: verdict.risk?.label ?? null } : null} history={response?.history} />
       </View>
     ) : null}
 

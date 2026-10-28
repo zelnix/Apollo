@@ -1,5 +1,36 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Device isolation + cross-device intelligence through ApolloSG's previous reports only + no artificial consensus (2026-10-28)
+**Owner's choices:** plan order as proposed (KB rules → regression → Evidence Lock source check); a previous report is shown as
+a statement plus its confidence; mixed reports say "mixed previous reports"; on screen never "KB"/"knowledge base" and never
+"cases" for other devices — only "previous reports". No testing agent (owner's rule) — pytest + node tests + tsc + preview screenshots.
+- `services/observed_intel.py`: per-device marks per subject (website, number, address, message digest, file hash):
+  supporting / contradicting / inconclusive / insufficient (`stance_of(outcome, completion)`), independent or dependent.
+  `assertion(kind, value, exclude=device)` is the ONLY thing a device can receive: `known_malicious`/high (≥3 independent
+  supporting, unanimous), `suspected_malicious`/medium (≥2, unanimous), `mixed`/None (supporting + contradicting, ≥3 together),
+  else nothing. Never a count, time, device or anyone's verdict. `seen()` removed; `related()` no longer returns a count.
+  One contradicting mark removes unanimity at once; inconclusive/insufficient never break it. A device's own marks never count
+  for itself. Wording: `SAID` ("has been previously reported as malicious — High confidence", "…as concerning — Medium
+  confidence", "has mixed previous reports"), `LABEL` "ApolloSG's previous reports".
+- No artificial consensus: TC FlyBy record `kbAsserted` = one-way codes of subjects the previous reports asserted to the case
+  (cross-source rows in Magnum DI's brief + history notes; `correlation.asserted`, `history.asserted`). `record_case` marks those
+  dependent (never counted); a dependent repeat never replaces the same device's earlier independent mark. Old
+  `_rests_only_on_intelligence` removed (intelligence never reaches the checks). Coordinator passes `completion`.
+  Preview results are simulated, so the preview never records marks (by design).
+- `history._previously_reported` (was `_previously_encountered`): approved words only, no `at` time; mixed → agrees false (adds no
+  weight) and no relation lookups. The one-way code (`key`) stays server-side (never in HistoryNote).
+- Evidence Lock keeps provenance: `LockedFinding.raisedBy` ("this_device" | "previous_reports", in the fingerprint);
+  technical detail adds "Confidence raised by this device's earlier cases and ApolloSG's previous reports (not evidence)".
+  Threat Evidence tab labels each raise by source (`RAISED_LABEL`); `raisedBy()` returns `{from, text}`.
+- UI: Findings Brief "Previously encountered" → "Previous reports"; Luddish glossary/knowledge entry reworded (no device counts).
+  Fixed a blank web preview: `RelatedCases.tsx` imported a non-existent lucide `history` icon → `clock`.
+- Rule book "ApolloSG previous reports" section rewritten + stamped; admin portal text updated (counts stay admin-only).
+- Tests: new `backend/tests/test_previous_reports.py` (19); test_related_history / test_free_kb_phases_3_5 / test_teddy_routing
+  updated; backend full suite 1503 passed. Frontend 1157/1157 (chainInvariants + provenance test, caseHistory); tsc clean.
+  E2E probe (`/tmp/probe_reports.py`): seeded High → "previously reported as malicious — High confidence", link finding
+  medium→high, verdict unchanged; mixed → note shown, nothing raised; recording the case adds a dependent mark only.
+
+
 ## Related cases moved to the Findings Brief (2026-10-28)
 - Threat Case: History's "Related items (N)" card removed; the Findings Brief now always ends with "Related cases (N)"
   (`RelatedCases`, testID `tc-related-cases`, rows `tc-related-case-<id>`), listing every case sharing the scent, with

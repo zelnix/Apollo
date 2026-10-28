@@ -11,10 +11,10 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 test("P2.1 exposes the exact root tab order in native and standard navigation", () => {
   const source = read("app/(tabs)/_layout.tsx");
-  // Tab order: Home → Threats → Alerts → Higgins → Settings (Check is not a visible tab)
+  // Tab order: Home → Threats → Ask Higgins → Alerts → Settings (Check is not a visible tab)
   for (const sequence of [
-    ['name="home"', 'name="patrol"', 'name="scams"', 'name="ask"', 'name="settings"'],
-    ['name="home" options', 'name="patrol" options', 'name="scams" options', 'name="ask" options', 'name="settings" options'],
+    ['name="home"', 'name="patrol"', 'name="ask"', 'name="scams"', 'name="settings"'],
+    ['name="home" options', 'name="patrol" options', 'name="ask" options', 'name="scams" options', 'name="settings" options'],
   ]) {
     let cursor = -1;
     for (const token of sequence) { const next = source.indexOf(token, cursor + 1); assert.ok(next > cursor, `${token} must appear in order`); cursor = next; }

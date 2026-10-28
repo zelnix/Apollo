@@ -5,11 +5,10 @@ Sources: the free threat lists (services/threat_feeds.py), Google Safe Browsing 
 ApolloSG's official-domain register and Official Organisation Directory (services/org_directory.py), the official scam
 advisories ApolloSG holds, and ApolloSG's own observations (services/observed_intel.py).
 
-It adds two kinds of fact to TC FlyBy's checks, both weak signals (never a concern on their own, alone or together):
-- observed: seen in concerning material on THRESHOLD or more separate devices (other than this one) in the last 30 days;
-- campaign: seen together, on THRESHOLD or more separate devices, with a website a free threat list lists now.
-Everything else is the record Magnum DI receives (teddy/report.magnum_brief) so it doesn't re-derive what is known, and
-knows how current each piece is. Nothing here is ever a finding by itself.
+It adds nothing to TC FlyBy's checks. The record goes to Magnum DI (teddy/report.magnum_brief) so it doesn't re-derive
+what is known, and knows how current each piece is. ApolloSG's previous reports are said only in their approved words
+(observed_intel.SAID) — never which device, how many or when (the owner's rule: devices are mutually exclusive). Nothing
+here is ever a finding, and history never changes a case's outcome (services/higgins/history.py).
 """
 from __future__ import annotations
 
@@ -18,12 +17,15 @@ from datetime import datetime, timezone
 
 from services import observed_intel, org_directory, threat_feeds
 from services.higgins.brand_domains import registrable
-from services.higgins.teddy.official import fact, official_domain, pregathered, source_ref
+from services.higgins.teddy.official import official_domain, pregathered
 from services.higgins.teddy.triage import Plan
 
 log = logging.getLogger("apollo.correlation")
-_OBSERVED = "ApolloSG observed intelligence"
-_OBSERVED_BASIS = "Counts of separate devices only; no content is kept"
+
+
+def asserted(record: list[dict]) -> list[str]:
+    """The one-way codes of the subjects ApolloSG's previous reports asserted something about in this record."""
+    return [r["key"] for e in record for r in e["sources"] if r.get("key")]
 
 
 def _iso(value) -> str | None:
@@ -64,24 +66,23 @@ def _safe_browsing(pg: dict, host: str) -> list[dict]:
     return []
 
 
-async def _observed(check, kind: str, value: str, owner: str, label: str) -> list[dict]:
+async def _observed(kind: str, value: str, owner: str) -> list[dict]:
+    """ApolloSG's previous reports, in the approved words only (observed_intel.SAID): never which device, how many or
+    when. A row that agrees carries the subject's one-way code (`key`, never printed) so the case is recorded as
+    dependent on it."""
     rows = []
-    seen = await observed_intel.seen(kind, value, exclude=owner)
-    if seen:
-        rows.append(_row(_OBSERVED, f"seen in concerning material on {seen['devices']} separate devices",
-                         firstSeen=_iso(seen["first_seen_at"]), lastConfirmed=_iso(seen["last_seen_at"])))
-        check.facts.append(fact(f"ApolloSG has seen {label} in material it found concerning on {seen['devices']} separate devices in the "
-                                f"last {observed_intel.WINDOW.days} days.", "weak", topic="observed",
-                                source=source_ref(_OBSERVED, authority="independent", basis=_OBSERVED_BASIS)))
+    said = await observed_intel.assertion(kind, value, exclude=owner)
+    if said:
+        rows.append(_row(observed_intel.LABEL, observed_intel.SAID[said["level"]],
+                         key=said["key"] if said["level"] in observed_intel.SUPPORTING else None))
+    if said and said["level"] == "mixed":
+        return rows
     for other in await observed_intel.related(kind, value):
         listed = await threat_feeds.matches(other["name"]) if other["kind"] == "domain" and other.get("name") else []
         lists = list(dict.fromkeys(threat_feeds.LISTINGS[threat_feeds.BY_ID[m["source"]].listing][0] for m in listed))
-        rows.append(_row(_OBSERVED, f"seen together with {other.get('name') or 'another ' + other['kind']} on {other['devices']} separate devices"
-                         + (f" ({' and '.join(lists)} lists it)" if lists else "")))
-        if lists:
-            check.facts.append(fact(f"ApolloSG has seen {label} together with {other['name']}, which {' and '.join(lists)} lists, in concerning "
-                                    f"material on {other['devices']} separate devices.", "weak", topic="campaign",
-                                    source=source_ref(_OBSERVED, authority="independent", basis=_OBSERVED_BASIS)))
+        rows.append(_row(observed_intel.LABEL, f"has been previously reported together with {other.get('name') or 'another ' + other['kind']}"
+                         + (f" ({' and '.join(lists)} lists it)" if lists else "") + " — High confidence",
+                         key=(observed_intel.subject(kind, value) or (None,))[0]))
     return rows
 
 
@@ -97,7 +98,7 @@ async def _link(check, plan_: Plan, pg: dict, owner: str) -> dict:
     for match in pg["advisories"] + plan_.advisories:
         if (match.get("matched_on") or "") in (f"domain: {host}", f"domain: {domain}"):
             rows.append(_row("Official scam advisory", "names it", detail=match.get("title")))
-    rows += await _observed(check, "domain", host, owner, domain)
+    rows += await _observed("domain", host, owner)
     return {"kind": "website", "subject": host, "sources": rows}
 
 
@@ -112,12 +113,12 @@ async def _contact(check, kind: str, owner: str) -> dict:
     rows.append(_row("ASIC's investor alert list", "listed", detail=asic[0].get("original_evidence"), url=asic[0].get("detail_url"),
                      lastConfirmed=_iso(asic[0].get("last_verified_at"))) if asic else
                 _row("ASIC's investor alert list", "not listed" if "asic-investor-alerts" in await threat_feeds.fresh_feeds() else "not checked (list out of date)"))
-    rows += await _observed(check, kind, value, owner, "this number" if kind == "phone" else "this address")
+    rows += await _observed(kind, value, owner)
     return {"kind": kind, "subject": value, "sources": rows}
 
 
 async def cross_source(plan_: Plan, pre_gathered: dict | None, owner: str) -> list[dict]:
-    """The cross-source record for the case's websites, numbers and addresses. Adds the observed/campaign weak signals."""
+    """The cross-source record for the case's websites, numbers and addresses. Context only: it adds nothing to the checks."""
     pg = pregathered(pre_gathered)
     out = []
     for check in plan_.checks:

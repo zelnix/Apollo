@@ -407,7 +407,7 @@ def knowledge_answer(check: Check, route: str, presented: str, source_ids: list[
 
 
 def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict, pattern: dict | None = None,
-                 floor: dict | None = None, cross_source: list[dict] | None = None) -> str:
+                 floor: dict | None = None, cross_source: list[dict] | None = None, history: list[dict] | None = None) -> str:
     """Only what Magnum DI needs: the issues the deciding test sent it, the facts that bear on them, and what is still missing.
     Resolved, uneventful checks are named in one line so Magnum DI doesn't redo them; Apollo KB text isn't sent
     (a scam-pattern check is named in one line, as general knowledge)."""
@@ -447,6 +447,12 @@ def magnum_brief(checks: list[Check], issues: list[dict], unread_sections: dict,
         from services.correlation import brief_lines
         parts.append("Cross-source record (each source's own answer, its reference and how current it is; context, not new findings):\n"
                      + brief_lines(cross_source))
+    if history:
+        from services.higgins.history import brief_lines as history_lines
+        parts.append("Related history (context only, never evidence for this case: don't cite it as a finding, a warning sign or "
+                     "corroboration, and don't let it change the outcome. Related cases are this device's own; ApolloSG uses history "
+                     "that agrees only to raise the confidence of findings this case's own evidence already supports):\n"
+                     + history_lines(history))
     if unread_sections:
         parts.append("Other specialist results, verbatim: " + json.dumps(unread_sections, ensure_ascii=False, default=str))
     return "\n\n".join(parts)

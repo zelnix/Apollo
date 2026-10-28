@@ -18,6 +18,16 @@ test("C22 unknown fields fail with a stable internal code and generic message", 
   });
 });
 
+test("opening a case the person submitted (Ask Higgins) passes egress with its origin", () => {
+  // transferManager.runCreate sends exactly these keys; a missing allow-list entry stopped every typed question.
+  const body = { gate: "network", question: "Is that wifi a problem?", submissions: [], initialFindingRefs: [], initialFindings: [], deviceProfile: null, origin: "user" };
+  assert.equal(enforceEgress("investigation", body).origin, "user");
+  // A call check that escalates says who started it too (submitted by the person, or Apollo's own screening).
+  for (const endpoint of ["call_investigation", "number_risk_investigation"] as const) {
+    assert.equal(enforceEgress(endpoint, { gate: "call", origin: "apollo", question: "Investigate this phone call.", submissions: [], initial_findings: [] }).origin, "apollo");
+  }
+});
+
 test("C21 capability snapshots admit only the bounded registry shape", () => {
   const result = enforceEgress("capability_snapshot", { platform: "android", adapter: "Apollo", online: true,
     gates: [{ id: "site", state: "running", reason: null }], capabilities: [{ id: "site_guard", state: "running", reason: null }],
