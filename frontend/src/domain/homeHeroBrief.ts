@@ -42,14 +42,18 @@ export function clip(value: string | null | undefined, max: number): string | nu
   if (!v) return null;
   if (v.length <= max) return v;
   const cut = v.slice(0, max - 1);
-  const word = cut.replace(/\s+\S*$/, "");
+  // Cut at a word: drop a half-cut last word, unless the cut already falls between words.
+  const word = /\s/.test(v.charAt(max - 1)) ? cut : cut.replace(/\s+\S*$/, "");
   return `${(word.length >= max * 0.6 ? word : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
 }
 const quoted = (v: string | null | undefined, max: number) => { const c = clip(v, max); return c ? `\u201C${c}\u201D` : null; };
 const noStop = (v: string) => v.replace(/[.!?…]+$/, "").trim();
 
+/** A text or a call always says which number it came from; when Apollo wasn't given one, it says so. */
+const UNKNOWN_NUMBER = "an unknown number";
+
 /** What the case is about and where it came from, from the identifiers Apollo recorded — on the case, else in the
- *  original kept on this phone (an email you submitted keeps its sender and subject only there). */
+ *  original kept on this phone (an email or text you submitted keeps its sender only there). */
 function identify(e: PatrolEvent, kept: KeptIdentifiers | null): { what: string | null; from: string | null } {
   const m = e.source_metadata;
   const sender = clip(m?.sender ?? kept?.sender, 28);
@@ -57,8 +61,8 @@ function identify(e: PatrolEvent, kept: KeptIdentifiers | null): { what: string 
   const host = shortDomain(m?.url ?? e.local_indicator ?? e.indicator_host);
   switch (e.category) {
     case "email": return { what: quoted(m?.subject ?? kept?.subject, 32) ?? subject, from: sender };
-    case "message": return { what: quoted(m?.preview ?? kept?.text, 26) ?? (sender ? null : subject), from: sender };
-    case "call": return { what: null, from: clip(e.local_indicator, 24) ?? sender ?? subject };
+    case "message": return { what: quoted(m?.preview ?? kept?.text, 26) ?? subject, from: sender ?? UNKNOWN_NUMBER };
+    case "call": return { what: null, from: clip(e.local_indicator, 24) ?? sender ?? UNKNOWN_NUMBER };
     case "file": return { what: clip(m?.attachment_names?.find((n) => clean(n)), 30) ?? subject, from: sender };
     case "app": return { what: clip(e.claimed_brand, 30) ?? subject, from: null };
     case "link": case "website": case "known_threat": case "protection": return { what: host ?? subject, from: null };

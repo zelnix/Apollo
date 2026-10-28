@@ -4,6 +4,7 @@
 // used on Evidence.
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
+import Gavel from "lucide-react-native/icons/gavel";
 import Search from "lucide-react-native/icons/search";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React, { useMemo } from "react";
@@ -74,7 +75,6 @@ export function briefSections(report: Report, verdict: Pick<BriefVerdict, "label
 const useStyles = makeStyles((c) => ({
   section: { flexDirection: "row", gap: spacing.md, borderRadius: radius.lg, padding: spacing.md, borderWidth: 0.25, borderColor: c.border },
   circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  glyph: { fontFamily: fonts.displayBold, fontSize: 24, lineHeight: 28, color: "#FFFFFF" },
   content: { flex: 1, gap: spacing.xs },
   pills: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.xs },
   risk: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
@@ -121,16 +121,16 @@ export function FindingsBrief({ report, verdict, steps, ids }: {
   const { colors } = useTheme();
   const { summary, findings, uncertain } = useMemo(() => briefSections(report, verdict), [report, verdict]);
   const tone = {
-    barking: { bg: colors.barkingTint, solid: colors.barking, ink: colors.barkingText, glyph: "!" },
-    ears_up: { bg: colors.ears_upTint, solid: colors.ears_up, ink: colors.ears_upText, glyph: "!" },
-    resting: { bg: colors.restingTint, solid: colors.resting, ink: colors.restingText, glyph: "\u2713" },
-    sniffing: { bg: colors.sniffingTint, solid: colors.sniffing, ink: colors.sniffingText, glyph: "?" },
+    barking: { bg: colors.barkingTint, solid: colors.barking, ink: colors.barkingText },
+    ears_up: { bg: colors.ears_upTint, solid: colors.ears_up, ink: colors.ears_upText },
+    resting: { bg: colors.restingTint, solid: colors.resting, ink: colors.restingText },
+    sniffing: { bg: colors.sniffingTint, solid: colors.sniffing, ink: colors.sniffingText },
   }[verdict.tone];
 
   return (
     <View style={{ gap: spacing.md }} testID={`${ids}-brief`}>
       {verdict.label || summary.length ? (
-        <Section bg={tone.bg} circle={tone.solid} icon={<Text style={s.glyph}>{tone.glyph}</Text>} testID={`${ids}-verdict`}>
+        <Section bg={tone.bg} circle={tone.solid} icon={<Gavel size={22} color="#FFFFFF" />} testID={`${ids}-verdict`}>
           {/* Titled like every other card; the pills sit under the title so they never crowd it on a phone. */}
           <Text style={s.title}>
             {verdict.label ? <>{"Verdict: "}<Text style={{ color: tone.ink }} testID={`${ids}-verdict-label`}>{verdict.label}</Text></> : "Higgins' answer"}

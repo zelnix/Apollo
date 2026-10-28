@@ -12,7 +12,10 @@
   Whole card taps through to the Threat Case. Order: driving case, other cases, then protection problems ("Not a security
   threat."); resting = "No security threats detected." / "Apollo is keeping watch. No action needed." `buildHeroLines` removed.
   Pipeline untouched (Triage → TC FlyBy → Magnum DI when warranted); backend routing tests pass (56).
-- **Verdict card** (FindingsBrief): titled like the other cards ("Verdict: Likely scam", 17px) with small pills underneath.
+- **Verdict card** (FindingsBrief): titled like the other cards ("Verdict: Likely scam", 17px) with small pills underneath;
+  its icon is a judge's gavel (lucide `gavel`) in the tone colour.
+- **Hero numbers**: a text message or call always names its number — recorded on the case, the kept original's From, or
+  "from an unknown number" when none was given. `clip()` no longer drops a whole word when the cut falls between words.
 - **Email top card**: "Show the full email" button replaced by a chevron at the far right of the last line; tapping the
   folded card opens it (`FoldBox`); "Hide the full email" button kept (`*-collapse`).
 - **Close Case**: Threat Case "Mark as handled" → solid primary "Close Case" button with a check icon; toast "Case closed…".
