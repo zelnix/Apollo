@@ -29,7 +29,8 @@ import { Body, Button, Card, DevTag, toneColor } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { plainTriageText } from "@/src/domain/triage/contract";
 import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
-import { buildHeroLines, buildHomeVoice } from "@/src/domain/higginsHomeVoice";
+import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
+import { buildHeroBriefs, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
 import { STATE_LABEL } from "@/src/domain/types";
 import type { ApolloState, PatrolEvent, SourceMetadata } from "@/src/domain/types";
@@ -42,6 +43,7 @@ import {
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import { ProtectionChangeBanner } from "@/src/components/device/ProtectionChangeBanner";
 import { getBaseline } from "@/src/store/firstCheckStore";
+import { getOriginalSource, subscribeOriginalSource } from "@/src/store/originalSource";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
@@ -182,7 +184,9 @@ const useStyles = makeStyles((c) => ({
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
   // Runs the full width of the card, stopping short of the artwork on the right.
-  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, paddingRight: spacing.sm },
+  heroBrief: { gap: 2, paddingRight: spacing.sm },
+  heroLine1: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  heroLine2: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
 
   // ── Two side-by-side cards ──
   twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.lg, marginTop: spacing.md },
@@ -298,8 +302,24 @@ export default function Home() {
     [resolution, attention, health.gates, capabilities],
   );
 
-  // Everything that needs the person right now, as hero lines Apollo cycles through.
-  const heroLines = React.useMemo(() => buildHeroLines(voice, attention), [voice, attention]);
+  // Everything that needs the person right now, as two-line Higgins briefings Apollo cycles through. An email you
+  // submitted keeps its sender and subject only in the original on this phone, so those are read from there.
+  const heroCases = React.useMemo(() => heroEvents(attention, resolution.drivingEvent, resolution.state), [attention, resolution.drivingEvent, resolution.state]);
+  const [kept, setKept] = React.useState<Record<string, KeptIdentifiers | null>>({});
+  React.useEffect(() => {
+    let active = true;
+    const load = () => void Promise.all(heroCases.map(async (e) => {
+      const src = (await getOriginalSource(e.event_id)) ?? (e.investigation_case_id ? await getOriginalSource(e.investigation_case_id) : null);
+      return [e.event_id, keptIdentifiers(src)] as const;
+    })).then((pairs) => { if (active) setKept(Object.fromEntries(pairs)); });
+    load();
+    const unsubscribe = subscribeOriginalSource(load);
+    return () => { active = false; unsubscribe(); };
+  }, [heroCases]);
+  const heroLines = React.useMemo(
+    () => buildHeroBriefs({ voice, attention, drivingEvent: resolution.drivingEvent, state: resolution.state, kept }),
+    [voice, attention, resolution.drivingEvent, resolution.state, kept],
+  );
   const [heroIndex, setHeroIndex] = React.useState(0);
   React.useEffect(() => { setHeroIndex(0); }, [heroLines.length]);
   React.useEffect(() => {
@@ -366,7 +386,8 @@ export default function Home() {
         <Pressable
           testID="home-hero-card"
           accessibilityRole="button"
-          accessibilityLabel={stateLabel}
+          accessibilityLabel={`${stateLabel}. ${heroLine?.line1 ?? ""} ${heroLine?.line2 ?? ""}`.trim()}
+          accessibilityHint="Opens the full case"
           onPress={() => { const route = heroLine?.route ?? voice.ctaRoute; return route ? router.push(route as any) : null; }}
           style={[s.heroCard, compact && { marginHorizontal: spacing.lg }]}
         >
@@ -414,7 +435,12 @@ export default function Home() {
                 <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]} numberOfLines={2}>{stateLabel}</Text>
               </View>
             </View>
-            <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5} testID="home-hero-voice">{heroLine?.text ?? voice.text}</Text>
+            {/* Higgins' two-line briefing: what it is and what was found, then when and what to do. */}
+            <View style={s.heroBrief} testID="home-hero-voice">
+              {/* Line 1 may wrap on a phone; it's never cut short, so the finding at its end always shows. */}
+              <Text style={[s.heroLine1, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={3} testID="home-hero-line1">{heroLine?.line1}</Text>
+              <Text style={[s.heroLine2, compact && { fontSize: 12, lineHeight: 17 }]} numberOfLines={2} testID="home-hero-line2">{heroLine?.line2}</Text>
+            </View>
           </View>
         </Pressable>
         </GestureDetector>

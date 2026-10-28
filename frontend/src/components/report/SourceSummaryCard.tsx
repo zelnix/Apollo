@@ -18,7 +18,7 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, Text, useWindowDimensions, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { toneText, toneTint } from "@/src/components/ui";
 import {
@@ -59,6 +59,7 @@ const useStyles = makeStyles((c) => ({
   tagText: { fontFamily: fonts.textSemibold, fontSize: 11 },
   previewBox: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
   preview: { flexDirection: "row", gap: spacing.md },
+  lastLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   fullText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: c.divider },
   expand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, minHeight: 44, borderRadius: radius.md, backgroundColor: c.surface },
   expandText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
@@ -88,6 +89,19 @@ function PreviewTile({ icon, picture, kind, testID }: { icon: PreviewIcon; pictu
     </View>
   );
 }
+
+/** The preview box: tappable (to open the folded email) only while it's folded; a plain box otherwise. */
+function FoldBox({ foldable, onOpen, style, testID, children }: {
+  foldable: boolean; onOpen: () => void; style: StyleProp<ViewStyle>; testID: string; children: React.ReactNode;
+}) {
+  if (!foldable) return <View style={style} testID={testID}>{children}</View>;
+  return (
+    <Pressable style={style} testID={testID} onPress={onOpen} accessibilityRole="button" accessibilityHint="Shows the full email" accessibilityState={{ expanded: false }}>
+      {children}
+    </Pressable>
+  );
+}
+
 
 export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simulated, testID }: {
   origin: CaseOrigin | null | undefined;
@@ -138,6 +152,7 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
   const when = formatDateTime(at);
   const picture = images[0]?.originalUri ?? images[0]?.sentUri ?? null;
   const email = preview?.icon === "email";
+  const expandable = email && !!preview?.body;
   const detected = origin === "apollo";
   const tone = detectedTone(event?.state);
   const facts = detected && event ? detectionFacts(event, original) : [];
@@ -161,7 +176,9 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
         ) : null}
       </View>
       {preview ? (
-        <View style={s.previewBox} testID={`${testID}-preview`}>
+        // An email's text is folded away: tapping the card opens it; "Hide the full email" folds it again. Only the
+        // folded card is tappable, so the open text stays selectable and the Hide button stays enabled.
+        <FoldBox foldable={expandable && !open} onOpen={() => setOpen(true)} style={s.previewBox} testID={`${testID}-preview`}>
           <View style={s.preview}>
             <PreviewTile icon={preview.icon} picture={picture} kind={preview.kind} testID={testID} />
             <View style={s.previewText}>
@@ -169,24 +186,27 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
                 <Text key={`${i}-${line}`} style={s.line} numberOfLines={2} testID={`${testID}-line-${i}`}>{line}</Text>
               ))}
               {email ? (
-                <Text style={s.line} numberOfLines={2} testID={`${testID}-received`}>
-                  {preview.received ? `Received ${formatDateTime(preview.received) || preview.received}` : "Date received: not recorded"}
-                </Text>
+                <View style={s.lastLine}>
+                  <Text style={[s.line, { flex: 1 }]} numberOfLines={2} testID={`${testID}-received`}>
+                    {preview.received ? `Received ${formatDateTime(preview.received) || preview.received}` : "Date received: not recorded"}
+                  </Text>
+                  {expandable && !open ? <ChevronDown size={20} color={colors.brand} testID={`${testID}-expand`} /> : null}
+                </View>
               ) : preview.body ? (
                 <Text style={s.line} numberOfLines={preview.body.includes("\n") ? 10 : 3} testID={`${testID}-body`}>{preview.body}</Text>
               ) : null}
             </View>
           </View>
-          {email && preview.body ? (
+          {expandable && open ? (
             <>
-              {open ? <Text style={s.fullText} selectable testID={`${testID}-body`}>{preview.body}</Text> : null}
-              <Pressable onPress={() => setOpen((v) => !v)} style={s.expand} accessibilityRole="button" accessibilityState={{ expanded: open }} testID={`${testID}-expand`}>
-                <Text style={s.expandText}>{open ? "Hide the full email" : "Show the full email"}</Text>
-                {open ? <ChevronUp size={18} color={colors.brand} /> : <ChevronDown size={18} color={colors.brand} />}
+              <Text style={s.fullText} selectable testID={`${testID}-body`}>{preview.body}</Text>
+              <Pressable onPress={() => setOpen(false)} style={s.expand} accessibilityRole="button" testID={`${testID}-collapse`}>
+                <Text style={s.expandText}>Hide the full email</Text>
+                <ChevronUp size={18} color={colors.brand} />
               </Pressable>
             </>
           ) : null}
-        </View>
+        </FoldBox>
       ) : null}
       {facts.length ? (
         <View style={s.facts} testID={`${testID}-facts`}>

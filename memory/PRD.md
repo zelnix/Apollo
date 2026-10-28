@@ -1,5 +1,23 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Home hero two-line briefing + verdict card + email fold + Close Case (2026-10-28)
+- **Home hero** (`src/domain/homeHeroBrief.ts`, `app/(tabs)/home.tsx`): each slide is two lines —
+  `{Type}: {subject} from {source}, {finding}.` / `{28 Oct, 4:42 pm}. {Higgins' recommendation}.`
+  Finding = the case's Case Briefing status ("detected as a likely scam", Unable to determine → "not confirmed safe"),
+  else Triage's own record ("a possible threat", "blocked by Apollo"). Recommendation = briefing
+  `recommendedAction.label` (TC FlyBy / Magnum DI action labels, e.g. "Don't open the link"), else blocked → "No action
+  needed", still investigating → "Be careful until Higgins has finished", else Triage's short step (≤40 chars) or "Be careful".
+  Never "Action required". A submitted email's sender/subject come from the kept original on the phone (`keptIdentifiers`,
+  never synced). Identifiers clipped (subject 32, sender 28). Line 1 may wrap (max 3 rows) so the finding is never cut; line 2 max 2.
+  Whole card taps through to the Threat Case. Order: driving case, other cases, then protection problems ("Not a security
+  threat."); resting = "No security threats detected." / "Apollo is keeping watch. No action needed." `buildHeroLines` removed.
+  Pipeline untouched (Triage → TC FlyBy → Magnum DI when warranted); backend routing tests pass (56).
+- **Verdict card** (FindingsBrief): titled like the other cards ("Verdict: Likely scam", 17px) with small pills underneath.
+- **Email top card**: "Show the full email" button replaced by a chevron at the far right of the last line; tapping the
+  folded card opens it (`FoldBox`); "Hide the full email" button kept (`*-collapse`).
+- **Close Case**: Threat Case "Mark as handled" → solid primary "Close Case" button with a check icon; toast "Case closed…".
+- Tests: new `tests/homeHeroBrief.test.ts` (10). All frontend tests pass; tsc clean.
+
 ## "Ask Higgins about this" buttons removed from the Findings Brief (2026-10-28)
 - Owner: remove the question buttons from the Findings Brief on BOTH the Threat Case (`patrol/[id].tsx`) and Ask Higgins
   (`InvestigationView.tsx`). Check result screens (`CheckResultScreen.tsx`) keep `ResultQuestions` — not asked.

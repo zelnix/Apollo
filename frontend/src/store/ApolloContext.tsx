@@ -1846,7 +1846,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     for (const sib of siblings) await upsertEvent({ ...sib, status: "resolved", resolved_at: resolvedAt });
     showToast(event.category === "device"
       ? "Device check closed. Rechecking your device files a new check on this case."
-      : "Marked as handled. Apollo will rest after a fresh check.", "neutral");
+      : "Case closed. Apollo will rest after a fresh check.", "neutral");
   }, [showToast, upsertEvent]);
 
   // Undo "contained/handled": reopen locally and on the server (PATCH reopen clears resolved_at).

@@ -7,7 +7,7 @@ import CircleQuestionMark from "lucide-react-native/icons/circle-question-mark";
 import Search from "lucide-react-native/icons/search";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React, { useMemo } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { caseOutcome, caseSeverity } from "@/src/domain/caseBriefing";
 import { isGeneralAnswer, luddishReport, luddishText } from "@/src/domain/luddish";
@@ -76,14 +76,9 @@ const useStyles = makeStyles((c) => ({
   circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   glyph: { fontFamily: fonts.displayBold, fontSize: 24, lineHeight: 28, color: "#FFFFFF" },
   content: { flex: 1, gap: spacing.xs },
-  head: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  headStacked: { flexDirection: "column", alignItems: "stretch" },
-  kicker: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
-  verdict: { fontFamily: fonts.displayBold, fontSize: 26, lineHeight: 32 },
-  pills: { gap: spacing.xs, alignItems: "flex-end" },
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
-  risk: { paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
-  riskText: { fontFamily: fonts.textSemibold, fontSize: 14, color: "#FFFFFF" },
+  pills: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.xs },
+  risk: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
+  riskText: { fontFamily: fonts.textSemibold, fontSize: 12, color: "#FFFFFF" },
   title: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   bullet: { flexDirection: "row", gap: spacing.sm },
@@ -124,8 +119,6 @@ export function FindingsBrief({ report, verdict, steps, ids }: {
 }) {
   const s = useStyles();
   const { colors } = useTheme();
-  // On a narrow phone the pills go under the verdict, so a word like "Concerning" is never broken across lines.
-  const narrow = useWindowDimensions().width < 360;
   const { summary, findings, uncertain } = useMemo(() => briefSections(report, verdict), [report, verdict]);
   const tone = {
     barking: { bg: colors.barkingTint, solid: colors.barking, ink: colors.barkingText, glyph: "!" },
@@ -138,26 +131,24 @@ export function FindingsBrief({ report, verdict, steps, ids }: {
     <View style={{ gap: spacing.md }} testID={`${ids}-brief`}>
       {verdict.label || summary.length ? (
         <Section bg={tone.bg} circle={tone.solid} icon={<Text style={s.glyph}>{tone.glyph}</Text>} testID={`${ids}-verdict`}>
-          <View style={[s.head, narrow && s.headStacked]}>
-            <View style={narrow ? null : { flex: 1 }}>
-              <Text style={s.kicker}>{verdict.label ? "Verdict" : "Higgins' answer"}</Text>
-              {verdict.label ? <Text style={[s.verdict, { color: tone.ink }]} testID={`${ids}-verdict-label`}>{verdict.label}</Text> : null}
+          {/* Titled like every other card; the pills sit under the title so they never crowd it on a phone. */}
+          <Text style={s.title}>
+            {verdict.label ? <>{"Verdict: "}<Text style={{ color: tone.ink }} testID={`${ids}-verdict-label`}>{verdict.label}</Text></> : "Higgins' answer"}
+          </Text>
+          {verdict.risk || verdict.status ? (
+            <View style={s.pills}>
+              {verdict.risk ? (
+                <View style={[s.risk, { backgroundColor: verdict.risk.color }]} testID={`${ids}-risk`}>
+                  <Text style={s.riskText}>{verdict.risk.label}</Text>
+                </View>
+              ) : null}
+              {verdict.status ? (
+                <View style={[s.risk, { backgroundColor: verdict.status.bg }]} testID={`${ids}-status`}>
+                  <Text style={[s.riskText, { color: verdict.status.fg }]}>{verdict.status.label}</Text>
+                </View>
+              ) : null}
             </View>
-            {verdict.risk || verdict.status ? (
-              <View style={[s.pills, narrow && s.pillsRow]}>
-                {verdict.risk ? (
-                  <View style={[s.risk, { backgroundColor: verdict.risk.color }]} testID={`${ids}-risk`}>
-                    <Text style={s.riskText}>{verdict.risk.label}</Text>
-                  </View>
-                ) : null}
-                {verdict.status ? (
-                  <View style={[s.risk, { backgroundColor: verdict.status.bg }]} testID={`${ids}-status`}>
-                    <Text style={[s.riskText, { color: verdict.status.fg }]}>{verdict.status.label}</Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
+          ) : null}
           {summary.map((para, i) => <Text key={`a${i}`} style={s.body} testID={i === 0 ? `${ids}-answer` : `${ids}-answer-${i}`}>{para}</Text>)}
         </Section>
       ) : null}
