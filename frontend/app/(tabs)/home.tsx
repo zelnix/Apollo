@@ -30,7 +30,7 @@ import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { plainTriageText } from "@/src/domain/triage/contract";
 import { groupApolloProtections, summariseApolloProtections } from "@/src/domain/apolloProtections";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
-import { buildHeroBriefs, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
+import { buildHeroBriefs, eventBrief, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
 import { isConsumerPatrolEvent } from "@/src/domain/patrolOutcomes";
 import { STATE_LABEL } from "@/src/domain/types";
 import type { ApolloState, PatrolEvent, SourceMetadata } from "@/src/domain/types";
@@ -38,9 +38,7 @@ import {
   threatCaseStatus,
   STATUS_LABELS,
   STATUS_COLORS,
-  formatDateTime,
 } from "@/src/domain/threatCase";
-import { looksLikeInternalCode } from "@/src/domain/messageVoice";
 import { ProtectionChangeBanner } from "@/src/components/device/ProtectionChangeBanner";
 import { getBaseline } from "@/src/store/firstCheckStore";
 import { getOriginalSource, subscribeOriginalSource } from "@/src/store/originalSource";
@@ -48,7 +46,6 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { fonts, makeStyles, radius, spacing, useTheme, type ThemeColors } from "@/src/theme";
 import { useProtectionHealth } from "@/src/protection/healthStore";
-import { displayHost } from "@/src/domain/urlPresentation";
 
 /** Short chip for the Home protection cards. Counts only what a real read said. */
 type CardOverall = "action" | "review" | "check" | "protected" | "unread" | "checking";
@@ -92,24 +89,6 @@ function threatSourceIcon(cat: string, meta?: SourceMetadata | null) {
     case "app": return { Icon: Smartphone, bg: "rgba(16,185,129,0.1)", fg: "#065F46" };
     default: return { Icon: Shield, bg: "rgba(107,114,128,0.1)", fg: "#374151" };
   }
-}
-
-function threatTitle(e: PatrolEvent): string {
-  const meta = e.source_metadata;
-  if (meta?.subject) return meta.subject;
-  if (e.headline && !looksLikeInternalCode(e.headline)) return e.headline;
-  if (meta?.preview) return meta.preview.length > 50 ? meta.preview.slice(0, 50) + "…" : meta.preview;
-  if (e.indicator_host) return e.indicator_host;
-  return "Recorded finding";
-}
-
-function threatIdentity(e: PatrolEvent): string {
-  const meta = e.source_metadata;
-  if (meta?.sender) return `From: ${meta.sender}`;
-  if (e.indicator_host) return e.indicator_host;
-  if (meta?.url) return displayHost(meta.url); // never the raw address: its query can be thousands of characters
-  if (e.claimed_brand) return e.claimed_brand;
-  return "";
 }
 
 /** Build deduplicated priority threats from real PatrolEvent data. */
@@ -241,6 +220,8 @@ const useStyles = makeStyles((c) => ({
   activityContent: { flex: 1, gap: 2 },
   activityText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
   activitySub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  threatLine1: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  threatLine2: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   activityTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary },
   findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
 }));
@@ -305,17 +286,23 @@ export default function Home() {
   // Everything that needs the person right now, as two-line Higgins briefings Apollo cycles through. An email you
   // submitted keeps its sender and subject only in the original on this phone, so those are read from there.
   const heroCases = React.useMemo(() => heroEvents(attention, resolution.drivingEvent, resolution.state), [attention, resolution.drivingEvent, resolution.state]);
+  // "Important for you" uses the same briefing (with more room), so its cases' kept originals are read too.
+  const priorityThreats = React.useMemo(() => buildPriorityThreats(events), [events]);
+  const keptCases = React.useMemo(() => {
+    const byId = new Map([...heroCases, ...priorityThreats].map((e) => [e.event_id, e]));
+    return [...byId.values()];
+  }, [heroCases, priorityThreats]);
   const [kept, setKept] = React.useState<Record<string, KeptIdentifiers | null>>({});
   React.useEffect(() => {
     let active = true;
-    const load = () => void Promise.all(heroCases.map(async (e) => {
+    const load = () => void Promise.all(keptCases.map(async (e) => {
       const src = (await getOriginalSource(e.event_id)) ?? (e.investigation_case_id ? await getOriginalSource(e.investigation_case_id) : null);
       return [e.event_id, keptIdentifiers(src)] as const;
     })).then((pairs) => { if (active) setKept(Object.fromEntries(pairs)); });
     load();
     const unsubscribe = subscribeOriginalSource(load);
     return () => { active = false; unsubscribe(); };
-  }, [heroCases]);
+  }, [keptCases]);
   const heroLines = React.useMemo(
     () => buildHeroBriefs({ voice, attention, drivingEvent: resolution.drivingEvent, state: resolution.state, kept }),
     [voice, attention, resolution.drivingEvent, resolution.state, kept],
@@ -534,7 +521,6 @@ export default function Home() {
 
         {/* ── Important For You — priority subset of Threats + one scam alert ── */}
         {(() => {
-          const priorityThreats = buildPriorityThreats(events);
           // Section shows if there are personal threats OR if PriorityScamNotice will render
           // (PriorityScamNotice handles its own data loading — renders null if no alert)
           return (
@@ -546,38 +532,38 @@ export default function Home() {
                 </Pressable>
               </View>
 
-              {/* Personal threats first — these take precedence */}
+              {/* Personal threats first — these take precedence. Each card has the hero's two-line structure, with more
+                  room: what it is, where it came from and what was found; then when, and Higgins' recommendation. */}
               {priorityThreats.map((event) => {
                 const si = threatSourceIcon(event.category, event.source_metadata);
                 const IconEl = si.Icon;
                 const status = threatCaseStatus(event);
                 const statusColor = STATUS_COLORS[status];
+                const brief = eventBrief(event, new Date(), kept[event.event_id] ?? null, "card");
                 return (
                   <Pressable
                     key={event.event_id}
                     testID={`home-threat-${event.event_id}`}
                     onPress={() => router.push(`/patrol/${encodeURIComponent(event.event_id)}` as any)}
-                    style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, flexDirection: "column", alignItems: "stretch" }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${brief.line1} ${brief.line2} ${STATUS_LABELS[status]}.`}
+                    accessibilityHint="Opens the full case"
+                    style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, alignItems: "flex-start" }]}
                   >
-                    {/* Icon, time and status share one compact row so the words below get the full card width. */}
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                      <View style={[s.activityIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: si.bg }]}>
-                        <IconEl size={compact ? 14 : 16} color={si.fg} />
-                      </View>
-                      <Text style={{ fontFamily: fonts.text, fontSize: 12, color: colors.muted, flex: 1 }} numberOfLines={1}>
-                        {formatDateTime(event.occurred_at)}
-                      </Text>
-                      <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
-                        <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
-                      </View>
+                    <View style={[s.activityIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: si.bg }]}>
+                      <IconEl size={compact ? 14 : 16} color={si.fg} />
                     </View>
-                    <View style={{ gap: 2, marginTop: 2 }}>
-                      <Text style={[s.activityText, compact && { fontSize: 14 }]} numberOfLines={3}>{threatTitle(event)}</Text>
-                      {threatIdentity(event) ? <Text style={s.activitySub} numberOfLines={1}>{threatIdentity(event)}</Text> : null}
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 2 }}>
-                      <Text style={s.findingLink}>View threat</Text>
-                      <ChevronRight size={14} color={colors.brand} />
+                    <View style={{ flex: 1, gap: spacing.xs }}>
+                      <Text style={[s.threatLine1, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={4} testID={`home-threat-${event.event_id}-line1`}>{brief.line1}</Text>
+                      <Text style={[s.threatLine2, compact && { fontSize: 12, lineHeight: 17 }]} numberOfLines={3} testID={`home-threat-${event.event_id}-line2`}>{brief.line2}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 2 }}>
+                        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: statusColor.bg }}>
+                          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 10, color: statusColor.text }}>{STATUS_LABELS[status]}</Text>
+                        </View>
+                        <View style={{ flex: 1 }} />
+                        <Text style={s.findingLink}>View threat</Text>
+                        <ChevronRight size={14} color={colors.brand} />
+                      </View>
                     </View>
                   </Pressable>
                 );

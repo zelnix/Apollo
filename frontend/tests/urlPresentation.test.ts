@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { findingSentence } from "../src/domain/higginsHomeVoice.ts";
+import { eventBrief } from "../src/domain/homeHeroBrief.ts";
 import { buildReport, plainReport } from "../src/domain/reportSections.ts";
 import type { PatrolEvent } from "../src/domain/types.ts";
 import { compactUrl, compactUrls, displayHost, domainOnly } from "../src/domain/urlPresentation.ts";
@@ -70,7 +71,9 @@ test("Home: web addresses become their website before the sentence is capped", (
   const voice = read("../src/domain/higginsHomeVoice.ts");
   assert.match(voice, /const text = domainOnly\(\(event\.what_happened \|\| ""\)\.trim\(\)\);[\s\S]*const capped = cleaned\.length > 170/);
   assert.match(voice, /const primaryProblem = domainOnly\(/);
-  assert.match(read("../app/(tabs)/home.tsx"), /if \(meta\?\.url\) return displayHost\(meta\.url\);/);
+  // "Important for you" and the hero name a link by its website only (homeHeroBrief → shortDomain), never the raw address.
+  assert.match(read("../src/domain/homeHeroBrief.ts"), /const host = shortDomain\(m\?\.url \?\? e\.local_indicator \?\? e\.indicator_host\);/);
+  assert.equal(eventBrief({ ...event, category: "link", local_indicator: REDIRECT }, new Date(), null, "card").line1.includes("?"), false);
 });
 
 test("reports shorten addresses in every section but keep sources whole", () => {

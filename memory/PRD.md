@@ -15,7 +15,10 @@
 - **Verdict card** (FindingsBrief): titled like the other cards ("Verdict: Likely scam", 17px) with small pills underneath;
   its icon is a judge's gavel (lucide `gavel`) in the tone colour.
 - **Hero numbers**: a text message or call always names its number — recorded on the case, the kept original's From, or
-  "from an unknown number" when none was given. `clip()` no longer drops a whole word when the cut falls between words.
+  "(no number provided)" when none was given. `clip()` no longer drops a whole word when the cut falls between words.
+- **Important for you** (home.tsx): each card uses the hero's structure via `eventBrief(..., "card")` — longer identifier
+  limits (`LIMIT.card`), line 1 up to 4 rows, line 2 (date + recommendation) up to 3; icon left, status pill + "View threat"
+  underneath. Kept originals are loaded for hero + priority cases. Old `threatTitle`/`threatIdentity` removed.
 - **Email top card**: "Show the full email" button replaced by a chevron at the far right of the last line; tapping the
   folded card opens it (`FoldBox`); "Hide the full email" button kept (`*-collapse`).
 - **Close Case**: Threat Case "Mark as handled" → solid primary "Close Case" button with a check icon; toast "Case closed…".

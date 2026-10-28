@@ -50,25 +50,33 @@ const quoted = (v: string | null | undefined, max: number) => { const c = clip(v
 const noStop = (v: string) => v.replace(/[.!?…]+$/, "").trim();
 
 /** A text or a call always says which number it came from; when Apollo wasn't given one, it says so. */
-const UNKNOWN_NUMBER = "an unknown number";
+const NO_NUMBER = "no number provided";
+
+/** How long each identifier may run: the hero is tight; an "Important for you" card has a little more room. */
+export type BriefRoom = "hero" | "card";
+const LIMIT: Record<BriefRoom, { sender: number; subject: number; emailSubject: number; preview: number; number: number; name: number; headline: number }> = {
+  hero: { sender: 28, subject: 30, emailSubject: 32, preview: 26, number: 24, name: 30, headline: 40 },
+  card: { sender: 40, subject: 44, emailSubject: 56, preview: 60, number: 24, name: 44, headline: 60 },
+};
 
 /** What the case is about and where it came from, from the identifiers Apollo recorded — on the case, else in the
  *  original kept on this phone (an email or text you submitted keeps its sender only there). */
-function identify(e: PatrolEvent, kept: KeptIdentifiers | null): { what: string | null; from: string | null } {
+function identify(e: PatrolEvent, kept: KeptIdentifiers | null, room: BriefRoom): { what: string | null; from: string | null } {
+  const n = LIMIT[room];
   const m = e.source_metadata;
-  const sender = clip(m?.sender ?? kept?.sender, 28);
-  const subject = clip(e.case_briefing?.subject, 30);
+  const sender = clip(m?.sender ?? kept?.sender, n.sender);
+  const subject = clip(e.case_briefing?.subject, n.subject);
   const host = shortDomain(m?.url ?? e.local_indicator ?? e.indicator_host);
   switch (e.category) {
-    case "email": return { what: quoted(m?.subject ?? kept?.subject, 32) ?? subject, from: sender };
-    case "message": return { what: quoted(m?.preview ?? kept?.text, 26) ?? subject, from: sender ?? UNKNOWN_NUMBER };
-    case "call": return { what: null, from: clip(e.local_indicator, 24) ?? sender ?? UNKNOWN_NUMBER };
-    case "file": return { what: clip(m?.attachment_names?.find((n) => clean(n)), 30) ?? subject, from: sender };
-    case "app": return { what: clip(e.claimed_brand, 30) ?? subject, from: null };
+    case "email": return { what: quoted(m?.subject ?? kept?.subject, n.emailSubject) ?? subject, from: sender };
+    case "message": return { what: quoted(m?.preview ?? kept?.text, n.preview) ?? subject, from: sender ?? NO_NUMBER };
+    case "call": return { what: null, from: clip(e.local_indicator, n.number) ?? sender ?? NO_NUMBER };
+    case "file": return { what: clip(m?.attachment_names?.find((f) => clean(f)), n.name) ?? subject, from: sender };
+    case "app": return { what: clip(e.claimed_brand, n.name) ?? subject, from: null };
     case "link": case "website": case "known_threat": case "protection": return { what: host ?? subject, from: null };
     default: {
       const headline = clean(e.headline);
-      return { what: host ?? subject ?? (headline && !looksLikeInternalCode(headline) ? clip(headline, 40) : null), from: null };
+      return { what: host ?? subject ?? (headline && !looksLikeInternalCode(headline) ? clip(headline, n.headline) : null), from: null };
     }
   }
 }
@@ -115,11 +123,12 @@ export function heroWhen(iso: string | null | undefined, now: Date = new Date())
   return `${d.getDate()} ${MONTHS[d.getMonth()]}${year}, ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 }
 
-/** One case as the hero's two lines. */
-export function eventBrief(e: PatrolEvent, now: Date = new Date(), kept: KeptIdentifiers | null = null): HeroBrief {
-  const { what, from } = identify(e, kept);
+/** One case as two lines: the hero's, or (room "card") an "Important for you" card's, with longer identifiers. */
+export function eventBrief(e: PatrolEvent, now: Date = new Date(), kept: KeptIdentifiers | null = null, room: BriefRoom = "hero"): HeroBrief {
+  const { what, from } = identify(e, kept, room);
   const type = TYPE[e.category] ?? "Security check";
-  const line1 = `${type}${what ? `: ${what}` : ""}${from ? ` from ${from}` : ""}${what || from ? "," : ""} ${finding(e)}.`;
+  const source = from === NO_NUMBER ? ` (${NO_NUMBER})` : from ? ` from ${from}` : "";
+  const line1 = `${type}${what ? `: ${what}` : ""}${source}${what || from ? "," : ""} ${finding(e)}.`;
   const when = heroWhen(e.occurred_at, now);
   return { id: `event:${e.event_id}`, line1, line2: `${when ? `${when}. ` : ""}${action(e)}.`, route: `/patrol/${encodeURIComponent(e.event_id)}` };
 }

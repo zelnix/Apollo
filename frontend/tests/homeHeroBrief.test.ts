@@ -56,18 +56,26 @@ test("a call names the number; Higgins Triage's short step is used when there is
 
 test("while TC FlyBy or Magnum DI is still working the hero says to be careful, never 'Action required'", () => {
   const b = eventBrief(event({ category: "message", investigation_case_id: "c1", what_to_do: "Don't reply to this message or call any number in it until you've checked." }), NOW);
-  assert.equal(b.line1, "Text message from an unknown number, detected as a possible threat.");
+  assert.equal(b.line1, "Text message (no number provided), detected as a possible threat.");
   assert.equal(b.line2, "28 Oct, 4:42 pm. Be careful until Higgins has finished.");
   assert.ok(!/action required/i.test(b.line1 + b.line2));
 });
 
-test("a text names its number: recorded on the case, kept with the original, or said to be unknown", () => {
+test("a text names its number: recorded on the case, kept with the original, or 'no number provided'", () => {
   const sms = event({ category: "message", case_briefing: briefing({ status: "Concerning", recommendedAction: { label: "Don't act on it yet", instruction: "x" } }) });
   const kept = keptIdentifiers({ fields: [{ label: "From", value: "0419 841 238" }], text: "Good morning! It's UNI\uFB01ed Energy here. Lock in higher STC savings." });
   assert.equal(eventBrief(sms, NOW, kept).line1, "Text message: \u201CGood morning! It's UNI\uFB01ed\u2026\u201D from 0419 841 238, detected as concerning.");
-  assert.equal(eventBrief(sms, NOW, { ...kept!, sender: null }).line1, "Text message: \u201CGood morning! It's UNI\uFB01ed\u2026\u201D from an unknown number, detected as concerning.");
+  assert.equal(eventBrief(sms, NOW, { ...kept!, sender: null }).line1, "Text message: \u201CGood morning! It's UNI\uFB01ed\u2026\u201D (no number provided), detected as concerning.");
   assert.equal(eventBrief({ ...sms, source_metadata: { type: "text", sender: "+61 448 221 905" } }, NOW).line1, "Text message from +61 448 221 905, detected as concerning.");
-  assert.equal(eventBrief(event({ category: "call" }), NOW).line1, "Call from an unknown number, detected as a possible threat.");
+  assert.equal(eventBrief(event({ category: "call" }), NOW).line1, "Call (no number provided), detected as a possible threat.");
+});
+
+test("an 'Important for you' card has the hero's structure with more room for detail", () => {
+  const sms = event({ category: "message", case_briefing: briefing({ status: "Concerning", recommendedAction: { label: "Don't act on it yet", instruction: "x" } }) });
+  const kept = keptIdentifiers({ fields: [], text: "Good morning! It's UNI\uFB01ed Energy here. Lock in higher STC savings before rebates drop next week." });
+  const card = eventBrief(sms, NOW, kept, "card");
+  assert.equal(card.line1, "Text message: \u201CGood morning! It's UNI\uFB01ed Energy here. Lock in higher STC\u2026\u201D (no number provided), detected as concerning.");
+  assert.equal(card.line2, eventBrief(sms, NOW, kept).line2, "the same date and recommendation as the hero");
 });
 
 test("a long Triage step falls back to 'Be careful'; a verified block needs nothing", () => {
