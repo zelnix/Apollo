@@ -59,16 +59,12 @@ const useStyles = makeStyles((c) => ({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, minHeight: 56 },
   divider: { borderTopWidth: 0.5, borderTopColor: c.divider },
   icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  body: { flex: 1, gap: 1 },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  title: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20, color: c.onSurface },
-  descRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
-  desc: { flex: 1, fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.onSurfaceSecondary },
-  status: { alignItems: "flex-end", gap: 2 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill },
+  body: { flex: 1, gap: 2 },
+  title: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20, color: c.onSurface },
+  desc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.onSurfaceSecondary },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill, alignSelf: "flex-start" },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  pillText: { fontFamily: fonts.textSemibold, fontSize: 11, flexShrink: 1 },
-  note: { fontFamily: fonts.text, fontSize: 10, color: c.onSurfaceSecondary, textAlign: "right" },
+  pillText: { fontFamily: fonts.textSemibold, fontSize: 11 },
 }));
 
 export function AreaList({ rows, icons, onOpen, testID }: {
@@ -86,7 +82,7 @@ export function AreaList({ rows, icons, onOpen, testID }: {
           <Pressable
             key={row.id}
             accessibilityRole="button"
-            accessibilityLabel={`${row.title}. ${row.label}, ${row.note}.`}
+            accessibilityLabel={`${row.title}. ${row.label}.`}
             onPress={() => onOpen(row.id)}
             style={({ pressed }) => [s.row, i > 0 && s.divider, { backgroundColor: pressed ? colors.surfaceTertiary : "transparent" }]}
             testID={id}
@@ -95,18 +91,11 @@ export function AreaList({ rows, icons, onOpen, testID }: {
               <icon.Icon size={18} color={colors[icon.fg]} />
             </View>
             <View style={s.body}>
-              <View style={s.titleRow}>
-                <Text style={s.title} numberOfLines={1}>{row.title}</Text>
-                <View style={s.status}>
-                  <View style={[s.pill, { backgroundColor: palette.bg }]}>
-                    <View style={[s.dot, { backgroundColor: palette.dot }]} />
-                    <Text style={[s.pillText, { color: palette.text }]} numberOfLines={1} testID={`${id}-status`}>{row.label}</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={s.descRow}>
-                <Text style={s.desc} numberOfLines={2}>{row.description}</Text>
-                <Text style={s.note} testID={`${id}-note`}>{row.note}</Text>
+              <Text style={s.title}>{row.title}</Text>
+              <Text style={s.desc} numberOfLines={2}>{row.description}</Text>
+              <View style={[s.pill, { backgroundColor: palette.bg }]}>
+                <View style={[s.dot, { backgroundColor: palette.dot }]} />
+                <Text style={[s.pillText, { color: palette.text }]} numberOfLines={1} testID={`${id}-status`}>{row.label}</Text>
               </View>
             </View>
             <ChevronRight size={16} color={colors.muted} />

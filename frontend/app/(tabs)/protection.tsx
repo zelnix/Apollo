@@ -47,22 +47,10 @@ const useStyles = makeStyles((c) => ({
   infoText: { fontFamily: fonts.text, fontSize: 12.5, lineHeight: 17, color: c.onSurfaceSecondary },
   checkedRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
   checkedText: { flex: 1, fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
-  checkedAction: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary },
 }));
 
 const TABS = [{ id: "apollo", label: "Apollo Protections" }, { id: "device", label: "Device Protections" }] as const;
 type TabId = (typeof TABS)[number]["id"];
-
-function Section({ title, sub, children, testID }: { title: string; sub: string; children: React.ReactNode; testID: string }) {
-  const s = useStyles();
-  return (
-    <View style={s.section} testID={testID}>
-      <Text style={s.sectionTitle}>{title}</Text>
-      <Text style={s.sectionSub}>{sub}</Text>
-      {children}
-    </View>
-  );
-}
 
 export default function ProtectionScreen() {
   const s = useStyles();
@@ -92,21 +80,6 @@ export default function ProtectionScreen() {
       <ScrollView testID="protection-scroll" contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 90 }]} showsVerticalScrollIndicator={false}>
         <Text style={s.subtitle}>How ApolloSG and your device work together to keep you safer.</Text>
 
-        {/* When Apollo last read its protections — "Check again" re-reads them and the device's settings now. */}
-        <Pressable
-          testID="protection-checked"
-          accessibilityRole="button"
-          accessibilityLabel={`${checkedLine}. Check again.`}
-          onPress={recheck}
-          disabled={rechecking}
-          style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
-        >
-          <ShieldCheck size={18} color={colors.resting} />
-          <Text style={s.checkedText} numberOfLines={2} testID="protection-checked-text">{checkedLine}</Text>
-          {rechecking ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <RefreshCw size={16} color={colors.brandPrimary} />}
-          <Text style={s.checkedAction} testID="protection-recheck">Check again</Text>
-        </Pressable>
-
         {/* The readings below are the last ones Apollo actually observed. When the most recent check failed, that is said
             here with its reason and the age of what is on screen — an old reading is never presented as the current state. */}
         {health.lastCheckFailure ? (
@@ -130,6 +103,32 @@ export default function ProtectionScreen() {
         <View style={[s.hero, { backgroundColor: palette.wash, borderColor: palette.tint }]} testID="protection-posture-card">
           <PostureSummary posture={posture} testID="protection-posture" />
         </View>
+
+        {/* When Apollo last read its protections — icon-only re-check button. */}
+        <Pressable
+          testID="protection-checked"
+          accessibilityRole="button"
+          accessibilityLabel={`${checkedLine}. Check again.`}
+          onPress={recheck}
+          disabled={rechecking}
+          style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
+        >
+          <ShieldCheck size={18} color={colors.resting} />
+          <Text style={s.checkedText} numberOfLines={2} testID="protection-checked-text">{checkedLine}</Text>
+          {rechecking ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : (
+            <Pressable
+              testID="protection-recheck"
+              accessibilityRole="button"
+              accessibilityLabel="Check again"
+              onPress={recheck}
+              disabled={rechecking}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <RefreshCw size={18} color={colors.brandPrimary} />
+            </Pressable>
+          )}
+        </Pressable>
 
         <View style={s.tabs} accessibilityRole="tablist" testID="protection-tabs">
           {TABS.map((t) => {
@@ -164,9 +163,7 @@ export default function ProtectionScreen() {
                 <Text style={s.sectionSub}>Reading this device…</Text>
               </View>
             ) : null}
-            <Section title="Device protection areas" sub="Key protections and settings that support your safety." testID="protection-device-areas">
-              <AreaList rows={deviceAreas} icons={DEVICE_AREA_ICONS} onOpen={(id) => router.push(`/device-protection?area=${id}` as never)} testID="protection-device-area" />
-            </Section>
+            <AreaList rows={deviceAreas} icons={DEVICE_AREA_ICONS} onOpen={(id) => router.push(`/device-protection?area=${id}` as never)} testID="protection-device-area" />
             <View style={s.info} testID="protection-device-info">
               <Info size={20} color={colors.onSurfaceSecondary} />
               <View style={{ flex: 1, gap: 2 }}>
