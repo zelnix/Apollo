@@ -93,6 +93,8 @@ export function useInvestigation(boundOperationId?: string | null) {
   const pendingCancellation = useRef<{ caseId: string; jobId: string } | null>(null);
   const pendingDeviceResult = useRef<{ caseId: string; result: DeviceResult; job: Job; after: number } | null>(null);
   const cancelAction = useRef<() => Promise<void>>(async () => undefined);
+  // When attach() is in control, adoptManaged must not fight it by setting state or calling follow.
+  const attachOwns = useRef(false);
   const update = (patch: Partial<CaseState> | ((previous: CaseState) => Partial<CaseState>)) => setState((previous) => ({ ...previous, ...(typeof patch === "function" ? patch(previous) : patch) }));
 
   const refresh = useCallback(async (caseId: string, gen = generation.current) => {
@@ -192,6 +194,12 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   const adoptManaged = useCallback((record: ManagedOperation) => {
     if (operationRef.current !== record.operationId) return;
+    // When attach() is managing the case, adoptManaged must not override its state.
+    // attach() owns the lifecycle: it sets the generation, follows the job, and settles the case.
+    if (attachOwns.current) {
+      console.warn('[caseStore] adoptManaged SUPPRESSED (attach owns)', { phase: record.phase, caseId: record.caseData?.id });
+      return;
+    }
     console.warn('[caseStore] adoptManaged', { phase: record.phase, caseId: record.caseData?.id, jobId: record.job?.id, opId: record.operationId });
     if (record.caseData) { caseRef.current = record.caseData; armExpiry(record.caseData); }
     const progress = record.phase === "failed" ? ["This exact operation is ready to retry."]
@@ -330,30 +338,37 @@ export function useInvestigation(boundOperationId?: string | null) {
   /** Open an existing case. `stoppedJobId` reopens a stopped turn so its Resubmit (and its pause) come back with it. */
   const attach = useCallback(async (caseId: string, stoppedJobId?: string) => {
     console.warn('[caseStore] attach START', { caseId, gen: generation.current + 1, opRef: operationRef.current });
+    attachOwns.current = true;
     stream.current?.abort(); pending.current = null; generation.current += 1; followed.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current); caseRef.current = { id: caseId } as InvestigationCase;
     setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted, operationId: operationRef.current, phase: "creating", progress: ["Opening the investigation."] }));
     void flushPendingDeletions(); const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseId;
     try {
       const caseData = await refresh(caseId, gen);
-      if (!live()) { console.warn('[caseStore] attach STALE after refresh', { caseId, gen, current: generation.current }); return null; }
+      if (!live()) { console.warn('[caseStore] attach STALE after refresh', { caseId, gen, current: generation.current }); attachOwns.current = false; return null; }
       armExpiry(caseData);
       const stopped = !caseData.activeJobId && stoppedJobId ? (await api.getJob(caseId, stoppedJobId)).job : null;
-      if (!live()) { console.warn('[caseStore] attach STALE after getJob', { caseId }); return null; }
+      if (!live()) { console.warn('[caseStore] attach STALE after getJob', { caseId }); attachOwns.current = false; return null; }
       if (caseData.activeJobId) {
         console.warn('[caseStore] attach → FOLLOW active job', { caseId, jobId: caseData.activeJobId });
-        const { job } = await api.getJob(caseId, caseData.activeJobId); if (live()) follow(caseId, job);
+        const { job } = await api.getJob(caseId, caseData.activeJobId);
+        // attach has determined the path — release ownership before follow takes over
+        attachOwns.current = false;
+        if (live()) follow(caseId, job);
       } else if (stopped?.status === "failed") {
         console.warn('[caseStore] attach → FAILED (stopped job)', { caseId });
+        attachOwns.current = false;
         update({ phase: "failed", job: stopped, failure: stopped.failure, error: stopped.failure?.message ?? null });
       } else {
         const phase = caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle";
         console.warn('[caseStore] attach → SETTLED', { caseId, phase, hasResponse: !!caseData.response });
+        attachOwns.current = false;
         update({ phase });
         void commitAnswered(caseId, caseData, "");
       }
       return caseData;
     } catch (error: unknown) {
+      attachOwns.current = false;
       if (!live()) return null;
       // Server returned 404/410 — the investigation may have been purged after local commit.
       // Try loading from the device store.
