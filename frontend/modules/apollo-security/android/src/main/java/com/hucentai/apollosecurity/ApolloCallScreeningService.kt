@@ -1,13 +1,23 @@
 package com.hucentai.apollosecurity
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.role.RoleManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.DateFormat
+import java.util.Date
 import java.time.Instant
 import java.util.UUID
 
@@ -96,7 +106,93 @@ class ApolloCallScreeningService : CallScreeningService() {
       val set = loadSet(ctx, key).toMutableSet(); set.remove(e164)
       prefs(ctx).edit().putStringSet(key, set).apply()
     }
-    fun markRisky(ctx: Context, number: String) = addToSet(ctx, KEY_AUTO_RISKY, number)
+    @Synchronized
+    fun markRisky(ctx: Context, number: String) {
+      addToSet(ctx, KEY_AUTO_RISKY, number)
+      val e164 = toE164(number, ctx); if (e164.isBlank()) return
+      writeMarks(ctx, RepeatCallerAlert.withHighRisk(readMarks(ctx), e164, System.currentTimeMillis()))
+    }
+
+    // ── Repeat Caller Alert ────────────────────────────────────────────────────────────────────
+    // When Apollo found a number high-risk or worth checking — {e164: {level, at}}, kept for 30 days — so a call from
+    // it in that time raises an alert. Block-list numbers alert on every call. See RepeatCallerAlert.
+    private const val KEY_RISK_MARKS = "risk_marks"
+    private const val ALERTS_CHANNEL = "apollo_alerts"
+    private const val REPEAT_NOTIFICATION_BASE_ID = 7_300_000
+
+    @Synchronized
+    fun readMarks(ctx: Context): Map<String, RepeatCallerAlert.Mark> {
+      val raw = prefs(ctx).getString(KEY_RISK_MARKS, null) ?: return emptyMap()
+      val obj = try { JSONObject(raw) } catch (_: Exception) { return emptyMap() }
+      val out = mutableMapOf<String, RepeatCallerAlert.Mark>()
+      for (key in obj.keys()) {
+        val m = obj.optJSONObject(key) ?: continue
+        out[key] = RepeatCallerAlert.Mark(m.optString("level"), m.optLong("at", 0L))
+      }
+      return out
+    }
+
+    @Synchronized
+    private fun writeMarks(ctx: Context, marks: Map<String, RepeatCallerAlert.Mark>) {
+      val obj = JSONObject()
+      RepeatCallerAlert.prune(marks, System.currentTimeMillis()).forEach { (n, m) -> obj.put(n, JSONObject().put("level", m.level).put("at", m.atMs)) }
+      prefs(ctx).edit().putString(KEY_RISK_MARKS, obj.toString()).apply()
+    }
+
+    /** A number found worth checking (on), or found clean on a later check (off). */
+    @Synchronized
+    fun setWorthChecking(ctx: Context, number: String, on: Boolean) {
+      val e164 = toE164(number, ctx); if (e164.isBlank()) return
+      writeMarks(ctx, RepeatCallerAlert.withWorthChecking(readMarks(ctx), e164, on, e164 in loadSet(ctx, KEY_AUTO_RISKY), System.currentTimeMillis()))
+    }
+
+    /** The Repeat Caller Alert for this call, handed to Android now (with whether it will show), or null. */
+    private fun repeatCallerAlert(ctx: Context, number: String, outcome: String, at: Long): Pair<RepeatCallerAlert.Alert, Boolean>? {
+      if (outcome == "allowed_by_you") return null
+      val mark = readMarks(ctx)[number]
+      val reason = RepeatCallerAlert.reasonFor(
+        onBlockList = outcome == "rejection_requested_block",
+        onAutoRejectList = outcome == "rejection_requested_risky",
+        mark = mark, nowMs = at,
+      ) ?: return null
+      val foundOn = mark?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it.atMs)) }
+      val alert = RepeatCallerAlert.alertFor(reason, number, foundOn)
+      return alert to postRepeatCallerNotification(ctx, number, alert, at)
+    }
+
+    /** True only when Android will show it: ApolloSG's notifications and its alerts category are both on. */
+    private fun postRepeatCallerNotification(ctx: Context, number: String, alert: RepeatCallerAlert.Alert, at: Long): Boolean {
+      val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
+      if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = nm.getNotificationChannel(ALERTS_CHANNEL)
+          ?: NotificationChannel(ALERTS_CHANNEL, "Apollo alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "All ApolloSG scam protection alerts, warnings, and notifications."
+          }.also { nm.createNotificationChannel(it) }
+        if (channel.importance == NotificationManager.IMPORTANCE_NONE) return false
+      }
+      // Tapping opens Check a number on this number, which checks it again with the earlier result above today's.
+      val open = Intent(Intent.ACTION_VIEW, Uri.parse("apollo://call-guard?number=${Uri.encode(number)}&repeat=$at"))
+        .setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      val id = REPEAT_NOTIFICATION_BASE_ID + (at % 100_000).toInt()
+      val tap = PendingIntent.getActivity(ctx, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      // On a locked screen: that a repeat caller rang, without the number.
+      val locked = NotificationCompat.Builder(ctx, ALERTS_CHANNEL).setSmallIcon(ctx.applicationInfo.icon)
+        .setContentTitle("ApolloSG: a repeat caller").setContentText("Unlock to see the number.").build()
+      val notification = NotificationCompat.Builder(ctx, ALERTS_CHANNEL)
+        .setSmallIcon(ctx.applicationInfo.icon)
+        .setContentTitle(alert.title)
+        .setContentText(alert.body)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(alert.body))
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .setPublicVersion(locked)
+        .setAutoCancel(true)
+        .setContentIntent(tap)
+        .build()
+      nm.notify(id, notification)
+      return true
+    }
 
     fun blockAllowJson(ctx: Context): JSONObject = JSONObject()
       .put("block", JSONArray(loadSet(ctx, KEY_BLOCK).toList()))
@@ -134,8 +230,16 @@ class ApolloCallScreeningService : CallScreeningService() {
     @Synchronized
     private fun recordScreenedCall(ctx: Context, number: String, outcome: String) {
       if (number.isBlank()) return
+      val at = System.currentTimeMillis()
+      val entry = JSONObject().put("number", number).put("at", at).put("outcome", outcome)
+      // A Repeat Caller Alert is raised here, after the screening answer, and noted on the entry with whether it showed.
+      try {
+        repeatCallerAlert(ctx, number, outcome, at)?.let { (alert, shown) ->
+          entry.put("repeat", alert.reason.wire).put("alert", if (shown) "shown" else "not_shown").put("alertTitle", alert.title).put("alertBody", alert.body)
+        }
+      } catch (_: Exception) { }
       val existing = readScreenedCalls(ctx)
-      val next = JSONArray().put(JSONObject().put("number", number).put("at", System.currentTimeMillis()).put("outcome", outcome))
+      val next = JSONArray().put(entry)
       for (i in 0 until minOf(existing.length(), MAX_SCREENED - 1)) next.put(existing.get(i))
       prefs(ctx).edit().putString(KEY_SCREENED, next.toString()).apply()
     }
@@ -269,8 +373,8 @@ class ApolloCallScreeningService : CallScreeningService() {
       // Never let a screening failure hang up a real call — always fall through to allow.
       respond(callDetails, disallow = false, reject = false)
     } finally {
-      // History is written only after Android already has its answer, inside its own guard, so it can
-      // never delay, change or fail the screening decision above.
+      // History, and any Repeat Caller Alert, are written only after Android already has its answer, inside their own
+      // guard, so they can never delay, change or fail the screening decision above.
       screened?.let { (number, outcome) ->
         try { if (isIncoming(callDetails)) recordScreenedCall(ctx, number, outcome) } catch (_: Exception) { }
       }

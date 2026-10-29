@@ -170,4 +170,9 @@ export const CallSdk = {
     const m = getNativeModule();
     return call<{ ok: boolean }>("markNumberRisky", m ? () => m.markNumberRisky(JSON.stringify({ number })) : undefined, { ok: false });
   },
+
+  setNumberWorthChecking: (number: string, on: boolean) => {
+    const set = getNativeModule()?.setNumberWorthChecking;
+    return call<{ ok: boolean }>("setNumberWorthChecking", set ? () => set(JSON.stringify({ number, on })) : undefined, { ok: false });
+  },
 };

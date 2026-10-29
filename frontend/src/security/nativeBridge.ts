@@ -93,6 +93,9 @@ export interface ApolloSecurityNativeModule {
   /** Adds a number to the device-local "autoRisky" set (populated after a high-risk
    * POST /api/call/risk-check result) so Call Guard's native mechanism blocks it going forward. */
   markNumberRisky(entryJson: string): Promise<string>;
+  /** Android only: remembers (on) or forgets (off) that a number was found worth checking, so a call from it in the
+   * next 30 days raises a Repeat Caller Alert. */
+  setNumberWorthChecking?(entryJson: string): Promise<string>;
   // Gate 7 — Apps & Device (SDK contract). JSON strings; see src/security/appDeviceSdk.ts.
   getAppDeviceCapabilities(): Promise<string>;
   getInstalledAppAssessment(packageId: string): Promise<string>;

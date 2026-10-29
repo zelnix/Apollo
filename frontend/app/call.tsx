@@ -25,7 +25,9 @@ import { type PatrolEvent } from "@/src/domain/types";
 import type { EvidenceProfile } from "@/src/domain/triage/evidenceProfile";
 import { useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
-import { recordCheck } from "@/src/store/checkHistoryStore";
+import { SameNumberReminder } from "@/src/components/SameNumberReminder";
+import { earlierCheck, type EarlierCheck } from "@/src/domain/sameNumber";
+import { getCheckHistory, numberKeyOf, recordCheck } from "@/src/store/checkHistoryStore";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
@@ -59,7 +61,7 @@ export default function CheckCall() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, checkCall, resolveEvent, showToast, storage } = useApollo();
+  const { ready, setupDone, checkCall, resolveEvent, showToast, storage, events } = useApollo();
   const [asks, setAsks] = useState<CallAsk[]>([]);
   const [claim, setClaim] = useState<CallClaim>("unknown");
   const params = useLocalSearchParams<{ number?: string }>();
@@ -82,16 +84,25 @@ export default function CheckCall() {
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const [historyKey, setHistoryKey] = useState(0);
+  // Same Number Reminder: the earlier result for this number from the last 30 days, read before today's check.
+  const [earlier, setEarlier] = useState<EarlierCheck | null>(null);
   const run = async () => {
-    const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined });
+    const checked = number.trim();
+    setEarlier(null);
+    // What this device held before today's check (today's check must not count as earlier).
+    const priorEvents = events;
+    const priorHistory = getCheckHistory("call").catch(() => []);
+    const r = await checkCall({ asks, claim, number: checked || undefined, transcript: transcript.trim() || undefined });
     const sid = r.event?.event_id ?? `call-${Date.now()}`;
     dlog('CallGuard', 'check complete', { submissionId: sid, eventId: r.event?.event_id, caseId: r.event?.investigation_case_id, state: r.analysis.state });
+    const numberKey = checked ? await numberKeyOf(checked).catch(() => null) : null;
+    setEarlier(checked ? earlierCheck({ number: checked, key: numberKey, events: priorEvents, history: await priorHistory, now: Date.now() }) : null);
     setSubmissionId(sid);
     setResult(r);
-    void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title });
+    void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title, ...(numberKey ? { numberKey } : {}) });
     setHistoryKey((k) => k + 1);
   };
-  const reset = () => { setResult(null); setSubmissionId(null); setAsks([]); };
+  const reset = () => { setResult(null); setSubmissionId(null); setAsks([]); setEarlier(null); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;
@@ -122,6 +133,7 @@ export default function CheckCall() {
     }
     actions.push({ testID: "call-again", variant: "ghost", label: "Check another number", onPress: reset });
 
+    const reminder = earlier ? <SameNumberReminder earlier={earlier} testID="call-earlier" /> : null;
     return (
       <>
         {result.event ? (
@@ -136,9 +148,10 @@ export default function CheckCall() {
             eventId={result.event.event_id}
             caseId={result.event.investigation_case_id ?? null}
             actions={actions}
+            notice={reminder}
           />
         ) : (
-          <CheckResultScreen result={model} actions={actions} />
+          <CheckResultScreen result={model} actions={actions} notice={reminder} />
         )}
         {result.event ? (
           <RecoveryFlow event={result.event} kinds={["password", "code", "money", "card", "app", "remote", "called", "info"]} testID="call-recovery" />

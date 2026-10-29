@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { AppState, Pressable, Text, View } from "react-native";
 
 import { Body, Button } from "@/src/components/ui";
-import { isRejectionRequest, SCREENED_OUTCOME_LABEL, screenedWhen, type ScreenedCall } from "@/src/domain/screenedCalls";
+import { isRejectionRequest, repeatAlertLine, screenedOutcomeLabel, screenedWhen, type ScreenedCall } from "@/src/domain/screenedCalls";
 import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -81,7 +81,8 @@ export function ScreenedCallsList({ onSelect, actionLabel = "Check", disabled = 
             </View>
             <View style={s.info}>
               <Text style={s.number}>{call.number}</Text>
-              <Text style={s.outcome}>{SCREENED_OUTCOME_LABEL[call.outcome]}</Text>
+              <Text style={s.outcome}>{screenedOutcomeLabel(call)}</Text>
+              {call.repeat ? <Text style={s.outcome} testID={`${testID}-row-${i}-repeat`}>{repeatAlertLine(call)}</Text> : null}
               <Text style={s.when}>{day} · {time}</Text>
             </View>
             <View style={s.action}><Text style={s.actionText}>{actionLabel}</Text></View>

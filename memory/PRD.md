@@ -4496,3 +4496,21 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
   one occasion (was "Seen 2 times" after one check).
 - Preview "timeout" was the bundler warming up / a browser crash, not an app hang. Verified on screen.
 - `app/settings/debug-logs.tsx`: removed non-existent `fonts.mono` (tsc clean).
+
+## Repeat Caller Alert + Reminder on "Check this call" (2026-10-29)
+- User choices: alert on block-list numbers, high-risk numbers and worth-checking numbers; a device notification as the
+  call arrives; every call (no rate limit); reminder also on the "Check this call" screen.
+- Native (Android, `modules/apollo-security`): pure `RepeatCallerAlert.kt` (decision + wording, 7 JVM tests in
+  `RepeatCallerAlertTest.kt`). `ApolloCallScreeningService` keeps `risk_marks` {e164: {level, at}} for 30 days
+  (`markRisky` stamps high_risk; new `setWorthChecking`). The alert is raised inside `recordScreenedCall` (after the
+  screening answer, own guard) on the "apollo_alerts" channel; lock screen hides the number; tap opens
+  `apollo://call-guard?number=…&repeat=<at>`. The screened entry notes `repeat`, `alert` (shown|not_shown), title, body.
+  Block list: every call while listed. High-risk: rejected + alerted within 30 days of the finding (older marks from
+  before this build have no date → no alert). Worth checking: rings + alerted within 30 days; a later clean result clears it.
+- JS: `CallSdk.setNumberWorthChecking` (from checkNumberRisk on review/allow); `src/push/repeatCallerAlerts.ts` copies
+  alerts into the on-device alert history on open/foreground (watermark); Calls Apollo screened rows show the alert line;
+  Call Guard auto-checks when opened with `repeat` (after `ready`) and marks the alert opened.
+- "Check this call" (`app/call.tsx`) shows the Same Number Reminder and records `numberKey`; `CheckResultScreen` gained `notice`.
+- Native service compiled against android-34 android.jar + androidx core 1.13.1; frontend 1228 tests pass.
+- NEEDS device validation in an installed Android build (CallScreeningService + notifications don't run in preview/Expo Go). iOS can't
+  tell apps when a call arrives, so there is no Repeat Caller Alert on iPhone.

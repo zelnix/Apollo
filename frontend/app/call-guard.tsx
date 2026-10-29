@@ -41,6 +41,8 @@ import { saveCheck } from "@/src/store/savedCheckStore";
 import { SameNumberReminder } from "@/src/components/SameNumberReminder";
 import { earlierCheck, type EarlierCheck } from "@/src/domain/sameNumber";
 import { CARRIER_WARNING_LABEL, carrierWarningFinding, isCarrierWarning, type CarrierWarning } from "@/src/domain/carrierWarning";
+import { markAlertOpened } from "@/src/push/alertLog";
+import { syncRepeatCallerAlerts } from "@/src/push/repeatCallerAlerts";
 import { regionCountry } from "@/src/telemetry/deviceInfo";
 import { dlog } from "@/src/utils/dlog";
 
@@ -115,10 +117,11 @@ export default function CheckNumber() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkNumberRisk, showToast, events } = useApollo();
+  const { checkNumberRisk, showToast, events, ready } = useApollo();
   const inputRef = useRef<TextInput>(null);
   // Opened from "I got a ‘Potential Fraud’ warning" (with the number when it's known), or that button tapped here.
-  const params = useLocalSearchParams<{ carrierWarning?: string; number?: string; sample?: string }>();
+  // `repeat` marks an opening from a Repeat Caller Alert (its value is that alert's time).
+  const params = useLocalSearchParams<{ carrierWarning?: string; number?: string; sample?: string; repeat?: string }>();
   const [carrierWarning, setCarrierWarning] = useState<CarrierWarning | null>(isCarrierWarning(params.carrierWarning) ? params.carrierWarning : null);
   const inAustralia = regionCountry(Localization.getLocales()[0]?.regionCode) === "AU";
 
@@ -202,6 +205,16 @@ export default function CheckNumber() {
     // Runs once, for how the screen was opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Opened from a Repeat Caller Alert: once Apollo has loaded what it knew, check the number straight away so the
+  // earlier result shows above today's. The tap is recorded on that alert's history row.
+  const startedFromAlert = useRef(false);
+  useEffect(() => {
+    if (startedFromAlert.current || !ready || !params.repeat || !params.number) return;
+    startedFromAlert.current = true;
+    void syncRepeatCallerAlerts().then(() => markAlertOpened(`repeat-${params.repeat}`)).catch(() => undefined);
+    void runInvestigation(String(params.number));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, params.repeat, params.number]);
   // Preview only: a sample caller chosen elsewhere (Threats → Try a sample check) runs exactly as picking it here does.
   const sampleRan = useRef(false);
   useEffect(() => {

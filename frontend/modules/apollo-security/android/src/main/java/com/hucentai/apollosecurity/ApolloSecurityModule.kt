@@ -358,6 +358,12 @@ class ApolloSecurityModule : Module() {
       ApolloCallScreeningService.markRisky(ctx, JSONObject(json).optString("number"))
       JSONObject().put("ok", true).toString()
     }
+    // Repeat Caller Alert: a number found worth checking (on), or found clean on a later check (off).
+    AsyncFunction("setNumberWorthChecking") { json: String ->
+      val body = JSONObject(json)
+      ApolloCallScreeningService.setWorthChecking(ctx, body.optString("number"), body.optBoolean("on", true))
+      JSONObject().put("ok", true).toString()
+    }
 
     // Live Caller ID — PIR server URL (iOS-only feature; Android stub for cross-platform parity).
     AsyncFunction("configurePirServerUrl") { _: String ->

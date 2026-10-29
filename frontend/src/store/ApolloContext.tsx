@@ -72,6 +72,7 @@ import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { getNativeCallClassification, getNativeMessageClassification } from "@/src/security/nativeProtectionEvidence";
 import { storage } from "@/src/utils/storage";
 import { useCallGuardPipeline } from "@/src/pipelines/callGuardPipeline";
+import { syncRepeatCallerAlerts } from "@/src/push/repeatCallerAlerts";
 import { useTextGuardLocalFindings } from "@/src/pipelines/textGuardPipeline";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
@@ -1486,6 +1487,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       screenedAt: options?.screenedAt ?? null, carrierWarning: !!options?.carrierWarning, simulated: options?.simulated,
     });
     const numberCtx = { numberDecision: result.decision, reputationFailure: numberLookupFailure(result) };
+    // Repeat Caller Alert: a number found worth checking is remembered on this device with when, so a call from it in
+    // the next 30 days raises an alert; a later clean result forgets it. High-risk numbers are remembered by markNumberRisky.
+    if (result.decision === "review" || result.decision === "allow") void CallSdk.setNumberWorthChecking(result.number, result.decision === "review").catch(() => undefined);
     // Every number check reports its Triage outcome — allowed, risky and unknown alike — so the admin
     // "Limited by cause" share is measured over all of them, not only the ones that raised something.
     const numberTriage = (correlation?: CorrelationInput) => evaluateTriage(numberRiskTriageEvidence({
@@ -1642,6 +1646,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     retryCallLookups: CallSdk.retryCallLookups,
     isTrustedCaller,
   });
+
+  // Repeat Caller Alerts raised while ApolloSG was closed join the on-device alert history when it opens.
+  useEffect(() => {
+    void syncRepeatCallerAlerts().catch(() => undefined);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void syncRepeatCallerAlerts().catch(() => undefined); });
+    return () => sub.remove();
+  }, []);
 
   // ── Text Guard Pipeline (extracted to src/pipelines/textGuardPipeline.ts) ──
   useTextGuardLocalFindings({

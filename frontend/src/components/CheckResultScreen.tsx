@@ -74,9 +74,11 @@ export interface CheckResultScreenProps {
   addingOriginal?: boolean;
   /** What changed with the evidence on this check (an upgrade, or an original that didn't match). */
   evidenceNotice?: string | null;
+  /** Shown above the result, e.g. the Same Number Reminder. */
+  notice?: React.ReactNode;
 }
 
-export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose, onAddOriginal, addingOriginal, evidenceNotice }: CheckResultScreenProps) {
+export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose, onAddOriginal, addingOriginal, evidenceNotice, notice }: CheckResultScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
@@ -107,6 +109,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing["3xl"] }]}
         testID="check-result-scroll"
       >
+        {notice}
         {/* ── Apollo's finding ── */}
         <Card style={{ gap: spacing.md }} testID="check-result-main">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
