@@ -24,25 +24,5 @@ const useStyles = makeStyles((c) => ({
 }));
 
 export function RecoveryFlow({ event, kinds, linkToCheck, testID = "recovery" }: { event: PatrolEvent; kinds: RecoveryKind[]; linkToCheck?: string | null; testID?: string }) {
-  const s = useStyles();
-  const router = useRouter();
-  const { recordRecovery } = useApollo();
-  const [pick, setPick] = useState(false);
-  const [kind, setKind] = useState<RecoveryKind | null>(null);
-  return (
-    <>
-      <Button testID={`${testID}-open`} variant="warning" label="I already called, clicked or shared…" onPress={() => setPick(true)} />
-      <Sheet visible={pick} onClose={() => setPick(false)} title="What happened?" testID={`${testID}-pick-sheet`}>
-        {kinds.map((k) => <Button key={k} testID={`${testID}-pick-${k}`} variant="secondary" label={RECOVERY_TITLE[k]} onPress={() => { setPick(false); setKind(k); void recordRecovery(event, k); }} />)}
-        <Button testID={`${testID}-pick-cancel`} variant="ghost" label="Cancel" onPress={() => setPick(false)} />
-      </Sheet>
-      <Sheet visible={!!kind} onClose={() => setKind(null)} title="Stay with me — here's what to do" testID={`${testID}-sheet`}>
-        {kind ? RECOVERY_STEPS[kind].map((step, i) => <View key={i} style={s.step}><Text style={s.num}>{i + 1}</Text><Text style={s.text} testID={`${testID}-step-${i}`}>{step}</Text></View>) : null}
-        {kind === "clicked" && linkToCheck ? <Button testID={`${testID}-check-link`} label="Check the link now" onPress={() => { setKind(null); router.push({ pathname: "/check", params: { url: linkToCheck.startsWith("http") ? linkToCheck : `https://${linkToCheck}`, source: "message" } }); }} /> : null}
-        {kind === "clicked" && !linkToCheck ? <Body testID={`${testID}-limited-observation`}>Apollo recorded that you opened something. This does not establish its safety. If you downloaded software or shared information, select that recovery step too.</Body> : null}
-        <Body>This is recorded in Patrol so you can come back to it. Ask Higgins any time.</Body>
-        <Button testID={`${testID}-close`} variant="ghost" label="Done" onPress={() => setKind(null)} />
-      </Sheet>
-    </>
-  );
+  return null;
 }
