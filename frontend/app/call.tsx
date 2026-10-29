@@ -81,7 +81,15 @@ export default function CheckCall() {
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const [historyKey, setHistoryKey] = useState(0);
-  const run = async () => { const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }); setSubmissionId(r.event?.event_id ?? `call-${Date.now()}`); setResult(r); void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title }); setHistoryKey((k) => k + 1); };
+  const run = async () => {
+    const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined });
+    const sid = r.event?.event_id ?? `call-${Date.now()}`;
+    console.warn('[CallGuard] check complete', { submissionId: sid, eventId: r.event?.event_id, caseId: r.event?.investigation_case_id, state: r.analysis.state });
+    setSubmissionId(sid);
+    setResult(r);
+    void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title });
+    setHistoryKey((k) => k + 1);
+  };
   const reset = () => { setResult(null); setSubmissionId(null); setAsks([]); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -90,6 +98,7 @@ export default function CheckCall() {
   // UNIVERSAL CHECK RESULT — when the manual check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a && submissionId) {
+    console.warn('[CallGuard] render result screen', { submissionId, eventId: result.event?.event_id, caseId: result.event?.investigation_case_id });
     const model = { ...buildCallCheckResult({ analysis: a, event: result.event, number, transcript, official: result.official }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the device call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];

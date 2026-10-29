@@ -51,11 +51,35 @@ export function InvestigationFlow({
   // Tracks which identity (caseId or submissionId) was already started. A re-render with the
   // same identity is a no-op — attach/start is never called twice for the same case.
   const started = useRef<string | null>(null);
+  const renderCount = useRef(0);
+  renderCount.current += 1;
   const busy =
     state.phase === "creating" ||
     state.phase === "working" ||
     state.phase === "reconnecting" ||
     state.phase === "waiting_device";
+
+  // ── Diagnostic: log every render with key identifiers ──
+  console.warn('[InvFlow] render', { n: renderCount.current, submissionId, caseId, stableIdentity, phase: state.phase, startedRef: started.current, caseDataId: state.caseData?.id });
+
+  // ── Diagnostic: detect remount (started ref is null on mount) ──
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      console.warn('[InvFlow] MOUNT', { submissionId, caseId, stableIdentity });
+    }
+    return () => { console.warn('[InvFlow] UNMOUNT', { submissionId, caseId, stableIdentity }); };
+  }, []);
+
+  // ── Diagnostic: log phase transitions ──
+  const prevPhase = useRef(state.phase);
+  useEffect(() => {
+    if (prevPhase.current !== state.phase) {
+      console.warn('[InvFlow] phase', { from: prevPhase.current, to: state.phase, caseDataId: state.caseData?.id });
+      prevPhase.current = state.phase;
+    }
+  });
 
   useEffect(() => {
     onResolved?.(!!state.response);
@@ -68,25 +92,36 @@ export function InvestigationFlow({
 
   useEffect(() => {
     // Guard: if this identity was already started, a re-render must not restart it.
-    if (started.current === stableIdentity) return;
-    if (!autoStart) return;
+    if (started.current === stableIdentity) {
+      console.warn('[InvFlow] effect SKIP (already started)', { stableIdentity, started: started.current });
+      return;
+    }
+    if (!autoStart) {
+      console.warn('[InvFlow] effect SKIP (autoStart=false)');
+      return;
+    }
     const boundEventId = eventId ?? null;
-    // Apollo already opened a case for this material: follow it. Starting another would file a
-    // second case for one check (and spend a second Magnum DI call on the same evidence).
     if (caseId) {
+      console.warn('[InvFlow] ATTACH', { caseId, stableIdentity, submissionId });
       started.current = stableIdentity;
       void attach(caseId).then((opened) => {
+        console.warn('[InvFlow] attach resolved', { caseId, opened: !!opened, openedId: opened?.id });
         if (opened && boundEventId) void rememberCaseForEvent(boundEventId, opened.id);
       });
       return;
     }
     const { input, files } = createCaseInput(context, question);
     if (continuityKey && state.caseData) {
-      if (busy) return;
+      if (busy) {
+        console.warn('[InvFlow] effect SKIP (continuity busy)', { phase: state.phase });
+        return;
+      }
+      console.warn('[InvFlow] CONTINUE', { operationId, stableIdentity });
       started.current = stableIdentity;
       void continueWith(input, operationId);
       return;
     }
+    console.warn('[InvFlow] START', { operationId, stableIdentity, hasExistingCase: !!state.caseData });
     started.current = stableIdentity;
     const begin =
       state.caseData && state.operationId !== operationId
@@ -95,8 +130,6 @@ export function InvestigationFlow({
     void begin.then((c) => {
       if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id);
     });
-    // Only submissionId and caseId determine whether to start — NOT state.phase or state.caseData?.id.
-    // Phase transitions are lifecycle events that the started guard handles; they must not re-trigger attach.
   }, [submissionId, caseId]); // eslint-disable-line -- only submissionId/caseId determine start
 
   return (
