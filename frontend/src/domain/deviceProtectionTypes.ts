@@ -105,13 +105,13 @@ export const PROTECTION_AREA_LABEL: Record<ProtectionArea, string> = {
 };
 
 export const PROTECTION_AREA_DESCRIPTION: Record<ProtectionArea, string> = {
-  calls_messages: "Device settings for call and message protection, including spam filtering.",
-  apps: "Device settings that control apps, files and powerful app access.",
-  privacy: "Device settings that control what apps can access, and your privacy.",
-  web: "Device settings for safe browsing, network security and internet connections.",
-  access: "Screen lock, biometrics, encryption and account security settings.",
-  updates: "Security updates and other settings that protect your device and system.",
-  recovery: "Find my device and recovery settings if your device is lost or stolen.",
+  calls_messages: "Spam filtering, call screening and message protection.",
+  apps: "Install sources, app permissions and file access controls.",
+  privacy: "App permissions, location sharing and privacy controls.",
+  web: "Safe browsing, DNS protection and network security.",
+  access: "Screen lock, biometrics and encryption.",
+  updates: "Security patches and system integrity checks.",
+  recovery: "Find my device, remote wipe and recovery options.",
 };
 
 export const PROTECTION_AREA_ORDER: ProtectionArea[] = ["calls_messages", "apps", "privacy", "web", "access", "updates", "recovery"];

@@ -56,17 +56,19 @@ function statusColors(status: ListStatus, c: ThemeColors) {
 
 const useStyles = makeStyles((c) => ({
   card: { borderRadius: radius.lg, borderWidth: 0.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.md, minHeight: 64 },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, minHeight: 56 },
   divider: { borderTopWidth: 0.5, borderTopColor: c.divider },
-  icon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  body: { flex: 1, gap: 2 },
-  title: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20, color: c.onSurface },
-  desc: { fontFamily: fonts.text, fontSize: 12.5, lineHeight: 17, color: c.onSurfaceSecondary },
-  status: { alignItems: "flex-end", gap: 3, maxWidth: 132 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  pillText: { fontFamily: fonts.textSemibold, fontSize: 12, flexShrink: 1 },
-  note: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, textAlign: "right" },
+  icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  body: { flex: 1, gap: 1 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  title: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 20, color: c.onSurface },
+  descRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
+  desc: { flex: 1, fontFamily: fonts.text, fontSize: 12, lineHeight: 16, color: c.onSurfaceSecondary },
+  status: { alignItems: "flex-end", gap: 2 },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  pillText: { fontFamily: fonts.textSemibold, fontSize: 11, flexShrink: 1 },
+  note: { fontFamily: fonts.text, fontSize: 10, color: c.onSurfaceSecondary, textAlign: "right" },
 }));
 
 export function AreaList({ rows, icons, onOpen, testID }: {
@@ -90,20 +92,24 @@ export function AreaList({ rows, icons, onOpen, testID }: {
             testID={id}
           >
             <View style={[s.icon, { backgroundColor: colors[icon.bg] }]}>
-              <icon.Icon size={20} color={colors[icon.fg]} />
+              <icon.Icon size={18} color={colors[icon.fg]} />
             </View>
             <View style={s.body}>
-              <Text style={s.title}>{row.title}</Text>
-              <Text style={s.desc}>{row.description}</Text>
-            </View>
-            <View style={s.status}>
-              <View style={[s.pill, { backgroundColor: palette.bg }]}>
-                <View style={[s.dot, { backgroundColor: palette.dot }]} />
-                <Text style={[s.pillText, { color: palette.text }]} numberOfLines={1} testID={`${id}-status`}>{row.label}</Text>
+              <View style={s.titleRow}>
+                <Text style={s.title} numberOfLines={1}>{row.title}</Text>
+                <View style={s.status}>
+                  <View style={[s.pill, { backgroundColor: palette.bg }]}>
+                    <View style={[s.dot, { backgroundColor: palette.dot }]} />
+                    <Text style={[s.pillText, { color: palette.text }]} numberOfLines={1} testID={`${id}-status`}>{row.label}</Text>
+                  </View>
+                </View>
               </View>
-              <Text style={s.note} testID={`${id}-note`}>{row.note}</Text>
+              <View style={s.descRow}>
+                <Text style={s.desc} numberOfLines={2}>{row.description}</Text>
+                <Text style={s.note} testID={`${id}-note`}>{row.note}</Text>
+              </View>
             </View>
-            <ChevronRight size={18} color={colors.muted} />
+            <ChevronRight size={16} color={colors.muted} />
           </Pressable>
         );
       })}

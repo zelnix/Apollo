@@ -25,9 +25,9 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, fontFamily: fonts.displayBold, fontSize: 24, lineHeight: 30, color: c.onSurface, textAlign: "center" },
+  headerTitle: { flex: 1, fontFamily: fonts.displayBold, fontSize: 24, lineHeight: 30, color: c.onSurface },
   content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
-  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, textAlign: "center" },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
   hero: { borderRadius: radius.lg, borderWidth: 1, padding: spacing.lg },
   section: { gap: spacing.sm },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 20, lineHeight: 26, color: c.onSurface },
@@ -84,7 +84,7 @@ export default function ProtectionScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Back" testID="protection-back" onPress={() => goBackOrHome(router)} style={s.backBtn}>
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <FitTitle text="Protection" style={s.headerTitle} maxSize={24} minSize={20} testID="protection-title" />
+          <FitTitle text="Protections" style={s.headerTitle} maxSize={24} minSize={20} testID="protection-title" />
           <AppMenuButton testID="protection-menu" />
         </View>
       </View>
@@ -164,7 +164,7 @@ export default function ProtectionScreen() {
                 <Text style={s.sectionSub}>Reading this device…</Text>
               </View>
             ) : null}
-            <Section title="Device protection areas" sub="Key device settings and protections that support your safety." testID="protection-device-areas">
+            <Section title="Device protection areas" sub="Key protections and settings that support your safety." testID="protection-device-areas">
               <AreaList rows={deviceAreas} icons={DEVICE_AREA_ICONS} onOpen={(id) => router.push(`/device-protection?area=${id}` as never)} testID="protection-device-area" />
             </Section>
             <View style={s.info} testID="protection-device-info">
