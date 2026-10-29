@@ -199,6 +199,7 @@ export default function SettingsScreen() {
       {/* 6 ── Diagnostics */}
       <Group icon={Activity} title="Diagnostics" tone="diagnostics" testID="settings-diagnostics">
         <NavRow first label="Feed health" hint="Sync status of each government scam and cyber-security feed" onPress={() => router.push("/settings/feed-health")} testID="settings-feed-health" />
+        <NavRow label="Debug logs" hint="Investigation flow traces — view and export" onPress={() => router.push("/settings/debug-logs")} testID="settings-debug-logs" />
       </Group>
 
       {/* 7 ── Help */}

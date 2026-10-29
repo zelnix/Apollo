@@ -10,6 +10,7 @@ import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { spacing } from "@/src/theme";
+import { dlog } from "@/src/utils/dlog";
 
 export interface InvestigationFlowProps {
   submissionId: string;
@@ -60,23 +61,23 @@ export function InvestigationFlow({
     state.phase === "waiting_device";
 
   // ── Diagnostic: log every render with key identifiers ──
-  console.warn('[InvFlow] render', { n: renderCount.current, submissionId, caseId, stableIdentity, phase: state.phase, startedRef: started.current, caseDataId: state.caseData?.id });
+  dlog('InvFlow', 'render', { n: renderCount.current, submissionId, caseId, stableIdentity, phase: state.phase, startedRef: started.current, caseDataId: state.caseData?.id });
 
   // ── Diagnostic: detect remount (started ref is null on mount) ──
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true;
-      console.warn('[InvFlow] MOUNT', { submissionId, caseId, stableIdentity });
+      dlog('InvFlow', 'MOUNT', { submissionId, caseId, stableIdentity });
     }
-    return () => { console.warn('[InvFlow] UNMOUNT', { submissionId, caseId, stableIdentity }); };
+    return () => { dlog('InvFlow', 'UNMOUNT', { submissionId, caseId, stableIdentity }); };
   }, []);
 
   // ── Diagnostic: log phase transitions ──
   const prevPhase = useRef(state.phase);
   useEffect(() => {
     if (prevPhase.current !== state.phase) {
-      console.warn('[InvFlow] phase', { from: prevPhase.current, to: state.phase, caseDataId: state.caseData?.id });
+      dlog('InvFlow', 'phase', { from: prevPhase.current, to: state.phase, caseDataId: state.caseData?.id });
       prevPhase.current = state.phase;
     }
   });
@@ -93,19 +94,19 @@ export function InvestigationFlow({
   useEffect(() => {
     // Guard: if this identity was already started, a re-render must not restart it.
     if (started.current === stableIdentity) {
-      console.warn('[InvFlow] effect SKIP (already started)', { stableIdentity, started: started.current });
+      dlog('InvFlow', 'effect SKIP (already started)', { stableIdentity, started: started.current });
       return;
     }
     if (!autoStart) {
-      console.warn('[InvFlow] effect SKIP (autoStart=false)');
+      dlog('InvFlow', 'effect SKIP (autoStart=false)');
       return;
     }
     const boundEventId = eventId ?? null;
     if (caseId) {
-      console.warn('[InvFlow] ATTACH', { caseId, stableIdentity, submissionId });
+      dlog('InvFlow', 'ATTACH', { caseId, stableIdentity, submissionId });
       started.current = stableIdentity;
       void attach(caseId).then((opened) => {
-        console.warn('[InvFlow] attach resolved', { caseId, opened: !!opened, openedId: opened?.id });
+        dlog('InvFlow', 'attach resolved', { caseId, opened: !!opened, openedId: opened?.id });
         if (opened && boundEventId) void rememberCaseForEvent(boundEventId, opened.id);
       });
       return;
@@ -113,15 +114,15 @@ export function InvestigationFlow({
     const { input, files } = createCaseInput(context, question);
     if (continuityKey && state.caseData) {
       if (busy) {
-        console.warn('[InvFlow] effect SKIP (continuity busy)', { phase: state.phase });
+        dlog('InvFlow', 'effect SKIP (continuity busy)', { phase: state.phase });
         return;
       }
-      console.warn('[InvFlow] CONTINUE', { operationId, stableIdentity });
+      dlog('InvFlow', 'CONTINUE', { operationId, stableIdentity });
       started.current = stableIdentity;
       void continueWith(input, operationId);
       return;
     }
-    console.warn('[InvFlow] START', { operationId, stableIdentity, hasExistingCase: !!state.caseData });
+    dlog('InvFlow', 'START', { operationId, stableIdentity, hasExistingCase: !!state.caseData });
     started.current = stableIdentity;
     const begin =
       state.caseData && state.operationId !== operationId
@@ -130,7 +131,7 @@ export function InvestigationFlow({
     void begin.then((c) => {
       if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id);
     });
-  }, [submissionId, caseId]); // eslint-disable-line -- only submissionId/caseId determine start
+  }, [submissionId, caseId]); // eslint-disable-line
 
   return (
     <View style={{ gap: spacing.sm }} testID={testID}>

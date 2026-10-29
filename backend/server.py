@@ -371,6 +371,11 @@ app.include_router(guarddog_router.router)
 from routers import guarddog_live
 app.include_router(guarddog_live.router, dependencies=[Depends(enforce_device_auth)])
 
+# Temporary diagnostic log capture (no auth — frontend posts traces here during investigation debugging).
+from routers import debug_log as debug_log_router
+app.include_router(debug_log_router.router, prefix="/api", tags=["debug"])
+
+
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]

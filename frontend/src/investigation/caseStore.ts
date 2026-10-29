@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
+import { dlog } from "@/src/utils/dlog";
 import { forgetCase } from "./caseIndex";
 import { commitInvestigation, enqueueConfirmCommit, dequeueConfirmCommit, pendingConfirmCommits, deleteInvestigation, getInvestigation, recordServerCopyRemoved, type DeviceInvestigation } from "./deviceStore";
 import { serverLeavesBy } from "@/src/domain/serverCopyNote";
@@ -132,7 +133,7 @@ export function useInvestigation(boundOperationId?: string | null) {
   }, []);
 
   const follow = useCallback((caseId: string, job: Job, after = 0) => {
-    console.warn('[caseStore] follow', { caseId, jobId: job.id, after, gen: generation.current });
+    dlog('caseStore', 'follow', { caseId, jobId: job.id, after, gen: generation.current });
     stream.current?.abort();
     const gen = generation.current;
     const operationId = operationRef.current;
@@ -150,7 +151,7 @@ export function useInvestigation(boundOperationId?: string | null) {
           pendingDeviceResult.current = null; if (live()) follow(caseId, { ...job, id: jobId ?? job.id }, consumed);
         }).catch(() => { if (live()) update({ phase: "failed", error: "ApolloSG couldn't safely deliver this device observation. Retry sends the same observation without starting a new check." }); });
       } else if (event.type === "completed") {
-        console.warn('[caseStore] stream COMPLETED', { caseId, jobId: job.id, completion: event.payload.completion });
+        dlog('caseStore', 'stream COMPLETED', { caseId, jobId: job.id, completion: event.payload.completion });
         pending.current = null;
         void refresh(caseId, gen).then(async (caseData) => {
           if (!live()) return;
@@ -197,10 +198,10 @@ export function useInvestigation(boundOperationId?: string | null) {
     // When attach() is managing the case, adoptManaged must not override its state.
     // attach() owns the lifecycle: it sets the generation, follows the job, and settles the case.
     if (attachOwns.current) {
-      console.warn('[caseStore] adoptManaged SUPPRESSED (attach owns)', { phase: record.phase, caseId: record.caseData?.id });
+      dlog('caseStore', 'adoptManaged SUPPRESSED (attach owns)', { phase: record.phase, caseId: record.caseData?.id });
       return;
     }
-    console.warn('[caseStore] adoptManaged', { phase: record.phase, caseId: record.caseData?.id, jobId: record.job?.id, opId: record.operationId });
+    dlog('caseStore', 'adoptManaged', { phase: record.phase, caseId: record.caseData?.id, jobId: record.job?.id, opId: record.operationId });
     if (record.caseData) { caseRef.current = record.caseData; armExpiry(record.caseData); }
     const progress = record.phase === "failed" ? ["This exact operation is ready to retry."]
       : record.phase === "submitted" || record.phase === "settled" ? ["The operation is attached to this investigation."]
@@ -221,7 +222,7 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   useEffect(() => {
     if (!boundOperationId) return;
-    console.warn('[caseStore] subscribe managed op', { boundOperationId, gen: generation.current + 1 });
+    dlog('caseStore', 'subscribe managed op', { boundOperationId, gen: generation.current + 1 });
     stream.current?.abort(); generation.current += 1; followed.current = null; operationRef.current = boundOperationId;
     const unsubscribe = subscribeManagedOperation(boundOperationId, adoptManaged);
     return unsubscribe;
@@ -337,7 +338,7 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   /** Open an existing case. `stoppedJobId` reopens a stopped turn so its Resubmit (and its pause) come back with it. */
   const attach = useCallback(async (caseId: string, stoppedJobId?: string) => {
-    console.warn('[caseStore] attach START', { caseId, gen: generation.current + 1, opRef: operationRef.current });
+    dlog('caseStore', 'attach START', { caseId, gen: generation.current + 1, opRef: operationRef.current });
     attachOwns.current = true;
     stream.current?.abort(); pending.current = null; generation.current += 1; followed.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current); caseRef.current = { id: caseId } as InvestigationCase;
@@ -345,23 +346,23 @@ export function useInvestigation(boundOperationId?: string | null) {
     void flushPendingDeletions(); const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseId;
     try {
       const caseData = await refresh(caseId, gen);
-      if (!live()) { console.warn('[caseStore] attach STALE after refresh', { caseId, gen, current: generation.current }); attachOwns.current = false; return null; }
+      if (!live()) { dlog('caseStore', 'attach STALE after refresh', { caseId, gen, current: generation.current }); attachOwns.current = false; return null; }
       armExpiry(caseData);
       const stopped = !caseData.activeJobId && stoppedJobId ? (await api.getJob(caseId, stoppedJobId)).job : null;
-      if (!live()) { console.warn('[caseStore] attach STALE after getJob', { caseId }); attachOwns.current = false; return null; }
+      if (!live()) { dlog('caseStore', 'attach STALE after getJob', { caseId }); attachOwns.current = false; return null; }
       if (caseData.activeJobId) {
-        console.warn('[caseStore] attach → FOLLOW active job', { caseId, jobId: caseData.activeJobId });
+        dlog('caseStore', 'attach → FOLLOW active job', { caseId, jobId: caseData.activeJobId });
         const { job } = await api.getJob(caseId, caseData.activeJobId);
         // attach has determined the path — release ownership before follow takes over
         attachOwns.current = false;
         if (live()) follow(caseId, job);
       } else if (stopped?.status === "failed") {
-        console.warn('[caseStore] attach → FAILED (stopped job)', { caseId });
+        dlog('caseStore', 'attach → FAILED (stopped job)', { caseId });
         attachOwns.current = false;
         update({ phase: "failed", job: stopped, failure: stopped.failure, error: stopped.failure?.message ?? null });
       } else {
         const phase = caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle";
-        console.warn('[caseStore] attach → SETTLED', { caseId, phase, hasResponse: !!caseData.response });
+        dlog('caseStore', 'attach → SETTLED', { caseId, phase, hasResponse: !!caseData.response });
         attachOwns.current = false;
         update({ phase });
         void commitAnswered(caseId, caseData, "");

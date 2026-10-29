@@ -13,6 +13,7 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { ScreenedCallsList } from "@/src/components/ScreenedCallsList";
+import { dlog } from "@/src/utils/dlog";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { ScreenedCalls } from "@/src/security/screenedCalls";
 import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
@@ -84,7 +85,7 @@ export default function CheckCall() {
   const run = async () => {
     const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined });
     const sid = r.event?.event_id ?? `call-${Date.now()}`;
-    console.warn('[CallGuard] check complete', { submissionId: sid, eventId: r.event?.event_id, caseId: r.event?.investigation_case_id, state: r.analysis.state });
+    dlog('CallGuard', 'check complete', { submissionId: sid, eventId: r.event?.event_id, caseId: r.event?.investigation_case_id, state: r.analysis.state });
     setSubmissionId(sid);
     setResult(r);
     void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title });
@@ -98,7 +99,7 @@ export default function CheckCall() {
   // UNIVERSAL CHECK RESULT — when the manual check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a && submissionId) {
-    console.warn('[CallGuard] render result screen', { submissionId, eventId: result.event?.event_id, caseId: result.event?.investigation_case_id });
+    dlog('CallGuard', 'render', { submissionId, eventId: result.event?.event_id, caseId: result.event?.investigation_case_id });
     const model = { ...buildCallCheckResult({ analysis: a, event: result.event, number, transcript, official: result.official }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the device call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
