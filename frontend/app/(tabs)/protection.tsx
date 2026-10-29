@@ -116,17 +116,7 @@ export default function ProtectionScreen() {
           <ShieldCheck size={18} color={colors.resting} />
           <Text style={s.checkedText} numberOfLines={2} testID="protection-checked-text">{checkedLine}</Text>
           {rechecking ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : (
-            <Pressable
-              testID="protection-recheck"
-              accessibilityRole="button"
-              accessibilityLabel="Check again"
-              onPress={recheck}
-              disabled={rechecking}
-              hitSlop={8}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <RefreshCw size={18} color={colors.brandPrimary} />
-            </Pressable>
+            <RefreshCw size={18} color={colors.brandPrimary} testID="protection-recheck" />
           )}
         </Pressable>
 
