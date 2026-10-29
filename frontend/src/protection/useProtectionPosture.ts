@@ -2,13 +2,25 @@
 // decided once by `protectionPosture` so both screens always say the same thing.
 import { useCallback, useMemo, useState } from "react";
 
-import { deviceAreaRows } from "@/src/domain/deviceProtectionTypes";
+import { deviceAreaRows, type DeviceAreaRow, type DeviceAreaStatus } from "@/src/domain/deviceProtectionTypes";
 import { areaCounts, areaRows, countLine, protectionPosture } from "@/src/domain/protectionPosture";
 import { assessDeviceProtections, useDeviceProtections } from "@/src/store/deviceProtectionStore";
 import { runProtectionHealthCheck } from "./healthCoordinator";
 import { useProtectionHealth } from "./healthStore";
 
 export interface DeviceCounts { protected: number; attention: number; toCheck: number; optional: number }
+
+/** Short summary from device area rows — same style as Apollo's countLine. */
+function deviceAreaCountLine(areas: DeviceAreaRow[]): string {
+  if (!areas.length) return "No areas available";
+  const n = (statuses: DeviceAreaStatus[]) => areas.filter((r) => statuses.includes(r.status)).length;
+  const ok = n(["protected"]);
+  const attention = n(["attention"]);
+  const toCheck = n(["unconfirmed"]);
+  const unread = n(["unread"]);
+  if (unread === areas.length) return `${areas.length} areas · Not yet checked`;
+  return countLine({ protected: ok, attention, toCheck });
+}
 
 export function useProtectionPosture() {
   const health = useProtectionHealth();
@@ -25,8 +37,9 @@ export function useProtectionPosture() {
     const deviceCounts: DeviceCounts | null = g && onDevice
       ? { protected: g.protectedRows.length, attention: g.needsAttention.length, toCheck: g.needsChecking.length, optional: g.optional.length }
       : null;
-    const deviceLine = !assessment ? "Reading this device…" : deviceCounts ? countLine(deviceCounts) : "Read in the app on your phone";
     const deviceAreas = deviceAreaRows(device);
+    const deviceLine = !assessment ? "Reading this device…" : deviceCounts ? countLine(deviceCounts)
+      : deviceAreaCountLine(deviceAreas);
     return { posture, areas, apolloLine: countLine(areaCounts(areas)), deviceCounts, deviceLine, deviceAreas, deviceRead: !!assessment };
   }, [health.gates, health.checking, health.checkedAt, assessment]);
 
