@@ -7,7 +7,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry" | "email_evidence" | "official_contacts";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "push_preferences" | "device_posture" | "family" | "device_settings" | "message_check" | "link_investigation" | "feedback" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "number_details" | "call_investigate" | "investigation" | "vision_investigate" | "message_investigation" | "call_investigation" | "number_risk_investigation" | "device_activity" | "triage_telemetry" | "email_evidence" | "official_contacts";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "url", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode",
@@ -75,6 +75,9 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // numbers) leaves the device, only when the person taps "Check this number" or a call rings with
   // no local block/allow/risk signal — see backend/services/phonerisk.py (IPQualityScore, proxied).
   call_risk_check: new Set(["device_id", "number", "country"]),
+  // Number Details on a call's top card: the number and a country hint only — read from built-in numbering-plan data,
+  // no lookup service, nothing stored (backend/services/number_details.py).
+  number_details: new Set(["number", "country"]),
   // Triage outcome telemetry ("Limited by cause"): outcome and cause codes only — never a link, number or content.
   triage_telemetry: new Set(["source_type", "outcome", "causes", "gap_codes", "incomplete", "catalogue_version", "lookup_check", "lookup_attempts", "lookup_outcome"]),
   call_investigate: new Set(["device_id", "number", "country", "caller_asks", "caller_claim", "transcript"]),

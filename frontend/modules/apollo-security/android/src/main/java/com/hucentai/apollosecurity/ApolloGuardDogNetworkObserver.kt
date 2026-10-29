@@ -6,10 +6,24 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
-/** Process-lifetime observer for the physical network DNS provider used by Website Gate forwarding. */
+/**
+ * Process-lifetime observer for the physical network DNS provider used by Website Gate forwarding.
+ *
+ * Battery fix (2026-10-29): Android fires these callbacks very often (capabilities change with
+ * signal strength on mobile data). Each one used to start a new thread. Now one serialized worker
+ * reads the network: a burst of callbacks queues at most one read, and a read that finds the same
+ * DNS resolver as the last one it reported is ignored.
+ */
 internal class ApolloGuardDogNetworkObserver(context: Context, private val changed: (String?) -> Unit) {
   private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+  private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "apollo-network-observer").apply { isDaemon = true } }
+  private val readQueued = AtomicBoolean(false)
+  // Only touched on [worker].
+  private var reported = false
+  private var lastReported: String? = null
   private val callback = object : ConnectivityManager.NetworkCallback() {
     override fun onAvailable(network: Network) = publish()
     override fun onLost(network: Network) = publish()
@@ -37,5 +51,15 @@ internal class ApolloGuardDogNetworkObserver(context: Context, private val chang
     dns?.let { priority to it }
   }.sortedBy { it.first }.map { it.second }.firstOrNull()
 
-  private fun publish() { Thread { changed(currentIpv4Dns()) }.start() }
+  private fun publish() {
+    if (!readQueued.compareAndSet(false, true)) return // a read is already waiting; it will see this change too
+    worker.execute {
+      readQueued.set(false) // cleared before reading, so a change after this point queues one more read
+      val dns = currentIpv4Dns()
+      if (reported && dns == lastReported) return@execute
+      reported = true
+      lastReported = dns
+      changed(dns)
+    }
+  }
 }

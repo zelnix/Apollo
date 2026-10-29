@@ -51,20 +51,18 @@ class LiveReputationChecker(
         if (cached != null) return cached
 
         // Deduplicate: if another thread is already checking this hostname, wait on the same future
-        val future = outstanding.computeIfAbsent(hostname) { h ->
-            CompletableFuture.supplyAsync({ performCheck(h) }, executor)
-        }
+        val future = inFlight(hostname)
 
         return try {
             future.get(holdTimeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             // Protection Before Speed: timeout exceeded, fail open
-            // Do NOT claim the site was checked — the investigation is incomplete
+            // Do NOT claim the site was checked — the investigation is incomplete.
+            // The request stays registered until its background check finishes, so a repeat
+            // lookup waits on it instead of starting a second request for the same hostname.
             null
         } catch (e: Exception) {
             null
-        } finally {
-            outstanding.remove(hostname)
         }
     }
 
@@ -74,10 +72,34 @@ class LiveReputationChecker(
      */
     fun checkAsync(hostname: String) {
         if (store.get(hostname) != null) return // Already cached
-        if (outstanding.containsKey(hostname)) return // Already in progress
-        outstanding.computeIfAbsent(hostname) { h ->
-            CompletableFuture.supplyAsync({ performCheck(h) }, executor)
+        inFlight(hostname)
+    }
+
+    /**
+     * The one request for [hostname]: an existing one if it is still running, else a new one.
+     * It is removed from [outstanding] only when its background check has finished (never when a
+     * caller merely stops waiting), so no hostname ever has two requests running at once.
+     */
+    private fun inFlight(hostname: String): CompletableFuture<LiveReputationStore.CachedVerdict?> {
+        outstanding[hostname]?.let { return it }
+        val started = CompletableFuture<LiveReputationStore.CachedVerdict?>()
+        outstanding.putIfAbsent(hostname, started)?.let { return it }
+        try {
+            executor.execute {
+                try {
+                    started.complete(performCheck(hostname))
+                } catch (t: Throwable) {
+                    started.complete(null)
+                } finally {
+                    outstanding.remove(hostname, started)
+                }
+            }
+        } catch (e: RejectedExecutionException) {
+            // Checker already shut down: nothing will run, so release the slot at once.
+            outstanding.remove(hostname, started)
+            started.complete(null)
         }
+        return started
     }
 
     private fun performCheck(hostname: String): LiveReputationStore.CachedVerdict? {
@@ -165,5 +187,8 @@ class LiveReputationChecker(
 
     fun shutdown() {
         executor.shutdownNow()
+        // Queued checks will never run now: release anyone waiting on them and drop the entries.
+        outstanding.values.forEach { it.complete(null) }
+        outstanding.clear()
     }
 }

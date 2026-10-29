@@ -82,6 +82,8 @@ export interface InvestigationCheckScreenProps {
   evidenceNotice?: string | null;
   /** The material exactly as checked, shown on the case's top card (see InvestigationFlow). */
   original?: OriginalSourceInput | null;
+  /** Shown above the investigation (e.g. the Same Number Reminder). */
+  notice?: React.ReactNode;
 }
 
 export function InvestigationCheckScreen({
@@ -97,6 +99,7 @@ export function InvestigationCheckScreen({
   addingOriginal,
   evidenceNotice,
   original,
+  notice,
 }: InvestigationCheckScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -121,6 +124,7 @@ export function InvestigationCheckScreen({
         ]}
         testID="investigation-check-scroll"
       >
+        {notice}
         <InvestigationFlow
           submissionId={submissionId}
           context={investigationContext}

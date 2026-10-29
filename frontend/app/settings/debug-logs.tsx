@@ -46,7 +46,7 @@ const useStyles = makeStyles((c) => ({
   tag: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.5 },
   msg: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurface, marginTop: 1 },
   time: { fontFamily: fonts.text, fontSize: 10, color: c.muted },
-  data: { fontFamily: fonts.mono ?? fonts.text, fontSize: 11, lineHeight: 15, color: c.onSurfaceSecondary, marginTop: 4 },
+  data: { fontFamily: fonts.text, fontSize: 11, lineHeight: 15, color: c.onSurfaceSecondary, marginTop: 4 },
   empty: { fontFamily: fonts.text, fontSize: 14, color: c.muted, textAlign: "center", paddingTop: 60 },
 }));
 

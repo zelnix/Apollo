@@ -73,7 +73,7 @@
   "frontend/src/domain/gatePermissions.ts": "87d5be4d26adebfc3a3d40442fe6f47bfd34921659fb4903ab4c3a25d9699ed5",
   "frontend/src/domain/imagePrivacy.ts": "d2dcb23ee469bcb8d74238ddf6d49398d336442c20bc2ec13d0f433fff174a2f",
   "frontend/src/domain/networkAnalysis.ts": "d7d58b75582ae6ae4a2b6fe2ea156cef9f1a5b59775450de3e05495bd5125b92",
-  "frontend/src/domain/privacy.ts": "a4f403f89b3edefa63896ec89117828665987f6db3004a0321d30c12bde04255",
+  "frontend/src/domain/privacy.ts": "feca4e938607e2abc30052d25e77c71edc50482393c3ad6868a2e6193b96f28b",
   "frontend/src/domain/privacyData.ts": "6d55b17c4b6540e96e8f8005a42375ac7c6f45afb49f2b2968faa3ac48af5f55",
   "frontend/src/domain/privacyPolicy.ts": "739b3af042ec619bc445e4ee7db4ef773d4fc545ed9d7687c6e3a234111f5a75",
   "frontend/src/domain/screenedCalls.ts": "20cc805f209c22edc7997052a185f9313120c90badd9f8ca22b09f6349a0ee7d",

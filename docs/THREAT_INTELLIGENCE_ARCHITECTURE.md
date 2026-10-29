@@ -563,6 +563,8 @@ Each capability must be proven independently before deployment.
 
 **Scope:** Bounded live reputation checks for unknown DNS hostnames. Protection Before Speed: the DNS handler holds for up to 3 seconds while intelligence is gathered.
 
+> **Battery fix (2026-10-29):** the Android DNS handler no longer runs this check. A hostname that isn't in the signed local rule bundle is forwarded at once (no backend request, no hold, no "checking this website" notification). The backend endpoint and `LiveReputationChecker` remain; the checker now keeps a request registered until its background check finishes, so one hostname never has two requests running.
+
 **What was built:**
 - Backend endpoint `POST /api/guarddog/dns-check` in `routers/guarddog_live.py`
   - Accepts hash prefix (privacy-preserving) and/or full hostname for external lookup

@@ -1,8 +1,14 @@
 package com.guarddog.vpn
 
+import com.sun.net.httpserver.HttpServer
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -89,5 +95,34 @@ class LiveReputationCheckerTest {
         assertNotNull(result)
         assertEquals("clean", result.verdict)
         assertEquals("high", result.confidence)
+    }
+
+    // Battery fix: a caller that stops waiting must not drop the request, or the next lookup of the
+    // same hostname starts a second request while the first is still running.
+    @Test fun aTimedOutWaitKeepsTheRequestSoARepeatLookupNeverStartsASecondOne() {
+        val requests = AtomicInteger(0)
+        val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+        server.createContext("/api/guarddog/dns-check") { exchange ->
+            requests.incrementAndGet()
+            Thread.sleep(800) // slower than the hold below
+            val body = """{"verdict":"clean","confidence":"high","source":"test"}""".toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.executor = Executors.newCachedThreadPool()
+        server.start()
+        val store = LiveReputationStore()
+        val checker = LiveReputationChecker(store, "http://127.0.0.1:${server.address.port}", holdTimeoutMs = 100)
+        try {
+            assertNull(checker.checkBounded("slow.example.com")) // gave up waiting; the request keeps running
+            assertNull(checker.checkBounded("slow.example.com")) // waits on the same request
+            Thread.sleep(1_500)
+            assertEquals(1, requests.get())
+            assertEquals("clean", checker.checkBounded("slow.example.com")?.verdict) // now answered from the cache
+            assertEquals(1, requests.get())
+        } finally {
+            checker.shutdown()
+            server.stop(0)
+        }
     }
 }

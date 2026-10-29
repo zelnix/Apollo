@@ -25,7 +25,9 @@ import {
   detectionFacts, isAddress, originHeading, previewFromEvent, previewFromEvidence, previewFromOriginal, shortenMiddle,
   type DetectionFact, type PreviewIcon, type SourcePreview,
 } from "@/src/domain/caseSourceSummary";
+import { callNumberOf } from "@/src/domain/numberDetails";
 import { formatDateTime } from "@/src/domain/threatCase";
+import { NumberDetails } from "./NumberDetails";
 import type { ApolloState, PatrolEvent } from "@/src/domain/types";
 import type { CaseOrigin, EvidenceItem } from "@/src/investigation/types";
 import { listImageEvidence, subscribeImageEvidence, type ImageEvidenceRecord } from "@/src/store/imageEvidence";
@@ -161,6 +163,7 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
   const detected = origin === "apollo";
   const tone = detectedTone(event?.state);
   const facts = detected && event ? detectionFacts(event, original) : [];
+  const callNumber = callNumberOf(original, event);
   const wide = width >= 600;
   // About two lines of a web address beside the tile at this screen width (the third line is slack for wrapping).
   const addressFit = Math.max(28, Math.floor((width - 184) / 7.5) * 2);
@@ -230,6 +233,7 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
           ) : null}
         </FoldBox>
       ) : null}
+      {callNumber ? <NumberDetails number={callNumber} testID={`${testID}-number-details`} /> : null}
       {facts.length ? (
         <View style={s.facts} testID={`${testID}-facts`}>
           {facts.map((fact, i) => {

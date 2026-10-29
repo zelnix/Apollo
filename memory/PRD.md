@@ -4484,3 +4484,15 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Result: the user's two stuck checks (12:19/12:20) now read "No scam indicators found" with history entries; ~1,900 stuck
   preview records repaired. Tests: backend `test_ended_projection.py`; frontend `endedInvestigation.test.ts`.
   Backend 1533 pass, frontend 1212 pass.
+
+## Battery fixes + Number Details + Same Number Reminder (2026-10-29)
+- Android VPN battery: 5 targeted native fixes (no remote check for unknown hostnames, in-flight request fix, reused UDP
+  sockets, serialized network-observer workers, no leaks on VPN restart). Native JUnit passes. NEEDS a physical-phone
+  before/after battery measurement by the user (cannot be measured in preview).
+- Number Details card (`src/components/report/NumberDetails.tsx`, `POST /api/call/number-details`): Country · Line type ·
+  Original network from built-in numbering-plan data; nothing shown when unreadable.
+- Same Number Reminder (`src/domain/sameNumber.ts`, `src/components/SameNumberReminder.tsx`): earlier result for the same
+  number within 30 days, above today's result. Fix: a check and the case it opened (origin "user", within 5 min) count as
+  one occasion (was "Seen 2 times" after one check).
+- Preview "timeout" was the bundler warming up / a browser crash, not an app hang. Verified on screen.
+- `app/settings/debug-logs.tsx`: removed non-existent `fonts.mono` (tsc clean).

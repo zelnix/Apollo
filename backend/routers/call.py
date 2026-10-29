@@ -84,6 +84,19 @@ async def call_risk_check(body: CallRiskRequest):
     return response
 
 
+class NumberDetailsRequest(BaseModel):
+    number: str = Field(min_length=3, max_length=40)
+    country: Optional[str] = Field(default=None, min_length=2, max_length=2)
+
+
+@router.post("/call/number-details")
+async def number_details(body: NumberDetailsRequest):
+    """Number Details for a call's top card: country, line type and original network, from built-in numbering-plan
+    data. No lookup service, no credit, nothing stored. Not reputation: it says nothing about who is calling."""
+    from services.number_details import describe
+    return describe(body.number, body.country)
+
+
 @router.post("/call/investigate", response_model=PhoneInvestigateResponse)
 async def call_investigate(body: PhoneInvestigateRequest, request: Request):
     """Person-requested phone investigation → shared Magnum DI path.

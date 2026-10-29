@@ -36,8 +36,10 @@ import { SourcePickerSheet } from "@/src/components/SourcePickerSheet";
 import { simulation } from "@/src/simulation";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { recordCheck } from "@/src/store/checkHistoryStore";
+import { recordCheck, getCheckHistory, numberKeyOf } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
+import { SameNumberReminder } from "@/src/components/SameNumberReminder";
+import { earlierCheck, type EarlierCheck } from "@/src/domain/sameNumber";
 import { CARRIER_WARNING_LABEL, carrierWarningFinding, isCarrierWarning, type CarrierWarning } from "@/src/domain/carrierWarning";
 import { regionCountry } from "@/src/telemetry/deviceInfo";
 import { dlog } from "@/src/utils/dlog";
@@ -113,7 +115,7 @@ export default function CheckNumber() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkNumberRisk, showToast } = useApollo();
+  const { checkNumberRisk, showToast, events } = useApollo();
   const inputRef = useRef<TextInput>(null);
   // Opened from "I got a ‘Potential Fraud’ warning" (with the number when it's known), or that button tapped here.
   const params = useLocalSearchParams<{ carrierWarning?: string; number?: string; sample?: string }>();
@@ -130,6 +132,8 @@ export default function CheckNumber() {
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Same Number Reminder: the earlier result for this number from the last 30 days, read before today's check.
+  const [earlier, setEarlier] = useState<EarlierCheck | null>(null);
 
   // Restricted call-log picker: retained, but only present when this build declares READ_CALL_LOG
   // (off by default — see plugins/withRestrictedPhonePermissions.js).
@@ -149,6 +153,10 @@ export default function CheckNumber() {
     setError(null);
     setResult(null);
     setSubmissionId(null);
+    setEarlier(null);
+    // What this phone held before today's check: earlier checks and cases (today's check must not count as earlier).
+    const priorEvents = events;
+    const priorHistory = getCheckHistory("call").catch(() => []);
     try {
       // The reputation check. `deliberate` marks it as a check the person asked for, so Triage can
       // escalate a number Apollo cannot settle from its own sources to a Magnum DI investigation.
@@ -157,12 +165,15 @@ export default function CheckNumber() {
       const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true, carrierWarning: carrierWarning ?? undefined, simulated });
       const sid = `callguard-${riskResult.number.replace(/[^A-Za-z0-9._:-]/g, "")}-${Date.now().toString(36)}`;
       dlog("CallGuard", "check complete", { submissionId: sid, caseId: riskResult.investigation_case_id ?? null, decision: riskResult.decision });
+      const numberKey = await numberKeyOf(riskResult.number).catch(() => null);
+      setEarlier(earlierCheck({ number: riskResult.number, key: numberKey, events: priorEvents, history: await priorHistory, now: Date.now() }));
       setSubmissionId(sid);
       setResult(riskResult);
       void recordCheck("call", {
         at: new Date().toISOString(),
         state: riskResult.decision === "avoid" ? "barking" : riskResult.decision === "review" ? "growling" : "resting",
         summary: riskResult.higgins?.headline ?? riskResult.number,
+        ...(numberKey ? { numberKey } : {}),
       });
       setBusy(false);
     } catch (e) {
@@ -178,6 +189,7 @@ export default function CheckNumber() {
     setSaved(false);
     setError(null);
     setCarrierWarning(null);
+    setEarlier(null);
   };
 
   // A carrier warning with the number already known is checked straight away; without one, the number box waits.
@@ -265,6 +277,7 @@ export default function CheckNumber() {
         caseId={result.investigation_case_id ?? null}
         original={{ kind: "call", fields: [{ label: "Number", value: result.number }], capturedAt: result.checked_at }}
         actions={callActions}
+        notice={earlier ? <SameNumberReminder earlier={earlier} testID="callguard-earlier" /> : null}
       />
     );
   }

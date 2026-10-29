@@ -13,6 +13,9 @@ const useStyles = makeStyles((c) => ({
   meta: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
 }));
 
+/** The latest checks shown (the history keeps more, for the Same Number Reminder). */
+const SHOWN = 10;
+
 /** `refreshKey` lets the host bump it after a new check so the card reloads. */
 export function CheckHistoryCard({ gate, refreshKey = 0, testID = "check-history" }: { gate: CheckGate; refreshKey?: number; testID?: string }) {
   const s = useStyles();
@@ -22,7 +25,7 @@ export function CheckHistoryCard({ gate, refreshKey = 0, testID = "check-history
   return (
     <Card style={{ gap: spacing.sm }} testID={testID}>
       <SectionTitle>Your recent checks</SectionTitle>
-      {items.map((e, i) => (
+      {items.slice(0, SHOWN).map((e, i) => (
         <View key={`${e.at}-${i}`} style={{ gap: 2 }} testID={`${testID}-${i}`}>
           <View style={s.row}><Body style={{ flex: 1 }}>{e.summary}</Body><Pill tone={e.state} label={resultChip(e.state)} /></View>
           <Body style={s.meta}>{new Date(e.at).toLocaleString()}</Body>

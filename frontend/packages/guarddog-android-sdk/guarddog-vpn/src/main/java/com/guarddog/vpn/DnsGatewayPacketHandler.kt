@@ -15,26 +15,16 @@ import com.guarddog.core.net.HostCanonicalizer
  * risk leaking the real IPv6 address of an already-adjudicated-BLOCK host) -- it answers NXDOMAIN
  * instead, since there is no IPv6 sinkhole pool in this frozen design.
  *
- * Stage 3 — Live Reputation (additive, opt-in): When [liveChecker] is wired in, hostnames not in
- * the local rule bundle trigger a bounded live reputation check BEFORE DNS is forwarded upstream.
- * Protection Before Speed: the DNS handler holds for up to ~3 seconds while intelligence is
- * gathered. If the verdict is "malicious", the binding store blocks via [armByLiveVerdict] —
- * the backend has already created a threat indicator, so the next rule refresh will provide static
- * authority. If "clean", unknown, or timed out, DNS is forwarded normally (fail open).
+ * Battery fix (2026-10-29): a hostname that isn't in the local rule bundle is forwarded straight
+ * away. It is never sent to Apollo's backend for a live reputation check from here: that check held
+ * the single DNS thread for up to ~3 seconds (plus a rule refresh) for every new hostname the phone
+ * looked up, which cost a network request, a wake-up and a notification each time. Blocking comes
+ * from the signed local rule bundle only, which Apollo refreshes on its own schedule.
  */
 class DnsGatewayPacketHandler(
     private val bindingStore: SinkholeBindingStore,
     private val forwarder: UpstreamDnsForwarder,
     private val onUnsupported: (reason: String) -> Unit = {},
-    /** Stage 3: Optional live reputation checker for unknown hostnames. Null = disabled. */
-    private val liveChecker: LiveReputationChecker? = null,
-    /** Stage 3: Optional notification callback for live check lifecycle events. */
-    private val liveCheckNotifier: LiveCheckNotifier? = null,
-    /** Stage 3: Callback invoked when a live check returns "malicious" for a hostname not in
-     *  the current rule bundle. The callback should refresh the rule bundle from the backend
-     *  (which now includes the new threat indicator) so that [bindingStore.arm] can authorise
-     *  blocking through the trusted enforcement path. Null = no refresh available. */
-    private val ruleRefresher: Runnable? = null,
 ) {
     /** Returns the raw IPv4/UDP response packet to write back to the TUN, or null to send nothing at all (fail open by silence). */
     fun handle(queryPacket: Ipv4PacketInfo, rawBuffer: ByteArray, length: Int): ByteArray? {
@@ -63,91 +53,8 @@ class DnsGatewayPacketHandler(
             }
         }
 
-        // ── Step 2: Live reputation check (bounded hold, opt-in) ──
-        if (liveChecker != null) {
-            return handleWithLiveCheck(canonicalHost, queryPacket, dnsQuery, rawBuffer, udpRange)
-        }
-
-        // ── No live checker: fail open, forward immediately ──
+        // ── Step 2: Not in the local rules: forward straight away (no remote check, no hold) ──
         return forward(queryPacket, rawBuffer, udpRange)
-    }
-
-    /**
-     * Protection Before Speed: holds the DNS response while querying Apollo's backend for
-     * a live reputation verdict on the unknown hostname.
-     *
-     * - "malicious" → NXDOMAIN (prevents the page from loading)
-     * - "clean" / "unknown" / timeout → forward upstream (fail open)
-     */
-    private fun handleWithLiveCheck(
-        hostname: String,
-        queryPacket: Ipv4PacketInfo,
-        dnsQuery: DnsQuery,
-        rawBuffer: ByteArray,
-        udpRange: IntRange,
-    ): ByteArray? {
-        // Notify: "Apollo is checking this website…"
-        try { liveCheckNotifier?.onLiveCheckEvent(hostname, LiveCheckEvent.CheckStarted) } catch (_: Throwable) {}
-
-        val verdict = try {
-            liveChecker!!.checkBounded(hostname)
-        } catch (e: Exception) {
-            null
-        }
-
-        return if (verdict != null) {
-            when (verdict.verdict) {
-                "malicious" -> {
-                    // Protection Before Speed: live check confirmed this hostname as malicious.
-                    // The backend has created a threat indicator. Try rule-bundle authorization
-                    // first (static rules). If the hostname is not in the bundle yet, trigger a
-                    // hot rule refresh on a SEPARATE thread (avoids deadlocking the DNS thread
-                    // or triggering a VPN stop/restart) with a bounded wait, then re-attempt
-                    // arm() through the trusted enforcement path.
-                    var sinkholeIpv4 = bindingStore.arm(hostname)
-                    if (sinkholeIpv4 == null && ruleRefresher != null) {
-                        val refreshThread = Thread(ruleRefresher, "live-rep-refresh")
-                        refreshThread.isDaemon = true
-                        refreshThread.start()
-                        refreshThread.join(2_500)  // Bounded: 2.5 seconds max
-                        if (!refreshThread.isAlive) {
-                            sinkholeIpv4 = bindingStore.arm(hostname)
-                        }
-                    }
-                    if (sinkholeIpv4 != null) {
-                        notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
-                        when (dnsQuery.qtype) {
-                            DnsQueryParser.TYPE_A -> DnsResponseSynthesizer.synthesizeSinkholeAnswer(queryPacket, dnsQuery, sinkholeIpv4)
-                            else -> DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
-                        }
-                    } else {
-                        // Refresh timed out, failed, or hostname still not authorised — forward.
-                        // The user is notified via the "threat detected" observation.
-                        notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
-                        forward(queryPacket, rawBuffer, udpRange)
-                    }
-                }
-                else -> {
-                    // "clean", "unknown", "unavailable" — forward DNS normally.
-                    notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
-                    forward(queryPacket, rawBuffer, udpRange)
-                }
-            }
-        } else {
-            // Timeout or error — fail open, forward DNS without claiming it was checked.
-            try { liveCheckNotifier?.onLiveCheckEvent(hostname, LiveCheckEvent.CheckTimedOut) } catch (_: Throwable) {}
-            forward(queryPacket, rawBuffer, udpRange)
-        }
-    }
-
-    private fun notifyCompleted(hostname: String, verdict: String, confidence: String, blocked: Boolean) {
-        try {
-            liveCheckNotifier?.onLiveCheckEvent(hostname, LiveCheckEvent.CheckCompleted(
-                verdict = verdict,
-                confidence = confidence,
-                blocked = blocked,
-            ))
-        } catch (_: Throwable) { /* never crash the DNS handler for a notification failure */ }
     }
 
     private fun forward(queryPacket: Ipv4PacketInfo, rawBuffer: ByteArray, udpRange: IntRange): ByteArray? =

@@ -1,8 +1,6 @@
 package com.guarddog.vpn
 
-import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
@@ -99,6 +97,8 @@ object GuardDogVpnRuntime {
 class GuardDogVpnService : VpnService() {
     private val state = VpnStateRepository.shared
     private var session: TunSession? = null
+    /** The current session's DNS forwarder (one reused socket); closed with the session. */
+    private var dnsForwarder: ProtectedUdpDnsForwarder? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bindingCheck = OffThreadBindingCheck()
 
@@ -170,6 +170,9 @@ class GuardDogVpnService : VpnService() {
             fail("establish() returned null (consent revoked or another VPN active)")
             return
         }
+        // A start while a session is still open (a repeated start, or a restart after a network
+        // change) must not leave the old tunnel, reader thread or DNS socket running beside the new one.
+        releaseSession()
         val deduper = BlockedFlowDeduper(config.dedupeWindowMillis, SystemClock)
         // Gate Guard M2 Website Gate: null websiteGateConfig means the authorizer stays null too,
         // so PacketDropReporter's matching logic is bit-for-bit the M1-only check (see PacketDropReporter.onPacket).
@@ -189,15 +192,13 @@ class GuardDogVpnService : VpnService() {
             val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
             val forwarder: UpstreamDnsForwarder = if (upstream != null) {
                 ProtectedUdpDnsForwarder(InetAddress.getByName(upstream), protector = SocketProtector { socket -> protect(socket) })
+                    .also { dnsForwarder = it }
             } else {
                 UpstreamDnsForwarder { _, _, _ -> null } // no upstream configured: fail open by silence
             }
             DnsGatewayPacketHandler(
                 bindingStore, forwarder,
                 onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
-                liveChecker = buildLiveReputationChecker(),
-                liveCheckNotifier = buildLiveCheckNotifier(),
-                ruleRefresher = GuardDogVpnRuntime.liveReputationRuleRefresher,
             )
         } else {
             null
@@ -278,6 +279,9 @@ class GuardDogVpnService : VpnService() {
             fail("establish() returned null (consent revoked or another VPN active)")
             return
         }
+        // A start while a session is still open (a repeated start, or a restart after a network
+        // change) must not leave the old tunnel, reader thread or DNS socket running beside the new one.
+        releaseSession()
         // No M1 drop reporter in this mode — no controlled endpoint to match against.
         // Construct M2 DNS gateway if the engine is available.
         val dnsGateway = if (websiteGateEngine != null) {
@@ -289,15 +293,13 @@ class GuardDogVpnService : VpnService() {
             val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
             val forwarder: UpstreamDnsForwarder = if (upstream != null) {
                 ProtectedUdpDnsForwarder(InetAddress.getByName(upstream), protector = SocketProtector { socket -> protect(socket) })
+                    .also { dnsForwarder = it }
             } else {
                 UpstreamDnsForwarder { _, _, _ -> null }
             }
             DnsGatewayPacketHandler(
                 bindingStore, forwarder,
                 onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
-                liveChecker = buildLiveReputationChecker(),
-                liveCheckNotifier = buildLiveCheckNotifier(),
-                ruleRefresher = GuardDogVpnRuntime.liveReputationRuleRefresher,
             )
         } else {
             null
@@ -380,11 +382,19 @@ class GuardDogVpnService : VpnService() {
         GuardDogVpnRuntime.liveReputationChecker = null
         GuardDogVpnRuntime.liveReputationStore = null
         GuardDogVpnRuntime.liveReputationActive = false
-        session?.close()
-        session = null
+        releaseSession()
         GuardDogVpnRuntime.dropReporter = null
         GuardDogVpnRuntime.activeSession = null
         GuardDogVpnRuntime.websiteGateActive = false
+    }
+
+    /** Closes the TUN session (reader thread + descriptor), then the DNS forwarder's socket, which
+     * also ends a DNS lookup still waiting on it. Idempotent. */
+    private fun releaseSession() {
+        session?.close()
+        session = null
+        dnsForwarder?.close()
+        dnsForwarder = null
     }
 
     private fun startForegroundCompat(notification: android.app.Notification) {
@@ -392,91 +402,6 @@ class GuardDogVpnService : VpnService() {
             startForeground(ProtectionNotificationFactory.NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
         } else {
             startForeground(ProtectionNotificationFactory.NOTIFICATION_ID, notification)
-        }
-    }
-
-    // ── Stage 3: Live Reputation helper factories ────────────────────────────
-
-    /**
-     * Builds and caches the [LiveReputationChecker] if a backend URL is configured.
-     * Returns null (disabling live checks) if no backend URL is set.
-     * The store and checker are retained in [GuardDogVpnRuntime] for the session lifetime.
-     */
-    private fun buildLiveReputationChecker(): LiveReputationChecker? {
-        val backendUrl = GuardDogVpnRuntime.liveReputationBackendUrl ?: return null
-        // Re-use existing instances within the same session if already built (both establish paths
-        // call this, and cleanup() nulls them out between sessions).
-        GuardDogVpnRuntime.liveReputationChecker?.let { return it }
-        val store = LiveReputationStore()
-        val checker = LiveReputationChecker(
-            store = store,
-            backendBaseUrl = backendUrl,
-            authToken = GuardDogVpnRuntime.liveReputationAuthToken,
-            holdTimeoutMs = GuardDogVpnRuntime.liveReputationHoldTimeoutMs,
-        )
-        GuardDogVpnRuntime.liveReputationStore = store
-        GuardDogVpnRuntime.liveReputationChecker = checker
-        Log.i(TAG, "Live reputation checker enabled (backend=$backendUrl, holdTimeout=${GuardDogVpnRuntime.liveReputationHoldTimeoutMs}ms)")
-        return checker
-    }
-
-    /**
-     * Builds a [LiveCheckNotifier] that shows transient Android notifications during
-     * bounded live reputation checks. Rate-limited to avoid flooding the notification shade.
-     */
-    private fun buildLiveCheckNotifier(): LiveCheckNotifier? {
-        if (GuardDogVpnRuntime.liveReputationBackendUrl == null) return null
-        val context: Context = this
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Rate limiter: at most one "checking" notification per 10 seconds to avoid flooding.
-        var lastNotificationTime = 0L
-        val minNotificationIntervalMs = 10_000L
-
-        return LiveCheckNotifier { hostname, event ->
-            when (event) {
-                is LiveCheckEvent.CheckStarted -> {
-                    val now = System.currentTimeMillis()
-                    if (now - lastNotificationTime >= minNotificationIntervalMs) {
-                        lastNotificationTime = now
-                        try {
-                            notificationManager.notify(
-                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
-                                ProtectionNotificationFactory.buildLiveCheckStarted(context, hostname),
-                            )
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to show live check notification: ${e.message}")
-                        }
-                    }
-                }
-                is LiveCheckEvent.CheckCompleted -> {
-                    try {
-                        if (event.blocked) {
-                            // Show blocked notification (stays longer, more prominent)
-                            notificationManager.notify(
-                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
-                                ProtectionNotificationFactory.buildLiveCheckBlocked(context, hostname),
-                            )
-                        } else if (event.verdict == "clean") {
-                            // Brief "looks safe" confirmation
-                            notificationManager.notify(
-                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
-                                ProtectionNotificationFactory.buildLiveCheckClean(context, hostname),
-                            )
-                        } else {
-                            // Unknown/unavailable — dismiss the "checking" notification silently
-                            notificationManager.cancel(ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to update live check notification: ${e.message}")
-                    }
-                }
-                is LiveCheckEvent.CheckTimedOut -> {
-                    // Timeout — dismiss the "checking" notification. Don't claim anything.
-                    try {
-                        notificationManager.cancel(ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID)
-                    } catch (_: Exception) {}
-                }
-            }
         }
     }
 
