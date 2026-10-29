@@ -29,8 +29,8 @@ const useStyles = makeStyles((c) => ({
   reason: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary, marginTop: 2 },
 }));
 
-export function PostureSummary({ posture, reasonLines, right, testID }: {
-  posture: ProtectionPosture; reasonLines?: number; right?: React.ReactNode; testID: string;
+export function PostureSummary({ posture, reasonLines, hideReason, right, testID }: {
+  posture: ProtectionPosture; reasonLines?: number; hideReason?: boolean; right?: React.ReactNode; testID: string;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -44,7 +44,7 @@ export function PostureSummary({ posture, reasonLines, right, testID }: {
       <View style={s.body}>
         <Text style={s.label}>Your protection</Text>
         <Text style={[s.title, { color: palette.text }]} numberOfLines={2} testID={`${testID}-title`}>{posture.title}</Text>
-        <Text style={s.reason} numberOfLines={reasonLines} testID={`${testID}-reason`}>{posture.reason}</Text>
+        {hideReason ? null : <Text style={s.reason} numberOfLines={reasonLines} testID={`${testID}-reason`}>{posture.reason}</Text>}
       </View>
       {right}
     </View>

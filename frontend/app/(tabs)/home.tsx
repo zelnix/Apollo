@@ -6,12 +6,11 @@ import Globe from "lucide-react-native/icons/globe";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Phone from "lucide-react-native/icons/phone";
-import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Shield from "lucide-react-native/icons/shield";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
 import { Image } from "expo-image";
@@ -28,7 +27,6 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { Body, Button, Card, toneColor } from "@/src/components/ui";
 import { PostureSummary, postureColors } from "@/src/components/protection/PostureSummary";
-import { agoLabel } from "@/src/domain/alertFreshness";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { buildHeroBriefs, eventBrief, heroEvents, keptIdentifiers, type KeptIdentifiers } from "@/src/domain/homeHeroBrief";
@@ -135,9 +133,6 @@ const useStyles = makeStyles((c) => ({
   heroDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "rgba(22,34,53,0.25)" },
   heroDotActive: { backgroundColor: c.brand, width: 18 },
   heroDotsLabel: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginLeft: spacing.xs },
-  checkedRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary },
-  checkedText: { flex: 1, fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
-  checkedAction: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroContentWrap: { flex: 1, flexShrink: 1 },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
@@ -147,7 +142,8 @@ const useStyles = makeStyles((c) => ({
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47", flexShrink: 1 },
   // Runs the full width of the card, stopping short of the artwork on the right.
-  heroBrief: { gap: 2, paddingRight: spacing.sm },
+  // Fixed at 3 lines so the hero card never flexes between 2 and 3 lines.
+  heroBrief: { gap: 2, paddingRight: spacing.sm, minHeight: 62 },
   heroLine1: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: c.onSurface },
   heroLine2: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
 
@@ -210,9 +206,8 @@ export default function Home() {
   const compact = screenW < 380;
   const { resolution, capabilities, protection, events, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
   // One overall answer, decided by the Protection Posture engine — the Protection screen shows the same one.
-  const { posture, apolloLine, deviceLine, health, recheck, rechecking } = useProtectionPosture();
+  const { posture, apolloLine, deviceLine, health } = useProtectionPosture();
   const posturePalette = postureColors(posture.status, colors);
-  const checkedLine = health.checkedAt ? `Protection status checked ${agoLabel(Date.parse(health.checkedAt), Date.now())}` : "Protection status not checked yet";
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
 
   // ── Refresh data whenever Home regains focus (e.g. after handling an item) ──
@@ -400,23 +395,6 @@ export default function Home() {
           </Pressable>
         ) : null}
 
-        {/* When Apollo last read its protections — "Check again" reads them and the device's own settings now. */}
-        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.sm }}>
-          <Pressable
-            testID="home-protection-checked"
-            accessibilityRole="button"
-            accessibilityLabel={`${checkedLine}. Check again.`}
-            onPress={recheck}
-            disabled={rechecking}
-            style={({ pressed }) => [s.checkedRow, { opacity: pressed ? 0.85 : 1 }]}
-          >
-            <ShieldCheck size={18} color={colors.resting} />
-            <Text style={s.checkedText} numberOfLines={2} testID="home-protection-checked-text">{checkedLine}</Text>
-            {rechecking ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <RefreshCw size={16} color={colors.brandPrimary} />}
-            <Text style={s.checkedAction} testID="home-protection-recheck">Check again</Text>
-          </Pressable>
-        </View>
-
         {/* A Device Protection changed since the person last looked — stays until they open it. */}
         <ProtectionChangeBanner style={{ marginHorizontal: spacing.xl, marginTop: spacing.sm }} testID="home-protection-change" />
 
@@ -436,7 +414,7 @@ export default function Home() {
             style={({ pressed }) => [s.postureTop, { opacity: pressed ? 0.85 : 1 }]}
           >
             <View style={{ flex: 1 }}>
-              <PostureSummary posture={posture} reasonLines={3} testID="home-posture-summary" />
+              <PostureSummary posture={posture} hideReason testID="home-posture-summary" />
             </View>
             <ChevronRight size={20} color={colors.onSurface} />
           </Pressable>
