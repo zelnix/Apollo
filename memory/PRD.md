@@ -4448,3 +4448,12 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Older message cases whose investigation never got the message: the empty Evidence tab now says the message wasn't saved
   with this investigation and to check it again (`caseEvidence().messageNotSaved`, testID `tc-evidence-not-saved`).
 - Tests: caseEvidence.test.ts +1; full frontend suite 1195/1195; backend di_trace/case_evidence/admin/rulebook pass.
+
+## Fix — Check a Number opened a new investigation every few seconds (2026-10-29)
+- Root cause (from device Debug logs): `app/call-guard.tsx` built InvestigationFlow's `submissionId` inline with
+  `Date.now()` during render. Every re-render produced a new id → InvestigationFlow saw a "new submission" → a fresh
+  Magnum DI case was opened (15+ cases for one number in ~90s).
+- Fix: `submissionId` now lives in state, generated once when the reputation check completes; cleared on reset/new check.
+  Logged via `dlog("CallGuard", "check complete", …)`.
+- Regression test `tests/stableSubmissionId.test.ts`: no screen may pass a `submissionId` built from Date.now()/Math.random();
+  fails on the old code, passes on the fix. Full frontend suite 1208/1208.

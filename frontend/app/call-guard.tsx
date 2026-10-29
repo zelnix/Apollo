@@ -40,6 +40,7 @@ import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { CARRIER_WARNING_LABEL, carrierWarningFinding, isCarrierWarning, type CarrierWarning } from "@/src/domain/carrierWarning";
 import { regionCountry } from "@/src/telemetry/deviceInfo";
+import { dlog } from "@/src/utils/dlog";
 
 // ── Magnum DI investigation ──────────────────────────────────────────────────
 // The investigation itself is owned by `InvestigationFlow`, which attaches to the case Apollo's
@@ -123,6 +124,10 @@ export default function CheckNumber() {
   const [numberState, setNumber] = useState(params.number ? String(params.number) : "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CallRiskResult | null>(null);
+  // Stable submission identity — generated ONCE when the check completes, never during render.
+  // (Building it from Date.now() in render made every re-render a "new" submission, so
+  // InvestigationFlow opened a fresh Magnum DI case every few seconds.)
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -143,12 +148,16 @@ export default function CheckNumber() {
     setBusy(true);
     setError(null);
     setResult(null);
+    setSubmissionId(null);
     try {
       // The reputation check. `deliberate` marks it as a check the person asked for, so Triage can
       // escalate a number Apollo cannot settle from its own sources to a Magnum DI investigation.
       // Where it does, the case id comes back on the result and the shared InvestigationFlow below
       // FOLLOWS that case — this screen never opens a second investigation of the same number.
       const riskResult = await checkNumberRisk(number.trim(), undefined, { deliberate: true, carrierWarning: carrierWarning ?? undefined, simulated });
+      const sid = `callguard-${riskResult.number.replace(/[^A-Za-z0-9._:-]/g, "")}-${Date.now().toString(36)}`;
+      dlog("CallGuard", "check complete", { submissionId: sid, caseId: riskResult.investigation_case_id ?? null, decision: riskResult.decision });
+      setSubmissionId(sid);
       setResult(riskResult);
       void recordCheck("call", {
         at: new Date().toISOString(),
@@ -164,6 +173,7 @@ export default function CheckNumber() {
 
   const resetCheck = () => {
     setResult(null);
+    setSubmissionId(null);
     setNumber("");
     setSaved(false);
     setError(null);
@@ -194,7 +204,7 @@ export default function CheckNumber() {
 
 
   // ── RESULT VIEW ──
-  if (result) {
+  if (result && submissionId) {
     const allReportLinks = [...REPORT_LINKS.AU, ...REPORT_LINKS.UK, ...REPORT_LINKS.US];
     const model = { ...buildCallRiskCheckResult({ result }), evidenceProfile: result.evidence_profile ?? null };
     const warningEvidence = carrierWarning ? [{ label: "Your carrier’s warning", value: `You said your carrier showed “${CARRIER_WARNING_LABEL[carrierWarning]}” on this call.` }] : [];
@@ -250,7 +260,7 @@ export default function CheckNumber() {
         result={enhancedModel}
         investigationContext={callInvContext}
         investigationQuestion={askPrompt}
-        submissionId={`callguard-${result.number.replace(/[^A-Za-z0-9._:-]/g, "")}-${Date.now().toString(36)}`}
+        submissionId={submissionId}
         eventId={null}
         caseId={result.investigation_case_id ?? null}
         actions={callActions}
