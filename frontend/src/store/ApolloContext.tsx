@@ -1019,7 +1019,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void apply();
     const unsubscribe = subscribeDeviceInvestigations(() => { void apply(); });
     return () => { live = false; unsubscribe(); };
-  }, [ready, events, upsertEvent]);
+  }, [ready, upsertEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Triage correlation (deterministic) ───────────────────────────────────
   // Related evidence (same Threat Scent / same indicator) with a compatible mechanic belongs to ONE
@@ -1419,7 +1419,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         try {
           const remote = await apiPost<{ case?: { id?: string | null } }>("/investigations", "call_investigation", {
             gate: "call", origin: "user",
-            question: `Investigate this device call.\n\n${callSummary}`,
+            question: `Investigate this phone call.\n\n${callSummary}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: callSummary, label: "Call details" }],
             initial_findings: [...nativeWhy, ...analysis.why].slice(0, 12),
           });
