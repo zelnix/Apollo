@@ -143,3 +143,49 @@ test("a message case whose investigation never received the message says it wasn
   assert.equal(build(ev({ category: "link" }), without).messageNotSaved, false, "only message cases");
   assert.equal(build(ev({ investigation_case_id: null }), null).messageNotSaved, false, "no investigation, nothing missing");
 });
+
+// ── P2 verification: older cases without "found by" gracefully hide the provenance line ──
+
+test("an older investigation with only findings (no evidence array) hides every provenance line", () => {
+  // A response recorded BEFORE the Evidence record was introduced: has findings but no evidence array.
+  const oldResponse = response({ findings: [
+    finding,
+    { id: "f2", text: "The link leads to a login page that asks for card details.", basis: "observation", confidence: "medium", evidenceIds: [], sourceIds: [] },
+  ] });
+  const inv = investigation({}, oldResponse);
+  const out = build(ev(), inv);
+  // Every fact from earlierFindings has foundBy: null → provenanceLine returns null.
+  assert.ok(out.facts.length >= 1, "there are facts from the older response");
+  for (const f of out.facts) {
+    assert.equal(f.foundBy, null, `fact "${f.text}" must not guess who found it`);
+    assert.equal(provenanceLine(f), null, `fact "${f.text}" must hide the provenance line`);
+  }
+});
+
+test("provenanceLine is null only when foundBy is null; it always shows when foundBy is set", () => {
+  // foundBy set: always returns a string.
+  assert.equal(typeof provenanceLine({ foundBy: "tc_flyby", confirmedBy: [] }), "string");
+  assert.equal(typeof provenanceLine({ foundBy: "higgins_triage", confirmedBy: ["magnum_di"] }), "string");
+  assert.equal(typeof provenanceLine({ foundBy: "this_device", confirmedBy: [] }), "string");
+  // foundBy null: always returns null.
+  assert.equal(provenanceLine({ foundBy: null, confirmedBy: [] }), null);
+  assert.equal(provenanceLine({ foundBy: null, confirmedBy: ["magnum_di"] }), null, "confirmedBy alone is not enough");
+});
+
+test("an older investigation with a device block: the block shows provenance, the findings don't", () => {
+  const enforcement = { enforced_action: "dns_block", destination_domain: "bad.example", result: "connection_dropped", observed_at: "2026-10-28T01:00:00Z",
+    mechanism: "local_vpn_dns", confidence: "high" } as never;
+  const inv = investigation(); // response without evidence array → earlierFindings path
+  const e = ev({ enforcement_evidence: enforcement, verified_block: true });
+  const out = build(e, inv);
+  const blockFact = out.facts.find((f) => f.id === "block");
+  const otherFacts = out.facts.filter((f) => f.id !== "block");
+  // The block — recorded by this device — always shows who found it.
+  assert.ok(blockFact, "the device block is listed as a fact");
+  assert.equal(provenanceLine(blockFact!), "Found by Apollo on this device");
+  // Older findings without an evidence record: provenance line hidden.
+  for (const f of otherFacts) {
+    assert.equal(provenanceLine(f), null, `finding "${f.text}" hides provenance since the old record doesn't say`);
+  }
+});
+

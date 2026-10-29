@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { previewFromEvent, previewFromEvidence, previewFromOriginal, shortenMiddle, withoutLinks } from "../src/domain/caseSourceSummary.ts";
+import { detectionFacts, originHeading, previewFromEvent, previewFromEvidence, previewFromOriginal, shortenMiddle, withoutLinks } from "../src/domain/caseSourceSummary.ts";
 import type { EvidenceItem } from "../src/investigation/types";
 import type { OriginalSource } from "../src/store/originalSource";
 import type { PatrolEvent } from "../src/domain/types";
@@ -96,3 +96,59 @@ test("a link case with only its evidence list names the address, never the label
   assert.deepEqual(previewFromEvidence([item("checked link")])!.lines, []);
   assert.deepEqual(previewFromEvidence([item("Submitted message text")])!.lines, []);
 });
+
+// ── originHeading: older cases with no recorded origin ──────────────────────
+
+test("originHeading returns 'What started this investigation' when no origin was recorded", () => {
+  const fromNull = originHeading(null);
+  assert.equal(fromNull.heading, "What started this investigation");
+  assert.equal(fromNull.verb, "Opened");
+  // undefined is the same: the field simply wasn't set on the case.
+  const fromUndefined = originHeading(undefined);
+  assert.equal(fromUndefined.heading, "What started this investigation");
+  assert.equal(fromUndefined.verb, "Opened");
+});
+
+test("originHeading returns the right heading for user-submitted and Apollo-detected cases", () => {
+  assert.deepEqual(originHeading("user"), { heading: "What you submitted", verb: "Submitted" });
+  assert.deepEqual(originHeading("apollo"), { heading: "What Apollo detected", verb: "Detected" });
+});
+
+// ── detectionFacts: older cases with limited or no metadata ──────────────────
+
+test("detectionFacts omits 'From' and 'Reason' for an older case with no sender and no triage outcome", () => {
+  // An older case with no source_metadata, no triage_investigation, no evidence_provenance.
+  // A message-category event still carries "Type: SMS" and "Detected by" from the capability map — those are always
+  // derived from the category, not from optional metadata. But "From" and "Reason" are absent.
+  const bare = {
+    event_id: "e-old", category: "message", state: "sniffing",
+    source_metadata: undefined, triage_investigation: undefined, evidence_provenance: undefined,
+  } as unknown as PatrolEvent;
+  const facts = detectionFacts(bare);
+  assert.ok(!facts.some((f) => f.id === "from"), "no sender → no 'From' fact");
+  assert.ok(!facts.some((f) => f.id === "reason"), "no triage outcome → no 'Reason' fact");
+  // "Type" and "Detected by" still appear because they're derived from the event's category.
+  assert.ok(facts.some((f) => f.id === "type"), "type is inferred from category");
+  assert.ok(facts.some((f) => f.id === "detected_by"), "detected-by is inferred from category");
+});
+
+test("detectionFacts gracefully shows only what the event actually carries", () => {
+  // A case that has a sender: "From" appears alongside type and detected-by.
+  const withSender = {
+    event_id: "e2", category: "message", state: "growling",
+    source_metadata: { sender: "0412 345 678" },
+  } as unknown as PatrolEvent;
+  const facts = detectionFacts(withSender);
+  assert.ok(facts.some((f) => f.id === "from" && f.value === "0412 345 678"), "sender is shown");
+  assert.ok(facts.some((f) => f.id === "type"), "type is inferred");
+  // A case with no recognisable category has no "detected by" or "type".
+  const unknownCategory = {
+    event_id: "e3", category: "unknown_future_type", state: "sniffing",
+    source_metadata: undefined,
+  } as unknown as PatrolEvent;
+  const unknownFacts = detectionFacts(unknownCategory);
+  assert.ok(!unknownFacts.some((f) => f.id === "detected_by"), "unknown category → no detected-by");
+  assert.ok(!unknownFacts.some((f) => f.id === "type"), "unknown category → no type");
+  assert.equal(unknownFacts.length, 0, "a completely unrecognised event carries no detection facts");
+});
+
