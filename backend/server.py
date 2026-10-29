@@ -311,7 +311,12 @@ async def lifespan(_: FastAPI):
 
     threat_feeds_task = asyncio.create_task(threat_feeds_loop(), name="apollo-threat-feeds")
 
+    # Admin → Screens: in the preview, picks up captures requested from the live admin panel (services/screen_capture.py).
+    from services import screen_capture
+    screens_task = asyncio.create_task(screen_capture.queue_loop(), name="apollo-screens-queue")
+
     yield
+    screens_task.cancel()
     threat_feeds_task.cancel()
     apollo_kb_task.cancel()
     learn_publish_task.cancel()
@@ -321,7 +326,7 @@ async def lifespan(_: FastAPI):
     mailbox_task.cancel()
     government_alert_task.cancel()
     family_assist_task.cancel()
-    await asyncio.gather(threat_feeds_task, apollo_kb_task, learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
+    await asyncio.gather(screens_task, threat_feeds_task, apollo_kb_task, learn_publish_task, maintenance_task, quiet_hold_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 

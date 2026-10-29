@@ -68,6 +68,7 @@ NAV = [
     ("Incident Report", "/api/admin/investigations-cost?period=oct17", "&#128293;"),
     ("System",          "/api/admin/system",           "&#9881;"),
     ("Releases",        "/api/admin/releases",         "&#128230;"),
+    ("Screens",         "/api/admin/screens",          "&#128444;"),
     ("Diagnostics",     "/api/admin/diagnostics",      "&#128295;"),
     ("Audit",           "/api/admin/audit-log",        "&#128220;"),
     ("ApolloSG Settings", "/api/admin/apollosg-settings", "&#9881;"),
@@ -3414,6 +3415,197 @@ async def releases(request: Request):
     <tbody>{mig_rows or '<tr><td colspan="2" style="color:var(--muted);">No migrations found</td></tr>'}</tbody></table>
     """
     return _shell("Releases", "/api/admin/releases", body, admin=adm)
+
+
+# ── Screens (services/screen_gallery.py, services/screen_capture.py) ─────────
+
+_SCREENS_CSS = """
+.shot-bar{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.shot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:10px 0 20px;}
+.shot{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;}
+.shot:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+.shot img{width:100%;border-radius:6px;background:#fff;aspect-ratio:390/844;object-fit:cover;object-position:top;display:block;}
+.shot.tablet img{aspect-ratio:820/1180;}
+.shot.app img{aspect-ratio:1/1;object-fit:contain;background:#fff;}
+.shot-title{font-size:.85em;color:#fff;font-weight:600;display:flex;gap:6px;align-items:flex-start;cursor:pointer;}
+.shot-title input{margin-top:4px;}
+.shot-meta{font-size:.75em;color:var(--muted);word-break:break-all;}
+.shot-note{font-size:.75em;color:var(--yellow);}
+.group-head{display:flex;align-items:center;gap:10px;}
+.btn-primary{background:var(--accent);color:#0d1117;border-color:var(--accent);font-weight:600;}
+.size-tabs a{margin-right:8px;} .size-tabs a.on{color:#fff;font-weight:700;}
+"""
+_SCREEN_GROUP_ORDER = ["Setup", "Tabs", "Screens", "Threats", "Family", "Learn & Higgins", "Settings"]
+_SCREEN_MSG = {
+    "started": ("ok", "Capture started. This page updates as it goes."),
+    "queued": ("warning", "Request queued. The preview picks it up within a minute while it's running."),
+    "busy": ("warning", "A capture is already running. Wait for it to finish, then try again."),
+    "none": ("warning", "Tick at least one image first."),
+}
+
+
+def _screens_status(run: Optional[dict], state: Optional[str]) -> str:
+    if not run:
+        return ""
+    done, total = run.get("done", 0), run.get("total", 0)
+    copy = ""
+    if run.get("live_copy_failed"):
+        copy = (f"<br>{run['live_copy_failed']} image(s) couldn't be copied to the live admin panel "
+                f"({html_mod.escape(str(run.get('live_copy_error', '')))}). The live panel gets them once it has this update.")
+    errors = run.get("errors") or []
+    err = f"<ul>{''.join(f'<li>{html_mod.escape(str(e))}</li>' for e in errors[:10])}</ul>" if errors else ""
+    if state == "queued":
+        return f'<div class="alert alert-warning">Waiting for the preview to pick up the request made {_t(run.get("requested_at"), "short")}. It must be running.</div>'
+    if state == "running":
+        return (f'<div class="alert alert-warning">Capturing {done} of {total}: {html_mod.escape(run.get("current") or "starting")}. '
+                f'Started {_t(run.get("started_at"), "short")}.{copy}</div>')
+    if state == "stalled":
+        return (f'<div class="alert alert-critical">The last capture stopped at {done} of {total} (no progress since '
+                f'{_t(run.get("updated_at"), "short")}). Regenerate to try again.</div>')
+    if state == "failed":
+        return f'<div class="alert alert-critical">The last capture failed: {html_mod.escape(str(run.get("error", "")))}{copy}{err}</div>'
+    cls = "alert-warning" if errors or copy else "alert-ok"
+    return (f'<div class="alert {cls}">Last capture finished {_t(run.get("finished_at"), "short")}: {total} image(s)'
+            f'{f", {len(errors)} couldn&#39;t be taken" if errors else ""}.{copy}{err}</div>')
+
+
+def _shot_card(row: dict) -> str:
+    from urllib.parse import quote
+    key = quote(row["key"], safe="")
+    version = int(row["updated_at"].timestamp()) if isinstance(row.get("updated_at"), datetime) else 0
+    is_app = row.get("kind") == "app_image"
+    size = "" if is_app else gallery_size_label(row.get("size", ""))
+    meta = (html_mod.escape(row.get("filename", "")) if is_app else
+            f'{html_mod.escape(row.get("route", ""))} · {_t(row.get("captured_at"), "short")}')
+    note = f'<span class="shot-note">{html_mod.escape(row["note"])}</span>' if row.get("note") else ""
+    return (f'<div class="shot {"app" if is_app else html_mod.escape(row.get("size", ""))}" data-group="{html_mod.escape(row.get("group", ""))}">'
+            f'<label class="shot-title"><input type="checkbox" name="key" value="{html_mod.escape(row["key"])}">'
+            f'<span>{html_mod.escape(row.get("title", ""))}{f" · {size}" if size else ""}</span></label>'
+            f'<a href="/api/admin/screens/image/{key}" target="_blank" rel="noopener"><img loading="lazy" '
+            f'src="/api/admin/screens/thumb/{key}?v={version}" alt="{html_mod.escape(row.get("title", ""))}"></a>'
+            f'<span class="shot-meta">{meta}</span>{note}</div>')
+
+
+def gallery_size_label(size: str) -> str:
+    from services.screen_gallery import SIZES
+    return SIZES.get(size, {}).get("label", size)
+
+
+@router.get("/admin/screens", response_class=HTMLResponse)
+async def screens_page(request: Request, size: str = "all", msg: str = ""):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from services import screen_capture, screen_gallery as gallery
+    rows = await gallery.items()
+    here = await screen_capture.available()
+    run = await gallery.latest_run()
+    state = gallery.run_state(run)
+    size = size if size in ("all", "phone", "tablet") else "all"
+    screens = [r for r in rows if r.get("kind") == "screen" and (size == "all" or r.get("size") == size)]
+    app_images = [r for r in rows if r.get("kind") == "app_image"]
+
+    groups = ""
+    names = sorted({r.get("group", "Screens") for r in screens}, key=lambda g: (_SCREEN_GROUP_ORDER.index(g) if g in _SCREEN_GROUP_ORDER else 99, g))
+    for g in names:
+        cards = "".join(_shot_card(r) for r in screens if r.get("group") == g)
+        groups += (f'<div class="group-head"><h3>{html_mod.escape(g)}</h3><button type="button" class="btn btn-sm" '
+                   f'onclick="pickGroup({html_mod.escape(json.dumps(g))})">Select group</button></div><div class="shot-grid">{cards}</div>')
+    if not screens:
+        groups = '<p style="color:var(--muted);">No screenshots yet. Press <b>Regenerate all</b> to capture every screen.</p>'
+    tabs = "".join(f'<a class="{"on" if size == k else ""}" href="/api/admin/screens?size={k}">{label}</a>'
+                   for k, label in (("all", "All sizes"), ("phone", "Phone"), ("tablet", "Tablet")))
+    where = ("Captured here, from the preview app, and copied to the live admin panel." if here else
+             "Captured in the preview and copied here. Regenerating from this panel queues a request; the preview picks it up within a minute while it's running.")
+    kind, text = _SCREEN_MSG.get(msg, ("", ""))
+    notice = f'<div class="alert alert-{kind}">{text}</div>' if text else ""
+    active = state in ("queued", "running")
+    body = f"""
+    <h2>Screens</h2>
+    <p style="color:var(--muted);">Every app screen at phone and tablet size (visible screen, light theme), with labelled sample data, plus the
+    app's logos, icons and splash screen images. Tick what you need, then download or regenerate. {where}</p>
+    {notice}{_screens_status(run, state)}
+    <form method="post" action="/api/admin/screens/action" id="shots">
+      <div class="shot-bar">
+        <button type="button" class="btn btn-sm" onclick="pick(true)">Select all</button>
+        <button type="button" class="btn btn-sm" onclick="pick(false)">Clear</button>
+        <span class="size-tabs">{tabs}</span>
+        <span id="shot-count" class="shot-meta">0 selected</span>
+        <button class="btn btn-sm btn-primary" name="action" value="download">Download selected</button>
+        <button class="btn btn-sm" name="action" value="regenerate">Regenerate selected</button>
+        <button class="btn btn-sm" name="action" value="regenerate_all" onclick="return confirm('Regenerate every screen and app image? This takes about 15 minutes.')">Regenerate all</button>
+      </div>
+      {groups}
+      <div class="group-head"><h3>Logos, icons and splash images</h3><button type="button" class="btn btn-sm" onclick="pickGroup('App images')">Select group</button></div>
+      <div class="shot-grid">{''.join(_shot_card(r) for r in app_images) or '<p style="color:var(--muted);">Added with the next capture.</p>'}</div>
+    </form>
+    <script>
+    (function(){{
+      var boxes=function(){{return Array.prototype.slice.call(document.querySelectorAll('#shots input[name=key]'));}};
+      var count=function(){{var n=boxes().filter(function(b){{return b.checked;}}).length;document.getElementById('shot-count').textContent=n+' selected';return n;}};
+      window.pick=function(on){{boxes().forEach(function(b){{b.checked=on;}});count();}};
+      window.pickGroup=function(g){{boxes().forEach(function(b){{if(b.closest('.shot').getAttribute('data-group')===g)b.checked=true;}});count();}};
+      document.getElementById('shots').addEventListener('change',count);
+      {"setTimeout(function(){if(!count())location.reload();},10000);" if active else ""}
+    }})();
+    </script>
+    """
+    return _shell("Screens", "/api/admin/screens", body, admin=adm, extra_css=_SCREENS_CSS)
+
+
+@router.get("/admin/screens/image/{key:path}")
+async def screens_image(key: str, request: Request):
+    if not await _admin(request):
+        return _login_redirect()
+    from services import screen_gallery as gallery
+    got = await gallery.image(key)
+    if not got:
+        return Response("Not found", status_code=404)
+    return Response(got[0], media_type=got[1], headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/admin/screens/thumb/{key:path}")
+async def screens_thumb(key: str, request: Request):
+    if not await _admin(request):
+        return _login_redirect()
+    from services import screen_gallery as gallery
+    data = await gallery.thumbnail(key)
+    if data is None:
+        return Response("Not found", status_code=404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.post("/admin/screens/action")
+async def screens_action(request: Request):
+    adm = await _admin(request)
+    if not adm:
+        return _login_redirect()
+    from urllib.parse import parse_qs
+    from services import screen_capture, screen_gallery as gallery
+    form = parse_qs((await request.body()).decode("utf-8", "replace"))
+    action = (form.get("action") or [""])[0]
+    keys = [k for k in form.get("key", []) if gallery.KEY_PATTERN.match(k)]
+    email = adm.get("email", "")
+    if action == "download":
+        if not keys:
+            return RedirectResponse("/api/admin/screens?msg=none", status_code=303)
+        data, count = await gallery.zip_of(keys)
+        await _audit_log(email, "screens_download", f"{count} image(s)")
+        name = f"apollosg-screens-{now_utc().strftime('%Y%m%d-%H%M')}.zip"
+        return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    if action not in ("regenerate", "regenerate_all"):
+        return RedirectResponse("/api/admin/screens", status_code=303)
+    chosen = None if action == "regenerate_all" else keys
+    if chosen == []:
+        return RedirectResponse("/api/admin/screens?msg=none", status_code=303)
+    here = await screen_capture.available()
+    if here and screen_capture.busy():
+        return RedirectResponse("/api/admin/screens?msg=busy", status_code=303)
+    queued = await gallery.queue(chosen, email)
+    if here:
+        screen_capture.start(queued["run_id"], chosen)
+    await _audit_log(email, "screens_regenerate", "all" if chosen is None else f"{len(chosen)} image(s)")
+    return RedirectResponse(f"/api/admin/screens?msg={'started' if here else 'queued'}", status_code=303)
 
 
 # ── Diagnostics ──────────────────────────────────────────────────────────────

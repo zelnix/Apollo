@@ -234,6 +234,42 @@ async def admin_case_wipe(body: CaseWipeIn, request: Request, actor: Optional[st
     return result
 
 
+# --------------------------------------------------------------------------- Screens (preview → live copies; services/screen_gallery.py)
+class ScreenIngestIn(BaseModel):
+    item: dict
+    content_type: str
+    data: str
+
+
+@router.post("/screens/ingest")
+async def admin_screens_ingest(body: ScreenIngestIn):
+    import base64
+    from services import screen_gallery
+    if not screen_gallery.KEY_PATTERN.match(str(body.item.get("key", ""))) or body.content_type not in screen_gallery.CONTENT_TYPES:
+        raise HTTPException(status_code=422, detail="Not a screen or app image.")
+    data = base64.b64decode(body.data, validate=True)
+    if not data or len(data) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Image missing or too large.")
+    item = {k: v for k, v in body.item.items() if k in {"key", "kind", "screen", "title", "group", "size", "route", "note", "filename", "captured_at"}}
+    await screen_gallery.save_image(item, data, body.content_type)
+    return {"ok": True}
+
+
+@router.post("/screens/runs/{run_id}")
+async def admin_screens_run_progress(run_id: str, fields: dict):
+    from services import screen_gallery
+    allowed = {"status", "origin", "total", "done", "current", "errors", "started_at", "finished_at", "error", "live_copy_failed", "live_copy_error"}
+    await screen_gallery.record_run(run_id[:64], {k: v for k, v in fields.items() if k in allowed})
+    return {"ok": True}
+
+
+@router.post("/screens/queue/claim")
+async def admin_screens_claim():
+    from services import screen_gallery
+    run = await screen_gallery.claim_next()
+    return {"run": {"run_id": run["run_id"], "keys": run.get("keys")} if run else None}
+
+
 
 # --------------------------------------------------------------------------- Threat indicators
 # Stage 1: threat-intelligence lifecycle foundation. Full provenance, verification

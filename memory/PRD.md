@@ -4533,3 +4533,22 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
   scan + POST /api/admin/case-wipe there with the admin key.
 - Tests: backend tests/test_case_wipe.py (+ patrol removed / loop cleanup / evidence gate / admin: 37 pass); frontend
   tests/caseWipe.test.ts (all 1231 pass).
+
+## Admin → Screens (2026-10-29)
+- User choices: preview AND live admin panels (live shows the latest set; regenerating there queues a request the preview
+  picks up while running); labelled sample data; phone (390×844) + tablet (820×1180) at 2× scale; visible screen only;
+  plus logos, icons and splash images.
+- `services/screen_capture.py` (preview only: needs /root/bin/chromium + Metro at localhost:3000): catalog = every
+  frontend/app route file (74). Fresh device → first-run screens (index, onboarding, privacy-disclosure) → set up via the
+  UI → sample data via API (threat case `sample-screens-case`; a sample family member device pairs and shares
+  `sample-screens-alert` + incident `sample-screens-incident`) → every screen per size → both test devices purged
+  (account_deletion.purge_device). Waits for the launch splash (`launch-splash`) + spinners before each shot.
+  saved-report/[id] shows its unavailable state (needs a full investigation).
+- `services/screen_gallery.py`: images + JPEG thumbnails in Emergent object storage (`apollo-scam-guard/admin-screens/…`),
+  rows in `admin_screens`, runs in `admin_screen_runs`; zip download (screens/<size>/<group>/<screen>.png, app-images/…).
+- Live copy: preview POSTs each image to `PUBLIC_API_BASE/api/admin/screens/ingest` and progress to `/runs/{id}`
+  (X-Admin-Key); preview `queue_loop` claims live requests via `/screens/queue/claim` every 30 s. Live endpoints 404 until
+  the next Publish → `live_copy_failed` noted on the run; after publishing, press Regenerate all once to fill the live panel.
+- Admin page `/api/admin/screens` (nav "Screens"): grouped grid, size filter, select all/group, Download selected,
+  Regenerate selected / all, status banner with auto-refresh. Tests: backend tests/test_screen_gallery.py (5 pass).
+- backend/.env EMERGENT_LLM_KEY was empty in this environment; filled from the Emergent-managed key so object storage works.
