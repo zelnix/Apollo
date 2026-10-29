@@ -40,11 +40,16 @@ export function InvestigationFlow({
   onResolved,
   openingQuestion,
 }: InvestigationFlowProps) {
+  // When a caseId is provided, use it as the stable identity — a re-render with the same caseId
+  // must never restart or reattach. Without a caseId, fall back to submissionId.
+  const stableIdentity = caseId ?? submissionId;
   const operationId = continuityKey
     ? `${continuityKey}:${submissionId}`
     : submissionId;
   const { state, start, ask, continueWith, retry, cancel, remove, attach } =
     useInvestigation(operationId);
+  // Tracks which identity (caseId or submissionId) was already started. A re-render with the
+  // same identity is a no-op — attach/start is never called twice for the same case.
   const started = useRef<string | null>(null);
   const busy =
     state.phase === "creating" ||
@@ -62,13 +67,14 @@ export function InvestigationFlow({
   }, [eventId, state.caseData?.id]);
 
   useEffect(() => {
-    if (started.current === submissionId) return;
+    // Guard: if this identity was already started, a re-render must not restart it.
+    if (started.current === stableIdentity) return;
     if (!autoStart) return;
     const boundEventId = eventId ?? null;
     // Apollo already opened a case for this material: follow it. Starting another would file a
     // second case for one check (and spend a second Magnum DI call on the same evidence).
     if (caseId) {
-      started.current = submissionId;
+      started.current = stableIdentity;
       void attach(caseId).then((opened) => {
         if (opened && boundEventId) void rememberCaseForEvent(boundEventId, opened.id);
       });
@@ -77,11 +83,11 @@ export function InvestigationFlow({
     const { input, files } = createCaseInput(context, question);
     if (continuityKey && state.caseData) {
       if (busy) return;
-      started.current = submissionId;
+      started.current = stableIdentity;
       void continueWith(input, operationId);
       return;
     }
-    started.current = submissionId;
+    started.current = stableIdentity;
     const begin =
       state.caseData && state.operationId !== operationId
         ? remove().then(() => start(input, files, operationId))
@@ -89,7 +95,9 @@ export function InvestigationFlow({
     void begin.then((c) => {
       if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id);
     });
-  }, [submissionId, state.caseData?.id, state.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Only submissionId and caseId determine whether to start — NOT state.phase or state.caseData?.id.
+    // Phase transitions are lifecycle events that the started guard handles; they must not re-trigger attach.
+  }, [submissionId, caseId]); // eslint-disable-line -- only submissionId/caseId determine start
 
   return (
     <View style={{ gap: spacing.sm }} testID={testID}>

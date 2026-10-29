@@ -66,6 +66,8 @@ export default function CheckCall() {
   const [transcript, setTranscript] = useState("");
   const [more, setMore] = useState(!!params.number);
   const [result, setResult] = useState<{ analysis: CallAnalysis; event: PatrolEvent | null; profile?: EvidenceProfile | null; official?: OfficialVerdict[] | null } | null>(null);
+  // Stable submission identity — generated once when the check runs, never during render.
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [verify, setVerify] = useState(false);
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported("call_log");
@@ -79,15 +81,15 @@ export default function CheckCall() {
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const [historyKey, setHistoryKey] = useState(0);
-  const run = async () => { const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }); setResult(r); void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title }); setHistoryKey((k) => k + 1); };
-  const reset = () => { setResult(null); setAsks([]); };
+  const run = async () => { const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }); setSubmissionId(r.event?.event_id ?? `call-${Date.now()}`); setResult(r); void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title }); setHistoryKey((k) => k + 1); };
+  const reset = () => { setResult(null); setSubmissionId(null); setAsks([]); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;
 
   // UNIVERSAL CHECK RESULT — when the manual check has produced an outcome, the entire screen
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
-  if (result && a) {
+  if (result && a && submissionId) {
     const model = { ...buildCallCheckResult({ analysis: a, event: result.event, number, transcript, official: result.official }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
     const askPrompt = `About the device call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
@@ -103,16 +105,12 @@ export default function CheckCall() {
         actions.push({ testID: "call-trust-result", variant: "ghost", label: "Trust this number", onPress: () => { void trustCaller(number).then(reloadTrusted); showToast("Added to trusted numbers — Apollo will stay quiet for it and won't auto-check it.", "resting"); } });
       }
     }
-    if (result.event && (a.requestedActions.includes("install") || a.requestedActions.includes("remote") || a.requestedActions.includes("screen"))) {
-      actions.push({ testID: "call-check-app", variant: "ghost", label: "They asked me to install an app — check it", onPress: () => router.push({ pathname: "/app-check", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
-    }
-    if (result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password"))) {
-      actions.push({ testID: "call-check-account", variant: "ghost", label: "They asked for a code or password — check account alert", onPress: () => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
-    }
+    // Call Screening stays in its own flow — no navigation to App Check or Account Check.
+    // The user can open those manually from Check It if needed.
     if (result.event) {
       actions.push({ testID: "call-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the caller.", "neutral"); goBackOrHome(router); } });
     }
-    actions.push({ testID: "call-again", variant: "ghost", label: "Check another call", onPress: reset });
+    actions.push({ testID: "call-again", variant: "ghost", label: "Check another number", onPress: reset });
 
     return (
       <>
@@ -121,11 +119,10 @@ export default function CheckCall() {
             result={model}
             investigationContext={issueContext({
               ...contextFromEvent(result.event, gateForCategory(result.event.category)),
-              // The call's details travel with a case opened here, so it's assessed as a call, never answered from the library.
               original_evidence: [{ kind: "text", value: describeCall({ asks, claim, number, transcript }), label: "Call details" }],
             })}
             investigationQuestion={askPrompt}
-            submissionId={result.event.event_id}
+            submissionId={submissionId}
             eventId={result.event.event_id}
             caseId={result.event.investigation_case_id ?? null}
             actions={actions}
