@@ -4552,3 +4552,5 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Admin page `/api/admin/screens` (nav "Screens"): grouped grid, size filter, select all/group, Download selected,
   Regenerate selected / all, status banner with auto-refresh. Tests: backend tests/test_screen_gallery.py (5 pass).
 - backend/.env EMERGENT_LLM_KEY was empty in this environment; filled from the Emergent-managed key so object storage works.
+- PRODUCTION: wiped 2026-10-29 15:01 UTC (wipeId 62164360…): 46,469 records deleted + 5,473 Patrol events → delete
+  markers; post-wipe scan total 0. Production build at that time had case-wipe but NOT the Screens page (needs another Publish).
