@@ -39,7 +39,7 @@ export function privateDnsAdvice(status: PrivateDnsStatus | null | undefined): P
     return {
       id: "off",
       title: "Set Private DNS to Automatic",
-      body: "Private DNS is Off on this phone. Higgins recommends Automatic: Android then encrypts website lookups whenever the network supports it, and Apollo’s website checks keep working alongside it.",
+      body: "Private DNS is Off on this device. Higgins recommends Automatic: Android then encrypts website lookups whenever the network supports it, and Apollo’s website checks keep working alongside it.",
       actionLabel: ACTION_LABEL,
     };
   }

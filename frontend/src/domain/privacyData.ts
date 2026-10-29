@@ -15,11 +15,11 @@ export interface RetentionItem {
 }
 
 // The order here mirrors how the screen reads top-to-bottom. `service` items have live counts from
-// the backend `/devices/data-inventory` endpoint; `device` items live only on this phone.
+// the backend `/devices/data-inventory` endpoint; `device` items live only on this device.
 export const RETENTION_INVENTORY: RetentionItem[] = [
   { key: "higgins_conversations", label: "Higgins conversations", where: "service",
     what: "Your chat with Higgins and anything you deliberately sent him to look at.",
-    retention: "Kept until you clear chat or delete your data. When evidence is sent for a check, that copy on ApolloSG's services is erased within 15 minutes — the original and the redacted copy stay on this phone until you delete them." },
+    retention: "Kept until you clear chat or delete your data. When evidence is sent for a check, that copy on ApolloSG's services is erased within 15 minutes — the original and the redacted copy stay on this device until you delete them." },
   { key: "investigations", label: "Investigations & saved reports", where: "service",
     what: "Checks you ran and the reports Higgins produced.",
     retention: "Kept until you delete a report or delete all your data." },
@@ -38,15 +38,15 @@ export const RETENTION_INVENTORY: RetentionItem[] = [
   { key: "diagnostics", label: "Diagnostics & app signals", where: "service",
     what: "Device registration, protection-health checks and alert delivery records — no personal content.",
     retention: "Kept until you delete all your data." },
-  { key: "case_evidence", label: "Evidence for your cases (this phone)", where: "device",
+  { key: "case_evidence", label: "Evidence for your cases (this device)", where: "device",
     what: "The original item you submitted and the redacted copy ApolloSG sent for a check — text, links, images, original email files (.eml) and device readings.",
-    retention: "Never deleted automatically. Both copies stay on this phone until you delete the case, remove the original, or delete all your data." },
-  { key: "local_only", label: "On this phone only", where: "device",
+    retention: "Never deleted automatically. Both copies stay on this device until you delete the case, remove the original, or delete all your data." },
+  { key: "local_only", label: "On this device only", where: "device",
     what: "Your settings, saved checks, recent-check history and preferences stored only on this device.",
-    retention: "Never leaves this phone. Erased when you delete all your data or uninstall ApolloSG." },
+    retention: "Never leaves this device. Erased when you delete all your data or uninstall ApolloSG." },
   { key: "screened_calls", label: "Calls Apollo screened (Android)", where: "device",
     what: "The incoming numbers Android passed to Apollo's call screening, with the time and what ApolloSG did. Apollo never reads your call log.",
-    retention: "The last 50 calls, for up to 30 days, on this phone only. Clear it on Check a number, or delete all your data." },
+    retention: "The last 50 calls, for up to 30 days, on this device only. Clear it on Check a number, or delete all your data." },
 ];
 
 export interface InventoryCategory { key: string; label: string; count: number }

@@ -23,11 +23,11 @@ export const CHECK_ROLES: CheckRole[] = [
     name: "Apollo",
     job: "Detects and protects",
     rules: [
-      "Watches websites, calls, messages, apps, your device and your connection, and acts on the phone.",
+      "Watches websites, calls, messages, apps, your device and your connection, and acts on the device.",
       "Its first look at anything uses fixed rules, with no AI. Only something that looks like a possible threat — or that Apollo can't settle on its own — goes on to be investigated.",
-      "Biting means a block Apollo really made on this phone. A link, email or message check can raise Apollo to Barking, never Biting.",
+      "Biting means a block Apollo really made on this device. A link, email or message check can raise Apollo to Barking, never Biting.",
       "Something Apollo couldn't check is never treated as safe, or as unsafe. Apollo tells you what it couldn't see.",
-      "Passwords and codes are removed on your phone before anything is sent, and only what the check needs leaves your device.",
+      "Passwords and codes are removed on your device before anything is sent, and only what the check needs leaves your device.",
     ],
   },
   {
@@ -63,7 +63,7 @@ export const CHECK_ROLES: CheckRole[] = [
       "Looks only at what's still open, with TC FlyBy's notes — not the whole case again.",
       "Makes one AI call (with one retry if that call fails), and searches the web only if a fact is still missing.",
       "Every finding must point to real evidence. If its answer doesn't hold up, ApolloSG says so rather than making one up.",
-      "It's the only part of ApolloSG that may ask you a question or ask your phone for a fresh reading.",
+      "It's the only part of ApolloSG that may ask you a question or ask your device for a fresh reading.",
     ],
   },
   {
@@ -73,7 +73,7 @@ export const CHECK_ROLES: CheckRole[] = [
     rules: [
       "Explains what was found and takes you to the right screen. He never investigates, and never changes what a result means.",
       "Answers from what ApolloSG already knows first. Questions about a finished check are answered from its record — the check isn't reopened.",
-      "Your phone's live reading is the truth. He never guesses past it and never invents a worry.",
+      "Your device's live reading is the truth. He never guesses past it and never invents a worry.",
       "Talks only about scams, security and ApolloSG.",
     ],
   },

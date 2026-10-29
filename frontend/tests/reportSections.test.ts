@@ -64,10 +64,10 @@ test("a finding the answer doesn't state is listed, with how it was established"
 });
 
 test("a threat with no investigation uses what Apollo recorded, still once each", () => {
-  const r = buildReport({ overview: "Apollo blocked a suspicious connection.", fallbackFound: ["Apollo blocked a suspicious connection.", "The address is on Apollo's blocklist."], fallbackMeans: "Nothing reached your phone from it." });
+  const r = buildReport({ overview: "Apollo blocked a suspicious connection.", fallbackFound: ["Apollo blocked a suspicious connection.", "The address is on Apollo's blocklist."], fallbackMeans: "Nothing reached your device from it." });
   assert.deepEqual(r.answer, ["Apollo blocked a suspicious connection."]);
   assert.deepEqual(r.found, [{ text: "The address is on Apollo's blocklist.", detail: null }]);
-  assert.deepEqual(r.means, ["Nothing reached your phone from it."]);
+  assert.deepEqual(r.means, ["Nothing reached your device from it."]);
   assert.deepEqual(r.how, []);
 });
 

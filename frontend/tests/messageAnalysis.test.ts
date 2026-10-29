@@ -20,7 +20,7 @@ const cases: { id: string; sender: string; text: string; expect: string[]; scena
   { id: "M11 marketplace", sender: "Buyer", text: "I've already paid for the item. Use this courier link to receive your money and enter your card details: pay-courier-release.site", expect: ["growling", "barking"] },
   { id: "M12 fake refund", sender: "Unknown", text: "You've received $950. Pay a $50 release fee to access the funds.", expect: ["barking"], scenario: "M12" },
   { id: "M13 remote access", sender: "Support", text: "Your account has been compromised. Install this support app (AnyDesk) so we can protect you.", expect: ["barking"], scenario: "M13" },
-  { id: "M14 sextortion", sender: "Unknown", text: "I hacked your phone and recorded you. Pay 0.05 Bitcoin or I will send the video to everyone you know.", expect: ["growling", "barking"], scenario: "M14" },
+  { id: "M14 sextortion", sender: "Unknown", text: "I hacked your device and recorded you. Pay 0.05 Bitcoin or I will send the video to everyone you know.", expect: ["growling", "barking"], scenario: "M14" },
   { id: "M15 legit tradie (false-positive gate)", sender: "+61 412 345 678", text: "Hi, it's Sam the plumber. I can come Thursday between 9 and 11 to look at the hot water system. Does that suit?", expect: ["resting"], scenario: "M15" },
   { id: "M15b school", sender: "St Mary's", text: "Reminder: school photos are on Friday. Please have students in full winter uniform.", expect: ["resting"], scenario: "M15" },
   { id: "M15c appointment", sender: "+61 3 9000 0000", text: "Your dental appointment is confirmed for Tue 12 Jun at 2:30pm. Reply Y to confirm or call us to change.", expect: ["resting"], scenario: "M15" },

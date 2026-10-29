@@ -12,7 +12,7 @@ const STATUS: Record<ConnectionPath, ConnectionStatus> = {
   reconnecting: { label: "Reconnecting", detail: "The connection dropped for a moment. ApolloSG is trying to restore it.", tone: "growling" },
 };
 
-/** Nothing to show until the phone reports a path for this session (and never in the web preview). */
+/** Nothing to show until the device reports a path for this session (and never in the web preview). */
 export function connectionStatus(path: ConnectionPath | null | undefined): ConnectionStatus | null {
   return path && path in STATUS ? STATUS[path] : null;
 }

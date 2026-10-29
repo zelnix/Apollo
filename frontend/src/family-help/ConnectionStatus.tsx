@@ -1,5 +1,5 @@
 // Family Help: shows both people whether the picture goes direct, through a relay, or is reconnecting.
-// Reads this phone's own WebRTC route for this session only; shows nothing until there is one.
+// Reads this device's own WebRTC route for this session only; shows nothing until there is one.
 import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 

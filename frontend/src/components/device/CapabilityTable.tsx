@@ -54,7 +54,7 @@ const LEGEND: Record<CapabilityClass, string> = {
   not_exposed: "Your device handles this itself and keeps it private. Apollo will not guess at it.",
   unavailable: "This phone has nothing ApolloSG can use for it.",
   unknown: "ApolloSG asked and the read failed. Unknown — not an all-clear.",
-  not_readable_here: "ApolloSG is not running on your phone here, so it could not read this.",
+  not_readable_here: "ApolloSG is not running on your device here, so it could not read this.",
 };
 
 const CLASS_ORDER: CapabilityClass[] = ["apollo_can_use", "permission_required", "not_exposed", "unknown", "not_readable_here", "unavailable"];

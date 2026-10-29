@@ -66,7 +66,7 @@ test("the review date reads as a plain date, and nothing is invented without one
   assert.equal(reviewedLabel("soon"), null);
 });
 
-test("the Ask Higgins rules in the book match what the phone does", () => {
+test("the Ask Higgins rules in the book match what the device does", () => {
   assert.ok(ASK_HIGGINS, "the book has an Ask Higgins section {#ask-higgins}");
   assert.ok(ASK_HIGGINS.includes(`There are ${QUICK_QUESTIONS.length} quick questions`), "number of quick questions");
   const unclear = classifyIntent("hmm");
@@ -76,7 +76,7 @@ test("the Ask Higgins rules in the book match what the phone does", () => {
   assert.equal(detectCheckIntent("Can you check this email?")?.category, "email_accounts");
   assert.equal(detectCheckIntent("check the link in this email")?.category, "websites_links");
   assert.equal(detectCheckIntent("Can you check this for me?"), null);
-  // Wayfinding goes to Higgins; the phone's own state is answered on the phone.
+  // Wayfinding goes to Higgins; the device's own state is answered on the device.
   assert.equal(classifyIntent("Where is call screening?").route, "ask_higgins");
   assert.equal(classifyIntent("Is my phone protected?").route, "local_diagnostic");
   for (const form of ["Screenshot or photo", "Websites & Links", "Messages & Calls", "Email & Accounts", "Apps & Files", "Device & Internet"]) {
@@ -84,7 +84,7 @@ test("the Ask Higgins rules in the book match what the phone does", () => {
   }
 });
 
-test("the privacy rules in the book match what the phone removes and refuses", () => {
+test("the privacy rules in the book match what the device removes and refuses", () => {
   const privacy = sectionText("privacy");
   assert.ok(privacy, "the book has a Privacy and redaction section {#privacy}");
   // Secrets are replaced with the label the book names; scam evidence (the sender's number) is kept.
@@ -146,7 +146,7 @@ test("each gate lists its rules one per line, code first, grouped by class", () 
 
 const read = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), "utf8");
 
-test("the phone's own limits in the book match the phone", () => {
+test("the device's own limits in the book match the device", () => {
   const yourData = sectionText("your-data");
   const minutes = Number(/MAX_AGE_MS = (\d+) \* 60 \* 1000/.exec(read("src/higgins/chatMemory.ts"))?.[1]);
   assert.equal(minutes, 60);

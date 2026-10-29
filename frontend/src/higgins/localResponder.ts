@@ -52,7 +52,7 @@ export function diagnosticToHigginsMessage(result: DiagnosticResult, conversatio
 const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
   how_apollo_works:
     "ApolloSG is your scam protection, and four of us do the work:\n\n" +
-    "• **Apollo** watches and detects — websites, calls, messages, apps, your device and your connection. Apollo acts on the phone.\n" +
+    "• **Apollo** watches and detects — websites, calls, messages, apps, your device and your connection. Apollo acts on the device.\n" +
     "• **TC FlyBy** investigates quickly — checking official sources, ApolloSG's knowledge base and one targeted search.\n" +
     "• **Magnum DI** investigates deeply — only when TC FlyBy can't settle something that could change the answer.\n" +
     "• **Higgins** (me) knows ApolloSG and scams. I explain what was found, guide you, and take you to the right screen.\n\n" +
@@ -60,13 +60,13 @@ const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
 
   what_is_higgins:
     "I'm Higgins — Apollo's trusted adviser, interpreter and guide, and the savant of this app.\n\n" +
-    "I know every screen, check, protection, setting and privacy rule in ApolloSG, and I know how scams work. Ask me where something is and I'll take you there. Ask me why Apollo is growling and I'll tell you from what your phone actually reports.\n\n" +
+    "I know every screen, check, protection, setting and privacy rule in ApolloSG, and I know how scams work. Ask me where something is and I'll take you there. Ask me why Apollo is growling and I'll tell you from what your device actually reports.\n\n" +
     "What I don't do is investigate — when you ask me to check a number, link, message or email, TC FlyBy investigates it first, Magnum DI looks deeper only if needed, and I bring you the findings.",
 
   what_is_magnum_di:
     "Magnum DI is Apollo's deep investigator. It's called only when TC FlyBy — Apollo's fast, low-cost investigator — can't settle something that could change the answer.\n\n" +
     "TC FlyBy checks official sources, ApolloSG's knowledge base and one targeted search first. Magnum DI then examines just what's still open — for example a picture Apollo couldn't read, or a request to send money somewhere nobody has verified — and returns a full briefing with findings and recommended actions.\n\n" +
-    "\"Am I protected?\" is answered on your phone, with no investigation at all.",
+    "\"Am I protected?\" is answered on your device, with no investigation at all.",
 
   explain_feature:
     "Apollo's protections, by the names you'll see:\n\n" +
@@ -76,7 +76,7 @@ const KNOWLEDGE_RESPONSES: Record<LocalKnowledgeIntent, string> = {
     "• **Apps & Files** — app and file safety checks.\n" +
     "• **Device & Internet** — device settings plus network security monitoring.\n" +
     "• **Vision** — screenshot and photograph safety checks.\n\n" +
-    "Each one is automatic wherever your phone genuinely allows it, and always available as a manual check where it doesn't. All protections shows you the real status of every one.",
+    "Each one is automatic wherever your device genuinely allows it, and always available as a manual check where it doesn't. All protections shows you the real status of every one.",
 
   help_navigation:
     "Here's the whole app:\n\n" +

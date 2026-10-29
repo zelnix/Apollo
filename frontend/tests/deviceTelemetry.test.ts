@@ -7,7 +7,7 @@ import { enforceEgress } from "../src/domain/privacy.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("registration and heartbeat may carry what the phone is, and nothing else new", () => {
+test("registration and heartbeat may carry what the device is, and nothing else new", () => {
   const payload = enforceEgress("device_register", {
     platform: "android", adapter_mode: "native", app_version: "1.1.0", tz_offset_minutes: 600, locale: "en-AU",
     manufacturer: "Samsung", model: "SM-S921B", os_name: "Android", os_version: "14", country: "AU", installed_at: "2026-10-01T00:00:00.000Z",

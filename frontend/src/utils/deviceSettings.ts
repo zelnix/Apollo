@@ -25,8 +25,8 @@ const ANDROID_INTENT: Record<SettingsTarget, string> = {
  */
 export async function openPrivateDnsSettings(): Promise<"private_dns" | "network" | "settings" | "failed"> {
   if (Platform.OS !== "android") return "failed";
-  try { await Linking.sendIntent(ANDROID_INTENT.private_dns); return "private_dns"; } catch { /* not on this phone */ }
-  try { await Linking.sendIntent("android.settings.WIRELESS_SETTINGS"); return "network"; } catch { /* not on this phone */ }
+  try { await Linking.sendIntent(ANDROID_INTENT.private_dns); return "private_dns"; } catch { /* not on this device */ }
+  try { await Linking.sendIntent("android.settings.WIRELESS_SETTINGS"); return "network"; } catch { /* not on this device */ }
   try { await Linking.openSettings(); return "settings"; } catch { return "failed"; }
 }
 
@@ -39,8 +39,8 @@ export async function openDeviceSettings(target: SettingsTarget, path: string, t
     if (Platform.OS === "android") { await Linking.sendIntent(ANDROID_INTENT[target]); return; }
     if (Platform.OS === "ios") { toast(`In Settings go to: ${path}`); await Linking.openSettings(); return; }
     // Desktop (Windows/macOS): no supported deep link — show the path to follow.
-    toast(`On your computer: ${path}`);
-  } catch { toast(`Open Settings on your phone: ${path}`); }
+    toast(`On your device: ${path}`);
+  } catch { toast(`Open Settings on your device: ${path}`); }
 }
 
 /** The closest supported Android settings destination for reviewing one permission on one app, plus the

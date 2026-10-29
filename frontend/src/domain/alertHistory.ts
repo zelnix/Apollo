@@ -10,7 +10,7 @@ export interface AlertHistoryRow {
   id: string;
   title: string;
   at: string;
-  /** Where Apollo sent it from: this phone itself, or Apollo's servers. */
+  /** Where Apollo sent it from: this device itself, or Apollo's servers. */
   source: "device" | "server";
   status: string;
   opened: boolean;
@@ -23,7 +23,7 @@ const FAILURE_REASON: Record<string, string> = {
   daily_limit_reached: "the daily alert limit was reached",
   provider_timeout: "the delivery service didn't answer in time",
   provider_unreachable: "the delivery service couldn't be reached",
-  recipient_unregistered: "this phone was not registered for alerts",
+  recipient_unregistered: "this device was not registered for alerts",
 };
 
 function reason(code: string | null): string {
@@ -51,13 +51,13 @@ export function serverAlertStatus(alert: ServerAlert): string {
 
 export function deviceAlertStatus(entry: AlertLogEntry): string {
   switch (entry.state) {
-    case "shown": return entry.releasedAt ? "Shown after quiet hours ended" : "Shown on this phone";
+    case "shown": return entry.releasedAt ? "Shown after quiet hours ended" : "Shown on this device";
     case "held": return "Waiting for quiet hours to end";
-    case "failed": return `Not shown — ${entry.detail ?? "this phone refused it"}`;
+    case "failed": return `Not shown — ${entry.detail ?? "this device refused it"}`;
   }
 }
 
-/** One list, newest first: what this phone showed and what Apollo's servers sent. */
+/** One list, newest first: what this device showed and what Apollo's servers sent. */
 export function alertHistory(server: ServerAlert[], device: AlertLogEntry[], limit = 30): AlertHistoryRow[] {
   const rows: AlertHistoryRow[] = [
     ...server.map((a) => ({

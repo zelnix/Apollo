@@ -47,7 +47,7 @@ export function threatCaseId(event: PatrolEvent): string {
 /** The key that decides what counts as ONE case in the Threats list. Repeat checks of the same
  *  subject (today: device checks) carry a stable case_key, so they collapse into a single case
  *  showing the latest result while every individual check stays visible in patrol history.
- *  Two records that name the SAME Magnum DI investigation are the same case — this phone's own
+ *  Two records that name the SAME Magnum DI investigation are the same case — this device's own
  *  record and anything Apollo's servers filed for that investigation collapse into one row. */
 export function caseGroupKey(event: PatrolEvent): string {
   const investigation = event.investigation_case_id ?? event.patrol_record?.investigationCaseId;

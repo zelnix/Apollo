@@ -275,7 +275,7 @@ export default function CheckNumber() {
             "This works without answering the call — check before you call back.",
             "Reputation data indicates risk but cannot authenticate who is actually calling. Caller ID can be spoofed.",
             Platform.OS === "android"
-              ? "Calls Apollo screened lists the incoming numbers your phone passed to Apollo's call screening — Apollo doesn't read your call log."
+              ? "Calls Apollo screened lists the incoming numbers your device passed to Apollo's call screening — Apollo doesn't read your call log."
               : "Enter or paste the number you want checked.",
           ] }}
           testID="callguard"

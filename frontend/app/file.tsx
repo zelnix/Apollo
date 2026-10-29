@@ -1,4 +1,4 @@
-// Gate 6 — Check This File. Reads the file on this phone: its signature and a text sample, and the whole file
+// Gate 6 — Check This File. Reads the file on this device: its signature and a text sample, and the whole file
 // (at most 10 MB) to fingerprint it with SHA-256. Nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
@@ -150,7 +150,7 @@ export default function CheckFile() {
         throw new Error(`This file is ${Math.round(asset.size / (1024 * 1024))} MB — ApolloSG's limit is ${FILE_SIZE_LIMIT / (1024 * 1024)} MB. Choose a smaller file.`);
       }
       let inspected: Inspection = { headBytes: null, textSample: null };
-      // The whole file is read on this phone (at most 10 MB) so it can be fingerprinted (SHA-256); nothing is uploaded.
+      // The whole file is read on this device (at most 10 MB) so it can be fingerprinted (SHA-256); nothing is uploaded.
       let sha256: string | null = null;
       try {
         if (Platform.OS === "web") {
@@ -248,14 +248,14 @@ export default function CheckFile() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check a file"
-          info={{ title: "About file checking", body: ["Choose or describe a file and Apollo will check it for disguised programs, risky formats, macros and links inside.", "ApolloSG reads the file on this phone — its real type from its first bytes, a sample of its contents, and a SHA-256 fingerprint of the whole file. Nothing is uploaded."] }}
+          info={{ title: "About file checking", body: ["Choose or describe a file and Apollo will check it for disguised programs, risky formats, macros and links inside.", "ApolloSG reads the file on this device — its real type from its first bytes, a sample of its contents, and a SHA-256 fingerprint of the whole file. Nothing is uploaded."] }}
           testID="file"
         />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         <SourceHero
           testID="file-hero"
-          title="Pick a file from this phone"
+          title="Pick a file from this device"
           caption="Apollo reads the file on this device — its signature, a sample of its contents and a fingerprint of the whole file. Nothing is uploaded."
           actions={[{
             testID: "file-pick",

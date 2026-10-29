@@ -54,7 +54,7 @@ test("each category leads with its issues, then what needs checking, then how mu
   assert.equal(byId(recovery).recovery.label, "Protected");
   assert.equal(byId(recovery).recovery.note, `${ok} of ${total} protected`);
   // Nothing is "Protected" without a real read.
-  for (const r of deviceAreaRows("not_here")) assert.deepEqual([r.status, r.label, r.note], ["unread", "Not checked", "Read on your phone"]);
+  for (const r of deviceAreaRows("not_here")) assert.deepEqual([r.status, r.label, r.note], ["unread", "Not checked", "Read on your device"]);
   assert.ok(deviceAreaRows("reading").every((r) => r.status === "unread"));
 });
 

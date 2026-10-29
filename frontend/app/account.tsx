@@ -105,7 +105,7 @@ export default function CheckAccount() {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
       if (picked.canceled || !picked.assets[0]) return;
       const asset = picked.assets[0]; setScreenshotUri(asset.uri); setEvidenceBusy(true);
-      // The screenshot's text is read on this phone (credentials removed); the image itself is never sent.
+      // The screenshot's text is read on this device (credentials removed); the image itself is never sent.
       const screening = await screenImage(asset.uri, "message_screenshot");
       const read = screening.extractedText.trim();
       if (!read) throw new Error(UNREADABLE_SCREENSHOT);

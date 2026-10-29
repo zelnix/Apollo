@@ -1,5 +1,5 @@
 // Privacy & Data — an honest inventory of everything Apollo stores for this device and a verified
-// "Delete My Apollo Data" flow (type-to-confirm). Deletion erases the service copy, wipes this phone
+// "Delete My Apollo Data" flow (type-to-confirm). Deletion erases the service copy, wipes this device
 // and returns Apollo to a first-run state. Offline deletion is recorded as pending and retried on reconnect.
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -130,7 +130,7 @@ export default function PrivacyDataScreen() {
           <SectionTitle>Delete my ApolloSG data</SectionTitle>
           <Card testID="privacy-data-delete" style={s.dangerCard}>
             <Text style={s.dangerTitle}>This cannot be undone</Text>
-            <Body>Deleting erases everything above — on ApolloSG&apos;s service and on this phone — and signs this device out. ApolloSG returns to the welcome screen and you can set it up fresh anytime. Trusted links, saved checks, Patrol history, Higgins conversations and family pairings are all removed.</Body>
+            <Body>Deleting erases everything above — on ApolloSG&apos;s service and on this device — and signs this device out. ApolloSG returns to the welcome screen and you can set it up fresh anytime. Trusted links, saved checks, Patrol history, Higgins conversations and family pairings are all removed.</Body>
             <Body>To confirm, type <Text style={{ fontFamily: fonts.textSemibold, color: colors.onSurface }}>{CONFIRM_WORD}</Text> below.</Body>
             <TextInput
               testID="privacy-data-confirm-input"
@@ -156,7 +156,7 @@ export default function PrivacyDataScreen() {
       </ScrollView>
 
       <Sheet visible={showSheet} onClose={() => setShowSheet(false)} title="Delete everything?" testID="privacy-data-sheet">
-        <Body>This permanently erases all of your ApolloSG data on the service and on this phone. You can&apos;t get it back.</Body>
+        <Body>This permanently erases all of your ApolloSG data on the service and on this device. You can&apos;t get it back.</Body>
         <Button testID="privacy-data-sheet-confirm" variant="danger" label="Yes, delete everything" onPress={() => void runDelete()} />
         <Button testID="privacy-data-sheet-cancel" variant="ghost" label="Keep my data" onPress={() => setShowSheet(false)} />
       </Sheet>

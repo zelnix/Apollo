@@ -133,7 +133,7 @@ export default function FamilyIncident() {
               </View>
               {kind === "custom" ? <TextInput testID="family-note-text" style={s.input} value={custom} onChangeText={(t) => setCustom(t.slice(0, 140))} placeholder="e.g. Popping over after work — don't touch anything till then" placeholderTextColor={colors.muted} multiline maxLength={140} /> : null}
               <TextInput testID="family-note-name" style={s.input} value={fromName} onChangeText={(t) => setFromName(t.slice(0, 40))} placeholder="Your name (so they know who it's from)" placeholderTextColor={colors.muted} maxLength={40} autoCorrect={false} />
-              <TextInput testID="family-note-phone" style={s.input} value={myPhone} onChangeText={(t) => setMyPhone(t.slice(0, 32))} placeholder="Your phone number (optional) — adds a one-tap Call back button" placeholderTextColor={colors.muted} keyboardType="phone-pad" maxLength={32} autoCorrect={false} />
+              <TextInput testID="family-note-phone" style={s.input} value={myPhone} onChangeText={(t) => setMyPhone(t.slice(0, 32))} placeholder="Your device number (optional) — adds a one-tap Call back button" placeholderTextColor={colors.muted} keyboardType="phone-pad" maxLength={32} autoCorrect={false} />
               <Button testID="family-note-send" label={send.isPending ? "Sending…" : "Send note"} onPress={() => send.mutate()} disabled={!canSend} />
               {(notes.data ?? []).length ? (
                 <View style={{ gap: spacing.xs }} testID="family-note-sent">

@@ -1,4 +1,4 @@
-// Higgins Luddish L1 — the Evidence Lock for each kind of result ApolloSG shows: a check result worked out on the phone,
+// Higgins Luddish L1 — the Evidence Lock for each kind of result ApolloSG shows: a check result worked out on the device,
 // a TC FlyBy / Magnum DI investigation, and a Patrol finding handed to Ask Higgins. Each takes the state and findings
 // exactly as recorded; nothing is recomputed or inferred. Pure: type imports only.
 import type { CheckResultModel } from "../checkResult.ts";
@@ -9,7 +9,7 @@ import { stateFromAssessment, stateFromOutcome, stateFromPatrol, stateFromTone, 
 
 const OPEN_STATUSES = new Set(["incomplete", "unavailable", "error", "not_performed", "not_configured"]);
 
-/** A check result worked out on the phone (link, message, call, email, file, app, account, device, internet). */
+/** A check result worked out on the device (link, message, call, email, file, app, account, device, internet). */
 export function lockFromCheckResult(model: CheckResultModel): EvidenceLock {
   return lockEvidence({
     state: stateFromTone(model.tone),

@@ -77,7 +77,7 @@ export default function Digest() {
             ))}
           </Card>
         </View>
-        <Body>ApolloSG only counts what it could see: links you checked or shared, and Wi‑Fi facts your phone reports. It never scans your messages or browsing.</Body>
+        <Body>ApolloSG only counts what it could see: links you checked or shared, and Wi‑Fi facts your device reports. It never scans your messages or browsing.</Body>
       </ScrollView>
     </View>
   );

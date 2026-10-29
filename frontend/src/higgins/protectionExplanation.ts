@@ -1,7 +1,7 @@
-// Explanations of protections — reviewed text fetched from ApolloSG's backend, kept on the phone once fetched.
+// Explanations of protections — reviewed text fetched from ApolloSG's backend, kept on the device once fetched.
 //
 // Every Apollo Protection has one canonical explanation, and the common Device Protections have a reviewed one.
-// Anything else has no explanation and the app says so; no AI writes one. Only the protection's id leaves the phone.
+// Anything else has no explanation and the app says so; no AI writes one. Only the protection's id leaves the device.
 import { ApiError, apiGet } from "@/src/api/client";
 import type { DeviceProtectionRow } from "@/src/domain/deviceCapabilities";
 import { storage } from "@/src/utils/storage";

@@ -27,7 +27,7 @@ import { startDeviceProtectionMonitor } from "@/src/store/deviceProtectionStore"
 import { useTheme } from "@/src/theme";
 import { installTwelveHourClock } from "@/src/utils/twelveHourClock";
 
-// Every time Apollo shows is on the 12-hour clock, in this phone's own time zone.
+// Every time Apollo shows is on the 12-hour clock, in this device's own time zone.
 installTwelveHourClock();
 
 // Production: suppress LogBox entirely. Development: keep it active for diagnosis.
@@ -50,7 +50,7 @@ if (Notifications) {
 
 // A tap is the one honest proof an alert arrived. Local alerts carry their log id; alerts sent from
 // Apollo's servers carry their alert key in the deep link, which is reported back so the delivery
-// ledger can say "opened on this phone" instead of only "accepted for delivery".
+// ledger can say "opened on this device" instead of only "accepted for delivery".
 function recordOpened(data: Record<string, unknown> | undefined, url: string | undefined) {
   const localId = typeof data?.alert_id === "string" ? data.alert_id : null;
   if (localId) void markAlertOpened(localId).catch(() => undefined);

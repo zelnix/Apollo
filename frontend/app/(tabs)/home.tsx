@@ -236,7 +236,7 @@ export default function Home() {
   );
 
   // Everything that needs the person right now, as two-line Higgins briefings Apollo cycles through. An email you
-  // submitted keeps its sender and subject only in the original on this phone, so those are read from there.
+  // submitted keeps its sender and subject only in the original on this device, so those are read from there.
   const heroCases = React.useMemo(() => heroEvents(attention, resolution.drivingEvent, resolution.state), [attention, resolution.drivingEvent, resolution.state]);
   // "Important for you" uses the same briefing (with more room), so its cases' kept originals are read too.
   const priorityThreats = React.useMemo(() => buildPriorityThreats(events), [events]);

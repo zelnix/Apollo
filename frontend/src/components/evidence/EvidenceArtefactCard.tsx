@@ -1,7 +1,7 @@
 // Evidence tab — the original source, shown the way it arrived.
 //
 // One card per case: the artefact itself (email / screenshot / message / chat / post), a toggle
-// between the original kept on this phone and the exact copy that was sent for investigation, the
+// between the original kept on this device and the exact copy that was sent for investigation, the
 // captured headers, and the provenance. Everything on screen is captured material; nothing about
 // the source app is reconstructed.
 import * as Clipboard from "expo-clipboard";
@@ -103,14 +103,14 @@ const SOURCE_INFO = {
   body: [
     "This is the material Apollo investigated, exactly as it was captured — not a summary and not anything ApolloSG wrote.",
     "Links, buttons, pictures, phone numbers and addresses in it look as they did, but touching them does nothing: nothing opens, dials, downloads or connects. Where each link really goes is listed under Details.",
-    "It is kept on this phone only. It is never uploaded for storage, and it is deleted when you delete this case or wipe ApolloSG's data.",
+    "It is kept on this device only. It is never uploaded for storage, and it is deleted when you delete this case or wipe ApolloSG's data.",
   ],
 };
 
 const MODE_INFO = {
   title: "Original, Redacted and Side by side",
   body: [
-    "Original is the material as captured on this phone. Nothing in it has been altered.",
+    "Original is the material as captured on this device. Nothing in it has been altered.",
     "Redacted is the exact copy that left this phone for the investigation. Passwords, PINs and verification codes are blacked out or replaced; the sender, the links and everything else are kept so the investigation has the real evidence.",
     "For screenshots, Side by side shows both pictures together so you can see exactly what was covered up before anything was sent.",
   ],
@@ -128,7 +128,7 @@ function imageNotes(r: ImageEvidenceRecord): string[] {
   if (!r.checked) out.push("On-device text recognition was unavailable, so nothing could be blacked out.");
   else if (r.redactedRegions > 0) out.push(`${r.redactedRegions} password, PIN or code area${r.redactedRegions === 1 ? " was" : "s were"} blacked out on the copy that was sent.`);
   else out.push("No passwords, PINs or codes were found, so nothing was blacked out.");
-  if (r.originalRemovedAt) out.push("You removed the original from this phone. The sent copy is kept with the case.");
+  if (r.originalRemovedAt) out.push("You removed the original from this device. The sent copy is kept with the case.");
   else out.push("The original is kept only on this device and was never uploaded.");
   return out;
 }
@@ -199,7 +199,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
     return () => { live = false; };
   }, [keyList]);
 
-  // An image-only case has no text original, but the picture kept on this phone IS the original.
+  // An image-only case has no text original, but the picture kept on this device IS the original.
   const source = useMemo<OriginalSource | null>(
     () => src ?? (records.length ? { kind: "screenshot", capturedAt: records[0].createdAt, origin: "this_device" } : null),
     [src, records],
@@ -211,7 +211,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
     if (mode === "redacted") return [{ uri: r.sentUri, label: "Copy sent for investigation" }];
     if (mode === "side") {
       return [
-        ...(r.originalUri ? [{ uri: r.originalUri, label: "Original on this phone" }] : []),
+        ...(r.originalUri ? [{ uri: r.originalUri, label: "Original on this device" }] : []),
         { uri: r.sentUri, label: "Copy sent for investigation" },
       ];
     }
@@ -234,7 +234,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
   if (src === undefined || !source || !view || !shown) return null;
 
   const url = mode === "redacted" && source.url ? purposeLimitedUrl(source.url) : source.url ?? null;
-  // What is actually different about the copy that left this phone. Stated where the toggle is, so
+  // What is actually different about the copy that left this device. Stated where the toggle is, so
   // "Redacted" never looks like it did nothing.
   const redaction = describeRedaction({
     original: view, redacted: redactView(view, redactInvestigationSecrets),
@@ -337,7 +337,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
             { label: "Type", value: view.title },
             ...(view.platform ? [{ label: "Platform", value: view.platform }] : []),
             { label: "Captured", value: `${source.origin === "this_device" ? "On this device" : "Saved from the investigation"} · ${new Date(source.capturedAt).toLocaleString()}` },
-            { label: "Stored", value: "On this phone only. Deleted when you delete this case." },
+            { label: "Stored", value: "On this device only. Deleted when you delete this case." },
             ...(view.links.length ? [{ label: "Links", value: view.links.join("\n") }] : []),
           ]} />
           {phones?.length ? (
@@ -374,7 +374,7 @@ export function EvidenceArtefactCard({ caseKeys, packTitle, packDate, packSummar
           <Text style={s.bannerTitle}>{mode === "original" ? view.bannerTitle : mode === "side" ? "Original and sent copy, side by side" : "This is the copy ApolloSG sent"}</Text>
           <Text style={s.bannerBody}>
             {mode === "original" ? view.bannerBody
-              : mode === "side" ? "On the left is the picture kept on this phone. On the right is the copy that was sent, with any password, PIN or code blacked out. Tap either to see it full screen."
+              : mode === "side" ? "On the left is the picture kept on this device. On the right is the copy that was sent, with any password, PIN or code blacked out. Tap either to see it full screen."
                 : sentCopyIdentical ? "Nothing in this one needed hiding, so the copy sent for investigation is identical to the original."
                   : "Passwords, PINs and verification codes are blacked out or replaced. The sender, the links and everything else are exactly as captured."}
           </Text>

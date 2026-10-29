@@ -21,7 +21,7 @@ test("image file → /message screenshot; other file → /file", () => {
   const img = classifyShare({ files: [{ path: "file:///tmp/shot.png", mimeType: "image/png", fileName: "shot.png" }] }); assert.equal(img.kind, "screenshot"); assert.equal(img.params.imageUri, undefined);
   const f = classifyShare({ files: [{ path: "file:///tmp/Invoice.pdf.exe", mimeType: "application/octet-stream", fileName: "Invoice.pdf.exe", size: 1200 }, { path: "file:///tmp/body.txt", mimeType: "text/plain" }] }); assert.equal(f.kind, "file"); assert.equal(f.pathname, "/file"); assert.equal(f.params.name, undefined); assert.equal(f.params.size, undefined);
 });
-test("original email file (.eml / message/rfc822) → /email, read on the phone; the file never goes in route params", () => {
+test("original email file (.eml / message/rfc822) → /email, read on the device; the file never goes in route params", () => {
   const byName = classifyShare({ files: [{ path: "file:///tmp/Your NetBank.eml", mimeType: "application/octet-stream", fileName: "Your NetBank.eml" }] });
   assert.equal(byName.kind, "email"); assert.equal(byName.pathname, "/email"); assert.deepEqual(Object.keys(byName.params), ["source"]);
   assert.equal(classifyShare({ files: [{ path: "content://mail/123", mimeType: "message/rfc822" }] }).kind, "email");

@@ -47,7 +47,7 @@ export type CapabilityClass =
   | "unavailable"
   /** Apollo asked and the read failed. Never upgraded to anything else. */
   | "unknown"
-  /** Apollo is not running on the phone itself (browser preview), so nothing can be read. */
+  /** Apollo is not running on the device itself (browser preview), so nothing can be read. */
   | "not_readable_here";
 
 export const CAPABILITY_CLASS_LABEL: Record<CapabilityClass, string> = {
@@ -103,7 +103,7 @@ export interface DeviceCapabilityInput {
   /** null means native protection detection failed or is unsupported on this host. */
   native: NativeProtectionRead | null;
   /**
-   * False when Apollo is not running on the phone itself (browser preview, or a build without
+   * False when Apollo is not running on the device itself (browser preview, or a build without
    * Apollo's device module). Nothing can be read there — which is a different fact from a
    * capability being absent, so every row becomes `not_readable_here` rather than "not on this
    * device".
@@ -151,7 +151,7 @@ export interface DeviceCapabilityView {
   notAccessible: CapabilityRow[];
   unavailable: CapabilityRow[];
   unknown: CapabilityRow[];
-  /** Apollo isn't on the phone here, so nothing could be read. Never "absent". */
+  /** Apollo isn't on the device here, so nothing could be read. Never "absent". */
   notReadableHere: CapabilityRow[];
   /** Verified settings that don't meet the recommended state — an index into deviceProtects, not a second list. */
   recommendations: DeviceProtectionRow[];
@@ -185,7 +185,7 @@ export function allCapabilityRows(view: DeviceCapabilityView): CapabilityRow[] {
     case "unknown":
       return "Nothing is wrong yet — Apollo simply could not read this. Run a device check again and it may settle.";
     case "not_readable_here":
-      return "Open ApolloSG on your phone to see the real state of this.";
+      return "Open ApolloSG on your device to see the real state of this.";
     default:
       return null;
   }
@@ -221,7 +221,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "app_permissions",
     title: "App permissions",
     area: "apps",
-    what: "The list of things an app has been allowed to use on this phone — camera, microphone, location, messages, or control of the screen.",
+    what: "The list of things an app has been allowed to use on this device — camera, microphone, location, messages, or control of the screen.",
     benefit: "Scammers who talk someone through an install nearly always need one of these switched on. Seeing what an app holds is how you catch that, and how you know exactly what to turn off.",
     purpose: "See which apps hold camera, microphone, location, SMS or accessibility access.",
     platforms: ["android", "ios"],
@@ -269,7 +269,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "vpn_state",
     title: "VPN status",
     area: "web",
-    what: "Whether a VPN is active on this phone. Apollo’s own protection runs as one.",
+    what: "Whether a VPN is active on this device. Apollo’s own protection runs as one.",
     benefit: "It confirms Apollo’s protection is really running, and shows up a VPN you didn’t set up — which can quietly route everything you do through someone else.",
     purpose: "Confirm Apollo’s own protection is running and notice a VPN you didn’t set up.",
     platforms: ["android", "ios", "windows", "macos"],
@@ -281,8 +281,8 @@ const CATALOGUE: CapabilityDef[] = [
     id: "profile_state",
     title: "Management profile",
     area: "apps",
-    what: "A configuration or device-admin profile, which hands another party control over parts of this phone.",
-    benefit: "Work phones have these for good reasons. One you don’t recognise can mean someone else can install apps, wipe the phone or watch what you do.",
+    what: "A configuration or device-admin profile, which hands another party control over parts of this device.",
+    benefit: "Work devices have these for good reasons. One you don’t recognise can mean someone else can install apps, wipe the device or watch what you do.",
     purpose: "Notice a configuration profile that gives someone else control of this device.",
     platforms: ["android", "ios"],
     capKey: "profileState",
@@ -292,7 +292,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "install_events",
     title: "New app installs",
     area: "apps",
-    what: "An app appearing on this phone, and when it arrived.",
+    what: "An app appearing on this device, and when it arrived.",
     benefit: "An app that turned up during or just after a suspicious call is the strongest sign a remote-access scam got somewhere.",
     purpose: "Notice an app that appeared during or just after a suspicious call.",
     platforms: ["android", "ios"],
@@ -317,7 +317,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "call_history",
     title: "Recent callers",
     area: "calls_messages",
-    what: "The numbers that have called this phone recently.",
+    what: "The numbers that have called this device recently.",
     benefit: "You can tap the caller you’re worried about instead of typing a number you might mistype — and Apollo reads only the one you pick.",
     purpose: "Let you pick a recent caller to check instead of typing the number.",
     platforms: ["android", "ios"],
@@ -328,7 +328,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "message_inbox",
     title: "Messages",
     area: "calls_messages",
-    what: "The text messages on this phone.",
+    what: "The text messages on this device.",
     benefit: "You can pick the message you’re worried about instead of copying it across — and Apollo reads only the one you pick.",
     purpose: "Let you pick a message to check instead of copying it across.",
     platforms: ["android", "ios"],
@@ -339,7 +339,7 @@ const CATALOGUE: CapabilityDef[] = [
     id: "installed_apps",
     title: "Installed apps",
     area: "apps",
-    what: "The apps on this phone that ApolloSG is allowed to see.",
+    what: "The apps on this device that ApolloSG is allowed to see.",
     benefit: "You can choose the app you want checked from a list, instead of having to spell its name exactly.",
     purpose: "Offer a pick-from-list when you want an app checked.",
     platforms: ["android", "ios"],
@@ -348,16 +348,16 @@ const CATALOGUE: CapabilityDef[] = [
   },
   {
     id: "native_call_verdict",
-    title: "Your phone’s own scam-call warning",
+    title: "Your device’s own scam-call warning",
     area: "calls_messages",
-    what: "The spam or scam label your phone itself puts on an incoming call — from your phone maker or your carrier, never from ApolloSG.",
-    benefit: "When your phone shares that label, Apollo can record it as their finding and start its own investigation from it, instead of waiting for you to report the call.",
-    purpose: "Use your phone’s own spam warning as evidence and start an Apollo investigation from it.",
+    what: "The spam or scam label your device itself puts on an incoming call — from your device maker or your carrier, never from ApolloSG.",
+    benefit: "When your device shares that label, Apollo can record it as their finding and start its own investigation from it, instead of waiting for you to report the call.",
+    purpose: "Use your device’s own spam warning as evidence and start an Apollo investigation from it.",
     platforms: ["android", "ios"],
   },
   {
     id: "native_message_verdict",
-    title: "Your phone’s own spam-text warning",
+    title: "Your device’s own spam-text warning",
     area: "calls_messages",
     what: "The spam label your messaging app itself puts on a text — from the messaging app or your carrier, never from ApolloSG.",
     benefit: "When your messaging app shares that label, Apollo can record it as their finding and investigate from there, instead of waiting for you to notice.",
@@ -436,9 +436,9 @@ function resolve(def: CapabilityDef, input: DeviceCapabilityInput): CapabilityRo
   const { platform, caps, native } = input;
   const base = { id: def.id, title: def.title, area: def.area, what: def.what, benefit: def.benefit, purpose: def.purpose, attributedTo: "Apollo" };
 
-  // Apollo isn't on the phone at all here, so nothing was read. That is not "absent".
+  // Apollo isn't on the device at all here, so nothing was read. That is not "absent".
   if (input.hostIsDevice === false) {
-    return { ...base, klass: "not_readable_here", detail: "ApolloSG is not running on your phone here, so it could not read this. Open ApolloSG on your phone to see the real state." };
+    return { ...base, klass: "not_readable_here", detail: "ApolloSG is not running on your device here, so it could not read this. Open ApolloSG on your device to see the real state." };
   }
 
   if (!def.platforms.includes(platform)) {
@@ -555,7 +555,7 @@ export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCap
     : [];
 
   // Every OS/OEM protection this platform has, resolved from the existing device reads. Apollo isn't
-  // on the phone → no protection picture at all, rather than a list of things it claims are missing.
+  // on the device → no protection picture at all, rather than a list of things it claims are missing.
   const securityRows = input.hostIsDevice === false
     ? previewProtectionRows()
     : securityProtectionRows(
@@ -576,7 +576,7 @@ export function buildDeviceCapabilities(input: DeviceCapabilityInput): DeviceCap
   const notReadableHere = rows.filter((r) => r.klass === "not_readable_here");
 
   const summary = notReadableHere.length
-    ? `ApolloSG is not running on your phone here, so it could not read any of the ${rows.length} capabilities it looks for. Open ApolloSG on your phone to see the real state.`
+    ? `ApolloSG is not running on your device here, so it could not read any of the ${rows.length} capabilities it looks for. Open ApolloSG on your device to see the real state.`
     : unknown.length
       ? `ApolloSG can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for here. ${unknown.length} could not be read, so ${unknown.length === 1 ? "it is" : "they are"} reported as unknown rather than clear.`
       : `ApolloSG can use ${apolloCanUse.length} of the ${rows.length} capabilities it looks for on this device. ${needsPermission.length} need your permission and ${notAccessible.length} are kept private by ${platformName(input.platform)}.`;

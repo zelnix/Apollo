@@ -1,5 +1,5 @@
-// Image evidence — what ApolloSG could take from a picture: the text it read on the phone and the links, numbers and
-// codes in it. A picture shows what was on screen, not where it came from; its metadata is removed on the phone
+// Image evidence — what ApolloSG could take from a picture: the text it read on the device and the links, numbers and
+// codes in it. A picture shows what was on screen, not where it came from; its metadata is removed on the device
 // before anything is sent and is never used as evidence. Pure, no Expo imports.
 
 import { capability, fill, newProfile, typeWords, type EvidenceProfile, type EvidenceSignal } from "./evidenceProfile.ts";

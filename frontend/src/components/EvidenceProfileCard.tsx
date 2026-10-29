@@ -97,7 +97,7 @@ export function EvidenceProfileCard({ profile, onAddOriginal, busy, notice, test
 
       {onAddOriginal && profile.type === "email" && profile.rank < 3 ? (
         <View style={{ gap: spacing.xs }}>
-          <Text style={s.meta}>Add the original email (.eml) so Higgins Triage can read its full headers and the sender authentication its receiving mail server recorded. It&apos;s read on this phone — only the findings leave it.</Text>
+          <Text style={s.meta}>Add the original email (.eml) so Higgins Triage can read its full headers and the sender authentication its receiving mail server recorded. It&apos;s read on this device — only the findings leave it.</Text>
           <Button testID={`${testID}-add-original`} variant="secondary" label={busy ? "Reading the original…" : "Add the original email (.eml)"} onPress={onAddOriginal} disabled={busy} />
         </View>
       ) : null}

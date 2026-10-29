@@ -131,7 +131,7 @@ test("D02b ordinary device-admin app (Find My Device) is benign info, never bark
   const finding = r.findings.find((x) => x.id === "D02b")!;
   assert.equal(finding.severity, "info");
   assert.match(finding.title, /Find My Device/);
-  assert.match(finding.plain, /lock your screen|erase the phone/i);
+  assert.match(finding.plain, /lock your screen|erase the device/i);
   assert.match(finding.action, /turn it off|no action is needed/i);
 });
 test("D02b escalates only when the person reports the profile as unexpected", () => {

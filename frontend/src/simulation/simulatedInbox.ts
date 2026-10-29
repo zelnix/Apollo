@@ -77,7 +77,7 @@ CommBank Security Team`,
 
 Our records show an outstanding debt of $1,842.60 against your tax file number.
 
-A warrant for arrest may be issued if this amount is not settled today. To stop legal action, pay immediately using the voucher codes supplied by our officer on the phone, or reply to this email with your TFN and bank details so we can arrange a transfer to a protected holding account.
+A warrant for arrest may be issued if this amount is not settled today. To stop legal action, pay immediately using the voucher codes supplied by our officer on the device, or reply to this email with your TFN and bank details so we can arrange a transfer to a protected holding account.
 
 Reference: ATO-4471-AU
 myGov | Australian Taxation Office`,

@@ -128,7 +128,7 @@ export function deviceAreaRows(device: DeviceProtectionRow[] | "reading" | "not_
   const row = (id: ProtectionArea, status: DeviceAreaStatus, label: string, note: string): DeviceAreaRow =>
     ({ id, title: PROTECTION_AREA_LABEL[id], description: PROTECTION_AREA_DESCRIPTION[id], status, label, note });
   if (device === "reading") return PROTECTION_AREA_ORDER.map((id) => row(id, "unread", "Reading", "Reading this device…"));
-  if (device === "not_here") return PROTECTION_AREA_ORDER.map((id) => row(id, "unread", "Not checked", "Read on your phone"));
+  if (device === "not_here") return PROTECTION_AREA_ORDER.map((id) => row(id, "unread", "Not checked", "Read on your device"));
   const groups = groupDeviceProtections(device);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   return PROTECTION_AREA_ORDER.flatMap((id) => {

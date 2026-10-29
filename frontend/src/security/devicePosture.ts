@@ -183,7 +183,7 @@ export async function collectPostureSnapshot(
       true, native.usbDebuggingEnabled, native.usbDebuggingEnabled ? "Enabled" : "Disabled",
       native.usbDebuggingEnabled ? "critical" : "ok",
       native.usbDebuggingEnabled
-        ? "USB debugging is enabled. This allows connected computers to control this device."
+        ? "USB debugging is enabled. This allows connected devices to control this device."
         : "USB debugging is disabled.",
     ));
   } else {

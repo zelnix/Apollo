@@ -93,7 +93,7 @@ export class DeliveryQueue {
             const e = error as { name?: string; status?: number };
             item.blocked = e.name === "EgressViolation" || (!!e.status && e.status >= 400 && e.status < 500 && e.status !== 429);
             item.attempts += 1; item.nextAt = this.now() + Math.min(300_000, 2000 * 2 ** Math.min(item.attempts, 7));
-            item.error = item.blocked ? "Delivery blocked by policy or server validation. The event remains on this phone." : "Delivery not acknowledged. ApolloSG will retry.";
+            item.error = item.blocked ? "Delivery blocked by policy or server validation. The event remains on this device." : "Delivery not acknowledged. ApolloSG will retry.";
             j.pending[key] = item; await this.save(j);
           });
         } finally { this.activeSend = null; }

@@ -1,5 +1,5 @@
 // Message evidence — Higgins Triage's classification of how a text message reached ApolloSG (pasted, a screenshot,
-// shared from an app, read from the phone's messages or its notification), what it could examine and the signals
+// shared from an app, read from the device's messages or its notification), what it could examine and the signals
 // it raised. Who really sent a message is never verifiable: messaging apps don't share it. Pure, no Expo imports.
 
 import { capability, fill, newProfile, typeWords, type CapabilityRow, type EvidenceProfile, type EvidenceSignal } from "./evidenceProfile.ts";
@@ -23,7 +23,7 @@ export interface MessageEvidenceInput {
   /** A preview sample standing in for `via`: processed exactly as `via`, only tagged. */
   simulated?: boolean;
   sender: string;
-  /** When the phone recorded it arriving (messages app or notification), ISO. */
+  /** When the device recorded it arriving (messages app or notification), ISO. */
   receivedAt?: string | null;
   /** The app that posted the notification, when captured from one. */
   app?: string | null;

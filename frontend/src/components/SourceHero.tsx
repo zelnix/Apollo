@@ -1,7 +1,7 @@
 // The first card on every check screen: "pick one of my own things", as a hero button.
 //
 // Picking beats typing — a person checking an email, a caller, a message, a file or an app almost
-// always has the thing on this phone already. So that choice leads the screen instead of sitting
+// always has the thing on this device already. So that choice leads the screen instead of sitting
 // under the form, and tapping it opens the same popup a production build opens (SourcePickerSheet).
 // The button is worded for production in every build; where the real list cannot be reached, the
 // popup itself carries the PREVIEW ONLY tag.

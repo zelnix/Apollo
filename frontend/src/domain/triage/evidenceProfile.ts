@@ -2,7 +2,7 @@
 //
 // Every check records the level of the evidence it was given (source-specific: L1–L4 for email), each
 // capability's status (verified by ApolloSG / recorded by the source / observed / unavailable) and the
-// investigation signals it raised. The profile lives on the phone with the case; only `findings` — a minimal
+// investigation signals it raised. The profile lives on the device with the case; only `findings` — a minimal
 // structured summary with no message content — may travel to ApolloSG's servers with an investigation.
 // Words come from the catalogue (`evidenceProfiles`). Pure, no Expo imports.
 
@@ -37,7 +37,7 @@ export interface EvidenceProfile {
   at: string;
   capabilities: CapabilityRow[];
   signals: EvidenceSignal[];
-  /** The original file, when one was received: fingerprinted and kept on this phone, never uploaded. */
+  /** The original file, when one was received: fingerprinted and kept on this device, never uploaded. */
   original: { sha256: string; bytes: number; keptOnDevice: boolean } | null;
   /** Every level this case's evidence has had, oldest first. The current one is last. */
   history: LevelChange[];

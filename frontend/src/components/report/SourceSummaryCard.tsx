@@ -112,7 +112,7 @@ export function SourceSummaryCard({ origin, at, caseKeys, event, evidence, simul
   at: string | null | undefined;
   /** Every key the case's original may be kept under (its event id and its investigation id). */
   caseKeys: (string | null | undefined)[];
-  /** What the case recorded at intake, used when no original is kept on the phone, and for what Apollo detected. */
+  /** What the case recorded at intake, used when no original is kept on the device, and for what Apollo detected. */
   event?: PatrolEvent | null;
   /** The investigation's evidence list, used when nothing else is kept. */
   evidence?: EvidenceItem[];

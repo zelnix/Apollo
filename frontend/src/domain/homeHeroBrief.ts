@@ -21,7 +21,7 @@ export interface HeroBrief {
   route?: string;
 }
 
-/** The identifiers an original kept on this phone records: its From and Subject fields and its text. */
+/** The identifiers an original kept on this device records: its From and Subject fields and its text. */
 export interface KeptIdentifiers { sender: string | null; subject: string | null; text: string | null }
 export function keptIdentifiers(src: Pick<OriginalSource, "fields" | "text"> | null | undefined): KeptIdentifiers | null {
   if (!src) return null;
@@ -62,7 +62,7 @@ const LIMIT: Record<BriefRoom, { sender: number; subject: number; emailSubject: 
 };
 
 /** What the case is about and where it came from, from the identifiers Apollo recorded — on the case, else in the
- *  original kept on this phone (an email or text you submitted keeps its sender only there). */
+ *  original kept on this device (an email or text you submitted keeps its sender only there). */
 function identify(e: PatrolEvent, kept: KeptIdentifiers | null, room: BriefRoom): { what: string | null; from: string | null } {
   const n = LIMIT[room];
   const m = e.source_metadata;
@@ -117,7 +117,7 @@ function action(e: PatrolEvent): string {
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "28 Oct, 4:42 pm" (the year only when it isn't this year), in the phone's local time. */
+/** "28 Oct, 4:42 pm" (the year only when it isn't this year), in the device's local time. */
 export function heroWhen(iso: string | null | undefined, now: Date = new Date()): string {
   const d = new Date(iso ?? "");
   if (isNaN(d.getTime())) return "";

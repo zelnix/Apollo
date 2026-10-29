@@ -205,7 +205,7 @@ export default function Family() {
                   {Platform.OS !== "web" ? <Button testID="family-weekly-send-now" variant="secondary" label="Send Sunday's now" onPress={() => previewWeekly.mutate({ send: true, kind: "summary" })} disabled={previewWeekly.isPending} /> : null}
                 </View>
                 {weeklyPreview ? <Body testID="family-weekly-preview-text">{weeklyPreview}</Body> : null}
-                {Platform.OS === "web" ? <Body>Notifications arrive on the phone app (a native build) — the preview shows the exact wording.</Body> : null}
+                {Platform.OS === "web" ? <Body>Notifications arrive on the device app (a native build) — the preview shows the exact wording.</Body> : null}
               </Card>
             </>
           ) : null}

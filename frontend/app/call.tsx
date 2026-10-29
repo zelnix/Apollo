@@ -89,7 +89,7 @@ export default function CheckCall() {
   // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
   if (result && a) {
     const model = { ...buildCallCheckResult({ analysis: a, event: result.event, number, transcript, official: result.official }), evidenceProfile: result.event?.evidence_profile ?? result.profile ?? null };
-    const askPrompt = `About the phone call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const askPrompt = `About the device call I just checked. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     if (a.state === "barking" || a.state === "growling") {
       actions.push({ testID: "call-hangup-verify", variant: "secondary", label: "Show me how to verify safely", onPress: () => setVerify(true) });

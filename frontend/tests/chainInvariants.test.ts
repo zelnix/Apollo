@@ -171,7 +171,7 @@ test("every screen says the case result's verdict and severity — for every out
     assert.deepEqual(brief.risk ?? null, riskPill(r.severity), at);
     assert.deepEqual(resultVerdict(r), { label: r.verdict, tone: r.tone, risk: riskPill(r.severity) }, at);
 
-    // The case on this phone (Home, Threats, notifications read this copy).
+    // The case on this device (Home, Threats, notifications read this copy).
     const event = investigationPatch(placeholder, inv)!;
     assert.equal(event.state, r.severity, at);
     assert.equal(event.case_briefing?.verdict, r.verdict, at);

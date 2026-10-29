@@ -228,7 +228,7 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   const ask = useCallback(async (message: string) => {
     const caseData = caseRef.current ?? state.caseData; if (!caseData) return false;
-    // A finished investigation is answered from its own record, on this phone: no Magnum DI turn, no Gemini call —
+    // A finished investigation is answered from its own record, on this device: no Magnum DI turn, no Gemini call —
     // even when the follow-up mentions a new link, email or number.
     const finished = state.response ?? caseData.response;
     if (isFinished(finished)) {

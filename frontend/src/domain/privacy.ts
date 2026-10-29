@@ -27,19 +27,19 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
-  // `deviceSnapshot` is the live reading of this phone's own Apollo state (protection
+  // `deviceSnapshot` is the live reading of this device's own Apollo state (protection
   // statuses, permission states, settings values, counts and headlines Apollo wrote).
   // It carries no message content, screenshots, files, links or secrets.
   higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "deviceSnapshot"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
-  // Plus what the phone is (make, model, system, region-setting country, install date) for the admin Devices list, and on
+  // Plus what the device is (make, model, system, region-setting country, install date) for the admin Devices list, and on
   // Android whether it is one of Google's test phones (Play pre-launch testing), so those never count as real users.
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale", "manufacturer", "model", "os_name", "os_version", "country", "installed_at", "test_lab"]),
   // Official Organisation Directory: the websites (host only), numbers and addresses a check holds, and the organisation
   // the material names. Nothing else from the material; the server keeps nothing.
   official_contacts: new Set(["claimed_org", "sites", "phones", "emails"]),
-  // A feature used on the phone: which one, and for a Learn article or scam alert its slug or link (kept only as a digest).
+  // A feature used on the device: which one, and for a Learn article or scam alert its slug or link (kept only as a digest).
   device_activity: new Set(["kind", "item"]),
   push_register: new Set(["platform", "device_token"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
@@ -233,9 +233,9 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     out.headline = ev ? 'Apollo observed a blocked connection' : `Apollo recorded a ${category} check`;
     out.what_happened = ev ? 'An observed packet was intentionally blocked by the on-device filter.' : 'A local assessment was recorded. Details stay on the device.';
     out.why = [ev ? 'Packet-backed enforcement evidence is attached.' : 'Only a minimal security summary is shared.'];
-    out.what_to_do = 'Review the original alert on your phone. A past check does not establish current safety.';
+    out.what_to_do = 'Review the original alert on your device. A past check does not establish current safety.';
     // Plain-English, code-free, privacy-preserving projection shown on any device/surface (standing
-    // message requirement): no raw category/state codes ever reach the user, no detail leaves the phone.
+    // message requirement): no raw category/state codes ever reach the user, no detail leaves the device.
     const voice = projectedEventVoice(category, String(out.state) as ApolloState, !!ev);
     out.headline = voice.headline;
     out.what_happened = voice.whatHappened;

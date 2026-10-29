@@ -8,7 +8,7 @@
 //
 // Authentication is reported exactly as the RECEIVING mail server recorded it and credited to that server.
 // ApolloSG never re-checks SPF, DKIM or DMARC. Signals are things to weigh, never proof of fraud on their own.
-// `emailFindings` is the only part that may leave the phone: domains, results, counts and fingerprints — no
+// `emailFindings` is the only part that may leave the device: domains, results, counts and fingerprints — no
 // subject, body, names or header text. Pure, no Expo imports.
 
 import type { EmailAnalysis } from "../emailAnalysis.ts";
@@ -140,7 +140,7 @@ function capabilitiesFor(level: EmailLevel, via: EmailVia, t: EmailTechnical | n
   const rows: CapabilityRow[] = [];
   rows.push(original
     ? capability("email", "original_message", level === "L4" ? "verified" : "observed", `${kb(original.byteLength)} · SHA-256 ${original.sha256.slice(0, 16)}…`,
-      level === "L4" ? "ApolloSG retrieved it itself from your connected email account." : "The original you gave ApolloSG, fingerprinted and kept on this phone.")
+      level === "L4" ? "ApolloSG retrieved it itself from your connected email account." : "The original you gave ApolloSG, fingerprinted and kept on this device.")
     : capability("email", "original_message", "unavailable", null, "ApolloSG didn't receive the original message."));
   rows.push(level === "L4"
     ? capability("email", "provider_provenance", "verified", "Your connected email account", "ApolloSG fetched it from the mailbox, so it's the message as your provider holds it.")
@@ -163,7 +163,7 @@ function capabilitiesFor(level: EmailLevel, via: EmailVia, t: EmailTechnical | n
   if (full) {
     rows.push(capability("email", "attachments", "observed", t!.attachments.length
       ? t!.attachments.map((a) => `${a.name} (${a.type}, ${kb(a.size)}${a.sha256 ? `, SHA-256 ${a.sha256.slice(0, 12)}…` : ""})`).join("; ")
-      : "None", t!.attachments.length ? "Read and fingerprinted on this phone." : null));
+      : "None", t!.attachments.length ? "Read and fingerprinted on this device." : null));
   } else {
     rows.push(analysis.parsed.attachments.length
       ? capability("email", "attachments", "observed", analysis.parsed.attachments.join(", "), "Names mentioned in the text only — the files themselves weren't received.")
@@ -211,7 +211,7 @@ export function upgradeSentence(profile: EvidenceProfile | null | undefined): st
   return last ? fill(WORDS.upgrade, { from: last.from.label, to: last.to.label }) : null;
 }
 
-/** The ONLY part of an email profile that may leave the phone: levels, statuses, domains, recorded results,
+/** The ONLY part of an email profile that may leave the device: levels, statuses, domains, recorded results,
  *  counts and fingerprints. Never the subject, body, display names, addresses, header text or the file. */
 export function emailFindings(profile: EmailEvidenceProfile): Record<string, unknown> {
   const ext = (name: string) => { const m = /\.([a-z0-9]{1,10})$/i.exec(name); return m ? m[1].toLowerCase() : null; };

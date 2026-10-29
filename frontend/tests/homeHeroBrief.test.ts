@@ -85,7 +85,7 @@ test("a long Triage step falls back to 'Be careful'; a verified block needs noth
   assert.equal(blocked.line2, "28 Oct, 4:42 pm. No action needed.");
 });
 
-test("an email you submitted is named from the original kept on this phone", () => {
+test("an email you submitted is named from the original kept on this device", () => {
   const kept = keptIdentifiers({ fields: [{ label: "From", value: "security@commbank-alerts.co" }, { label: "Subject", value: "URGENT: unusual sign-in" }], text: "Dear Customer" });
   const b = eventBrief(event({ case_briefing: briefing({ subject: "commbank-secure-verify.co", recommendedAction: { label: "Don't use the link", instruction: "x" } }) }), NOW, kept);
   assert.equal(b.line1, "Email: \u201CURGENT: unusual sign-in\u201D from security@commbank-alerts.co, detected as a likely scam.");

@@ -38,7 +38,7 @@ export function involvedIn(event: { category: string; local_indicator?: string |
 /** A website written so a messaging app can't turn it into a tappable link: example[.]com. */
 export const untappable = (host: string) => host.replace(/\./g, "[.]");
 
-/** The text the phone's share menu sends (a message, WhatsApp or an email). */
+/** The text the device's share menu sends (a message, WhatsApp or an email). */
 export function summaryText(s: FamilySummary, when: string): string {
   return [
     "ApolloSG: a threat on my phone",

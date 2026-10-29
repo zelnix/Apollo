@@ -290,7 +290,7 @@ const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
 const hostOf = (url: string) => /^https?:\/\/([^/?#:]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
 const domainOf = (value: string | null | undefined) => (value ? value.replace(/^.*@/, "").replace(/[>\s].*$/, "").toLowerCase() || null : null);
 
-/** Read an original message on the phone. `raw` is a binary string of the exact bytes received. */
+/** Read an original message on the device. `raw` is a binary string of the exact bytes received. */
 export async function parseOriginalEmail(raw: string, hash: Hasher): Promise<ParsedOriginal> {
   const { head, body } = splitHeaderBody(raw);
   const fields = parseHeaderFields(head);

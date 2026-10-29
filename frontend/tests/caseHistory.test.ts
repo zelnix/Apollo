@@ -1,4 +1,4 @@
-// Related history on the phone (domain/caseHistory.ts): only this device's own cases, said as context, never as
+// Related history on the device (domain/caseHistory.ts): only this device's own cases, said as context, never as
 // evidence; the confidence history added is shown exactly as the result recorded it.
 import assert from "node:assert/strict";
 import { test } from "node:test";

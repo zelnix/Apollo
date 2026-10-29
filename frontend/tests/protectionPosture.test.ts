@@ -108,7 +108,7 @@ test("a material device finding → Protection reduced; several add a count, nev
 });
 
 test("only moderate gaps remain → Mostly protected, with ApolloSG working normally", () => {
-  // Apollo can't screen calls here, and the phone's own spam protection can't be read.
+  // Apollo can't screen calls here, and the device's own spam protection can't be read.
   const p = posture(gates({ call: gate("call", { state: "unsupported" }) }));
   assert.equal(p.status, "mostly");
   assert.equal(p.title, "Mostly protected");

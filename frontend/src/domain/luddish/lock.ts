@@ -34,7 +34,7 @@ export interface EvidenceLock {
   readonly actions: readonly string[];
   /** How Apollo checked, in its own words. */
   readonly how: string | null;
-  /** Who actually blocked it (Android, your phone company, Apollo's Site Gate). null: not recorded. */
+  /** Who actually blocked it (Android, your carrier, Apollo's Site Gate). null: not recorded. */
   readonly blockedBy: string | null;
   /** Who recorded the result (Apollo, TC FlyBy, Magnum DI). */
   readonly by: string | null;

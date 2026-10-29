@@ -46,7 +46,7 @@ test("a preview sample is processed exactly as the source it stands in for — o
   const a = analyseFile({ name: "Invoice.pdf", size: 10, mime: "application/pdf", headBytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]), textSample: "", source: "email" });
   const file = buildFileProfile({ via: "picked", simulated: true, name: "Invoice.pdf", analysis: a, inspected: true });
   assert.equal(file.label, buildFileProfile({ via: "picked", name: "Invoice.pdf", analysis: a, inspected: true }).label);
-  assert.equal(file.viaLabel, "File chosen on this phone");
+  assert.equal(file.viaLabel, "File chosen on this device");
   assert.equal(file.simulated, true);
 });
 
@@ -126,7 +126,7 @@ test("file levels: name only → contents read → fingerprinted; a disguised pr
   assert.equal(cap(nameOnly, "sha256").status, "unavailable");
 });
 
-test("app levels: what you entered vs read from this phone; signing and store checks are never claimed", () => {
+test("app levels: what you entered vs read from this device; signing and store checks are never claimed", () => {
   const analysis = { remoteCapable: false, claimedBrand: null };
   const typed = buildAppProfile({ via: "typed", name: "QuickSupport", source: "not_sure", ticked: ["accessibility"], device: null, analysis });
   assert.equal(typed.label, "Described by you");
@@ -149,7 +149,7 @@ test("app levels: what you entered vs read from this phone; signing and store ch
 test("images: one level; metadata is never used as evidence; flagged identifiers are signals", () => {
   const p = buildImageProfile({ via: "photo", textRead: true, identifiers: 3, flagged: 1, redacted: true });
   assert.equal(p.label, "Image");
-  assert.equal(p.viaLabel, "Photo taken on this phone");
+  assert.equal(p.viaLabel, "Photo taken on this device");
   assert.equal(cap(p, "metadata").status, "unavailable");
   assert.equal(cap(p, "embedded_identifiers").value, "3 found, 1 flagged");
   assert.deepEqual(ids(p), ["redacted", "flagged"]);

@@ -18,7 +18,7 @@ export function serverLeavesBy(c: { expiresAt?: string | null; contentDeleteBy?:
   return times.length ? times.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b)) : null;
 }
 
-/** "25 Oct 2026 at 4:19 pm", in the phone's own language and time zone. */
+/** "25 Oct 2026 at 4:19 pm", in the device's own language and time zone. */
 export function whenLabel(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} at ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;

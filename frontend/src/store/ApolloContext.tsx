@@ -190,7 +190,7 @@ export interface EmailOutcome {
   /** The Official Organisation Directory's verdict on its contacts (null: the lookup didn't answer). */
   official?: OfficialVerdict[] | null;
 }
-/** One email to check. `via` sets its evidence level; `original` is the message parsed on this phone (its bytes stay here). */
+/** One email to check. `via` sets its evidence level; `original` is the message parsed on this device (its bytes stay here). */
 export interface EmailCheckInput {
   from: string; subject: string; raw: string;
   captured?: { from: string; subject: string; text: string };
@@ -1157,7 +1157,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // once per correlated case; the patrol record this check files is named on the case
   // (client_submission_id) so Apollo's servers update THAT record instead of filing a second one.
   const checkEmail = useCallback(async (input: EmailCheckInput): Promise<EmailOutcome> => {
-    // An original message is read from its real headers and decoded parts — on this phone, never uploaded.
+    // An original message is read from its real headers and decoded parts — on this device, never uploaded.
     const parsedOriginal = input.original?.parsed ?? null;
     const source = parsedOriginal ? analysisSourceFor(parsedOriginal) : null;
     const rawInput = source?.raw ?? input.raw;
@@ -1223,10 +1223,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       try {
         await apiPost(`/investigations/${investigationCaseId}/evidence-profile`, "email_evidence", { findings: emailFindings(profile) });
       } catch (error) {
-        // A finished investigation isn't kept on the server (410/404) — the case and its new evidence live on this phone.
+        // A finished investigation isn't kept on the server (410/404) — the case and its new evidence live on this device.
         why.push(error instanceof ApiError && (error.status === 410 || error.status === 404)
-          ? "This case's investigation had already finished, so the new evidence is kept with the case on this phone. Higgins Triage re-checked it here."
-          : "ApolloSG couldn't add the new evidence to this case's investigation on its servers, so it is recorded on this phone only.");
+          ? "This case's investigation had already finished, so the new evidence is kept with the case on this device. Higgins Triage re-checked it here."
+          : "ApolloSG couldn't add the new evidence to this case's investigation on its servers, so it is recorded on this device only.");
       }
     } else if (triage.outcome === "POSSIBLE_THREAT_IDENTIFIED") {
       if (existingCaseId) investigationCaseId = existingCaseId;
@@ -1414,12 +1414,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       let investigationCaseId: string | null = existingCaseId;
       let escalationNote: string | null = null;
       if ((triage.outcome === "POSSIBLE_THREAT_IDENTIFIED" || triage.outcome === "LIMITED_UNABLE_TO_DETERMINE" || triggersInvestigation(nativeFact)) && !investigationCaseId) {
-        // The call in the person's own plain sentences, so TC FlyBy can compare it with the phone-scam patterns.
+        // The call in the person's own plain sentences, so TC FlyBy can compare it with the device-scam patterns.
         const callSummary = describeCall(input, nativeFact ? `${nativeFact.provider} classified this number as "${nativeFact.classification}" (${nativeFact.provider}'s own rating, not Apollo's)` : null);
         try {
           const remote = await apiPost<{ case?: { id?: string | null } }>("/investigations", "call_investigation", {
             gate: "call", origin: "user",
-            question: `Investigate this phone call.\n\n${callSummary}`,
+            question: `Investigate this device call.\n\n${callSummary}`,
             submissions: [{ client_item_id: Crypto.randomUUID(), kind: "text", value: callSummary, label: "Call details" }],
             initial_findings: [...nativeWhy, ...analysis.why].slice(0, 12),
           });
@@ -1895,7 +1895,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       await storage.setItem(PENDING_DELETE_KEY, true);
       return { ok: false, pending: true };
     }
-    // Server records are gone. Now wipe this phone and reset the in-memory app state to first run.
+    // Server records are gone. Now wipe this device and reset the in-memory app state to first run.
     try { await wipeLocalApolloData(); } catch { /* best effort — the service copy is already gone */ }
     try { await ScreenedCalls.clear(); } catch { /* best effort — native history lives outside AsyncStorage */ }
     await clearDeviceIdentity();

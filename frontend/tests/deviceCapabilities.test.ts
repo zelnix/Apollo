@@ -75,8 +75,8 @@ test("a browser preview reports every capability as unreadable, never as absent"
   assert.equal(v.notReadableHere.length, 13);
   assert.equal(v.unavailable.length, 0);
   assert.equal(v.apolloCanUse.length, 0);
-  assert.match(v.summary, /not running on your phone here/);
-  for (const row of v.notReadableHere) assert.match(row.detail, /Open ApolloSG on your phone/);
+  assert.match(v.summary, /not running on your device here/);
+  for (const row of v.notReadableHere) assert.match(row.detail, /Open ApolloSG on your device/);
 });
 
 test("every capability sits in one of the declared categories, with the device's own protections", () => {
@@ -293,7 +293,7 @@ test("Higgins receives every capability with its exact state", () => {
   assert.equal(lines.capabilities.length, 13, "Higgins must see all 13 capabilities, not a subset");
   assert.ok(lines.capabilities.includes("App permissions: Available to ApolloSG"));
   assert.ok(lines.capabilities.includes("Notification access: Permission needed"));
-  assert.ok(lines.capabilities.some((l) => l === "Your phone’s own scam-call warning: Managed by your device (per Samsung Smart Call)"));
+  assert.ok(lines.capabilities.some((l) => l === "Your device’s own scam-call warning: Managed by your device (per Samsung Smart Call)"));
 });
 
 test("Higgins is told who owns each protection on the device", () => {

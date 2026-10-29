@@ -1,5 +1,5 @@
-// Email intake on the phone: turning an original message into the input of the on-device email engine.
-// Pure, no Expo imports. The original itself never leaves the phone.
+// Email intake on the device: turning an original message into the input of the on-device email engine.
+// Pure, no Expo imports. The original itself never leaves the device.
 
 import type { EmailHeaderEvidence } from "../emailAnalysis.ts";
 import { emailAuthSummary } from "./emailEvidence.ts";

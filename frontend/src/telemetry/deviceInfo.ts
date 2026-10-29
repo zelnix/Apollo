@@ -1,6 +1,6 @@
 // What this phone is, for ApolloSG's admin Devices list: make, model, system and version, the country chosen in its
 // region settings, and when ApolloSG was installed. Nothing personal and no hardware identifiers. Sent with
-// registration and the heartbeat; anything the phone can't tell is left out, never guessed.
+// registration and the heartbeat; anything the device can't tell is left out, never guessed.
 import * as Application from "expo-application";
 import * as Device from "expo-device";
 import * as Localization from "expo-localization";

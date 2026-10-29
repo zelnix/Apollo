@@ -1,5 +1,5 @@
 // Notification check — the three separate states behind "did an alert reach me?", each read from its
-// real source: the OS permission on this phone, the Apollo alerts category (Android), and the push
+// real source: the OS permission on this device, the Apollo alerts category (Android), and the push
 // registration Apollo's servers hold for this installation. Nothing here claims delivery: the two
 // test buttons report exactly what the device and the server actually answered.
 import { useRouter } from "expo-router";
@@ -91,7 +91,7 @@ export default function NotificationCheckScreen() {
     try {
       await scheduleLocalAlert({
         title: "ApolloSG test alert",
-        body: "If you can see this in your notifications, alerts from ApolloSG work on this phone.",
+        body: "If you can see this in your notifications, alerts from ApolloSG work on this device.",
         channel: "apollo_alerts",
         actionUrl: "/notification-check",
       });
@@ -145,7 +145,7 @@ export default function NotificationCheckScreen() {
       </Body>
 
       <View>
-        <SectionTitle>On this phone</SectionTitle>
+        <SectionTitle>On this device</SectionTitle>
         <Card testID="notification-check-device">
           {loading && !health ? <ActivityIndicator color={colors.gold} /> : null}
           <View style={s.row}>
@@ -185,7 +185,7 @@ export default function NotificationCheckScreen() {
           ) : null}
           <Button
             testID="notification-check-test-device"
-            label={busy === "device" ? "Sending…" : "Send a test alert to this phone"}
+            label={busy === "device" ? "Sending…" : "Send a test alert to this device"}
             onPress={() => void testOnDevice()}
             disabled={busy !== null}
             icon={busy === "device" ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Bell size={18} color={colors.onBrandPrimary} />}
@@ -247,7 +247,7 @@ export default function NotificationCheckScreen() {
             it on — only &ldquo;opened&rdquo; proves it reached you, because nothing can see your notification bar.
           </Body>
           {history.length === 0 ? (
-            <Body testID="notification-check-history-empty">Apollo has not raised an alert on this phone yet.</Body>
+            <Body testID="notification-check-history-empty">Apollo has not raised an alert on this device yet.</Body>
           ) : (
             history.map((row) => (
               <View key={row.id} style={s.row} testID={`notification-check-history-${row.id}`}>
@@ -257,9 +257,9 @@ export default function NotificationCheckScreen() {
                 </View>
                 <Body>
                   {row.status}
-                  {row.opened ? " · Opened on this phone" : ""}
+                  {row.opened ? " · Opened on this device" : ""}
                 </Body>
-                <Text style={s.mono}>{row.source === "server" ? "Sent from ApolloSG's servers" : "Raised on this phone"}</Text>
+                <Text style={s.mono}>{row.source === "server" ? "Sent from ApolloSG's servers" : "Raised on this device"}</Text>
               </View>
             ))
           )}
@@ -279,7 +279,7 @@ export default function NotificationCheckScreen() {
               {lastFailure.context ? <Text style={s.mono}>Context: {lastFailure.context}</Text> : null}
             </>
           ) : (
-            <Body testID="notification-check-no-failure">Apollo has not recorded a notification failure on this phone.</Body>
+            <Body testID="notification-check-no-failure">Apollo has not recorded a notification failure on this device.</Body>
           )}
           <Button testID="notification-check-refresh" variant="ghost" label="Check again" onPress={() => void load()} disabled={loading} />
         </Card>

@@ -71,7 +71,7 @@ const HEALTH_PILL: Record<ProtectionHealth, Tone> = {
 
 type ExplanationState = { status: "loading" } | { status: "ready"; result: ExplanationResult } | { status: "none"; message: string } | { status: "failed"; message: string };
 
-/** The reviewed explanation of this protection — from the phone's copy, else ApolloSG's backend (once registered). */
+/** The reviewed explanation of this protection — from the device's copy, else ApolloSG's backend (once registered). */
 function useExplanation(row: DeviceProtectionRow | null, deviceId: string | null): { state: ExplanationState; retry: () => void } {
   const rowId = row?.id;
   const [state, setState] = useState<ExplanationState>({ status: "loading" });

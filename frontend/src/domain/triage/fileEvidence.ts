@@ -1,5 +1,5 @@
 // File evidence — Higgins Triage's classification of what ApolloSG could read of a file: only its name, the start of
-// its contents (its true type, from its first bytes), or the whole file read and fingerprinted (SHA-256) on the phone.
+// its contents (its true type, from its first bytes), or the whole file read and fingerprinted (SHA-256) on the device.
 // Nothing here uploads the file. Pure, no Expo imports.
 
 import type { FileAnalysis } from "../fileAnalysis.ts";
@@ -29,10 +29,10 @@ export interface FileEvidenceInput {
   size?: number | null;
   mime?: string | null;
   analysis: FileAnalysis;
-  /** The first bytes were read on the phone. */
+  /** The first bytes were read on the device. */
   inspected: boolean;
   inspectionError?: string | null;
-  /** SHA-256 of the WHOLE file, calculated on the phone. */
+  /** SHA-256 of the WHOLE file, calculated on the device. */
   sha256?: string | null;
   passwordInMessage?: boolean;
   at?: string;

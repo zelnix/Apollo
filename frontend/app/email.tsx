@@ -200,7 +200,7 @@ export default function CheckEmail() {
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedBody = shared?.text || shared?.webUrl || params.text || "";
   const sharedBodyRaw = useRef(sharedBody);         // original for backend
-  // A shared original email file (.eml) — read on this phone, never uploaded.
+  // A shared original email file (.eml) — read on this device, never uploaded.
   const sharedEml = shared?.files?.find(isOriginalEmailFile) ?? null;
   const autoRan = useRef(false);
   /** The text in the box came from the connected mailbox (until the person edits it). */
@@ -534,7 +534,7 @@ export default function CheckEmail() {
     void refreshRecentChecks();
   };
 
-  /** Check an original message (an .eml file or pasted original source), read on this phone from its real headers.
+  /** Check an original message (an .eml file or pasted original source), read on this device from its real headers.
    *  With `upgradeEventId` it is added to that email's case and re-triaged there. */
   const checkOriginal = async (original: OriginalEmail, via: EmailVia, upgradeEventId?: string) => {
     const outcome = await checkEmail({ from: "", subject: "", raw: "", via, original, upgradeEventId });
@@ -556,7 +556,7 @@ export default function CheckEmail() {
       const from = source?.from ?? fromState;
       const via: EmailVia = source?.via ?? (fromInbox.current ? "connected_mailbox" : "pasted");
       if (source?.original) { await checkOriginal(source.original, via); return; }
-      // Pasted original source ("Show original") is read on this phone from its real headers and parts.
+      // Pasted original source ("Show original") is read on this device from its real headers and parts.
       if (looksLikeRawEmail(rawInput.slice(0, 65536))) { await checkOriginal(await readOriginalText(rawInput), "raw_source"); return; }
       const safeRaw = redactUserSecrets(rawInput);
       const safeSubject = redactUserSecrets(subjectInput);
@@ -580,7 +580,7 @@ export default function CheckEmail() {
     } finally { setBusy(false); }
   };
 
-  /** "Open the original email (.eml)" on the input screen: the file is read on this phone, never uploaded. */
+  /** "Open the original email (.eml)" on the input screen: the file is read on this device, never uploaded. */
   const openOriginal = async () => {
     try {
       const original = await pickOriginalEmail();
@@ -702,7 +702,7 @@ export default function CheckEmail() {
           visible={upgrading}
           title="Checking the original email"
           subject={subject.trim() || undefined}
-          description={"Higgins Triage is reading its full headers on this phone\nand re-checking the email with them."}
+          description={"Higgins Triage is reading its full headers on this device\nand re-checking the email with them."}
         />
         {result.event ? (
           <RecoveryFlow
@@ -767,7 +767,7 @@ export default function CheckEmail() {
             title: "About email checking",
             body: [
               "Paste a forwarded email, paste its original source (\u201cShow original\u201d), or open the original email file (.eml). Apollo analyses the email for scam indicators, phishing patterns and suspicious links.",
-              "With the original email, Higgins Triage also reads its full headers and the sender authentication (SPF, DKIM, DMARC) the receiving mail server recorded. ApolloSG reports those results as recorded and doesn\u2019t re-check them. The original is read and kept on this phone \u2014 it isn\u2019t uploaded.",
+              "With the original email, Higgins Triage also reads its full headers and the sender authentication (SPF, DKIM, DMARC) the receiving mail server recorded. ApolloSG reports those results as recorded and doesn\u2019t re-check them. The original is read and kept on this device \u2014 it isn\u2019t uploaded.",
               "A manual check works without connecting any email account. Account selection is for organising your checks across multiple email addresses.",
             ],
           }}
@@ -906,7 +906,7 @@ export default function CheckEmail() {
             </View>
             <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
           </Pressable>
-          {/* Open the original email (.eml) — read on this phone, full headers included */}
+          {/* Open the original email (.eml) — read on this device, full headers included */}
           <Pressable
             testID="email-open-original"
             accessibilityRole="button"
@@ -920,7 +920,7 @@ export default function CheckEmail() {
               <Text style={s.actionCardTitle}>Open the original email (.eml)</Text>
               <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardSub}>Lets Higgins Triage read the full headers and the sender authentication the receiving mail server recorded. Read on this phone — the file isn&apos;t uploaded.</Text>
+            <Text style={s.actionCardSub}>Lets Higgins Triage read the full headers and the sender authentication the receiving mail server recorded. Read on this device — the file isn&apos;t uploaded.</Text>
           </Pressable>
         </View>
 

@@ -1,5 +1,5 @@
 // "Ask Higgins to explain" on a Patrol finding, an incident or a Device Check result: Higgins explains what Apollo
-// already recorded, in fixed wording, on the phone. No Gemini call and no new investigation — Magnum DI only
+// already recorded, in fixed wording, on the device. No Gemini call and no new investigation — Magnum DI only
 // investigates if the person then asks it to, with a separate tap.
 import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 

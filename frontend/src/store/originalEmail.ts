@@ -35,7 +35,7 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
 
 const NOT_AN_EMAIL = "That file isn't an original email. Save the email as an .eml file (Gmail: ⋮ → Download message; Outlook: Save as) and choose it again.";
 
-/** Parse an original message on this phone. `binary` is its exact bytes, one char per byte. */
+/** Parse an original message on this device. `binary` is its exact bytes, one char per byte. */
 export async function readOriginal(binary: string): Promise<OriginalEmail> {
   if (!looksLikeRawEmail(binary.slice(0, 65536))) throw new Error(NOT_AN_EMAIL);
   return { parsed: await parseOriginalEmail(binary, sha256Hex), binary };
@@ -46,7 +46,7 @@ export function readOriginalText(text: string): Promise<OriginalEmail> {
   return readOriginal(utf8ToBinary(text.replace(/^\s+/, "")));
 }
 
-/** Let the person choose an .eml file and read it on this phone. Null when they cancel. */
+/** Let the person choose an .eml file and read it on this device. Null when they cancel. */
 export async function pickOriginalEmail(): Promise<OriginalEmail | null> {
   const res = await DocumentPicker.getDocumentAsync({ type: ["message/rfc822", "application/octet-stream", "text/plain", "*/*"], copyToCacheDirectory: true, multiple: false });
   if (res.canceled || !res.assets[0]) return null;
@@ -70,7 +70,7 @@ export async function readEmailFile(asset: { uri: string; size?: number | null }
   return b64ToBinary(await FS.readAsStringAsync(asset.uri, { encoding: FS.EncodingType.Base64 }));
 }
 
-/** Keep the original unaltered for these cases. Returns whether it is now kept on this phone. */
+/** Keep the original unaltered for these cases. Returns whether it is now kept on this device. */
 export async function keepOriginalEmail(caseKeys: (string | null | undefined)[], binary: string, sha256: string): Promise<boolean> {
   const keys = caseKeys.filter((k): k is string => !!k);
   if (!keys.length) return false;

@@ -28,7 +28,7 @@ export interface LinkIntel {
   sources?: { name: string; status: string; check?: string; detail?: string; failure?: string | null }[];
 }
 
-/** A connection Site Gate saw on this phone. `confirmed`: the operating system confirmed the drop. */
+/** A connection Site Gate saw on this device. `confirmed`: the operating system confirmed the drop. */
 export interface SiteObservation { domain: string; observedAt: string; confirmed: boolean }
 
 const WORDS = typeWords("link") as ReturnType<typeof typeWords> & {
@@ -122,7 +122,7 @@ export function buildLinkProfile(args: {
   });
 }
 
-/** A website connection Site Gate saw on this phone and stopped. */
+/** A website connection Site Gate saw on this device and stopped. */
 export function buildSiteGateProfile(site: SiteObservation): EvidenceProfile {
   const when = new Date(site.observedAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   return newProfile({

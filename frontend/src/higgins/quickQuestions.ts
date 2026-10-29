@@ -6,7 +6,7 @@
 // than a fixed menu — and so twenty ideas fit in the space of four.
 
 export const QUICK_QUESTIONS: string[] = [
-  // Your phone, right now
+  // Your device, right now
   "Is my device protected?",
   "Why is Apollo growling?",
   "What has Apollo found this week?",

@@ -22,7 +22,7 @@ export interface AlertLogEntry {
   detail?: string | null;
   /** When a held alert was finally released, once quiet hours ended. */
   releasedAt?: string | null;
-  /** When the person tapped it on this phone. */
+  /** When the person tapped it on this device. */
   openedAt?: string | null;
 }
 

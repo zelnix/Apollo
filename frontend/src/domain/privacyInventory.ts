@@ -76,11 +76,11 @@ export const CAPABILITY_DATA_USE = [
   },
   {
     capability: 'Phone number checking',
-    local: 'ApolloSG processes the phone number you submit.',
+    local: 'ApolloSG processes the device number you submit.',
     backend: 'The phone number is sent to ApolloSG\u2019s backend for reputation lookup.',
-    thirdParty: 'IPQualityScore receives the phone number for fraud and reputation checking.',
+    thirdParty: 'IPQualityScore receives the device number for fraud and reputation checking.',
     shared: 'The phone number being checked',
-    necessary: 'Caller reputation checking requires submitting the phone number to the reputation provider.',
+    necessary: 'Caller reputation checking requires submitting the device number to the reputation provider.',
     activation: 'Manual: when you submit a phone number for investigation',
     withheld: 'No additional personal information is sent',
   },
@@ -107,7 +107,7 @@ export const CAPABILITY_DATA_USE = [
   {
     capability: 'Push notifications and alerts',
     local: 'Apollo determines when a security alert should be sent.',
-    backend: 'Notification content and this phone\u2019s delivery token are passed to ApolloSG\u2019s managed push relay, which keeps the token; ApolloSG\u2019s own records never store it.',
+    backend: 'Notification content and this device\u2019s delivery token are passed to ApolloSG\u2019s managed push relay, which keeps the token; ApolloSG\u2019s own records never store it.',
     thirdParty: 'ApolloSG\u2019s managed push relay, Google FCM and Apple APNs deliver the notification to your device.',
     shared: 'Push delivery token and notification content',
     necessary: 'Push delivery requires sharing the delivery token and notification content with the platform push service.',
@@ -140,10 +140,10 @@ export const CAPABILITY_DATA_USE = [
 
 export const PRIVACY_FLOWS = [
   { what: 'Purpose-limited security assessments', when: 'When you submit a message, email, screenshot, account alert, phone number or link', detail: 'ApolloSG combines on-device detection with Higgins context and supported reputation sources. Raw submitted content is not kept in Patrol, logs or analytics. Request-scoped copies close immediately after completion or failure and never later than 15 minutes.' },
-  { what: 'Optional ongoing access', when: 'Only after you enable notification access or connect Gmail with OAuth', detail: 'Notification checks (where your phone allows them) and Gmail OAuth are opt-in. Disconnect or disable access to stop future checks. ApolloSG never asks for or stores a mailbox username or password. Gmail monitoring uses the same credential stripping and privacy controls as manual investigations, with AI investigation authorised for detected threats.' },
+  { what: 'Optional ongoing access', when: 'Only after you enable notification access or connect Gmail with OAuth', detail: 'Notification checks (where your device allows them) and Gmail OAuth are opt-in. Disconnect or disable access to stop future checks. ApolloSG never asks for or stores a mailbox username or password. Gmail monitoring uses the same credential stripping and privacy controls as manual investigations, with AI investigation authorised for detected threats.' },
   { what: 'Links you investigate', when: 'When you manually check or share a link, message or email', detail: 'ApolloSG receives a sanitised URL for the requested investigation. Credentials, fragments and secret query values are removed first. Reputation, safe webpage and domain-registration services receive only the URL or hostname needed for their check. Cached reputation uses a digest; expired rows are ignored, not treated as current evidence.' },
   { what: 'Minimal Patrol summaries and packet evidence', when: 'After checks and native observations; retried until acknowledged', detail: 'ApolloSG stores category, state, timestamps, opaque event IDs and website domain. Packet evidence adds mechanism, protocol, rule ID, port and observed action. No caller numbers, app/process attribution or raw message narratives. Clear Patrol currently hides server rows (soft deletion), not physical erasure. Pending uploads are shown in Patrol.' },
-  { what: 'Device and notification settings', when: 'Setup, heartbeat, notification enablement and settings changes', detail: 'A server-issued random device ID, platform/app version, coarse UTC offset and quiet-hour preferences go to ApolloSG, with the phone\'s make, model, system version, region-setting country, install date and how many times each feature was used (never what was checked or read). Push delivery tokens go to the managed relay and Apple/Google delivery services. Disable notifications in Settings to stop notifications; this is not data erasure.' },
+  { what: 'Device and notification settings', when: 'Setup, heartbeat, notification enablement and settings changes', detail: 'A server-issued random device ID, platform/app version, coarse UTC offset and quiet-hour preferences go to ApolloSG, with the device\'s make, model, system version, region-setting country, install date and how many times each feature was used (never what was checked or read). Push delivery tokens go to the managed relay and Apple/Google delivery services. Disable notifications in Settings to stop notifications; this is not data erasure.' },
   { what: 'Ask Higgins and Hear Higgins', when: 'When you send a question, tap read-aloud, or explicitly enable automatic read-aloud', detail: 'Questions and requested speech go to Higgins using the owner-managed key; do not paste private messages or secrets. Automatic event context is replaced with a generic summary. ApolloSG retains conversation history and temporary cached speech under the stated case lifecycle. Turning off read-aloud stops future automatic speech requests. Personal information is removed within ApolloSG\u2019s backend before anything reaches AI tools.' },
   { what: 'Optional family support', when: 'You pair, invite, share an incident, reply or send a text note', detail: 'Chosen names, contact details, minimal alerts, weekly counts and replies go to ApolloSG and paired guardians. Invitations use an email delivery service; confirmed guardians also receive authorised automatic security alerts via email when Apollo is barking or biting. Alerts use the push relay. Remove a pairing to stop future sharing; it does not erase prior deliveries.' },
   { what: 'App reputation checks', when: 'You manually check an app', detail: 'The supplied app/developer names, source, permission labels and website hosts go to ApolloSG and optionally Higgins for explanation, not your full app inventory. Do not enter personal content in app-name fields.' },

@@ -137,8 +137,8 @@ export default function SettingsScreen() {
         </View>
         {notificationStatus === "denied" || notificationStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Allow security alerts" onPress={() => void enableNotifications()} /> : null}
         {notificationStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open notification settings" onPress={() => void Linking.openSettings()} /> : null}
-        <NavRow label="Notification check" hint="See whether alerts can reach this phone, and send a test alert" onPress={() => router.push("/notification-check")} testID="settings-notification-check" />
-        <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text><Text style={s.rowHint}>See exactly how an alert looks on this phone</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
+        <NavRow label="Notification check" hint="See whether alerts can reach this device, and send a test alert" onPress={() => router.push("/notification-check")} testID="settings-notification-check" />
+        <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text><Text style={s.rowHint}>See exactly how an alert looks on this device</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
         <SwitchRow label="Quiet hours" hint="Hold gentle alerts until the morning, then show each one. Urgent threat and family alerts still come through at once." value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} testID="settings-quiet-switch" />
         {quietHours.enabled ? <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}><View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View><Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /></View> : null}
 
@@ -188,7 +188,7 @@ export default function SettingsScreen() {
         <NavRow label="Clear Patrol history" hint="Hide local summaries and ask the service to hide synced ones" onPress={() => setConfirmClear(true)} testID="settings-clear-patrol" />
       </Group>
 
-      {/* 5 ── This app on this phone */}
+      {/* 5 ── This app on this device */}
       <Group icon={Smartphone} title="App" tone="app" testID="settings-preferences">
         <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
         <SwitchRow label="Show why each result was settled" hint="One line naming the rule that settled it" value={showReasons} onValueChange={(value) => void setShowResultReasons(value)} testID="settings-result-reasons-switch" />

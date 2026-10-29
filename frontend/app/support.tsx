@@ -58,8 +58,8 @@ async function fetchRuleDiagnostic(): Promise<DiagnosticResult> {
 }
 const STATUS: Record<CheckStatus, string> = { pending: "Could not check", checking: "Checking", healthy: "Working", degraded: "Needs attention", unavailable: "Could not check" };
 const RESULT_TEXT = {
-  device: { working: "Protection on this phone is working.", problem: "Apollo cannot confirm protection right now." },
-  backend: { working: "ApolloSG's online services are working.", problem: "ApolloSG's online services need attention. Protection on this phone may continue." },
+  device: { working: "Protection on this device is working.", problem: "Apollo cannot confirm protection right now." },
+  backend: { working: "ApolloSG's online services are working.", problem: "ApolloSG's online services need attention. Protection on this device may continue." },
   higgins: { working: "Higgins can complete investigations.", problem: "Higgins cannot complete an investigation right now." },
   report: { working: "Higgins can prepare reports.", problem: "Higgins cannot prepare a report right now." },
 } as const;

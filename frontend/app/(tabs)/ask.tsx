@@ -56,7 +56,7 @@ import { HigginsAvatar } from "@/src/components/HigginsAvatar";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand ApolloSG, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
-const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in ApolloSG, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. TC FlyBy checks evidence quickly against official sources, ApolloSG's knowledge base and a targeted search, and Magnum DI looks deeper only when that could change the answer; Apollo detects and blocks on the phone. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
+const ABOUT = "Higgins is Apollo’s trusted handler, and the savant of this app. He knows every screen, check, protection, setting, flow and privacy rule in ApolloSG, and he knows how scams work. Ask him where something is and he'll take you straight there.\n\nHe answers about this phone from a live reading of what Apollo actually reports — your protections, permissions, threats, alerts and settings — so he never has to guess.\n\nWhat Higgins doesn't do is investigate. TC FlyBy checks evidence quickly against official sources, ApolloSG's knowledge base and a targeted search, and Magnum DI looks deeper only when that could change the answer; Apollo detects and blocks on the device. Higgins explains, guides and hands off.\n\nChatting sends your question and that state reading. It never includes your messages, screenshots, files or secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
@@ -267,7 +267,7 @@ export default function Ask() {
   }, [activeContext, busy, deviceId, router, start]);
 
   // Higgins is the savant of Apollo: every question goes up with a live, state-only
-  // reading of this phone, so he answers from what is actually true here.
+  // reading of this device, so he answers from what is actually true here.
   const snapshot = useMemo(() => buildDeviceSnapshot({
     health, events, trustCount: trust.length, notificationStatus, quietHours, quietNow, lowPower,
     adapterLabel, network, callScreener: callScreener.state === "checking" ? null : `${callScreener.summary} — ${callScreener.detail}`,
@@ -523,7 +523,7 @@ export default function Ask() {
     const KIND: Record<string, OriginalSourceKind> = { websites_links: "link", messages_calls: "text", email_accounts: "email", apps_files: "file", device_internet: "device", screenshot: "screenshot" };
     pendingOriginal.current = result.textContent
       ? (result.category === "websites_links" ? { kind: "link", url: result.textContent } : { kind: KIND[result.category] ?? "text", text: result.textContent })
-      // An image-only submission still has a real original: the picture kept on this phone.
+      // An image-only submission still has a real original: the picture kept on this device.
       : result.imageUri ? { kind: "screenshot" } : null;
     const files = result.imageUri
       ? [{ uri: result.imageUri, name: "screenshot.jpg", mediaType: "image/jpeg" }]
@@ -647,7 +647,7 @@ export default function Ask() {
     </Sheet>
 
     <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear chat history?" testID="higgins-clear-sheet">
-      <Text style={s.sheetBody}>This permanently deletes your conversation with Higgins on this phone. This cannot be undone.</Text>
+      <Text style={s.sheetBody}>This permanently deletes your conversation with Higgins on this device. This cannot be undone.</Text>
       <Button testID="higgins-clear-confirm" label="Delete chat history" onPress={() => { setConfirmClear(false); void clearChat(); }} />
       <Button testID="higgins-clear-cancel" variant="ghost" label="Cancel" onPress={() => setConfirmClear(false)} />
     </Sheet>

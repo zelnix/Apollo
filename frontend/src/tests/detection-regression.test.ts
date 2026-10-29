@@ -311,7 +311,7 @@ section("3A. Email Core Scenarios");
 
 // E06: Code request → barking
 (() => {
-  const r = analyseEmail("From: helpdesk@example.xyz\nSubject: Verify your identity\n\nPlease reply with the verification code we sent to your phone to confirm your account.");
+  const r = analyseEmail("From: helpdesk@example.xyz\nSubject: Verify your identity\n\nPlease reply with the verification code we sent to your device to confirm your account.");
   assert(r.scenario === "E06", `EMAIL-08a: scenario is E06 (got ${r.scenario})`);
   assert(r.state === "barking", `EMAIL-08b: code request → barking (got ${r.state})`);
 })();

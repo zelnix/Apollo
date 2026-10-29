@@ -43,7 +43,7 @@ test("a held alert says when it will be released", () => {
 });
 
 test("on-device alerts distinguish shown, held and refused", () => {
-  assert.equal(deviceAlertStatus(device()), "Shown on this phone");
+  assert.equal(deviceAlertStatus(device()), "Shown on this device");
   assert.equal(deviceAlertStatus(device({ state: "shown", releasedAt: "2026-06-01T05:00:00Z" })), "Shown after quiet hours ended");
   assert.equal(deviceAlertStatus(device({ state: "held" })), "Waiting for quiet hours to end");
   assert.equal(deviceAlertStatus(device({ state: "failed", detail: "Notification permission is not granted." })),

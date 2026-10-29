@@ -1,5 +1,5 @@
 // Follow-ups on a finished Magnum DI investigation, Patrol explanations and the health check's AI lines are all
-// answered on the phone from records — never by Gemini.
+// answered on the device from records — never by Gemini.
 // Run: node --test tests/deterministicHiggins.test.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";

@@ -1,8 +1,8 @@
-// The live reading of this phone's own Apollo state that goes with every Higgins
+// The live reading of this device's own Apollo state that goes with every Higgins
 // question.
 //
 // Higgins is the savant of Apollo, which means he answers about THIS phone from
-// what the phone actually reports — not from inference. This builds that reading.
+// what the device actually reports — not from inference. This builds that reading.
 //
 // PRIVACY: state only. Protection statuses, permission states, settings values,
 // counts, and headlines Apollo itself wrote. Never a message body, a screenshot,
@@ -161,7 +161,7 @@ export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
 
   return {
     platform: Platform.OS,
-    // Higgins repeats this time word for word, so it goes as this phone's local time, never UTC.
+    // Higgins repeats this time word for word, so it goes as this device's local time, never UTC.
     checkedAt: health.checkedAt && Number.isFinite(Date.parse(health.checkedAt))
       ? clip(new Date(health.checkedAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }), 40) : undefined,
     protectionOn: health.protection ? health.protection.operational : undefined,

@@ -587,7 +587,7 @@ const NETWORK: Record<string, (ev: TriageEvidence) => Verdict> = {
     (ev) => (ev.certificate_change && correlated(ev) ? met("new trusted root certificate", "correlated suspicious network behaviour") : unmet("no new root certificate with correlated behaviour"))),
 };
 
-// ── Email (the header rules the phone can run) ─────────────────────────────
+// ── Email (the header rules the device can run) ─────────────────────────────
 // The receiving mail server's recorded SPF/DKIM/DMARC results are read as recorded and credited to it —
 // ApolloSG never re-checks them. Without the original's full headers these rules cannot run here: they are
 // NOT APPLICABLE with the reason, and the missing authentication is recorded as an incomplete check.
@@ -672,9 +672,9 @@ const REGISTRY: Record<string, Record<string, (ev: TriageEvidence) => Verdict>> 
   correlation: CORRELATION, email: EMAIL, account: {},
 };
 
-/** Why a catalogue rule has no predicate on the phone, per category. */
+/** Why a catalogue rule has no predicate on the device, per category. */
 const NOT_ON_DEVICE: Record<string, string> = {
-  email: "not run on the phone: the message rules cover this email's content; this rule runs on ApolloSG's server for connected mailboxes",
+  email: "not run on the device: the message rules cover this email's content; this rule runs on ApolloSG's server for connected mailboxes",
 };
 
 const SCOPE: Record<string, string[]> = {
@@ -701,7 +701,7 @@ export function evaluateTriage(evidence: TriageEvidence, options: { investigatio
       const predicate = REGISTRY[category]?.[definition.id];
       if (!predicate) {
         records.push({ ruleId: definition.id, title: definition.title, category, class: definition.class, applicable: false, checked: false,
-          result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "runs on ApolloSG's servers, not in the phone's Triage" });
+          result: "not_applicable", evidence: [], coverageGap: null, detail: NOT_ON_DEVICE[category] ?? "runs on ApolloSG's servers, not in the device's Triage" });
         continue;
       }
       let verdict: Verdict;

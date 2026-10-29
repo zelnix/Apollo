@@ -1,7 +1,7 @@
 // "Calls Apollo screened" — the incoming numbers Android handed to Apollo's CallScreeningService.
 // Pure parsing and wording only; the native read lives in src/security/screenedCalls.ts.
-// This is NOT the phone's call log: Android usually only passes Apollo calls from numbers that
-// aren't in your contacts, and only while Apollo is the phone's caller ID & spam app.
+// This is NOT the device's call log: Android usually only passes Apollo calls from numbers that
+// aren't in your contacts, and only while Apollo is the device's caller ID & spam app.
 
 export type ScreenedOutcome = "rang" | "allowed_by_you" | "rejection_requested_block" | "rejection_requested_risky";
 export interface ScreenedCall { number: string; at: number; outcome: ScreenedOutcome }
@@ -10,7 +10,7 @@ const OUTCOMES: ReadonlySet<string> = new Set(["rang", "allowed_by_you", "reject
 
 /** What Apollo did when Android handed it the call. Rejections are requests — Android gives no receipt. */
 export const SCREENED_OUTCOME_LABEL: Record<ScreenedOutcome, string> = {
-  rang: "Rang through — no warning on this phone",
+  rang: "Rang through — no warning on this device",
   allowed_by_you: "On your allow list — rang through",
   rejection_requested_block: "On your block list — ApolloSG asked Android to reject it",
   rejection_requested_risky: "Found high-risk earlier — ApolloSG asked Android to reject it",

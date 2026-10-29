@@ -145,6 +145,7 @@ export default function ProtectionScreen() {
           </View>
         ) : (
           <View style={s.tabBody} testID="protection-device">
+            <Text style={s.sectionSub}>Key protections and settings that support your safety.</Text>
             {deviceCounts ? (
               <DeviceCounts counts={deviceCounts} testID="protection-device-counts" />
             ) : !deviceRead ? (
@@ -158,7 +159,7 @@ export default function ProtectionScreen() {
               <Info size={20} color={colors.onSurfaceSecondary} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={s.infoTitle}>These are your device&apos;s own protections and settings.</Text>
-                <Text style={s.infoText}>ApolloSG can only read your device&apos;s settings in the app on your phone.</Text>
+                <Text style={s.infoText}>ApolloSG can only read your device&apos;s settings in the app on your device.</Text>
               </View>
             </View>
           </View>

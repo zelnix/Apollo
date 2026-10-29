@@ -88,14 +88,14 @@ export default function Scan() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Scan a code"
-          info={{ title: "About code scanning", body: ["Point your camera at a QR code or barcode and Apollo will check what it contains before your phone follows it.", "Nothing opens until you approve it. Apollo checks the destination for scams, phishing and malware."] }}
+          info={{ title: "About code scanning", body: ["Point your camera at a QR code or barcode and Apollo will check what it contains before your device follows it.", "Nothing opens until you approve it. Apollo checks the destination for scams, phishing and malware."] }}
           testID="scan"
         />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="scan-scroll">
         {!payload ? (
           <>
-            <Body>Apollo sniffs the code before your phone follows it. Nothing opens until you say so.</Body>
+            <Body>Apollo sniffs the code before your device follows it. Nothing opens until you say so.</Body>
             <Text style={s.why}>What is this code for?</Text>
             <View style={s.chips}>{SCAN_CONTEXTS.map((o) => <Pressable key={o.id} testID={`scan-context-${o.id}`} accessibilityRole="button" onPress={() => setContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
             {camOn && Platform.OS !== "web" ? (
@@ -104,12 +104,12 @@ export default function Scan() {
                 <Text style={s.camHint}>Point your camera at a QR code</Text>
               </View>
             ) : (
-              <Button testID="scan-start" label={Platform.OS === "web" ? "Camera scanning needs the phone app" : "Open camera"} onPress={() => void startCamera()} disabled={Platform.OS === "web"} />
+              <Button testID="scan-start" label={Platform.OS === "web" ? "Camera scanning needs the device app" : "Open camera"} onPress={() => void startCamera()} disabled={Platform.OS === "web"} />
             )}
             <SectionTitle>Or paste the code&apos;s contents</SectionTitle>
             <TextInput testID="scan-manual" style={s.input} value={manual} onChangeText={setManual} placeholder="https://…, tel:, WIFI:, bitcoin:…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <Button testID="scan-manual-check" variant="secondary" label="Sniff this code" onPress={() => void handle(manual)} disabled={!manual.trim()} />
-            <Body>Camera frames stay on your phone. Only a website address is sent for a reputation check.</Body>
+            <Body>Camera frames stay on your device. Only a website address is sent for a reputation check.</Body>
           </>
         ) : (
           <>
@@ -140,7 +140,7 @@ export default function Scan() {
                 {canOpen && finalState !== "resting" ? <Button testID="scan-open" variant="ghost" label="Open anyway (Higgins advises against it)" onPress={() => void Linking.openURL(payload.url!)} /> : null}
                 {payload.url && !canOpen ? <Body testID="scan-open-blocked">Apollo stopped this destination from opening. Use the organisation&apos;s official app instead.</Body> : null}
                 {payload.url ? <Button testID="scan-view-destination" variant="secondary" label="View destination details" onPress={() => router.push({ pathname: "/check", params: { url: payload.url, source: "qr" } })} /> : null}
-                {payload.type === "wifi" ? <Body>Connect via your phone&apos;s Wi‑Fi settings if you trust the venue. {payload.wifiSecurity === "open" ? "Avoid banking on this network." : ""}</Body> : null}
+                {payload.type === "wifi" ? <Body>Connect via your device&apos;s Wi‑Fi settings if you trust the venue. {payload.wifiSecurity === "open" ? "Avoid banking on this network." : ""}</Body> : null}
                 {payload.type === "sms" || payload.type === "mailto" || payload.type === "applink" ? <Button testID="scan-continue" variant="secondary" label="Continue to the app" onPress={() => void Linking.openURL(payload.raw)} /> : null}
                 <Button testID="scan-copy" variant="ghost" label="Copy contents" onPress={() => { void Clipboard.setStringAsync(payload.raw); showToast("Copied", "neutral"); }} />
                 {event ? <RecoveryFlow event={event} kinds={["clicked", "password", "card", "money", "download", "app"]} testID="scan-recovery" /> : null}

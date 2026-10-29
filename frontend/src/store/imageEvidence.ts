@@ -18,7 +18,7 @@ export interface ImageEvidenceRecord {
   /** False when on-device text recognition was unavailable, so nothing could be blacked out. */
   checked: boolean;
   createdAt: string;
-  /** Set when the user removed the original from this phone. */
+  /** Set when the user removed the original from this device. */
   originalRemovedAt?: string;
 }
 

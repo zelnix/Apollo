@@ -135,7 +135,7 @@ const CHECKS: CheckDef[] = [
       const sig = i.signals.nativeCallProtection;
       if (!sig) return unavailable("This build couldn't detect native call-protection providers.");
       if (sig.active) return checked(`${sig.activeProviders.join(", ")} active. ${sig.detail}`);
-      return review("No native call-spam protection was detected as the active handler.", "Check that your phone app's built-in call screening or spam filter is turned on.", sig.detail);
+      return review("No native call-spam protection was detected as the active handler.", "Check that your device's built-in call screening or spam filter is turned on.", sig.detail);
     } },
   { id: "native_message_protection", category: "malware", title: "Native message protection", platforms: ["android", "ios"],
     settings: { android: "Settings → Messages app → Spam protection", ios: "Settings → Messages → Filter Unknown Senders" },

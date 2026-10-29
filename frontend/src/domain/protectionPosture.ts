@@ -206,7 +206,7 @@ function deviceFinding(row: DeviceProtectionRow): PostureFinding | null {
 const DEVICE_UNREAD = (reading: boolean): PostureFinding => ({
   code: reading ? "DEVICE_READING" : "DEVICE_UNREAD", effect: "moderate", kind: "device", title: "Device protections",
   clause: reading ? "Apollo is still reading your device's own settings" : "your device's own settings can't be read here",
-  sentence: reading ? "Apollo is still reading your device's own settings." : "Your device's own settings can only be read in the app on your phone.",
+  sentence: reading ? "Apollo is still reading your device's own settings." : "Your device's own settings can only be read in the app on your device.",
   route: "/device-protection", importance: null,
 });
 

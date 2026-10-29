@@ -314,7 +314,7 @@ test("the question buttons are on check results only — not on the Findings Bri
   assert.equal(isGeneralAnswer({ outcome: undefined, findings: [{ id: "f", text: "x", basis: "observation", confidence: "high", evidenceIds: [], sourceIds: [] }] }), false, "an older result with findings is still explained");
 });
 
-test("typed questions about a word are answered on the phone from the dictionary and the Knowledge Library", () => {
+test("typed questions about a word are answered on the device from the dictionary and the Knowledge Library", () => {
   assert.equal(askedTerm("What is phishing?")?.id, "phishing");
   assert.equal(askedTerm("What does DMARC mean?")?.id, "dmarc");
   assert.equal(askedTerm("what's a VPN")?.id, "vpn");

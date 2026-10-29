@@ -201,7 +201,7 @@ export function DiReport({ caseId, triage, settledReason, settledEvent, how, pre
 
   const triageRecord = state.trace?.triage ?? triage ?? null;
   const steps = buildDecisionTrace({ trace: state.trace, records: state.records, triage: triageRecord, hasCase: !!caseId, presented, response });
-  // Who settled the result and by which rule: the phone's record, else the server's decision record.
+  // Who settled the result and by which rule: the device's record, else the server's decision record.
   const reason = settledReason ?? state.trace?.settledReason ?? null;
   const settled = reason ? <SettledReasonLine reason={reason} testID="tc-di-settled-reason" />
     : settledEvent ? <SettledByBadge event={settledEvent} testID="tc-di-settled" /> : null;

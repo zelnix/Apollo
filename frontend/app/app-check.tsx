@@ -300,7 +300,7 @@ export default function CheckApp() {
           <>
             <SourceHero
               testID="app-hero"
-              title="Pick an app from this phone"
+              title="Pick an app from this device"
               caption="Apollo checks the app's source, its stated permissions and what it says it does. Nothing is installed or changed."
               actions={[{
                 testID: "app-pick-installed",
@@ -367,7 +367,7 @@ export default function CheckApp() {
         title="Installed apps"
         note="Each one stands in for an app and its stated permissions. Apollo runs the real app check on whichever you pick."
         preview={simulation.included}
-        error={simulation.included ? null : Platform.OS === "android" ? "ApolloSG can't list installed apps on this build. Type the app name below instead — this needs a production build." : "Your phone doesn't let apps see what else is installed. Type the app name below instead."}
+        error={simulation.included ? null : Platform.OS === "android" ? "ApolloSG can't list installed apps on this build. Type the app name below instead — this needs a production build." : "Your device doesn't let apps see what else is installed. Type the app name below instead."}
         items={simulation.apps.map((a) => ({ id: a.id, primary: a.appName, secondary: `${a.developer} · ${a.packageId}`, meta: a.probes }))}
         emptyText="There are no apps to choose from here."
         onSelect={(id: string) => {

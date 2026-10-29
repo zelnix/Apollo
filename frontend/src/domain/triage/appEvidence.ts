@@ -10,7 +10,7 @@ export type AppVia = "typed" | "picked" | "linked";
 const WORDS = typeWords("app") as ReturnType<typeof typeWords> & { notes: Record<string, string>; signals: Record<string, string> };
 export const APP_WORDS = WORDS;
 
-/** What this phone's system said about the installed app (the shape of SdkAppAssessment that matters here). */
+/** What this device's system said about the installed app (the shape of SdkAppAssessment that matters here). */
 export interface AppDeviceRead {
   packageId: string; appName: string; developer: string | null; installSource: AppSource;
   requestedPermissions?: string[]; grantedPermissions?: string[]; remoteAccessCapability?: boolean;

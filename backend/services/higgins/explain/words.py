@@ -42,7 +42,7 @@ GLOSSARY: tuple[tuple[str, str, str], ...] = (
      "A web address's registration record is the public record of when it was set up and who it was registered through."),
     ("domain", r"\bdomains?\b", "A domain is the name part of a web or email address, the part that says who runs it."),
     ("phishing", r"\bphishing\b", "Phishing is a fake message or website made to trick you into handing over passwords, codes or money."),
-    ("malware", r"\bmalware\b", "Malware is software made to harm your phone or steal from it."),
+    ("malware", r"\bmalware\b", "Malware is software made to harm your device or steal from it."),
     ("redirect", r"\bredirect(?:s|ed|ing)?\b", "A redirect sends you on from the address you tapped to a different one."),
     ("Safe Browsing", r"\bSafe Browsing\b", "Google Safe Browsing is Google's list of websites known to be harmful."),
     ("IPQualityScore", r"\b(?:IPQualityScore|IPQS|fraud score)\b",
@@ -56,7 +56,7 @@ GLOSSARY: tuple[tuple[str, str, str], ...] = (
     ("impersonation", r"\bimpersonat\w*", "Impersonation means pretending to be a real person or organisation."),
     ("lookalike", r"\blook-?alike\b", "A lookalike address copies a real organisation's name with small changes."),
     ("one-time code", r"\b(?:one-time|verification|security) codes?\b", "A one-time code is the short code a service sends to prove it's you."),
-    ("remote access", r"\bremote(?:-| )access\b", "Remote access lets someone else control your phone or computer from somewhere else."),
+    ("remote access", r"\bremote(?:-| )access\b", "Remote access lets someone else control your device from somewhere else."),
     ("spoofing", r"\bspoof\w*", "Spoofing makes a call or message look like it comes from someone it doesn't."),
     ("cryptocurrency", r"\bcrypto(?:currency|currencies)?\b", "A cryptocurrency payment is very hard to trace or get back."),
 )

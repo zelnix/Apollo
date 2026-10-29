@@ -2,7 +2,7 @@
 
 How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
-_Last reviewed against the code: 2026-10-28._
+_Last reviewed against the code: 2026-10-29._
 
 _Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers), with the second-round corrections the same day (LINK-11, CORR-08, text copied elsewhere, Magnum DI correcting a provisional concern). Status: approved by the owner, then the code was audited against it and brought into line the same day: both engines decide from each rule's class, so ROUTE and COVERAGE rules no longer make a Possible Threat; CORR-08 needs a harmful payload; a failed lookup never supplies a rule's evidence; TC FlyBy treats weak signals as weak; Magnum DI can't go below TC FlyBy's concern without resolving evidence; and ABN, ACN and licence numbers reach only their register question. The EXPLAIN class was added for Higgins' explanation rules, and each one was checked against the code._
 
@@ -850,7 +850,7 @@ How firmly: **High confidence**, **Medium confidence**, **Low confidence**.
 | registration record | A web address's registration record is the public record of when it was set up and who it was registered through. |
 | domain | A domain is the name part of a web or email address, the part that says who runs it. |
 | phishing | Phishing is a fake message or website made to trick you into handing over passwords, codes or money. |
-| malware | Malware is software made to harm your phone or steal from it. |
+| malware | Malware is software made to harm your device or steal from it. |
 | redirect | A redirect sends you on from the address you tapped to a different one. |
 | Safe Browsing | Google Safe Browsing is Google's list of websites known to be harmful. |
 | IPQualityScore | IPQualityScore rates how risky a link or phone number looks. Its score is a likelihood, not proof. |
@@ -863,7 +863,7 @@ How firmly: **High confidence**, **Medium confidence**, **Low confidence**.
 | impersonation | Impersonation means pretending to be a real person or organisation. |
 | lookalike | A lookalike address copies a real organisation's name with small changes. |
 | one-time code | A one-time code is the short code a service sends to prove it's you. |
-| remote access | Remote access lets someone else control your phone or computer from somewhere else. |
+| remote access | Remote access lets someone else control your device from somewhere else. |
 | spoofing | Spoofing makes a call or message look like it comes from someone it doesn't. |
 | cryptocurrency | A cryptocurrency payment is very hard to trace or get back. |
 
@@ -1304,7 +1304,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 6. **About ApolloSG itself:** how ApolloSG works, who Higgins or Magnum DI is, the protections, finding your way around, or what Apollo's states mean → a fixed answer on the phone, with taps to the right screens.
 7. **A short message that's still unclear:**
    - Under 60 characters: words about the phone working (working, running, active, on, off, enabled, disabled, status, state, ok, fine, healthy, broken, down) → its protection status, on the phone. Words about a threat (scam, scams, scammed, scammer, scammers, phishing, fraud, fraudulent, suspicious, malware, virus, viruses, hacked, hacker, hackers, compromised, stolen, unsafe, dangerous) → Higgins on the server. Both kinds, or neither, → the next step. Only whole words count, so "on" inside "someone" or "phone" doesn't.
-   - Under 40 characters with no question mark → one question back: "Do you mean whether Apollo is protecting your phone, or would you like me to investigate something specific?"
+   - Under 40 characters with no question mark → one question back: "Do you mean whether Apollo is protecting your device, or would you like me to investigate something specific?"
 8. **Everything else** → Higgins on the server, in the order set out under Higgins above.
 
 **What starts a check from a typed message (on the server)**

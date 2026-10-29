@@ -201,7 +201,7 @@ export default function CheckMessage() {
   }, [params.sample, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** The phone reads the screenshot's text (credentials removed) and the ordinary message check runs on that
-   *  text. The picture itself never leaves the phone; only Magnum DI's one investigation call may follow. */
+   *  text. The picture itself never leaves the device; only Magnum DI's one investigation call may follow. */
   const readScreenshot = async (uri: string) => {
     setBusy("reading"); setError(null); setScreenshotError(null); setResult(null); setScreenshotUri(uri);
     try {
@@ -232,7 +232,7 @@ export default function CheckMessage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open your screenshots."); setBusy("idle"); }
   };
   const photoAccess = useScreenshotAccess(launchScreenshotPicker);
-  // Preview only: a sample screenshot whose text is known stands in for the phone's text recogniser.
+  // Preview only: a sample screenshot whose text is known stands in for the device's text recogniser.
   const checkSampleScreenshot = async (id: string) => {
     setSamplePicker(false);
     const sample = simulation.screenshots.find((x) => x.id === id);
@@ -359,7 +359,7 @@ export default function CheckMessage() {
         {canPickSms || simulation.included ? (
           <SourceHero
             testID="message-hero"
-            title="Pick a message from this phone"
+            title="Pick a message from this device"
             caption="Apollo reads the one message you choose — never your inbox or your history."
             actions={[{
               testID: "message-pick-sms",
@@ -389,7 +389,7 @@ export default function CheckMessage() {
               <Text style={s.actionCardTitle}>Take a screenshot</Text>
               <ChevronRight size={18} color={colors.muted} />
             </View>
-            <Text style={s.actionCardSub}>Choose a screenshot of the message. Apollo reads its text on this phone — the picture itself isn’t sent.</Text>
+            <Text style={s.actionCardSub}>Choose a screenshot of the message. Apollo reads its text on this device — the picture itself isn’t sent.</Text>
           </Pressable>
           {simulation.included ? (
             <Button testID="message-sample-screenshot" variant="ghost" label="Use a preview sample screenshot" disabled={busy !== "idle"} onPress={() => setSamplePicker(true)} />

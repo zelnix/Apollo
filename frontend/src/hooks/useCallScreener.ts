@@ -1,4 +1,4 @@
-// Whether Apollo is this phone's default call screener — read honestly, offered
+// Whether Apollo is this device's default call screener — read honestly, offered
 // wherever it matters.
 //
 // Android: `RoleManager.ROLE_CALL_SCREENING`. When Apollo holds it, the system
@@ -20,7 +20,7 @@ import { CallSdk } from "@/src/security/callSdk";
 
 export type ScreenerState =
   | "held"            // Apollo is the default screener
-  | "available"       // the role exists on this phone, Apollo does not hold it
+  | "available"       // the role exists on this device, Apollo does not hold it
   | "unsupported"     // this Android version / device cannot offer the role
   | "ios"             // iOS: no equivalent exists
   | "unavailable"     // no native module (Expo Go, web) — genuinely unknown
@@ -42,7 +42,7 @@ const IOS_DETAIL = "Apple does not let any app screen incoming calls on iPhone. 
 export const SCREENER_SUMMARY: Record<ScreenerState, string> = {
   held: "ApolloSG is your default call screener",
   available: "ApolloSG is not your call screener yet",
-  unsupported: "This phone cannot offer call screening",
+  unsupported: "This device cannot offer call screening",
   ios: "Call screening is not possible on iPhone",
   unavailable: "Call screening can't be read in the preview",
   checking: "Checking call screening…",

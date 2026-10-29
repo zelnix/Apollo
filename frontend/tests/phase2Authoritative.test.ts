@@ -24,7 +24,7 @@ test("opening a case the person submitted (Ask Higgins) passes egress with its o
   assert.equal(enforceEgress("investigation", body).origin, "user");
   // A call check that escalates says who started it too (submitted by the person, or Apollo's own screening).
   for (const endpoint of ["call_investigation", "number_risk_investigation"] as const) {
-    assert.equal(enforceEgress(endpoint, { gate: "call", origin: "apollo", question: "Investigate this phone call.", submissions: [], initial_findings: [] }).origin, "apollo");
+    assert.equal(enforceEgress(endpoint, { gate: "call", origin: "apollo", question: "Investigate this device call.", submissions: [], initial_findings: [] }).origin, "apollo");
   }
 });
 

@@ -87,7 +87,7 @@ test("re-check: a stronger result upgrades the case and keeps the history; sameL
 test("Site Gate: the connection is ApolloSG's own observation; the page and its path were never seen", () => {
   const p = buildSiteGateProfile({ domain: "phishing.apollo.test", observedAt: "2026-06-14T10:00:00.000Z", confirmed: true });
   assert.equal(p.label, "Connection seen by Site Gate");
-  assert.equal(p.viaLabel, "Site Gate on this phone");
+  assert.equal(p.viaLabel, "Site Gate on this device");
   assert.equal(p.capabilities.find((c) => c.id === "connection")?.status, "verified");
   assert.equal(p.capabilities.find((c) => c.id === "block")?.status, "verified");
   assert.equal(p.capabilities.find((c) => c.id === "final_destination")?.status, "unavailable");

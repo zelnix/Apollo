@@ -3,7 +3,7 @@
 import type { DomainInfo } from "./types";
 
 export function formatDomainInfoLine(info: DomainInfo): string {
-  // The registration date as this phone's own calendar reads it, not the UTC date.
+  // The registration date as this device's own calendar reads it, not the UTC date.
   const at = info.registered_at ? new Date(info.registered_at) : null;
   const date = at && Number.isFinite(at.getTime()) ? at.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "unknown date";
   const via = info.registrar ? ` via ${info.registrar}` : "";

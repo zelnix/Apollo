@@ -1,4 +1,4 @@
-// Search Threat Cases — the person's OPEN cases, by sender, website or words in the message. Only what this phone
+// Search Threat Cases — the person's OPEN cases, by sender, website or words in the message. Only what this device
 // already holds is searched (the case and the original kept on it); nothing is sent anywhere. Closed cases aren't searched.
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -91,7 +91,7 @@ export default function CaseSearchScreen() {
   const [query, setQuery] = useState("");
   const cases = useMemo(() => openCases(events), [events]);
 
-  // The original each open case keeps on this phone — its sender, subject and full text are only there.
+  // The original each open case keeps on this device — its sender, subject and full text are only there.
   const [originals, setOriginals] = useState<Record<string, OriginalSource | null>>({});
   useEffect(() => {
     let active = true;

@@ -1,4 +1,4 @@
-// Times Apollo stores are UTC; one saved without its zone must still read as UTC, so the phone shows its own local time.
+// Times Apollo stores are UTC; one saved without its zone must still read as UTC, so the device shows its own local time.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

@@ -233,7 +233,7 @@ export const GATE_CONTENT: Record<GateId, GateContent> = {
     ],
     limitations: [
       "Cannot modify device settings directly — recommends actions for you to take.",
-      "Some settings may not be observable on every phone or system version.",
+      "Some settings may not be observable on every device or system version.",
       "Root/jailbreak detection is based on observable indicators.",
       "Manufacturer-specific security features may not be fully assessed.",
     ],

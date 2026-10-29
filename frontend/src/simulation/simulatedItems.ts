@@ -232,7 +232,7 @@ export const SIMULATED_DEVICE_CONCERNS: SimulatedDeviceConcern[] = [
   {
     id: "sim-dev-remote",
     concern:
-      "A man who said he was from my internet provider asked me to install an app so he could fix my connection, and my screen moved on its own while we were on the phone.",
+      "A man who said he was from my internet provider asked me to install an app so he could fix my connection, and my screen moved on its own while we were on the device.",
     probes: "Reports remote access during an unsolicited support call.",
   },
   {

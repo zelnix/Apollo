@@ -20,7 +20,7 @@ export function extractUrl(text: string | null | undefined): string | null {
   return match ? match[0] : null;
 }
 
-/** A shared original email file (.eml / message/rfc822) — read on the phone by the email check, never uploaded. */
+/** A shared original email file (.eml / message/rfc822) — read on the device by the email check, never uploaded. */
 export function isOriginalEmailFile(file: { path: string; mimeType?: string | null; fileName?: string | null }): boolean {
   return (file.mimeType ?? "").toLowerCase() === "message/rfc822" || /\.eml$/i.test(file.fileName ?? file.path);
 }
@@ -30,7 +30,7 @@ export function classifyShare(p: SharedPayload): ShareRoute {
   if (file) {
     const mime = (file.mimeType ?? "").toLowerCase();
     const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
-    if (isOriginalEmailFile(file)) return { kind: "email", pathname: "/email", params: { source: "share" }, reason: "It's an original email file (.eml). ApolloSG reads it on this phone, full headers included — the file isn't uploaded." };
+    if (isOriginalEmailFile(file)) return { kind: "email", pathname: "/email", params: { source: "share" }, reason: "It's an original email file (.eml). ApolloSG reads it on this device, full headers included — the file isn't uploaded." };
     if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "Looks like an image. If it's a screenshot of a message, Apollo can read the text and check it — or you can check it as a file instead. ApolloSG doesn't know what's in it until it looks." };
     return { kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
   }

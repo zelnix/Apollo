@@ -1,5 +1,5 @@
 // Evidence Pack: one PDF with the original image, the sent copy, case title, date and notes,
-// shared through the phone's share sheet (print dialog on web). Built on the device.
+// shared through the device's share sheet (print dialog on web). Built on the device.
 import * as FS from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
@@ -37,7 +37,7 @@ export async function shareEvidencePack(r: ImageEvidenceRecord | null, info: { t
   const imageHtml = r ? `
     <h2>Image evidence</h2>
     <div class="row">
-      ${img(original, "Original, kept on this phone", r.originalRemovedAt ? `Original removed from the device on ${fmt(r.originalRemovedAt)}.` : "Original not available.")}
+      ${img(original, "Original, kept on this device", r.originalRemovedAt ? `Original removed from the device on ${fmt(r.originalRemovedAt)}.` : "Original not available.")}
       ${img(sent, "Copy sent for investigation", "")}
     </div>
     <ul>${info.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "";

@@ -55,7 +55,7 @@ function deduplicateAlerts(alerts: GovernmentAlert[]): GovernmentAlert[] {
   return Array.from(seen.values());
 }
 
-/** Filter to only current, high-priority alerts that apply where the phone is. */
+/** Filter to only current, high-priority alerts that apply where the device is. */
 function filterPriorityAlerts(alerts: GovernmentAlert[]): GovernmentAlert[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - MAX_AGE_DAYS);
@@ -100,7 +100,7 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
 
   const priorityAlert = useMemo(() => {
     if (!loaded || !items.length) return null;
-    // Only alerts that apply everywhere or in the phone's own country (its region setting).
+    // Only alerts that apply everywhere or in the device's own country (its region setting).
     const home = homeRegion();
     const deduplicated = deduplicateAlerts(items.filter((a) => appliesHere(a, home)));
     const priority = filterPriorityAlerts(deduplicated);

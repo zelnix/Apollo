@@ -1,5 +1,5 @@
 // Settings > Help & about > Rule book — Apollo's rule book, word for word: the same shared file the admin portal
-// shows (backend/content/rulebook.md). The last copy read is kept on this phone so the book opens offline.
+// shows (backend/content/rulebook.md). The last copy read is kept on this device so the book opens offline.
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -87,7 +87,7 @@ export default function RuleBookScreen() {
         {book ? (
           <>
             <Text style={s.meta} testID="rule-book-meta">
-              {fromPhone && error ? "Showing the copy saved on this phone. ApolloSG couldn't reach its server just now." : reviewed ? `Reviewed against how ApolloSG works on ${reviewed}.` : "ApolloSG's current rule book."}
+              {fromPhone && error ? "Showing the copy saved on this device. ApolloSG couldn't reach its server just now." : reviewed ? `Reviewed against how ApolloSG works on ${reviewed}.` : "ApolloSG's current rule book."}
             </Text>
             <View collapsable={false} onLayout={(e) => { bookY.current = e.nativeEvent.layout.y; goToSection(); }}>
               <RuleBookSections intro={intro} groups={groups} initiallyOpen={section}

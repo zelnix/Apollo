@@ -1,5 +1,5 @@
 // Looks up the contacts a check holds in ApolloSG's Official Organisation Directory (POST /official/contacts). Only the
-// websites (their host), phone numbers and email addresses, and the organisation the material names, leave the phone;
+// websites (their host), phone numbers and email addresses, and the organisation the material names, leave the device;
 // nothing is fetched or kept by the server. A failed lookup is reported as "couldn't compare", never as a finding.
 
 import { apiGet, apiPost } from "@/src/api/client";

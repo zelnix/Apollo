@@ -40,7 +40,7 @@ const provider = (e: PatrolEvent) => (e.source_metadata?.provider ?? "").trim();
 
 /** Whether this case's record carries Apollo's findings, or only the privacy-protected summary ApolloSG's servers keep
  *  of a check (its kind and result). Decided by what the record holds, never by where a copy might be: a DNS block,
- *  the phone's own protection, server-assisted analysis and an incomplete record all carry what Apollo recorded. */
+ *  the device's own protection, server-assisted analysis and an incomplete record all carry what Apollo recorded. */
 export function hasRecordedFindings(e: PatrolEvent): boolean {
   return evidenceModel(e).representation !== "privacy_summary" || hasServerFindings(e);
 }

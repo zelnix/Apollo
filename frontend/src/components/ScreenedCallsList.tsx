@@ -1,5 +1,5 @@
 // "Calls Apollo screened" (Android). The incoming numbers Android handed to Apollo's call screening,
-// recorded on this phone only by ApolloCallScreeningService — not the call log. Tap a row to act on it
+// recorded on this device only by ApolloCallScreeningService — not the call log. Tap a row to act on it
 // (Check with Apollo on Call Guard; "use this number" elsewhere). Renders nothing where unsupported.
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
@@ -56,7 +56,7 @@ export function ScreenedCallsList({ onSelect, actionLabel = "Check", disabled = 
     <View style={s.card} testID={testID}>
       <View style={s.header}>
         <Text style={s.title}>Calls Apollo screened</Text>
-        <Text style={s.sub}>Incoming numbers Android passed to Apollo&apos;s call screening, kept on this phone for up to 30 days. Apollo doesn&apos;t read your call log.</Text>
+        <Text style={s.sub}>Incoming numbers Android passed to Apollo&apos;s call screening, kept on this device for up to 30 days. Apollo doesn&apos;t read your call log.</Text>
       </View>
       {calls && calls.length === 0 ? (
         <View style={s.empty}>

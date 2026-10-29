@@ -1,7 +1,7 @@
 // The top card of a case: what started it and when — never what Apollo found (that is the Findings Brief's job).
 // The heading comes only from the origin the case recorded when it was opened: the person submitted it, or Apollo
 // detected it. When the record doesn't say, the heading says neither. The preview is the material itself, shortened:
-// the original kept on the phone, else what the case recorded at intake. Pure: no React, no storage.
+// the original kept on the device, else what the case recorded at intake. Pure: no React, no storage.
 import { describeArtefact } from "./evidencePresentation.ts";
 import { CAPABILITY_LABELS } from "./protectionAreas.ts";
 import type { GateId } from "./gates";
@@ -111,7 +111,7 @@ const emailPreview = (head: (string | null)[], text: string | null | undefined) 
 };
 const TIME_FIELD = /^(received|date|sent|time|captured|when)$/i;
 
-/** The original kept on the phone, shortened: an email's sender and subject, a link, and the text as written. */
+/** The original kept on the device, shortened: an email's sender and subject, a link, and the text as written. */
 export function previewFromOriginal(src: OriginalSource, hasImage = false): SourcePreview {
   const view = describeArtefact(src, hasImage);
   const body = view.body ?? null;
@@ -222,7 +222,7 @@ export function detectionFacts(event: PatrolEvent, original?: OriginalSource | n
     ? (provider && !/\b(sms|messages?)\b/i.test(provider) ? provider : "SMS")
     : TYPE_LABEL[type] ?? TYPE_LABEL[event.category] ?? null;
   const capability = CAPABILITY_OF[event.evidence_provenance === "dns_observation" ? "website" : type] ?? CAPABILITY_OF[event.category];
-  const by = event.evidence_provenance === "native_protection" ? provider || "Your phone's built-in protection"
+  const by = event.evidence_provenance === "native_protection" ? provider || "Your device's built-in protection"
     : capability ? CAPABILITY_LABELS[capability] : null;
   const facts: (DetectionFact | null)[] = [
     from ? { id: "from", label: "From", value: from } : null,

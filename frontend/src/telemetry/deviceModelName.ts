@@ -1,7 +1,7 @@
 // This phone's descriptive name: "Samsung Galaxy Z Fold6" rather than the model code Android reports ("SM-F956B").
 // iPhones and iPads already report their descriptive name. Android asks ApolloSG's server, which reads the manufacturer
-// and model this phone already reported (nothing new leaves the phone) against Google Play's list of supported devices.
-// The answer is kept on the phone, so it is asked for once per model.
+// and model this phone already reported (nothing new leaves the device) against Google Play's list of supported devices.
+// The answer is kept on the device, so it is asked for once per model.
 import * as Device from "expo-device";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";

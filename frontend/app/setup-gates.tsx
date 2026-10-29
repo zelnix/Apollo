@@ -174,7 +174,7 @@ export default function SetupGates() {
           <View style={{ gap: spacing.sm }}>
             <ApolloLogo size={72} />
             <Text style={s.eyebrow}>Protections</Text>
-            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Every protection this phone allows is on" : "Protections set — some are still pending"}</Text>
+            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Every protection this device allows is on" : "Protections set — some are still pending"}</Text>
             <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} {recap.length === 1 ? "protection" : "protections"} enabled</Text>
           </View>
           <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-list">

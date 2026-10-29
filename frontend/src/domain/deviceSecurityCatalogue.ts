@@ -91,7 +91,7 @@ export interface DeviceFacts {
   manufacturer: string | null;
   osVersion: string | null;
   model: string | null;
-  /** Two-letter country from the phone's region setting, e.g. "AU". Absent or null when unknown. */
+  /** Two-letter country from the device's region setting, e.g. "AU". Absent or null when unknown. */
   country?: string | null;
 }
 
@@ -107,7 +107,7 @@ interface SecurityDef {
   oems?: string[];
   /** Only from this OS major version. Unknown version = still offered. */
   minOsMajor?: number;
-  /** Only where the phone's region setting is one of these countries. Unknown country = not offered. */
+  /** Only where the device's region setting is one of these countries. Unknown country = not offered. */
   countries?: string[];
   /** Worth it for some people only — never listed under "Needs checking". */
   optional?: boolean;
@@ -128,7 +128,7 @@ interface SecurityDef {
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
-const SETTINGS_ALIAS = "(your phone may call this ‘Security & privacy’, ‘Lock screen & security’ or ‘Passwords & security’)";
+const SETTINGS_ALIAS = "(your device may call this ‘Security & privacy’, ‘Lock screen & security’ or ‘Passwords & security’)";
 
 const isDesktop = (p: CapabilityPlatform) => p === "windows" || p === "macos";
 const osName = (p: CapabilityPlatform) => p === "windows" ? "Windows" : p === "macos" ? "macOS" : p === "ios" ? "iOS" : "Android";
@@ -206,7 +206,7 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "developer_options",
     title: "Developer options and USB debugging",
-    subtitle: "The engineering switches that let a computer drive this phone",
+    subtitle: "The engineering switches that let another device drive this device",
     area: "access",
     platforms: ["android"],
     owner: "Android",
@@ -221,9 +221,9 @@ const CATALOGUE: SecurityDef[] = [
     unverified: "Apollo could not read whether Developer options are on.",
     resolve: (read) => {
       if (read.developerOptions === null) return null;
-      if (!read.developerOptions) return { state: "as_recommended", detail: "Developer options are off on this phone, which is what Higgins recommends.", attributedTo: "Android" };
+      if (!read.developerOptions) return { state: "as_recommended", detail: "Developer options are off on this device, which is what Higgins recommends.", attributedTo: "Android" };
       const usb = read.usbDebugging === true
-        ? " USB debugging is on as well, which lets a connected computer read and control this phone."
+        ? " USB debugging is on as well, which lets a connected computer read and control this device."
         : read.usbDebugging === false ? " USB debugging itself is off." : "";
       return { state: "off", health: read.usbDebugging === true ? "action" : "review", detail: `Developer options are on.${usb} If you did not turn this on yourself, turn it off.`, attributedTo: "Android" };
     },
@@ -277,11 +277,11 @@ const CATALOGUE: SecurityDef[] = [
     owner: "Google Play Protect",
     recommended: "Higgins recommends leaving app scanning switched on, and running a scan now if you have installed anything during or after a suspicious call.",
     steps: () => [
-      "Open the Play Store (or your phone’s own app store)",
+      "Open the Play Store (or your device’s own app store)",
       "Tap your profile picture (top right)",
       "Tap ‘Play Protect’, then the settings cog",
       "Turn on ‘Scan apps with Play Protect’",
-      "Tap ‘Scan’ to check the apps on your phone now",
+      "Tap ‘Scan’ to check the apps on your device now",
     ],
     action: () => ({ target: "security", path: "Play Store → Profile → Play Protect → Settings", label: "Check app scanning" }),
     unverified: "Apollo cannot read whether app scanning is currently switched on.",
@@ -297,7 +297,7 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "antivirus",
     title: "Antivirus protection",
-    subtitle: "Real-time scanning of files and programs on this computer",
+    subtitle: "Real-time scanning of files and programs on this device",
     area: "apps",
     platforms: ["windows", "macos"],
     owner: "your security software",
@@ -318,7 +318,7 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "unknown_sources",
     title: "Installing apps from outside the store",
-    subtitle: "Whether apps can be side-loaded onto this phone",
+    subtitle: "Whether apps can be side-loaded onto this device",
     area: "apps",
     platforms: ["android"],
     owner: "Android",
@@ -334,8 +334,8 @@ const CATALOGUE: SecurityDef[] = [
     resolve: (read) => {
       if (read.unknownSources === null) return null;
       return read.unknownSources
-        ? { state: "off", health: "review", detail: "ApolloSG itself is allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
-        : { state: "as_recommended", detail: "ApolloSG is not allowed to install apps on this phone. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" };
+        ? { state: "off", health: "review", detail: "ApolloSG itself is allowed to install apps on this device. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" }
+        : { state: "as_recommended", detail: "ApolloSG is not allowed to install apps on this device. Android only lets Apollo read its own setting, so check the others in the list too.", attributedTo: "Android" };
     },
   },
   {
@@ -388,12 +388,12 @@ const CATALOGUE: SecurityDef[] = [
       "Save, then reopen the screen to confirm it stuck",
     ],
     action: () => ({ target: "private_dns", path: "Settings → Network & internet → Private DNS", label: "Open Private DNS settings" }),
-    unverified: "Apollo could not read this phone’s Private DNS setting.",
+    unverified: "Apollo could not read this device’s Private DNS setting.",
     resolve: (read) => {
       const mode = read.privateDnsMode ?? (read.privateDnsActive === null ? null : read.privateDnsActive ? "automatic" : "not_in_use");
       if (mode === "automatic") return { state: "as_recommended", detail: "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
       if (mode === "hostname") return { state: "off", health: "review", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
-      if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this phone’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
+      if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this device’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
       if (mode === "not_in_use") return { state: "off", health: "review", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell ApolloSG which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };
       return null;
     },
@@ -401,7 +401,7 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "firewall",
     title: "Firewall",
-    subtitle: "Screening connections coming into this computer",
+    subtitle: "Screening connections coming into this device",
     area: "web",
     platforms: ["windows", "macos"],
     owner: (platform) => platform === "windows" ? "Windows" : "macOS",
@@ -410,7 +410,7 @@ const CATALOGUE: SecurityDef[] = [
       ? ["Open Settings → Privacy & security → Windows Security", "Tap ‘Firewall & network protection’", "Check it says ‘Firewall is on’ for Domain, Private and Public networks", "Turn on any network showing as off"]
       : ["Open System Settings → Network → Firewall", "Turn it on", "Open ‘Options…’ and tick ‘Enable stealth mode’ if you use public Wi-Fi"],
     action: (platform) => ({ target: "security", path: platform === "windows" ? "Settings → Privacy & security → Windows Security → Firewall & network protection" : "System Settings → Network → Firewall", label: "Where to find it" }),
-    unverified: "Apollo could not read this computer’s firewall state.",
+    unverified: "Apollo could not read this device’s firewall state.",
     resolve: (read, _now, platform) => {
       if (read.firewallEnabled === null) return null;
       return read.firewallEnabled
@@ -434,15 +434,15 @@ const CATALOGUE: SecurityDef[] = [
         ? ["Open System Settings → General → Software Update", "Install anything offered", "Click the ⓘ beside ‘Automatic updates’ and turn on security responses and system files", "Restart when it asks"]
         : platform === "ios"
           ? ["Open Settings → General → Software Update", "Install anything offered", "Tap ‘Automatic Updates’ and turn on ‘Security Responses & System Files’"]
-          : ["Open Settings → Software update (on some phones: Settings → System → System update)", "Tap ‘Download and install’ or ‘Check for updates’", "Install anything offered, including Google Play system updates", "Turn on automatic updates if your phone offers it"],
+          : ["Open Settings → Software update (on some devices: Settings → System → System update)", "Tap ‘Download and install’ or ‘Check for updates’", "Install anything offered, including Google Play system updates", "Turn on automatic updates if your device offers it"],
     action: (platform) => ({ target: "security", path: platform === "windows" ? "Settings → Windows Update" : platform === "macos" ? "System Settings → General → Software Update" : platform === "ios" ? "Settings → General → Software Update" : "Settings → Software update", label: isDesktop(platform) ? "Where to find it" : "Open update settings" }),
     unverified: "ApolloSG cannot tell whether an update is waiting for this device.",
     resolve: (read, now, platform) => {
       if (isDesktop(platform)) {
         if (read.osUpdatesCurrent === null) return null;
         return read.osUpdatesCurrent
-          ? { state: "active", detail: `${osName(platform)} reports this computer is up to date.`, attributedTo: osName(platform) }
-          : { state: "out_of_date", detail: `${osName(platform)} reports updates are waiting to be installed. The fixes in them are not on this computer yet.`, attributedTo: osName(platform) };
+          ? { state: "active", detail: `${osName(platform)} reports this device is up to date.`, attributedTo: osName(platform) }
+          : { state: "out_of_date", detail: `${osName(platform)} reports updates are waiting to be installed. The fixes in them are not on this device yet.`, attributedTo: osName(platform) };
       }
       const age = patchAgeDays(read.securityPatch, now);
       if (age === null) return null;
@@ -494,11 +494,11 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "caller_id_spam",
     title: "Caller ID and spam protection",
-    subtitle: "Your phone app labelling a suspected scam call before you answer",
+    subtitle: "Your device app labelling a suspected scam call before you answer",
     area: "calls_messages",
     platforms: ["android"],
-    owner: "your phone app",
-    recommended: "Higgins recommends turning on caller ID and spam protection, and letting your phone app filter suspected spam calls if you are happy for them to go straight to voicemail.",
+    owner: "your device app",
+    recommended: "Higgins recommends turning on caller ID and spam protection, and letting your device app filter suspected spam calls if you are happy for them to go straight to voicemail.",
     steps: (read) => [
       `Open the ${dialerName(read)}`,
       "Tap the three dots (top right) → Settings",
@@ -507,7 +507,7 @@ const CATALOGUE: SecurityDef[] = [
       "Turn on spam filtering too if you want suspected spam silenced",
     ],
     action: () => ({ target: "apps", path: "Phone app → Settings → Caller ID & spam", label: "Check caller ID & spam" }),
-    unverified: "Apollo cannot read your phone app’s settings, so it cannot tell whether this is on.",
+    unverified: "Apollo cannot read your device app’s settings, so it cannot tell whether this is on.",
   },
   {
     id: "message_spam",
@@ -551,7 +551,7 @@ const CATALOGUE: SecurityDef[] = [
     unverified: "Apple does not let Apollo read this setting, so ApolloSG cannot tell whether it is on.",
   },
   {
-    // Australia's carriers block inside their networks, so no app on the phone can see it — and ApolloSG doesn't
+    // Australia's carriers block inside their networks, so no app on the device can see it — and ApolloSG doesn't
     // know which carrier this is. One row explains all three; nothing to switch on, so it never says "Needs checking".
     id: "au_carrier_scam_blocking",
     title: "Your mobile carrier’s scam blocking",
@@ -569,7 +569,7 @@ const CATALOGUE: SecurityDef[] = [
       "On Vodafone: scam calls are blocked in the background, so a scam that gets through looks like any other call — be just as careful",
       "Report scam calls and texts to your carrier and at scamwatch.gov.au",
     ],
-    unverified: "Your carrier does this inside its network, so no app on the phone — ApolloSG included — can see it, and ApolloSG doesn’t know which carrier you’re with.",
+    unverified: "Your carrier does this inside its network, so no app on the device — ApolloSG included — can see it, and ApolloSG doesn’t know which carrier you’re with.",
   },
 
   // ── If it is lost or stolen ───────────────────────────────────────
@@ -596,13 +596,13 @@ const CATALOGUE: SecurityDef[] = [
       if (!admins || !admins.length) return null;
       const google = admins.find((a) => a.includes("com.google.android.gms"));
       if (!google) return null;
-      return { state: "active", detail: "Google Play services holds device-admin rights on this phone, which is how Find My Device locks or erases it. Apollo cannot read the switch itself — this is the nearest honest signal, so it is still worth checking.", attributedTo: "Google" };
+      return { state: "active", detail: "Google Play services holds device-admin rights on this device, which is how Find My Device locks or erases it. Apollo cannot read the switch itself — this is the nearest honest signal, so it is still worth checking.", attributedTo: "Google" };
     },
   },
   {
     id: "disk_encryption",
     title: "Disk encryption",
-    subtitle: "Scrambling this computer’s drive so it can’t simply be read",
+    subtitle: "Scrambling this device’s drive so it can’t simply be read",
     area: "recovery",
     platforms: ["windows", "macos"],
     owner: (platform) => platform === "windows" ? "BitLocker" : "FileVault",
@@ -611,7 +611,7 @@ const CATALOGUE: SecurityDef[] = [
       ? ["Open Settings → Privacy & security → ‘Device encryption’ (or search for BitLocker)", "Turn device encryption on", "Save the recovery key to your Microsoft account AND somewhere offline", "Home editions may show ‘Device encryption’ rather than full BitLocker — that is fine"]
       : ["Open System Settings → Privacy & Security → FileVault", "Turn FileVault on", "Choose how to unlock: iCloud account or a recovery key", "If you choose a recovery key, write it down and keep it somewhere safe"],
     action: (platform) => ({ target: "security", path: platform === "windows" ? "Settings → Privacy & security → Device encryption" : "System Settings → Privacy & Security → FileVault", label: "Where to find it" }),
-    unverified: "Apollo could not read whether this computer’s drive is encrypted.",
+    unverified: "Apollo could not read whether this device’s drive is encrypted.",
     resolve: (read, _now, platform) => {
       const named = namedProtection(read, /bitlocker|filevault|encrypt/i);
       if (!named || named.enabled === null) return null;
@@ -694,7 +694,7 @@ const CATALOGUE: SecurityDef[] = [
   },
   {
     id: "remote_access",
-    title: "Remote access to this computer",
+    title: "Remote access to this device",
     subtitle: "Remote Desktop, Screen Sharing and Remote Login",
     area: "access",
     platforms: ["windows", "macos"],
@@ -736,7 +736,7 @@ const CATALOGUE: SecurityDef[] = [
       if (!apps) return null;
       return apps.length
         ? { state: "off", health: "review", detail: `${apps.length} other app${apps.length === 1 ? " has" : "s have"} Accessibility access: ${apps.join(", ")}. That's fine for apps you set up yourself.`, attributedTo: "Android" }
-        : { state: "as_recommended", detail: "No other app has Accessibility access on this phone.", attributedTo: "Android" };
+        : { state: "as_recommended", detail: "No other app has Accessibility access on this device.", attributedTo: "Android" };
     },
   },
   {
@@ -858,7 +858,7 @@ const CATALOGUE: SecurityDef[] = [
   // ── Browser, web and network ──
   {
     id: "other_vpn",
-    title: "Another VPN on this phone",
+    title: "Another VPN on this device",
     subtitle: "Whether a different VPN app is routing your traffic",
     area: "web",
     platforms: ["android"],
@@ -870,8 +870,8 @@ const CATALOGUE: SecurityDef[] = [
     resolve: (read) => {
       if (read.otherVpnActive === null) return null;
       return read.otherVpnActive
-        ? { state: "off", health: "review", detail: "Another VPN app is routing this phone's traffic. That's fine if you set it up yourself.", attributedTo: "Android" }
-        : { state: "as_recommended", detail: "No other VPN app is running on this phone.", attributedTo: "Android" };
+        ? { state: "off", health: "review", detail: "Another VPN app is routing this device's traffic. That's fine if you set it up yourself.", attributedTo: "Android" }
+        : { state: "as_recommended", detail: "No other VPN app is running on this device.", attributedTo: "Android" };
     },
   },
   {
@@ -891,12 +891,12 @@ const CATALOGUE: SecurityDef[] = [
   {
     id: "theft_protection",
     title: "Theft protection",
-    subtitle: "Locking the screen if the phone is snatched or kept offline",
+    subtitle: "Locking the screen if the device is snatched or kept offline",
     area: "recovery",
     platforms: ["android"],
     minOsMajor: 10,
     owner: "Google",
-    recommended: "Higgins recommends turning on Theft Detection Lock and Offline Device Lock where your phone offers them.",
+    recommended: "Higgins recommends turning on Theft Detection Lock and Offline Device Lock where your device offers them.",
     steps: (_r, _p, device) => device.manufacturer === "samsung"
       ? ["Open Settings → Security and privacy → ‘Lost device protection’", "Tap ‘Theft protection’", "Turn on ‘Theft Detection Lock’ and ‘Offline Device Lock’"]
       : ["Open Settings → Google → All services → ‘Theft protection’ (or search Settings for ‘Theft’)", "Turn on ‘Theft Detection Lock’", "Turn on ‘Offline Device Lock’"],

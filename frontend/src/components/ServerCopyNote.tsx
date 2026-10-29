@@ -17,7 +17,7 @@ const useStyles = makeStyles((c) => ({
 
 export function ServerCopyNote({ caseId, live, testID = "server-copy-note" }: {
   caseId: string | null | undefined;
-  /** The live case, used until the result is saved on this phone. */
+  /** The live case, used until the result is saved on this device. */
   live?: InvestigationCase | null;
   testID?: string;
 }) {

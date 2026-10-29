@@ -1,4 +1,4 @@
-// "Send to family" on a threat: one tap sends linked family in Apollo a short summary, or opens the phone's
+// "Send to family" on a threat: one tap sends linked family in Apollo a short summary, or opens the device's
 // share menu (a message, WhatsApp or an email). Only the summary goes — never the original message, links or pictures.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";

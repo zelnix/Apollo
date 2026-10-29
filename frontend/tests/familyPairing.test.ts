@@ -7,7 +7,7 @@ const family = read("../app/family.tsx");
 
 test("Family sharing pairs only with a code: no email invitation, no phone number, no intro line", () => {
   assert.doesNotMatch(family, /family\/guardians|Send invitation|family-email-card|Email alerts/);
-  assert.doesNotMatch(family, /family-owner-phone|Your phone number \(optional\)/);
+  assert.doesNotMatch(family, /family-owner-phone|Your device number \(optional\)/);
   assert.doesNotMatch(family, /Share only Barking and Biting alerts/);
   assert.match(family, /apiPost<PairCode>\("\/family\/pair", "family", \{ device_id: deviceId, owner_name: owner\.trim\(\) \}\)/);
 });

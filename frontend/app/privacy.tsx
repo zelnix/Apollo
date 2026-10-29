@@ -27,7 +27,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 const PRINCIPLES = [
-  { title: "Local-first processing", desc: "ApolloSG processes your data on-device whenever possible. Your messages, calls and personal information stay on your phone." },
+  { title: "Local-first processing", desc: "ApolloSG processes your data on-device whenever possible. Your messages, calls and personal information stay on your device." },
   { title: "No data selling", desc: "We never sell, share or monetise your personal data. ApolloSG exists to protect you, not to profit from your information." },
   { title: "Minimal data collection", desc: "When AI analysis is needed, ApolloSG sends only the minimum required data. Personal details are redacted before any external call." },
   { title: "Transparent AI usage", desc: "When ApolloSG uses AI tools for analysis, we tell you. Your personal information is removed before anything is sent, and you can see what was sent and what came back in the Magnum DI record." },

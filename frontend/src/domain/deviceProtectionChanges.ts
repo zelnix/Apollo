@@ -71,7 +71,7 @@ const FLAGS: Flag[] = [
   { key: "usbDebugging", protectionId: "developer_options", kind: "usb_debugging", title: "USB debugging", on: "USB debugging was turned on.", off: "USB debugging was turned off." },
   { key: "developerOptions", protectionId: "developer_options", title: "Developer options", on: "Developer options were turned on.", off: "Developer options were turned off." },
   { key: "unknownSources", protectionId: "unknown_sources", title: "Installing apps from outside the store", on: "Installing apps from outside the store was allowed.", off: "Installing apps from outside the store is no longer allowed." },
-  { key: "otherVpnActive", protectionId: "other_vpn", title: "Another VPN", on: "Another VPN app started routing this phone's traffic.", off: "The other VPN app is no longer routing this phone's traffic." },
+  { key: "otherVpnActive", protectionId: "other_vpn", title: "Another VPN", on: "Another VPN app started routing this device's traffic.", off: "The other VPN app is no longer routing this device's traffic." },
   { key: "appScannerOff", protectionId: "app_scanner", title: "App scanning", on: "Your device's app scanning reported it was switched off.", off: "Your device's app scanning reported it is switched on again." },
 ];
 

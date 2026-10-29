@@ -72,7 +72,7 @@ const GENUINE = [
 
 async function original(text: string) { return parseOriginalEmail(utf8ToBinary(text), sha); }
 
-test("an original .eml is parsed on the phone: headers, encoded subject, MIME, fingerprinted attachment", async () => {
+test("an original .eml is parsed on the device: headers, encoded subject, MIME, fingerprinted attachment", async () => {
   const parsed = await original(PHISH);
   const t = parsed.technical;
   assert.equal(parsed.fullHeaders, true);
@@ -235,7 +235,7 @@ test("upgrade: L1 → L3 keeps the history and says so; a weaker copy later neve
   assert.deepEqual(later.history.map((h) => h.level), ["L1", "L3", "L1"]);
 });
 
-test("only minimal structured findings may leave the phone — no subject, body, names, addresses or header text", async () => {
+test("only minimal structured findings may leave the device — no subject, body, names, addresses or header text", async () => {
   const parsed = await original(PHISH);
   const { raw, fields } = analysisSourceFor(parsed);
   const findings = emailFindings(buildEmailProfile({ via: "eml_file", original: parsed, analysis: analyseEmail(raw, fields, headerEvidenceFor(parsed)) }));

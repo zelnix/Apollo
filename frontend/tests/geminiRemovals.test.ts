@@ -6,7 +6,7 @@ import { enforceEgress } from "../src/domain/privacy.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("protection explanations are reviewed text only: no AI route, nothing about the phone is sent", () => {
+test("protection explanations are reviewed text only: no AI route, nothing about the device is sent", () => {
   const client = read("../src/higgins/protectionExplanation.ts");
   assert.doesNotMatch(client, /apiPost|\/protections\/device\/explanation|osVersion|manufacturer/);
   assert.match(client, /apiGet<ExplanationResult>\(`\/protections\/device\/\$\{encodeURIComponent\(row\.id\)\}`\)/);

@@ -46,7 +46,7 @@ test("a website matches by its address, with or without https:// and www.", () =
   assert.deepEqual(matchCase(sms, smsOriginal, "unified-rebates"), { match: "website", excerpt: "unified-rebates.com" });
 });
 
-test("words in the message match in any order, from the original kept on the phone", () => {
+test("words in the message match in any order, from the original kept on the device", () => {
   const found = matchCase(sms, smsOriginal, "rebate claim")!;
   assert.equal(found.match, "message");
   assert.match(found.excerpt, /claim your rebate/);

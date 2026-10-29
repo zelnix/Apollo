@@ -352,7 +352,7 @@ export function classifyIntent(
     }
   }
 
-  // "What is phishing?" — a word Higgins' dictionary explains, answered on the phone from the Luddish Dictionary and
+  // "What is phishing?" — a word Higgins' dictionary explains, answered on the device from the Luddish Dictionary and
   // Knowledge Library. Checked before the status and scam patterns, which would read "phishing" as a case to open.
   const term = askedTerm(trimmed);
   if (term) {
@@ -420,12 +420,12 @@ export function classifyIntent(
       route: "clarify",
       confidence: 0.3,
       reason: "Message too short and ambiguous to classify",
-      clarificationQuestion: "Do you mean whether Apollo is protecting your phone, or would you like me to investigate something specific?",
+      clarificationQuestion: "Do you mean whether Apollo is protecting your device, or would you like me to investigate something specific?",
     };
   }
 
   // Default: anything with no strong local signal belongs to Higgins himself, who
-  // answers from Apollo's product knowledge, this phone's live state and his own
+  // answers from Apollo's product knowledge, this device's live state and his own
   // knowledge of scams. A canned local answer here would be a guess.
   return {
     route: "ask_higgins",

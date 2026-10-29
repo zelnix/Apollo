@@ -1,4 +1,4 @@
-// Follow-ups on a FINISHED Magnum DI investigation are answered here, on the phone, from the investigation's own
+// Follow-ups on a FINISHED Magnum DI investigation are answered here, on the device, from the investigation's own
 // record — never by Gemini, and never by reopening the investigation. This holds even when the follow-up brings
 // something new (a link, an email address or a phone number): the new item is named as not covered.
 // Mirrors backend/services/higgins/presenter.py `investigation_follow_up` so both sides say the same thing.

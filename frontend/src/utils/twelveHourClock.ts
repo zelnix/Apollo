@@ -1,5 +1,5 @@
-// Every time Apollo shows is on the 12-hour clock ("3:16 pm"), in this phone's own time zone. Installed once at
-// start-up (app/_layout.tsx), so every screen, report and message built on the phone follows it without each
+// Every time Apollo shows is on the 12-hour clock ("3:16 pm"), in this device's own time zone. Installed once at
+// start-up (app/_layout.tsx), so every screen, report and message built on the device follows it without each
 // call having to ask. A call that sets its own hour12/hourCycle keeps it. Pure: no React, no native imports.
 
 type Options = Intl.DateTimeFormatOptions | undefined;

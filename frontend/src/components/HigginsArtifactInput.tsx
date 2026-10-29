@@ -76,7 +76,7 @@ const CATEGORY_CONFIG: Record<HigginsCheckCategory, {
   },
   messages_calls: {
     title: "Check a message or call",
-    placeholder: "Paste the message text, or enter the phone number",
+    placeholder: "Paste the message text, or enter the device number",
     multiline: true,
     keyboardType: "default",
     autoCapitalize: "sentences",
@@ -224,7 +224,7 @@ const SOURCE_NOTE: Record<SourceKey, string> = {
 const PREVIEW_ONLY_SOURCES: SourceKey[] = ["screenshots", "links", "concerns"];
 
 const HERO_CAPTION: Record<HigginsCheckCategory, string> = {
-  screenshot: "Apollo reads only the image you choose. It stays on this phone until you submit.",
+  screenshot: "Apollo reads only the image you choose. It stays on this device until you submit.",
   websites_links: "Apollo checks where the link really leads.",
   messages_calls: "Only the one message or number you choose — never your inbox or call history.",
   email_accounts: "Only the one email you choose: its sender, its links and what it asks for.",
@@ -714,7 +714,7 @@ export function HigginsArtifactInput({ visible, category, initialQuestion, onClo
             </Pressable>
           </View>
           <Text style={s.hint}>
-            A screenshot, a QR code, a letter or anything else in front of you. It stays on this phone
+            A screenshot, a QR code, a letter or anything else in front of you. It stays on this device
             until you submit it.
           </Text>
           {cameraBlocked ? (

@@ -501,9 +501,9 @@ function EvidenceSourceCard({ ev, caseId, onViewFull, s }: {
 
       {/* Unavailable / expired notice */}
       {ev.availability === "content_expired" ? (
-        <Text style={s.muted}>ApolloSG&apos;s server copy was deleted after 24 hours. Your copy on this phone is kept until you delete it.</Text>
+        <Text style={s.muted}>ApolloSG&apos;s server copy was deleted after 24 hours. Your copy on this device is kept until you delete it.</Text>
       ) : ev.availability !== "available" ? (
-        <Text style={s.muted}>{ev.availability === "purged" ? "Server copy deleted. Your copy on this phone is kept until you delete it." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
+        <Text style={s.muted}>{ev.availability === "purged" ? "Server copy deleted. Your copy on this device is kept until you delete it." : ev.availability === "permission_required" ? "Additional permissions needed." : "Content not currently available."}</Text>
       ) : null}
 
       {/* Label — preserved original submission label */}
@@ -527,7 +527,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   openingQuestion?: boolean;
 }) {
   const s = useStyles(); const { colors } = useTheme();
-  // The check's own record on this phone: who started it (when the case doesn't say) and Higgins Triage's record.
+  // The check's own record on this device: who started it (when the case doesn't say) and Higgins Triage's record.
   const { events } = useApollo();
   const event = useMemo(() => (eventId ? events.find((e) => e.event_id === eventId) ?? null : null), [events, eventId]);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -564,7 +564,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     try {
       const token = await getDeviceToken();
       if (!token) { setPdfNote("Device not registered. Please restart ApolloSG."); return; }
-      // Times in the report are this phone's local time.
+      // Times in the report are this device's local time.
       const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf?tzOffset=${-new Date().getTimezoneOffset()}`;
       const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
       const fileUri = (FileSystemLegacy.cacheDirectory ?? "") + filename;
@@ -645,7 +645,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
     if (!caseData) return;
     void runAction(action, caseData).then((outcome) => {
-      setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this phone."
+      setActionNote(outcome.kind === "observed" ? "Apollo took a fresh reading on this device."
         : outcome.kind === "opened" ? `${outcome.descriptor.label} \u2014 opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo checks automatically.`
         : outcome.kind === "requested" ? "ApolloSG asked the system for that permission. A fresh check runs when you return."
         : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
@@ -775,7 +775,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
           } : null} /> : null}
 
           {/* Original evidence items — the server-side chain. Skipped when the exact original is
-              already on this phone, so the same material isn't shown twice. */}
+              already on this device, so the same material isn't shown twice. */}
           {originalEvidence.length && !hasLocalOriginal ? <>
             {originalEvidence.map((ev) => (
               <Card key={ev.id} style={[s.card, { gap: spacing.sm }]}>

@@ -1,4 +1,4 @@
-// Every time Apollo shows is on the 12-hour clock, in the phone's own time zone.
+// Every time Apollo shows is on the 12-hour clock, in the device's own time zone.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -11,7 +11,7 @@ test("options gain the 12-hour clock, and a 2-digit hour loses its leading zero"
   assert.deepEqual(twelveHour({ hourCycle: "h23" }), { hourCycle: "h23" });
 });
 
-test("once installed, every Date time reads on the 12-hour clock in the phone's time zone", () => {
+test("once installed, every Date time reads on the 12-hour clock in the device's time zone", () => {
   installTwelveHourClock();
   installTwelveHourClock(); // a second call changes nothing
   const afternoon = new Date(2026, 9, 25, 15, 16); // local time

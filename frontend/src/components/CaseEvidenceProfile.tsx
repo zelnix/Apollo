@@ -1,5 +1,5 @@
 // The case's evidence card on the Threat case screen, with "Add the original email (.eml)" while the evidence is
-// below the original message. The original is read on this phone and re-triaged in THIS case; its history stays.
+// below the original message. The original is read on this device and re-triaged in THIS case; its history stays.
 import React, { useState } from "react";
 
 import { EvidenceProfileCard } from "@/src/components/EvidenceProfileCard";

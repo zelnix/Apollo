@@ -37,7 +37,7 @@ export interface SupportDeviceInfo {
 }
 
 const fmt = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString() : UNAVAILABLE);
-const DEVICE_TYPE: Record<number, string> = { 0: "Unknown", 1: "Phone", 2: "Tablet", 3: "Desktop", 4: "TV" };
+const DEVICE_TYPE: Record<number, string> = { 0: "Unknown", 1: "Device", 2: "Device", 3: "Device", 4: "TV" };
 
 export async function collectAppDeviceInfo(): Promise<{ app: SupportAppInfo; device: SupportDeviceInfo }> {
   const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? UNAVAILABLE;
