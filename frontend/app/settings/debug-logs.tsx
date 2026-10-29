@@ -8,7 +8,7 @@
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import Upload from "lucide-react-native/icons/upload";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
@@ -120,7 +120,7 @@ export default function DebugLogsScreen() {
           <Upload size={18} color={colors.brandPrimary} />
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Clear logs" testID="debug-logs-clear" onPress={() => void clearLogs()} style={s.iconBtn}>
-          <Trash2 size={18} color={colors.growling} />
+          <Trash size={18} color={colors.growling} />
         </Pressable>
       </View>
 
