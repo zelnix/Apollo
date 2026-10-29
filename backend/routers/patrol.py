@@ -17,7 +17,7 @@ from core.models import EnforcementEvidenceIn, PatrolEvent, PatrolEventIn, Patro
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
 from services.patrol_policy import packet_verified, minimal_patrol, refresh_summary, revalidate_stored_patrol
-from services import patrol_records
+from services import loop_cleanup, patrol_records
 
 router = APIRouter()
 
@@ -207,6 +207,13 @@ async def list_events(device_id: str = Query(min_length=8, max_length=64), limit
 @router.get("/patrol/records")
 async def list_patrol_records(request: Request, limit: int = Query(default=200, ge=1, le=500)):
     return await patrol_records.current(request.state.device["device_id"], limit)
+
+
+@router.get("/patrol/removed")
+async def removed_patrol_events(request: Request):
+    """Patrol events the server hid as duplicates (services/loop_cleanup.py), so the device drops its local copies."""
+    owner = request.state.device["device_id"]
+    return {"eventIds": await db.patrol_events.distinct("event_id", {"device_id": owner, "removed_reason": loop_cleanup.REMOVED_REASON})}
 
 
 @router.get("/patrol/records/{record_id}/timeline")

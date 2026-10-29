@@ -4457,3 +4457,14 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
   Logged via `dlog("CallGuard", "check complete", …)`.
 - Regression test `tests/stableSubmissionId.test.ts`: no screen may pass a `submissionId` built from Date.now()/Math.random();
   fails on the old code, passes on the fix. Full frontend suite 1208/1208.
+
+## Cleanup — duplicate investigations from the Check a Number loop (preview only, 2026-10-29)
+- Rule (user-chosen): Call Gate cases for the same number within 2 minutes of the previous one are one check; the
+  first case that still shows in history is kept (else the first case). Implemented in `backend/services/loop_cleanup.py`.
+- Hides, never erases: history rows → deleted=True; Patrol events → deleted_at; every Patrol record revision →
+  duplicate_of the kept record. All tagged `removed_reason/duplicate_reason = duplicate_investigation_loop`.
+- Script: `python backend/scripts/remove_loop_duplicates.py` (dry run) | `--apply` | `--undo` | `--gap 300` | `--owner ID`.
+- Devices: new `GET /api/patrol/removed` → `{eventIds}`; ApolloContext drops those local copies on its next Patrol sync.
+- Result on the user's device: Higgins history 776 → 15 entries; Threat history 200 → 21 records. Applied to the preview DB
+  only (the live app was not touched, per user choice).
+- Tests: backend `tests/test_loop_cleanup.py`, `tests/test_patrol_removed.py`; backend 1529 pass, frontend 1208 pass.

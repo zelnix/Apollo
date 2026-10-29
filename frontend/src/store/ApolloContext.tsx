@@ -899,6 +899,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // so the same production logic is exercised by both the app and the regression tests.
   const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolRecord[]>(`/patrol/records?limit=200`) });
   const remoteTrust = useQuery({ queryKey: ["trust", deviceId], enabled: !!deviceId, queryFn: () => apiGet<TrustEntry[]>(`/trust?device_id=${deviceId}`) });
+  // Records the server hid as duplicates (e.g. the Check a Number loop's copies). The merge never drops a
+  // local-only event, so this device's copies are removed here.
+  const removedRemote = useQuery({ queryKey: ["patrol-removed", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ eventIds: string[] }>(`/patrol/removed`) });
   useEffect(() => {
     // Wait until local events are restored, and merge against the live ref — merging against an
     // empty/stale snapshot let the server's unresolved copy overwrite a local "contained" decision.
@@ -906,9 +909,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // The server's records carry the separated evidence model; older records are read into it. A missing evidence
     // source stays missing — server processing is never written in its place.
     const remoteConverted = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
-    const { events: merged } = mergeLocalAndRemoteEvents(eventsRef.current, remoteConverted);
+    const removed = new Set(removedRemote.data?.eventIds ?? []);
+    const local = removed.size ? eventsRef.current.filter((e) => !removed.has(e.event_id)) : eventsRef.current;
+    const { events: merged } = mergeLocalAndRemoteEvents(local, remoteConverted);
     void persistEvents(merged);
-  }, [remoteEvents.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [remoteEvents.data, removedRemote.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server-investigated sources (monitored email, captured texts, Higgins submissions): download the exact
   // original once while the investigation still holds it (server copies expire after 24 h) and keep it on device.
