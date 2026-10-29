@@ -150,8 +150,10 @@ async def test_learn_article_explanation_uses_the_articles_own_words(monkeypatch
                "citations": [{"label": "Scamwatch", "url": "https://www.scamwatch.gov.au"}]}
     monkeypatch.setattr(chat.learning, "article_by_title", AsyncMock(return_value=article))
     reply = await ask("Please explain the learning article: Toll scams")
-    assert reply.answer.startswith("From the Learn with Higgins article “Toll scams”")
+    # No metadata preamble — just the article content
+    assert "How fake toll texts work." in reply.answer
     assert "Real toll operators don't text links." in reply.answer and "• Check the app" in reply.answer
+    assert "From the Learn with Higgins article" not in reply.answer
     monkeypatch.setattr(chat.learning, "article_by_title", AsyncMock(return_value=None))
     missing = await ask("Please explain the learning article: Not a real article")
     assert "couldn't find" in missing.answer

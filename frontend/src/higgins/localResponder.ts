@@ -20,15 +20,15 @@ import * as Crypto from "expo-crypto";
 
 /** Where each on-device answer sensibly leads, so the person can tap straight through. */
 const DIAGNOSTIC_LINKS: Record<string, NavLink[]> = {
-  protection_status: navLinks("/gates"),
-  site_status: navLinks("/gates"),
-  call_status: navLinks("/call-guard", "/gates"),
-  text_status: navLinks("/text-guard", "/gates"),
-  app_status: navLinks("/app-check", "/gates"),
-  vpn_status: navLinks("/network", "/gates"),
-  permission_status: navLinks("/gates"),
+  protection_status: navLinks("/(tabs)/protection"),
+  site_status: navLinks("/site-gate"),
+  call_status: navLinks("/call-guard"),
+  text_status: navLinks("/text-guard"),
+  app_status: navLinks("/app-check"),
+  vpn_status: navLinks("/site-gate"),
+  permission_status: navLinks("/(tabs)/protection"),
   notification_status: navLinks("/notification-check"),
-  current_issues: navLinks("/(tabs)/patrol"),
+  current_issues: navLinks("/(tabs)/protection"),
 };
 
 export function diagnosticToHigginsMessage(result: DiagnosticResult, conversationId: string): HigginsChatMessage {

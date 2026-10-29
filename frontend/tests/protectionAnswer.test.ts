@@ -36,8 +36,10 @@ const snapshot = (over: Record<string, unknown> = {}) => ({
 test("fully protected: answers yes, names no problem, adds no technical clutter", () => {
   const out = getProtectionStatus(snapshot());
   assert.match(out.summary, /^Yes —/);
-  assert.match(out.summary, /all 1 protections on this device are on/);
-  assert.match(out.summary, /I last checked at/);
+  assert.match(out.summary, /all 1 protections are on/);
+  // No diagnostic internals ("health check", "snapshot", "I last checked at")
+  assert.ok(!/health check/i.test(out.summary), out.summary);
+  assert.ok(!/snapshot/i.test(out.summary), out.summary);
   assert.equal(out.attentionNeeded, false);
 });
 
@@ -52,8 +54,8 @@ test("something needs attention: answers partly, names ONE problem and ONE actio
   // one problem only — the second gate is not named in the main answer
   assert.match(out.summary, /website protection/i);
   assert.ok(!/call protection/i.test(out.summary), out.summary);
-  // one action
-  assert.equal((out.summary.match(/Open ApolloSG's protection settings/g) ?? []).length, 1);
+  // guidance toward action (not a raw subsystem instruction)
+  assert.match(out.summary, /fix/i);
   assert.equal(out.attentionNeeded, true);
 });
 
@@ -62,14 +64,14 @@ test("never claims nothing needs attention while protections are off", () => {
     gates: [gate(), unsupportedGate("call", "Call protection")],
   }));
   assert.ok(!/No issues need attention/.test(out.summary), out.summary);
-  assert.match(out.summary, /1 of the 2 protections on this device is on/);
-  assert.match(out.summary, /other one isn't available on this device/);
+  assert.match(out.summary, /1 of 2 protections/);
+  assert.match(out.summary, /other one isn't/);
 });
 
 test("protection service down: answers no and gives the single step", () => {
   const out = getProtectionStatus(snapshot({ protection: { running: false, requested: false, operational: false } }));
   assert.match(out.summary, /^No — Apollo's protection isn't running/);
-  assert.match(out.summary, /turn Apollo's protection back on/);
+  assert.match(out.summary, /turned back on/);
   assert.ok(!/No issues need attention/.test(out.summary));
   assert.equal(out.attentionNeeded, true);
 });

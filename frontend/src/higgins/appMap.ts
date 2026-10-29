@@ -21,6 +21,7 @@ export const APOLLO_DESTINATIONS: Record<string, string> = {
   "/(tabs)/settings": "Settings",
   "/(tabs)/check-it": "Check It",
   "/(tabs)/guard": "Your protections",
+  "/(tabs)/protection": "Protections",
   // Manual checks
   "/message": "Check a message",
   "/check": "Check a website link",

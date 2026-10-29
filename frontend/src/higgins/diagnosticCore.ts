@@ -112,7 +112,7 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
     attentionNeeded: issues.length > 0 || !serviceRunning,
     observedAt: health.checkedAt,
     caveats: health.checking
-      ? ["ApolloSG is running a health check right now. This is the latest snapshot — results may update in a moment."]
+      ? ["Apollo is refreshing this now — it may change in a moment."]
       : [],
   };
 }
@@ -181,11 +181,11 @@ export function getCurrentIssues(health: ProtectionHealthSnapshot, extra?: { eve
     intent: "current_issues",
     facts: { issues, gateCount: health.gates.length },
     summary: issues.length === 0
-      ? "No issues need your attention right now. All observed protections are running normally."
-      : `${issues.length} ${issues.length === 1 ? "issue needs" : "issues need"} your attention:\n${issues.map((i) => `• ${i}`).join("\n")}`,
+      ? "Nothing needs your attention right now. All the protections Apollo can see are running normally."
+      : buildCurrentIssuesSummary(issues, health),
     attentionNeeded: issues.length > 0,
     observedAt: health.checkedAt,
-    caveats: health.checking ? ["A health check is currently running. These results may update shortly."] : [],
+    caveats: health.checking ? ["Apollo is refreshing this now — it may change in a moment."] : [],
   };
 }
 
@@ -293,58 +293,75 @@ function gateToFact(gate: GateHealthRecord): GateFact {
 }
 
 function buildProtectionSummary(facts: ProtectionFacts, activeCount: number, totalCount: number): string {
-  // Higgins' rule: plain English first, one problem at a time, one action at a time, technical detail
-  // only when asked. So this answers the question ("is my device protected?") directly, names the ONE
-  // thing that matters most, gives ONE next step, and leaves the rest for "More details".
+  // Answer → Meaning → Next action. One problem at a time, one action at a time.
   const attention = facts.gates.filter((g) => g.needsAttention);
-  const unavailable = facts.gates.filter((g) => !g.needsAttention && g.automaticState !== "running");
   const parts: string[] = [];
 
   if (!facts.serviceRunning) {
+    // Answer
     parts.push("No — Apollo's protection isn't running, so nothing is being checked automatically right now.");
-    parts.push("The first thing to do is turn Apollo's protection back on.");
+    // Meaning + Next action
+    parts.push("That means Apollo can't protect you until it's turned back on. Let's fix that first.");
   } else if (attention.length > 0) {
     const first = attention[0];
-    parts.push(`Partly. ApolloSG is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
-    parts.push(`The first thing to sort out is ${first.title.toLowerCase()} — ${(first.limitation || first.statusLabel).toLowerCase()}.`);
-    parts.push("Open ApolloSG's protection settings and turn it on, then ask me to check again.");
+    // Answer
+    parts.push(`Partly. ${activeCount} of ${totalCount} protections ${activeCount === 1 ? "is" : "are"} on, but ${attention.length === 1 ? "one needs" : `${attention.length} need`} sorting out.`);
+    // Meaning + Next action
+    parts.push(`The first to fix is ${first.title.toLowerCase()} — ${(first.limitation || first.statusLabel).toLowerCase()}. Once that's on, you'll be better protected.`);
   } else if (activeCount < totalCount) {
-    parts.push(`Partly. ApolloSG is running, and ${activeCount} of the ${totalCount} protections on this device ${activeCount === 1 ? "is" : "are"} on.`);
-    parts.push(`The ${totalCount - activeCount === 1 ? "other one isn't" : `other ${totalCount - activeCount} aren't`} available on this device, so ${totalCount - activeCount === 1 ? "it can't" : "they can't"} be switched on here.`);
+    parts.push(`Mostly. ${activeCount} of ${totalCount} protections ${activeCount === 1 ? "is" : "are"} running.`);
+    parts.push(`The ${totalCount - activeCount === 1 ? "other one isn't" : `other ${totalCount - activeCount} aren't`} available on this device.`);
   } else {
-    parts.push(`Yes — ApolloSG is running and all ${totalCount} protections on this device are on.`);
+    parts.push(`Yes — all ${totalCount} protections are on and running.`);
   }
 
   if (facts.rulesCurrent === false) {
-    parts.push("Its security rules are also out of date.");
-  } else if (facts.serviceRunning && attention.length === 0 && unavailable.length > 0 && activeCount === totalCount) {
-    parts.push("Some checks aren't available on this device.");
-  }
-
-  if (facts.checkedAt) {
-    try {
-      const time = new Date(facts.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      parts.push(`I last checked at ${time}.`);
-    } catch { /* ignore format errors */ }
+    parts.push("Apollo's security rules are also out of date, which means its checks might miss newer threats.");
   }
 
   return parts.join(" ");
 }
 
 function buildGateSummary(gate: GateFact): string {
-  const parts = [`${gate.title}: ${gate.statusLabel}.`];
+  const parts: string[] = [];
   if (gate.automaticState === "running") {
-    parts.push("It's running and protecting you.");
+    parts.push(`${gate.title} is on and protecting you.`);
   } else if (gate.automaticState === "off") {
-    parts.push("It's currently off.");
-  } else if (gate.automaticState) {
-    parts.push(`Current state: ${gate.automaticState}.`);
+    parts.push(`${gate.title} is off right now.`);
+    if (gate.limitation) parts.push(`That's because ${gate.limitation.charAt(0).toLowerCase()}${gate.limitation.slice(1)}`);
+    parts.push("That means Apollo can't check this automatically until it's turned back on.");
+  } else {
+    parts.push(`${gate.title}: ${gate.statusLabel}.`);
+    if (gate.limitation) parts.push(gate.limitation);
   }
-  if (gate.limitation) {
-    parts.push(`Limitation: ${gate.limitation}`);
+  if (gate.needsAttention && gate.automaticState !== "off") {
+    parts.push("This needs sorting out to keep you protected.");
   }
-  if (gate.needsAttention) {
-    parts.push("This needs your attention.");
+  return parts.join(" ");
+}
+
+function buildCurrentIssuesSummary(issues: string[], health: ProtectionHealthSnapshot): string {
+  const serviceDown = health.protection && !health.protection.running;
+  const parts: string[] = [];
+
+  // Answer — what's happening
+  if (serviceDown && issues.length === 1) {
+    parts.push("Apollo's automatic protection isn't running right now.");
+    parts.push("That means nothing is being checked automatically until it's turned back on.");
+    parts.push("Let's fix that first.");
+  } else if (serviceDown) {
+    parts.push("Apollo's automatic protection isn't running, and there are other things that need your attention too.");
+    parts.push("Nothing is being checked automatically until protection is turned back on — that's the first thing to fix.");
+  } else if (issues.length === 1) {
+    parts.push(`There's one thing that needs your attention: ${issues[0].charAt(0).toLowerCase()}${issues[0].slice(1)}`);
+    parts.push("Until it's sorted out, that part of your protection isn't working.");
+  } else {
+    parts.push(`There are ${issues.length} things that need your attention.`);
+    // Meaning — why it matters
+    const issueDescriptions = issues.map((i) => i.charAt(0).toLowerCase() + i.slice(1));
+    parts.push(`The main ones: ${issueDescriptions.slice(0, 3).join(", and ")}.`);
+    parts.push("Each one means a gap in your protection until it's addressed.");
   }
+
   return parts.join(" ");
 }

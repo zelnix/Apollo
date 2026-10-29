@@ -350,13 +350,13 @@ def scam_alert_card(title: str, source: str, summary: str, url: str) -> dict[str
 
 
 def learn_article(article: dict[str, Any], max_chars: int = 1800) -> dict[str, Any]:
-    """A Learn with Higgins article in its own words: summary, then its sections in order."""
-    blocks = [f"From the Learn with Higgins article “{article['title']}”:"]
+    """A Learn with Higgins article — answer the question using the article’s own words, without metadata."""
+    blocks: list[str] = []
     if article.get("summary"):
         blocks.append(article["summary"])
     used = sum(len(b) for b in blocks)
     for section in article.get("sections") or []:
-        lines = [f"{section['heading']}:"] if section.get("heading") else []
+        lines = [f"**{section['heading']}**"] if section.get("heading") else []
         lines += [str(p) for p in section.get("paragraphs") or []] + [f"• {b}" for b in section.get("bullets") or []]
         text = "\n".join(lines).strip()
         if not text or used + len(text) > max_chars:
