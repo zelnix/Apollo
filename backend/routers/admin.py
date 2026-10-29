@@ -213,6 +213,27 @@ async def admin_preview_purge_status(run_id: str):
     return found
 
 
+# --------------------------------------------------------------------------- Remove every threat case (services/case_wipe.py)
+class CaseWipeIn(BaseModel):
+    confirm: str
+
+
+@router.get("/case-wipe/scan")
+async def admin_case_wipe_scan():
+    from services import case_wipe
+    return await case_wipe.scan()
+
+
+@router.post("/case-wipe")
+async def admin_case_wipe(body: CaseWipeIn, request: Request, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    from services import case_wipe
+    if body.confirm != case_wipe.CONFIRM:
+        raise HTTPException(status_code=422, detail=f'Send confirm "{case_wipe.CONFIRM}".')
+    result = await case_wipe.run((actor or "").strip()[:80] or "console")
+    await audit(request, "cases.wipe", result["wipeId"], {"patrol_events": result["patrolEvents"], "deleted": result["deleted"]}, actor)
+    return result
+
+
 
 # --------------------------------------------------------------------------- Threat indicators
 # Stage 1: threat-intelligence lifecycle foundation. Full provenance, verification

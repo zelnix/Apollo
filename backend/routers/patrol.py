@@ -17,7 +17,7 @@ from core.models import EnforcementEvidenceIn, PatrolEvent, PatrolEventIn, Patro
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
 from services.patrol_policy import packet_verified, minimal_patrol, refresh_summary, revalidate_stored_patrol
-from services import loop_cleanup, patrol_records
+from services import case_wipe, loop_cleanup, patrol_records
 
 router = APIRouter()
 
@@ -108,6 +108,9 @@ async def upsert_event(body: PatrolEventIn):
     # submission can never introduce or overwrite a Triage Investigation record.
     body.triage_investigation = None
     existing = await db.patrol_events.find_one({'event_id': body.event_id, 'device_id': body.device_id})
+    # Cases an administrator removed stay removed: a device still holding its copy gets an acknowledgement, nothing is stored.
+    if await case_wipe.refuses(body, existing):
+        return case_wipe.unsaved_ack(body, ts)
     fingerprint = _evidence_fingerprint(body.enforcement_evidence) if body.enforcement_evidence else None
     if body.enforcement_evidence:
         receipt = await db.evidence_receipts.find_one({
@@ -211,9 +214,18 @@ async def list_patrol_records(request: Request, limit: int = Query(default=200, 
 
 @router.get("/patrol/removed")
 async def removed_patrol_events(request: Request):
-    """Patrol events the server hid as duplicates (services/loop_cleanup.py), so the device drops its local copies."""
+    """Patrol events the server hid as duplicates (services/loop_cleanup.py) or an administrator removed
+    (services/case_wipe.py), so the device drops its local copies."""
     owner = request.state.device["device_id"]
-    return {"eventIds": await db.patrol_events.distinct("event_id", {"device_id": owner, "removed_reason": loop_cleanup.REMOVED_REASON})}
+    reasons = [loop_cleanup.REMOVED_REASON, case_wipe.REMOVED_REASON]
+    return {"eventIds": await db.patrol_events.distinct("event_id", {"device_id": owner, "removed_reason": {"$in": reasons}})}
+
+
+@router.get("/patrol/wipe")
+async def latest_case_wipe():
+    """The latest time an administrator removed every case; the device clears its local copies from before it."""
+    last = await case_wipe.latest()
+    return {"wipeId": last["wipe_id"], "at": last["at"].isoformat()} if last else {"wipeId": None, "at": None}
 
 
 @router.get("/patrol/records/{record_id}/timeline")

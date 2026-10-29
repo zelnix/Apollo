@@ -4514,3 +4514,22 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Native service compiled against android-34 android.jar + androidx core 1.13.1; frontend 1228 tests pass.
 - NEEDS device validation in an installed Android build (CallScreeningService + notifications don't run in preview/Expo Go). iOS can't
   tell apps when a call arrives, so there is no Repeat Caller Alert on iPhone.
+
+## Remove every threat case and Patrol record (2026-10-29, owner request)
+- User choices: preview AND production; also clear every device's copy; also history, saved reports, family-shared copies.
+- `services/case_wipe.py` + admin `GET /api/admin/case-wipe/scan`, `POST /api/admin/case-wipe` {confirm: "DELETE ALL CASES"}
+  (audited as `cases.wipe`). Deletes all docs in patrol_records, investigation_* (cases, events, evidence, chunks,
+  reports, jobs, turn commits, uploads, idempotency, device requests, cleanup, settings plans), di_transactions,
+  triage_investigations, triage_results, higgins_investigation_history, device_case_history, shared_events,
+  shared_incidents, incident_notes, threat_notes, shared_scam_alerts, held_alerts. Patrol events become delete markers
+  {event_id, device_id, removed_reason: "admin_case_wipe", deleted_at}. Kept: threat lists, Learn, settings, devices,
+  family links, usage/cost, evidence_receipts, push delivery history. Reset recorded in `case_wipes`.
+- Devices: GET /api/patrol/removed now also returns wiped ids (older app builds already drop these). POST /patrol/events
+  for a wiped id is acknowledged but not stored (matched by id only, never by time — device clocks can be wrong).
+  New build: GET /api/patrol/wipe → `src/store/caseWipe.ts` drops local events from before the reset and clears saved
+  checks, check history, app reports, device-held investigations, originals, image evidence, original emails (once per wipeId).
+- PREVIEW: wiped 2026-10-29 08:50 UTC (123,909 records + 28,286 events → markers); device-clear verified in browser.
+- PRODUCTION: NOT YET — needs Publish first (endpoint 404 on threat-patrol-1.emergent.host until deployed), then run
+  scan + POST /api/admin/case-wipe there with the admin key.
+- Tests: backend tests/test_case_wipe.py (+ patrol removed / loop cleanup / evidence gate / admin: 37 pass); frontend
+  tests/caseWipe.test.ts (all 1231 pass).

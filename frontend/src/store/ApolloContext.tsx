@@ -73,6 +73,7 @@ import { getNativeCallClassification, getNativeMessageClassification } from "@/s
 import { storage } from "@/src/utils/storage";
 import { useCallGuardPipeline } from "@/src/pipelines/callGuardPipeline";
 import { syncRepeatCallerAlerts } from "@/src/push/repeatCallerAlerts";
+import { CASE_WIPE_APPLIED_KEY, clearLocalCaseStores, eventsAfterWipe, type CaseWipe } from "@/src/store/caseWipe";
 import { useTextGuardLocalFindings } from "@/src/pipelines/textGuardPipeline";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
@@ -915,6 +916,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const { events: merged } = mergeLocalAndRemoteEvents(local, remoteConverted);
     void persistEvents(merged);
   }, [remoteEvents.data, removedRemote.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // An administrator removed every threat case: clear this device's copies from before it, once per reset.
+  const caseWipe = useQuery({ queryKey: ["case-wipe", deviceId], enabled: !!deviceId, queryFn: () => apiGet<CaseWipe>(`/patrol/wipe`) });
+  useEffect(() => {
+    const { wipeId, at } = caseWipe.data ?? {};
+    if (!ready || !wipeId || !at) return;
+    void (async () => {
+      if ((await storage.getItem<string | null>(CASE_WIPE_APPLIED_KEY, null)) === wipeId) return;
+      await persistEvents(eventsAfterWipe(eventsRef.current, at));
+      await clearLocalCaseStores();
+      await storage.setItem(CASE_WIPE_APPLIED_KEY, wipeId);
+      void qc.invalidateQueries();
+    })().catch(() => undefined);
+  }, [caseWipe.data, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server-investigated sources (monitored email, captured texts, Higgins submissions): download the exact
   // original once while the investigation still holds it (server copies expire after 24 h) and keep it on device.
