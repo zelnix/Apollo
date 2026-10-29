@@ -9,6 +9,7 @@ import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
+import { saveOriginalSource, type OriginalSourceInput } from "@/src/store/originalSource";
 import { spacing } from "@/src/theme";
 import { dlog } from "@/src/utils/dlog";
 
@@ -27,6 +28,8 @@ export interface InvestigationFlowProps {
   onResolved?: (resolved: boolean) => void;
   /** Show the question that opened the case (false when a check opened it — the top card shows the material). */
   openingQuestion?: boolean;
+  /** The material exactly as checked (e.g. the number), kept on this device with the case so its top card shows it. */
+  original?: OriginalSourceInput | null;
 }
 
 export function InvestigationFlow({
@@ -40,6 +43,7 @@ export function InvestigationFlow({
   continuityKey,
   onResolved,
   openingQuestion,
+  original,
 }: InvestigationFlowProps) {
   // When a caseId is provided, use it as the stable identity — a re-render with the same caseId
   // must never restart or reattach. Without a caseId, fall back to submissionId.
@@ -90,6 +94,15 @@ export function InvestigationFlow({
     if (eventId && state.caseData?.id)
       void rememberCaseForEvent(eventId, state.caseData.id);
   }, [eventId, state.caseData?.id]);
+
+  // Kept once per case (saveOriginalSource never overwrites); read through a ref so a re-render's new object
+  // never re-runs this.
+  const originalRef = useRef(original);
+  originalRef.current = original;
+  useEffect(() => {
+    if (state.caseData?.id && originalRef.current)
+      void saveOriginalSource([state.caseData.id], originalRef.current);
+  }, [state.caseData?.id]);
 
   useEffect(() => {
     // Guard: if this identity was already started, a re-render must not restart it.

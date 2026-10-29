@@ -1010,7 +1010,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // The server purges a completed investigation the moment this device commits it, so its patrol
   // projection can only ever say "Apollo is investigating this". The real answer is in device
   // storage: apply it to the case so Threats, the case screen and its history show the actual
-  // findings, the actual conclusion and the actual next step.
+  // findings, the actual conclusion and the actual next step. Re-applied whenever a new case appears
+  // among the events: the server's record of a case often arrives after this device committed it.
+  const caseIdsKey = useMemo(() => Array.from(new Set(events
+    .map((e) => e.investigation_case_id ?? e.patrol_record?.investigationCaseId)
+    .filter((id): id is string => !!id))).sort().join("|"), [events]);
   useEffect(() => {
     if (!ready) return;
     let live = true;
@@ -1029,7 +1033,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void apply();
     const unsubscribe = subscribeDeviceInvestigations(() => { void apply(); });
     return () => { live = false; unsubscribe(); };
-  }, [ready, upsertEvent]); // eslint-disable-line react-hooks/exhaustive-deps — events read from eventsRef; subscription handles retrigger
+  }, [ready, upsertEvent, caseIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Triage correlation (deterministic) ───────────────────────────────────
   // Related evidence (same Threat Scent / same indicator) with a compatible mechanic belongs to ONE

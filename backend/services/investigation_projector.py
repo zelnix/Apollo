@@ -14,12 +14,24 @@ from __future__ import annotations
 
 import uuid
 
+from pymongo import UpdateOne
+
 from core.db import db, now_utc
 from core.evidence_model import INVESTIGATION_ADAPTER, server_evidence_source
 from core.models import PatrolEvent
 from core.redaction import redact_investigation_secrets
 from routers.push import push_owner_alert
+from services import rulebook
+from services.higgins import outcomes
 from services.higgins import repository as repo
+
+# The placeholder a case's record carries while its investigation runs: states only that Apollo is looking.
+_RUNNING = {
+    "headline": "Apollo is investigating this",
+    "what_happened": "Higgins has started an investigation. Nothing has been established yet.",
+    "why": ("The investigation is still running.",),
+    "what_to_do": "Nothing to do right now. Higgins will tell you as soon as the investigation finishes.",
+}
 
 
 # Gate → patrol category. Every gate Apollo can open must map to a category the patrol record
@@ -79,11 +91,25 @@ async def _resolve_intake_metadata(case: dict) -> dict:
     return meta
 
 
+_UNPROJECTED = {"deleted": False, "response_revision": {"$gt": 0}, "$expr": {"$gt": ["$response_revision", {"$ifNull": ["$patrol_projected_revision", 0]}]}}
+_CASE_FIELDS = {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1, "response_revision": 1, "accepted_commits": 1,
+                "created_at": 1, "updated_at": 1, "client_submission_id": 1, "source_metadata": 1}
+
+
 async def project_committed_cases(limit: int = 100) -> int:
-    query = {"deleted": False, "response_revision": {"$gt": 0}, "$expr": {"$gt": ["$response_revision", {"$ifNull": ["$patrol_projected_revision", 0]}]}}
-    rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1,
-                                                       "response_revision": 1, "accepted_commits": 1, "created_at": 1, "updated_at": 1,
-                                                       "client_submission_id": 1, "source_metadata": 1}).limit(limit).to_list(limit)
+    rows = await db.investigation_cases.find(_UNPROJECTED, _CASE_FIELDS).limit(limit).to_list(limit)
+    return await _project(rows)
+
+
+async def project_case_now(owner: str, case_id: str) -> int:
+    """Project one case straight away. Called just before the server purges a case the device has committed:
+    TC FlyBy often answers in a couple of seconds, so the periodic projection could find the case already gone,
+    leaving its Threats record on "Apollo is investigating this" and no history entry."""
+    rows = await db.investigation_cases.find({**_UNPROJECTED, "owner_id": owner, "case_id": case_id}, _CASE_FIELDS).to_list(1)
+    return await _project(rows)
+
+
+async def _project(rows: list[dict]) -> int:
     projected = 0
     for case in rows:
         turns = await repo.accepted_turns(case["owner_id"], case)
@@ -204,10 +230,8 @@ async def project_case_started(case: dict) -> bool:
         "event_id": event_id, "device_id": case["owner_id"], "category": category,
         # "sniffing": Apollo is looking. Not a finding, not an assessment.
         "state": "sniffing", "status": "active",
-        "headline": "Apollo is investigating this",
-        "what_happened": "Higgins has started an investigation. Nothing has been established yet.",
-        "why": ["The investigation is still running."],
-        "what_to_do": "Nothing to do right now. Higgins will tell you as soon as the investigation finishes.",
+        "headline": _RUNNING["headline"], "what_happened": _RUNNING["what_happened"],
+        "why": list(_RUNNING["why"]), "what_to_do": _RUNNING["what_to_do"],
         "indicator_host": indicators["indicator_host"], "indicator_digest": None, "local_indicator": None,
         "verified_block": False, "adapter_label": INVESTIGATION_ADAPTER,
         "occurred_at": case.get("created_at") or now_utc(), "resolved_at": None, "trust_allowed": False,
@@ -223,3 +247,89 @@ async def project_case_started(case: dict) -> bool:
         {"device_id": case["owner_id"], "event_id": event_id},
         {"$set": document, "$setOnInsert": on_insert}, upsert=True)
     return True
+
+
+# ── An investigation that ended without its result reaching Patrol ─────────────────────────────────
+_ENDED = {"expired", "deleted", "cancelled", "failed"}
+_OUTCOME_STATE = {"no_scam_indicators": "resting", "concerning": "growling", "likely_scam": "barking",
+                  "confirmed_threat": "barking", "unable_to_determine": "ears_up"}
+_OUTCOME_ATTENTION = {"no_scam_indicators": "none", "concerning": "review", "likely_scam": "action_needed",
+                      "confirmed_threat": "urgent", "unable_to_determine": "review"}
+_OUTCOME_TODO = {
+    "no_scam_indicators": "Nothing more to do. If anything about it feels off, contact the person or organisation using details you already have.",
+    "unable_to_determine": "Treat it with caution, and contact the person or organisation using details you already have.",
+}
+_CONCERN_TODO = "Don't reply, call back or follow its instructions. Contact the organisation using details you already have."
+_AGAIN = "Run the check again if you still need an answer."
+
+
+def ended_view(case: dict | None) -> dict:
+    """What a record says once its investigation has ended — from the case's own record only, never a verdict it
+    doesn't hold: the outcome its routing recorded and the rule that settled it; else that it finished but its
+    result isn't kept; else that it ended without a result."""
+    routing = (case or {}).get("routing") or {}
+    outcome = (routing.get("teddy") or {}).get("outcome")
+    if outcome in outcomes.LABELS:
+        reason = rulebook.settled_reason(routing)
+        return {"outcome": outcome, "headline": outcomes.LABELS[outcome],
+                "what_happened": reason["sentence"] if reason else f"{outcomes.LABELS[outcome]}.", "why": [],
+                "what_to_do": _OUTCOME_TODO.get(outcome, _CONCERN_TODO), "state": _OUTCOME_STATE[outcome],
+                "status": "resolved" if outcome == "no_scam_indicators" else "active"}
+    if not case:
+        said = "This investigation is no longer on Apollo's servers, and its result isn't part of this record."
+        return {"outcome": None, "headline": "Investigation no longer available", "what_happened": said, "why": [], "what_to_do": _AGAIN}
+    if (case.get("response_revision") or 0) > 0:
+        return {"outcome": None, "headline": "Investigation finished", "why": [], "what_to_do": _AGAIN,
+                "what_happened": "This investigation finished, but its result wasn't added to this record before Apollo's servers removed their copy."}
+    how = {"cancelled": "was cancelled", "deleted": "was deleted", "failed": "couldn't finish"}.get(case.get("status"), "expired")
+    return {"outcome": None, "headline": "Investigation ended without a result", "why": [], "what_to_do": _AGAIN,
+            "what_happened": f"This investigation {how} before it reached a result, so nothing was established."}
+
+
+async def project_ended_cases(limit: int = 300) -> int:
+    """Every Patrol record still waiting on an investigation that has ended gets its final state.
+
+    A result is projected while its case is live (above). A record whose case ended without that — purged before
+    the projection ran, expired before it answered, cancelled or deleted — would otherwise say "Apollo is
+    investigating this" forever. A device that holds the full result still applies it over this."""
+    events = await db.patrol_events.find(
+        {"deleted_at": None, "investigation_case_id": {"$ne": None}, "investigation_completed_at": None, "occurred_at": {"$type": "date"}},
+        {"_id": 0, "event_id": 1, "device_id": 1, "investigation_case_id": 1, "state": 1, "headline": 1,
+         "what_happened": 1, "why": 1, "what_to_do": 1}).sort("occurred_at", 1).limit(limit).to_list(limit)
+    if not events:
+        return 0
+    cases = {c["case_id"]: c for c in await db.investigation_cases.find(
+        {"case_id": {"$in": list({e["investigation_case_id"] for e in events})}},
+        {"_id": 0, "case_id": 1, "owner_id": 1, "status": 1, "response_revision": 1, "routing": 1, "gates": 1,
+         "created_at": 1, "updated_at": 1}).to_list(None)}
+    now = now_utc()
+    event_ops, history_ops = [], []
+    for event in events:
+        case = cases.get(event["investigation_case_id"])
+        if case and case.get("status") not in _ENDED:
+            continue  # still running: its result is projected when it answers
+        view = ended_view(case)
+        ended_at = (case or {}).get("updated_at") or now
+        patch: dict = {"investigation_completed_at": ended_at, "updated_at": now}
+        if view["outcome"]:
+            patch.update({k: view[k] for k in ("headline", "what_happened", "why", "what_to_do", "state", "status")})
+            if view["status"] == "resolved":
+                patch["resolved_at"] = ended_at
+            history_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-history:{case['owner_id']}:{case['case_id']}"))
+            history_ops.append(UpdateOne({"owner_id": case["owner_id"], "history_id": history_id}, {"$setOnInsert": {
+                "owner_id": case["owner_id"], "history_id": history_id, "case_id": case["case_id"], "case_start": case.get("created_at") or ended_at,
+                "last_update": ended_at, "status": "completed", "gates": case.get("gates", []), "attention": _OUTCOME_ATTENTION[view["outcome"]],
+                "conclusion": view["what_happened"][:600], "deleted": False, "created_at": now, "updated_at": now}}, upsert=True))
+        else:
+            # Only the "still running" wording is replaced; anything else the record says stays.
+            patch.update({k: view[k] for k in ("headline", "what_happened", "what_to_do") if event.get(k) == _RUNNING[k]})
+            if event.get("why") == list(_RUNNING["why"]):
+                patch["why"] = view["why"]
+            if event.get("state") == "sniffing":
+                patch["state"] = "ears_up"
+        event_ops.append(UpdateOne({"event_id": event["event_id"], "device_id": event["device_id"], "investigation_completed_at": None}, {"$set": patch}))
+    if event_ops:
+        await db.patrol_events.bulk_write(event_ops, ordered=False)
+    if history_ops:
+        await db.higgins_investigation_history.bulk_write(history_ops, ordered=False)
+    return len(event_ops)

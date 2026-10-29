@@ -21,7 +21,7 @@ from core.config import HIBP_API_KEY, IPQS_API_KEY, SAFE_BROWSING_API_KEY
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
 from services.email import email_configured
-from services.investigation_projector import project_case_started
+from services.investigation_projector import project_case_now, project_case_started
 from services.storage import storage_configured
 from routers.push import push_configured
 from services.higgins import evidence as ev
@@ -1427,6 +1427,8 @@ async def confirm_commit(case_id: str, request: Request):
     # Only purge if the investigation has a completed response
     if not case.get("response_ciphertext"):
         raise http(409, "conflict", "Cannot confirm commit for an investigation that has no completed response.")
+    # The result reaches Threats and history first: once purged, the server can no longer project it.
+    await project_case_now(owner, case_id)
     # Purge: revoke the case (marks deleted, rotates epoch) then run cleanup
     await repo.revoke(owner, case_id, "expired")
     cleanup_status = await repo.run_cleanup(owner, case_id)

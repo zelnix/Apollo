@@ -122,7 +122,10 @@ export function mergeLocalAndRemoteEvents(
         client_submission_id: remote.client_submission_id ?? local.client_submission_id,
         // Lifecycle: preserve local resolution unless genuinely new evidence.
         status: preserveResolution || userReopened ? local.status : remote.status,
-        state: preserveResolution ? local.state : (STATE_RANK[remote.state] > STATE_RANK[local.state] ? remote.state : local.state),
+        // "sniffing" holds no assessment yet: any assessed state from the server replaces it.
+        state: preserveResolution ? local.state
+          : local.state === "sniffing" && remote.state !== "sniffing" ? remote.state
+            : (STATE_RANK[remote.state] > STATE_RANK[local.state] ? remote.state : local.state),
         resolved_at: preserveResolution ? local.resolved_at : userReopened ? null : (hasNewEvidence ? null : (remote.resolved_at ?? local.resolved_at)),
         verified_block: remote.verified_block || local.verified_block,
         enforcement_evidence: remote.enforcement_evidence ?? local.enforcement_evidence,

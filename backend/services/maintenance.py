@@ -15,7 +15,7 @@ from datetime import timedelta
 
 from core.config import logger
 from core.db import db, now_utc
-from services.investigation_projector import project_committed_cases, project_open_cases
+from services.investigation_projector import project_committed_cases, project_ended_cases, project_open_cases
 from services.higgins import jobs, repository
 from services.higgins.retention import sweep as sweep_temporary_content
 from services.system_health_jobs import recover_stale as recover_health_checks
@@ -41,6 +41,7 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
         ("job_and_device_inbox_recovery", jobs.recover),
         ("investigation_patrol_projection", project_committed_cases),
         ("investigation_open_projection", project_open_cases),
+        ("investigation_ended_projection", project_ended_cases),
         ("health_check_recovery", recover_health_checks),
         ("threat_revalidation", revalidate_due_indicators),
         ("alert_record_cleanup", cleanup_alert_records),

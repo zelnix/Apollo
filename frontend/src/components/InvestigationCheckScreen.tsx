@@ -18,6 +18,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { CloseButton } from "./CloseButton";
 import { EvidenceProfileCard } from "./EvidenceProfileCard";
 import { OfficialContactsCard } from "./OfficialContactsCard";
+import type { OriginalSourceInput } from "@/src/store/originalSource";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -79,6 +80,8 @@ export interface InvestigationCheckScreenProps {
   addingOriginal?: boolean;
   /** What changed with the evidence on this check (an upgrade, or an original that didn't match). */
   evidenceNotice?: string | null;
+  /** The material exactly as checked, shown on the case's top card (see InvestigationFlow). */
+  original?: OriginalSourceInput | null;
 }
 
 export function InvestigationCheckScreen({
@@ -93,6 +96,7 @@ export function InvestigationCheckScreen({
   onAddOriginal,
   addingOriginal,
   evidenceNotice,
+  original,
 }: InvestigationCheckScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -126,6 +130,7 @@ export function InvestigationCheckScreen({
           eventId={eventId}
           caseId={caseId}
           openingQuestion={false}
+          original={original}
         />
 
         <OfficialContactsCard verdicts={result.official} testID="investigation-check-official" />

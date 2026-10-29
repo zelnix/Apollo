@@ -4468,3 +4468,19 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Result on the user's device: Higgins history 776 → 15 entries; Threat history 200 → 21 records. Applied to the preview DB
   only (the live app was not touched, per user choice).
 - Tests: backend `tests/test_loop_cleanup.py`, `tests/test_patrol_removed.py`; backend 1529 pass, frontend 1208 pass.
+
+## Fix — Call screening source card + stuck "Apollo is investigating this" checks (2026-10-29)
+- Source card: Call screening (`app/call-guard.tsx`) now hands the checked number to InvestigationFlow as the case's
+  original (`original={{ kind: "call", fields: [{label: "Number", value}] }}`); InvestigationFlow saves it under the case
+  id once known (`saveOriginalSource`). The top card shows a Call with the number instead of an empty "Text"/SMS item.
+- Stuck checks root cause: TC FlyBy answers in ~2 s; the device committed → `/confirm-commit` purged the case before the
+  periodic projector copied the result into Threats/history. Fixes:
+  - `confirm_commit` calls `project_case_now()` before purging.
+  - New maintenance step `investigation_ended_projection` (`project_ended_cases`): any record still waiting on an ended
+    case gets its final state from the case's own record only — recorded outcome + rulebook sentence (and a history
+    entry), else "Investigation finished" (result not kept), else "Investigation ended without a result". Never invents a verdict.
+  - Device: `eventMerge` lets any assessed server state replace a local "sniffing" placeholder; ApolloContext re-applies
+    device-held investigation results whenever a new case id appears among events.
+- Result: the user's two stuck checks (12:19/12:20) now read "No scam indicators found" with history entries; ~1,900 stuck
+  preview records repaired. Tests: backend `test_ended_projection.py`; frontend `endedInvestigation.test.ts`.
+  Backend 1533 pass, frontend 1212 pass.

@@ -263,6 +263,7 @@ export default function CheckNumber() {
         submissionId={submissionId}
         eventId={null}
         caseId={result.investigation_case_id ?? null}
+        original={{ kind: "call", fields: [{ label: "Number", value: result.number }], capturedAt: result.checked_at }}
         actions={callActions}
       />
     );
