@@ -435,7 +435,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const alertedStates = useRef(new Map<string, ApolloState>());
   useEffect(() => { eventsRef.current = events; }, [events]);
   const persistEvents = useCallback(async (next: PatrolEvent[]) => {
-    eventsRef.current = next; setEvents(next);
+    // Fast structural check: skip the React state update when the event list hasn't actually changed.
+    // This breaks the re-render cascade that otherwise arises from merge → setEvents → effect → merge.
+    const prev = eventsRef.current;
+    const same = next === prev || (next.length === prev.length && next.every((e, i) => e === prev[i]));
+    eventsRef.current = next;
+    if (!same) setEvents(next);
     if (!await storage.setItem(K.events, JSON.stringify(next))) { deliveryFailure(); throw new Error('Patrol could not save the event locally'); }
   }, []);
   const persistTrust = useCallback(async (next: TrustEntry[]) => { setTrust(next); await storage.setItem(K.trust, JSON.stringify(next)); }, []);
@@ -1019,7 +1024,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void apply();
     const unsubscribe = subscribeDeviceInvestigations(() => { void apply(); });
     return () => { live = false; unsubscribe(); };
-  }, [ready, upsertEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, upsertEvent]); // eslint-disable-line react-hooks/exhaustive-deps — events read from eventsRef; subscription handles retrigger
 
   // ── Triage correlation (deterministic) ───────────────────────────────────
   // Related evidence (same Threat Scent / same indicator) with a compatible mechanic belongs to ONE
