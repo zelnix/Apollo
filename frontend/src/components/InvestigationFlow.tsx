@@ -89,7 +89,7 @@ export function InvestigationFlow({
     void begin.then((c) => {
       if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id);
     });
-  }, [submissionId, state.caseData?.id, state.phase]);
+  }, [submissionId, state.caseData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={{ gap: spacing.sm }} testID={testID}>
