@@ -45,6 +45,8 @@ export const simulation: PreviewSimulation = {
   Picker: SimulatedPicker,
   registerImage: registerPreviewImage,
   read: simulatedRead,
+  // The hand-written example case an earlier preview seeded never went through Apollo's checks.
+  retiredEventIds: ["preview-mock-threat-001"],
 };
 
 // The image screening path never imports this folder — it accepts a registration instead, so a

@@ -56,4 +56,6 @@ export interface PreviewSimulation {
   registerImage: (uri: string, sampleId: string) => void;
   /** The simulated text read. Always null in a production build. */
   read: (uri: string) => SimulatedImageRead | null;
+  /** Ids of example cases an earlier preview seeded on the device; dropped when stored events load. Empty in production. */
+  retiredEventIds: readonly string[];
 }

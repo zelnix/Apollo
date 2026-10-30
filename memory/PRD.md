@@ -4554,3 +4554,10 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - backend/.env EMERGENT_LLM_KEY was empty in this environment; filled from the Emergent-managed key so object storage works.
 - PRODUCTION: wiped 2026-10-29 15:01 UTC (wipeId 62164360…): 46,469 records deleted + 5,473 Patrol events → delete
   markers; post-wipe scan total 0. Production build at that time had case-wipe but NOT the Screens page (needs another Publish).
+
+## CI fix — "Native dependency singleton guard" (GitHub run 40983090720, 2026-10-30)
+- Failure: `verify-no-simulation.mjs` found the preview marker "preview-mock-threat-001" in the production web bundle
+  (ApolloContext filtered that legacy preview example by its literal id).
+- Fix: `PreviewSimulation.retiredEventIds` (src/simulationContract.ts) — preview `["preview-mock-threat-001"]`
+  (src/simulation/index.ts), production `[]` (src/simulationAbsent.ts); ApolloContext filters with it.
+- Verified locally: production check OK (zero markers), preview check OK (9/9 markers), GuardDog manifest OK, tsc clean.

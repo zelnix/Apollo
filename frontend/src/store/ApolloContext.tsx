@@ -687,8 +687,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           if (ev) {
             const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent)
               // The hand-written example case an earlier preview seeded never went through Apollo's checks,
-              // so it is dropped: every case in Patrol is one Apollo's own rules produced.
-              .filter((event) => event.event_id !== "preview-mock-threat-001");
+              // so it is dropped: every case in Patrol is one Apollo's own rules produced. Only a preview
+              // build names it — the id is a simulation marker and must not ship in production.
+              .filter((event) => !simulation.retiredEventIds.includes(event.event_id));
             eventsRef.current = restored;
             alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state]));
             setEvents(restored);
