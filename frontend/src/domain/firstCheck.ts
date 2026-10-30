@@ -12,6 +12,7 @@
 
 import type { DevicePlatform, DeviceSignals, OsThreatReportSignal } from "./deviceAnalysis";
 import type { NetworkStatus, RuleBundleStatus } from "@/src/security/SecurityPlatformAdapter";
+import { entryCountLine } from "./threatDomainList.ts";
 
 export type FirstCheckResultState =
   | "PASS" | "INFORMATION" | "CAUTION" | "SUSPICIOUS" | "CONFIRMED_THREAT" | "NOT_AVAILABLE" | "ERROR";
@@ -255,11 +256,11 @@ function apolloIntegrityCheck(i: FirstCheckInputs): Row {
 }
 
 function securityRulesCheck(i: FirstCheckInputs): Row {
-  const base = { id: "security_rules", category: "apollo_integrity" as const, title: "Apollo's security rules" };
+  const base = { id: "security_rules", category: "apollo_integrity" as const, title: "Apollo's Threat Domain List" };
   const rules = i.ruleBundle ?? null;
   if (!i.nativeHost || !rules || !rules.observable) {
-    return notAvailable(base, "Apollo couldn't read the state of its security rules on this device.",
-      !i.nativeHost ? PREVIEW_LIMIT : "This device doesn't report the state of Apollo's security rules.");
+    return notAvailable(base, "Apollo couldn't read the state of its Threat Domain List on this device.",
+      !i.nativeHost ? PREVIEW_LIMIT : "This device doesn't report the state of Apollo's Threat Domain List.");
   }
   if (rules.current === null) {
     return { ...base, supported: true, executed: false, result: "ERROR", confidence: "low", severity: "low", evidenceRef: null,
@@ -268,11 +269,13 @@ function securityRulesCheck(i: FirstCheckInputs): Row {
   if (rules.current === false) {
     return { ...base, supported: true, executed: true, result: "CAUTION", confidence: "high", severity: "medium", evidenceRef: "rules:expiry",
       evidence: rules.detail,
-      explanation: "Apollo's security rules are out of date, so the newest known dangerous websites may not be blocked yet.",
-      platformLimitation: null, action: "Open ApolloSG's protection and run the check again so it can fetch fresh rules." };
+      explanation: "Apollo's Threat Domain List is out of date, so the newest known dangerous websites may not be blocked yet.",
+      platformLimitation: null, action: "Open ApolloSG's protection and run the check again so it can get an up-to-date list." };
   }
+  // Current is a pass whatever the count: a valid list with zero entries means no dangerous websites are listed right now.
+  const count = entryCountLine(rules.entryCount);
   return { ...base, supported: true, executed: true, result: "PASS", confidence: "high", severity: "none", evidenceRef: "rules:expiry",
-    evidence: rules.detail, explanation: "Apollo's security rules are up to date.", platformLimitation: null, action: null };
+    evidence: count ? `${rules.detail} (${count})` : rules.detail, explanation: "Apollo's Threat Domain List is up to date.", platformLimitation: null, action: null };
 }
 
 function connectionCheck(i: FirstCheckInputs): Row {

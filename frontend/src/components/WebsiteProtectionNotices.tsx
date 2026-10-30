@@ -12,7 +12,7 @@ import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
 import { Button } from "@/src/components/ui";
-import { PRIVATE_DNS_SETTINGS_PATH, privateDnsAdvice, privateDnsMode } from "@/src/domain/privateDnsAdvice";
+import { PRIVATE_DNS_SETTINGS_PATH, privateDnsAdvice, privateDnsMode, privateDnsNote } from "@/src/domain/privateDnsAdvice";
 import { usePrivateDnsStatus } from "@/src/hooks/usePrivateDnsStatus";
 import type { ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { openDeviceSettings, openPrivateDnsSettings } from "@/src/utils/deviceSettings";
@@ -29,6 +29,7 @@ const useStyles = makeStyles((c) => ({
   path: { fontFamily: fonts.textMedium, fontSize: 13, lineHeight: 18, color: c.onSurface },
   done: { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, paddingHorizontal: spacing.xs },
   doneText: { flex: 1, fontFamily: fonts.textMedium, fontSize: 14, color: c.restingText },
+  noteText: { flex: 1, fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
 }));
 
 export function WebsiteProtectionNotices({ protection, testID = "site-notices" }: { protection: ProtectionStatus | null; testID?: string }) {
@@ -44,8 +45,10 @@ export function WebsiteProtectionNotices({ protection, testID = "site-notices" }
   useEffect(() => { if (adviceId) setPrompted(true); }, [adviceId]);
 
   const lockdown = protection?.lockdown === true;
-  const nowAutomatic = prompted && !advice && !!status && privateDnsMode(status) === "automatic";
-  if (!lockdown && !advice && !nowAutomatic) return null;
+  // Already Automatic on a network without encrypted lookups: confirm it, explain the network, ask nothing.
+  const note = privateDnsNote(status);
+  const nowAutomatic = !note && prompted && !advice && !!status && privateDnsMode(status) === "automatic";
+  if (!lockdown && !advice && !nowAutomatic && !note) return null;
 
   const openDns = async () => { setDnsPath((await openPrivateDnsSettings()) !== "private_dns"); };
 
@@ -78,6 +81,12 @@ export function WebsiteProtectionNotices({ protection, testID = "site-notices" }
         <View style={s.done} testID={`${testID}-private-dns-done`}>
           <CircleCheck size={18} color={colors.restingText} />
           <Text style={s.doneText}>Private DNS is set to Automatic.</Text>
+        </View>
+      ) : null}
+      {note ? (
+        <View style={s.done} testID={`${testID}-private-dns-automatic`}>
+          <CircleCheck size={18} color={colors.restingText} />
+          <Text style={s.noteText} testID={`${testID}-private-dns-automatic-text`}>{note}</Text>
         </View>
       ) : null}
     </View>

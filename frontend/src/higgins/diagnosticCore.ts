@@ -24,10 +24,12 @@ export interface ProtectionFacts {
   /** Apollo's secure connection (the protection permission the device grants Apollo). */
   secureConnectionActive: boolean;
   gates: GateFact[];
-  /** true = rules current, false = out of date, null = Apollo could not read or observe them. */
+  /** true = Threat Domain List current (any entry count, including 0), false = out of date, null = Apollo could not read or observe it. */
   rulesCurrent: boolean | null;
-  /** Plain-English statement of what was observed about the security rules. */
+  /** Plain-English statement of what was observed about the Threat Domain List. */
   rulesDetail: string;
+  /** Technical detail: Threat Domain Entries on the phone. 0 is a valid list; null = not reported. */
+  threatDomainEntries: number | null;
   currentIssues: string[];
   checkedAt: string | null;
   network: NetworkFact | null;
@@ -84,7 +86,9 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
   const serviceRunning = !!health.protection && health.protection.running;
 
   const issues: string[] = issueGates.map((g) => `${g.title}: ${g.limitation || g.statusLabel}`);
-  if (health.ruleBundle?.current === false) issues.push(`Security rules: ${health.ruleBundle.detail}`);
+  // Only an out-of-date list is an issue. A current list passes whatever its entry count — zero
+  // Threat Domain Entries is a valid list.
+  if (health.ruleBundle?.current === false) issues.push(`Threat Domain List: ${health.ruleBundle.detail}`);
 
   const rules = health.ruleBundle;
   const facts: ProtectionFacts = {
@@ -94,7 +98,8 @@ export function getProtectionStatus(health: ProtectionHealthSnapshot): Diagnosti
     rulesCurrent: rules ? rules.current : null,
     rulesDetail: rules
       ? rules.detail
-      : "This device can't report the state of Apollo's security rules, so that check isn't available here.",
+      : "This device can't report the state of Apollo's Threat Domain List, so that check isn't available here.",
+    threatDomainEntries: rules?.entryCount ?? null,
     currentIssues: issues,
     checkedAt: health.checkedAt,
     network: health.network ? {
@@ -316,7 +321,7 @@ function buildProtectionSummary(facts: ProtectionFacts, activeCount: number, tot
   }
 
   if (facts.rulesCurrent === false) {
-    parts.push("Apollo's security rules are also out of date, which means its checks might miss newer threats.");
+    parts.push("Apollo's Threat Domain List is also out of date, so its checks might miss newer dangerous websites.");
   }
 
   return parts.join(" ");

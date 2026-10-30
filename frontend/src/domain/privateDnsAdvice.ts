@@ -6,8 +6,10 @@
  *   • A provider hostname — Android sends every lookup straight to that provider, so Apollo's
  *     website checks never see them.
  * Automatic needs nothing: lookups still go to the DNS server the network (or Apollo's tunnel)
- * declares, so Apollo keeps checking them. When Android can't say which of Off / Automatic is set,
- * the advice says exactly that rather than guessing.
+ * declares, so Apollo keeps checking them. When Android reports Automatic on a network that doesn't
+ * support encrypted lookups, Higgins confirms the setting and explains the network — it never asks
+ * for Automatic again. When Android can't say which of Off / Automatic is set, the advice says
+ * exactly that rather than guessing; a failed read gives no advice at all.
  *
  * Pure: no React, no native calls.
  */
@@ -25,11 +27,20 @@ export const PRIVATE_DNS_SETTINGS_PATH = "Settings → Network & internet → Pr
 
 const ACTION_LABEL = "Open Private DNS settings";
 
-/** The mode, also for native builds that only report the active/server pair. */
+/** The mode, also for native builds that only report the active/server pair. A read that failed
+ *  (unobservable) is "unknown" — never "not in use", which would prompt a change nobody needs. */
 export function privateDnsMode(status: PrivateDnsStatus): PrivateDnsMode {
   if (status.mode) return status.mode;
   if (status.privateDnsServer) return "hostname";
+  if (status.bypassLevel === "unobservable") return "unknown";
   return status.privateDnsActive ? "automatic" : "not_in_use";
+}
+
+/** Android reports Automatic, but this network doesn't support encrypted lookups. Nothing to change:
+ *  the setting is confirmed and the network is explained. Null whenever that isn't what Android said. */
+export function privateDnsNote(status: PrivateDnsStatus | null | undefined): string | null {
+  if (!status || privateDnsMode(status) !== "automatic" || status.privateDnsActive) return null;
+  return "Private DNS is set to Automatic. This network doesn’t support encrypted website lookups right now, so Android uses the network’s usual lookups. Apollo’s website checks still work. You don’t need to change anything.";
 }
 
 export function privateDnsAdvice(status: PrivateDnsStatus | null | undefined): PrivateDnsAdvice | null {

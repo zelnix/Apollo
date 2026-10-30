@@ -212,9 +212,13 @@ function getHigginsGuidance(gate: GatePresentation): HigginsGuidance {
       needsGuidance: true,
       whatsWrong: auto?.limitation ?? `${gate.title} is running with reduced coverage.`,
       whyItMatters: "Some protection capabilities are restricted. ApolloSG is still working within its available scope.",
-      whatToDo: auto?.limitation?.includes("DNS") || auto?.limitation?.includes("dns")
+      // Only a provider hostname needs changing. A setting Apollo couldn't read may already be Automatic,
+      // so the person is never told to set what they may already have set.
+      whatToDo: /provider hostname/i.test(auto?.limitation ?? "")
         ? "Set Private DNS to Automatic in your device’s settings, then come back here and ApolloSG will re-check."
-        : "Check device settings if you'd like to expand coverage. Otherwise, Apollo continues protecting within its current scope.",
+        : /dns/i.test(auto?.limitation ?? "")
+          ? "Apollo couldn’t read this phone’s Private DNS setting just now. If it’s already set to Automatic, you don’t need to change anything. Apollo checks again when you come back."
+          : "Check device settings if you'd like to expand coverage. Otherwise, Apollo continues protecting within its current scope.",
       howToConfirm: "After any changes, return here to see the updated status.",
       actionLabel: "Check device settings",
       actionType: "open_settings",

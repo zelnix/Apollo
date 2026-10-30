@@ -1,5 +1,32 @@
 ## OWNER'S STANDING RULE (2026-10-28): Do not make any enhancement suggestions. Summaries report what was done only — no "Next Action Items" or ideas.
 
+## Threat Domain List: zero entries is valid + gate isolation + Private DNS loop (2026-10-30)
+**Owner's choices:** plan as proposed; Automatic on a network without encrypted lookups → confirm the setting and explain the
+network (no prompt); explanations in Higgins Luddish. No testing agent (owner's rule) — native JVM tests + node tests + pytest + tsc + screenshot.
+- Native `RuleBundleVerifier.kt`: `EMPTY_RULES` reason and check removed; a zero-entry Threat Domain List is accepted (signature,
+  format, dates, rollback, version conflict and per-entry checks unchanged). No placeholder entries anywhere.
+- New native tests (guarddog-core): `rules/RuleBundleValidatorTest.kt` (zero-entry, populated, invalid/missing signature, expired,
+  future-dated, rollback, version conflict, malformed entry/list, none→some→none), `CleanInstallZeroEntryTest.kt` (fresh install
+  accepts 0 entries into both slots, runtime state unchanged, nothing authorised/blocked, restart restore), `rules/ThreatDomainListTestKit.kt`
+  (throwaway Ed25519 key per run). Run with `/opt/kt/run-core-tests.sh` (standalone JDK 17 aarch64 + kotlinc 2.1.20; 30/32 pass —
+  the 2 failures are pre-existing: `security/test-vectors/normalization/*` is absent from this workspace).
+- `docs/APOLLO_STAGE1B_SHA256_MANIFEST.txt`: RuleBundleVerifier hash updated + the 3 new test files added (93 entries; `sha256sum --check` OK).
+- Apollo runtime (`ApolloGuardDogProductionRuntime.kt`): accept result carries `entryCount`; status carries `threatDomainEntryCount`;
+  user-facing reasons say "Threat Domain List" in plain words.
+- Frontend: `src/domain/threatDomainList.ts` (pure: rejection codes → plain words, `threatDomainListStatus`, `entryCountLine`);
+  adapter uses it; Private DNS, enforcement evidence and DNS threat observations no longer wait on the list refresh (gate isolation);
+  a failed list refresh no longer reports `requested: true`/"permission required" — the runtime's own status is read; healthCoordinator
+  keeps a failed start on the site reading so other Gates still refresh. Device check row "Apollo's Threat Domain List" = PASS when
+  current (evidence shows "(0 Threat Domain Entries)"); diagnosticCore/deviceSnapshot wording; Luddish dictionary + Threat Domain List/Entry.
+- Private DNS: failed read (unobservable) is mode "unknown" → no advice; `privateDnsNote` for Automatic-but-not-encrypting (info row
+  `site-notices-private-dns-automatic`); catalogue explains the network; gate-details only says "Set Private DNS to Automatic" for a
+  provider hostname.
+- Backend `routers/guarddog.py` diagnostic: new `threat_domain_entries` check (0 entries = PASS, `entry_count`), wording; support screen
+  labels "Threat Domain List Delivery". New `backend/tests/test_guarddog_threat_domain_list.py` (6, in-process fake DB).
+- Tests: frontend 1284/1284 (new `tests/threatDomainList.test.ts`, privateDnsAdvice +2); tsc clean; pytest 6/6 + production source checks.
+  Pre-existing, not changed: `test_rulebook` stamp is stale for patrol.py / screenedCalls.ts / ApolloCallScreeningService.kt.
+
+
 ## Overall Protection Posture engine + new Home/Protection screens + open-case search (2026-10-28)
 **Owner's choices:** engine → screens → search; search covers OPEN cases only, on a separate screen; bottom tabs unchanged.
 No testing agent (owner's rule) — node tests + tsc + preview screenshots.

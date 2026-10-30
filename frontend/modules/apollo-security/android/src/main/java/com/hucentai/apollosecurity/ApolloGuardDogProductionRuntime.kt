@@ -216,8 +216,9 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
         persistBundle(raw, bundle.bundleVersion)
         acceptedBundleExpiresAt = bundleExpiry; scheduleExpiry(bundleExpiry)
         if (resume) startLocked()
+        // Zero Threat Domain Entries is a valid list: accepted like any other, never a failure.
         JSONObject().put("accepted", true).put("rulesetId", result.bundle.rulesetId).put("bundleVersion", result.bundle.bundleVersion)
-          .put("expiresAt", result.bundle.expiresAt).toString()
+          .put("expiresAt", result.bundle.expiresAt).put("entryCount", result.bundle.payload.rules.size).toString()
       }
       is ValidationResult.Rejected -> JSONObject().put("accepted", false).put("reason", result.reason.name).toString()
     }
@@ -266,7 +267,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     try {
       requireProductionEnabled()
       checkNotNull(config) { "website protection hasn't been set up on this phone yet. Open ApolloSG and turn it on" }
-      check(ruleBundleCurrent()) { "ApolloSG has no current security rules on this phone. Open ApolloSG with an internet connection to fetch them" }
+      check(ruleBundleCurrent()) { "ApolloSG doesn't have a current Threat Domain List on this phone yet. Open ApolloSG while you're online so it can get one" }
       check(prefs.edit().putBoolean("requested", true).commit()) { "Could not record the protection request" }
       startLocked().also { recordSystemStart("started", null) }
     } catch (t: Throwable) {
@@ -291,7 +292,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   }
 
   private fun startLocked(): String {
-    requireProductionEnabled(); val activeConfig = checkNotNull(config); check(ruleBundleCurrent()) { "Production rule bundle is unavailable or expired" }
+    requireProductionEnabled(); val activeConfig = checkNotNull(config); check(ruleBundleCurrent()) { "ApolloSG's Threat Domain List is missing or out of date" }
     check(VpnService.prepare(context) == null) { "VPN consent is not granted" }
     val activeEngine = checkNotNull(engine)
     // Controlled endpoint is optional — only resolve, verify, and authorize when configured
@@ -350,7 +351,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val bundleVersion = engine?.acceptedBundle()?.bundleVersion
     val systemStartFailure = if (prefs.getString("system_start_outcome", null) == "failed") prefs.getString("system_start_reason", null) else null
     val reason = when {
-      acceptedBundleExpiresAt == null -> "No accepted production rule bundle"; recheckAuthority && !ruleBundleCurrent() -> "Production rule bundle expired"
+      acceptedBundleExpiresAt == null -> "ApolloSG hasn't received its Threat Domain List yet"; recheckAuthority && !ruleBundleCurrent() -> "ApolloSG's Threat Domain List is out of date"
       !operational && systemStartFailure != null -> "Android asked ApolloSG to reconnect its protection (Always-on VPN) and it couldn't: $systemStartFailure"
       requested && !GuardDogVpnRuntime.websiteGateActive -> "Website Gate DNS/sinkhole runtime is inactive"; requested && !operational -> "TUN/route/reporter observations are incomplete"; else -> null }
     // Android only answers these for the app whose VPN is currently connected, so they are read
@@ -364,6 +365,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       .put("visibility", if (operational) "full" else "none").put("since", prefs.getString("since", null) ?: JSONObject.NULL)
       .put("adapterLabel", LABEL).put("checkedAt", Instant.now().toString()).put("productionAuthority", true)
       .put("bundleVersion", bundleVersion ?: JSONObject.NULL).put("ruleExpiresAt", acceptedBundleExpiresAt?.toString() ?: JSONObject.NULL)
+      .put("threatDomainEntryCount", engine?.acceptedBundle()?.payload?.rules?.size ?: JSONObject.NULL)
       .put("nativeLifecycle", runtime.lifecycle)
       .put("tunOpen", runtime.tunOpen).put("selectiveRouteActive", runtime.selectiveRouteActive).put("dropReporterAttached", runtime.dropReporterAttached)
       .put("websiteGateConfigured", GuardDogVpnRuntime.websiteGateRouteConfig != null).put("dnsGatewayActive", GuardDogVpnRuntime.websiteGateActive)

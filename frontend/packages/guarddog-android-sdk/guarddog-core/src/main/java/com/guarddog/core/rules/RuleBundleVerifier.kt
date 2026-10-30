@@ -16,7 +16,7 @@ sealed class ValidationResult {
 enum class RejectionReason {
     INVALID_JSON,
     INVALID_SCHEMA,
-    EMPTY_RULES,
+    /** A Threat Domain Entry is malformed (blank id/host, unknown action or match type). */
     INVALID_RULE,
     EXPIRED,
     NOT_YET_VALID,
@@ -32,7 +32,9 @@ enum class RejectionReason {
  * Validates rule bundles. Enforces:
  * - Ed25519 signature verification (Stage 4, when a public key is configured)
  * - Strict JSON schema (no unknown keys via kotlinx.serialization strict mode)
- * - Non-empty rules with valid action/matchType
+ * - Every Threat Domain Entry well-formed (valid action/matchType). A Threat Domain List with zero
+ *   entries is valid: it means no dangerous domains are listed right now. Accepting it says nothing
+ *   about whether protection is running — that still needs runtime evidence.
  * - Temporal validity (issuedAt in past, expiresAt in future)
  * - Version rollback protection (bundleVersion must be >= last accepted)
  * - Version conflict detection (same version must have identical rulesetId)
@@ -85,10 +87,7 @@ class RuleBundleValidator(
             return ValidationResult.Rejected(RejectionReason.INVALID_SCHEMA)
         }
 
-        // ── 3. Rules validation ──
-        if (bundle.payload.rules.isEmpty()) {
-            return ValidationResult.Rejected(RejectionReason.EMPTY_RULES)
-        }
+        // ── 3. Threat Domain Entries (zero entries is a valid list) ──
         for (rule in bundle.payload.rules) {
             if (rule.ruleId.isBlank() || rule.host.isBlank() || rule.action !in setOf("block", "allow") || rule.matchType != "exact") {
                 return ValidationResult.Rejected(RejectionReason.INVALID_RULE)

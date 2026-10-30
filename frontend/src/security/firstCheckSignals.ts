@@ -23,7 +23,7 @@ export function currentPlatform(): DevicePlatform {
 export const FIRST_CHECK_STAGES = [
   "Reading this device's security signals",
   "Reading Apollo's protection state",
-  "Reading Apollo's security rules",
+  "Reading Apollo's Threat Domain List",
   "Working out what it means",
 ] as const;
 
@@ -69,7 +69,7 @@ export async function collectFirstCheck(onProgress?: (p: FirstCheckProgress) => 
     const ruleBundle = securityAdapter.getRuleBundleStatus
       ? await securityAdapter.getRuleBundleStatus().catch(() => ({
           observable: true, current: null as boolean | null, expiresAt: null,
-          detail: "Apollo couldn't read the state of its security rules. This is not a confirmation that they are current.",
+          detail: "Apollo couldn't read the state of its Threat Domain List. This isn't a confirmation that it's current.",
         }))
       : null;
     const inputs: FirstCheckInputs = {

@@ -3,7 +3,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { privateDnsAdvice, privateDnsMode } from "../src/domain/privateDnsAdvice.ts";
+import { privateDnsAdvice, privateDnsMode, privateDnsNote } from "../src/domain/privateDnsAdvice.ts";
+import { readability } from "../src/domain/luddish/readability.ts";
 import type { PrivateDnsStatus } from "../src/domain/types.ts";
 
 const status = (over: Partial<PrivateDnsStatus>): PrivateDnsStatus => ({
@@ -29,6 +30,30 @@ test("a provider hostname is named and explained as going around Apollo", () => 
 
 test("Automatic needs nothing", () => {
   assert.equal(privateDnsAdvice(status({ mode: "automatic", privateDnsActive: true })), null);
+  assert.equal(privateDnsNote(status({ mode: "automatic", privateDnsActive: true })), null);
+});
+
+test("Android reports Automatic on a network without encrypted lookups: confirm it, explain the network, never ask again", () => {
+  const automatic = status({ mode: "automatic", modeSource: "android_setting", privateDnsActive: false });
+  assert.equal(privateDnsAdvice(automatic), null);
+  const note = privateDnsNote(automatic)!;
+  assert.match(note, /^Private DNS is set to Automatic\. This network doesn’t support encrypted website lookups right now/);
+  assert.match(note, /You don’t need to change anything\.$/);
+  assert.doesNotMatch(note, /(?:^|\. )(?:Set|Choose|Switch)\b/);
+  const r = readability(note);
+  assert.deepEqual(r.hard, []);
+  assert.ok(r.grade <= 8, `grade ${r.grade}`);
+  // Every other reading gets no note.
+  for (const mode of ["off", "hostname", "not_in_use", "unknown", "unsupported"] as const) assert.equal(privateDnsNote(status({ mode })), null, mode);
+  assert.equal(privateDnsNote(null), null);
+});
+
+test("a failed read (unobservable) is unknown — never 'not in use', so nobody is told to set Automatic", () => {
+  // The shape the adapter returned before it carried a mode, and the shape it returns now.
+  const legacyFailure = status({ bypassLevel: "unobservable", explanation: "Apollo couldn't read this device's Private DNS setting." });
+  assert.equal(privateDnsMode(legacyFailure), "unknown");
+  assert.equal(privateDnsAdvice(legacyFailure), null);
+  assert.equal(privateDnsAdvice(status({ mode: "unknown", modeSource: null, bypassLevel: "unobservable" })), null);
 });
 
 test("when Android can't tell Off from Automatic, the prompt says exactly that", () => {

@@ -391,7 +391,9 @@ const CATALOGUE: SecurityDef[] = [
     unverified: "Apollo could not read this device’s Private DNS setting.",
     resolve: (read) => {
       const mode = read.privateDnsMode ?? (read.privateDnsActive === null ? null : read.privateDnsActive ? "automatic" : "not_in_use");
-      if (mode === "automatic") return { state: "as_recommended", detail: "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
+      if (mode === "automatic") return { state: "as_recommended", detail: read.privateDnsActive === false
+        ? "Private DNS is set to Automatic, which is what Higgins recommends. This network doesn’t support encrypted website lookups right now, so Android uses the network’s usual lookups. Apollo’s website checks still work."
+        : "Private DNS is set to Automatic, which is what Higgins recommends. Apollo’s website checks keep working alongside it.", attributedTo: "Android" };
       if (mode === "hostname") return { state: "off", health: "review", detail: `Private DNS is set to ${read.privateDnsHost ?? "a provider hostname"}. Your lookups are encrypted, but Android sends every one straight to that provider, so Apollo’s website checks never see them. Choose Automatic to let Apollo check websites again.`, attributedTo: "Android" };
       if (mode === "off") return { state: "off", detail: "Private DNS is Off, so this device’s website lookups can be read, and in some cases redirected, by the network you are on. Choose Automatic.", attributedTo: "Android" };
       if (mode === "not_in_use") return { state: "off", health: "review", detail: "Android says Private DNS isn’t encrypting lookups on this network. It is either Off, or Automatic on a network that doesn’t support it — Android doesn’t tell ApolloSG which. If it isn’t Automatic, choose Automatic.", attributedTo: "Android" };

@@ -104,6 +104,8 @@ export interface RuleBundleStatus {
   expiresAt: string | null;
   /** Plain-English statement of what was actually observed. */
   detail: string;
+  /** Threat Domain Entries the phone holds (technical detail). 0 is a valid list; null = not reported. */
+  entryCount?: number | null;
 }
 
 export interface SecuritySignal {

@@ -1,11 +1,13 @@
-"""GuardDog production rule delivery — dynamic bundle generation from verified threat indicators.
+"""GuardDog production rule delivery — the Threat Domain List, generated from verified threat indicators.
 
 Authentication: HTTPS + Ed25519 cryptographic signing (Stage 4).
 Bundle versioning: immutable, complete, monotonically versioned. Each version is a full snapshot.
 Publication ≠ installation: this endpoint generates bundles; device pull/validation is separate.
 
-The rule bundle is generated dynamically from active threat indicators in the database.
-Active, non-expired ThreatIndicator entries with external provenance are included as BLOCK rules.
+The Threat Domain List is generated dynamically from active threat indicators in the database.
+Active, non-expired ThreatIndicator entries with external provenance become Threat Domain Entries (BLOCK).
+A list with zero entries is valid and is published, signed and served like any other — it is never
+padded with placeholder domains.
 
 Signing: Each bundle is signed with Ed25519. The 'signature' field is added to the response
 after the canonical JSON of the bundle content is signed. Native devices verify the signature
@@ -68,6 +70,16 @@ def _compute_content_hash(rules: list[dict]) -> str:
     """Deterministic hash of the rule set for change detection."""
     canonical = json.dumps(rules, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+def _entries(count: int) -> str:
+    return f"{count} Threat Domain {'Entry' if count == 1 else 'Entries'}"
+
+
+def _entry_well_formed(entry: dict) -> bool:
+    """The same shape the native validator requires of every Threat Domain Entry."""
+    return (bool(str(entry.get("ruleId") or "").strip()) and bool(str(entry.get("host") or "").strip())
+            and entry.get("action") in ("block", "allow") and entry.get("matchType") == "exact")
 
 
 async def _get_or_publish_bundle() -> dict:
@@ -220,13 +232,26 @@ async def rules_diagnostic():
     checks = []
     bundle = None
 
-    # Check 1: Bundle generation
+    # Check 1: Threat Domain List generation
     try:
         bundle = await _get_or_publish_bundle()
-        checks.append({"check": "bundle_generation", "passed": True, "detail": f"Bundle v{bundle.get('bundleVersion')} generated with {len(bundle.get('payload', {}).get('rules', []))} rules"})
+        count = len(bundle.get("payload", {}).get("rules", []))
+        checks.append({"check": "bundle_generation", "passed": True, "detail": f"Threat Domain List v{bundle.get('bundleVersion')} generated with {_entries(count)}"})
     except Exception as exc:
         checks.append({"check": "bundle_generation", "passed": False, "detail": str(exc)})
         return {"diagnostic": "failed", "checks": checks}
+
+    # Check 1b: Threat Domain Entries — a valid list with zero entries PASSES (no dangerous domains listed right now).
+    entries = bundle.get("payload", {}).get("rules", [])
+    malformed = [e for e in entries if not _entry_well_formed(e)]
+    checks.append({
+        "check": "threat_domain_entries",
+        "passed": not malformed,
+        "entry_count": len(entries),
+        "detail": (f"{len(malformed)} of {_entries(len(entries))} aren't in the right format, so phones won't accept this list." if malformed
+                   else "0 Threat Domain Entries. That's a valid list: no dangerous websites are listed right now." if not entries
+                   else f"{_entries(len(entries))}, all in the right format."),
+    })
 
     # Check 2: Signing enabled
     signing_active = is_signing_enabled()

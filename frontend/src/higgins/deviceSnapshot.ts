@@ -157,7 +157,7 @@ export function buildDeviceSnapshot(input: SnapshotInput): DeviceSnapshot {
   const notes: string[] = [];
   if (health.checking) notes.push("A protection status read is in progress right now.");
   if (health.lastCheckFailure) notes.push(`The most recent protection read FAILED (${health.lastCheckFailure.reason}); the statuses above are the previous successful reading.`);
-  if (health.ruleBundle) notes.push(`Security rules: ${health.ruleBundle.detail}`);
+  if (health.ruleBundle) notes.push(`Threat Domain List: ${health.ruleBundle.detail}`);
 
   return {
     platform: Platform.OS,

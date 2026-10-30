@@ -44,12 +44,13 @@ interface IntelStatus { safe_browsing: { status: string; detail: string }; block
 interface DiagnosticCheck { check: string; passed: boolean; detail: string; backend_public_key?: string; pinned_apk_key?: string }
 interface DiagnosticResult { diagnostic: string; checks: DiagnosticCheck[] }
 const CHECK_LABELS: Record<string, string> = {
-  bundle_generation: "Bundle generation",
+  bundle_generation: "Threat Domain List generation",
+  threat_domain_entries: "Threat Domain Entries",
   signing_enabled: "Ed25519 signing",
   signature_valid: "Signature self-verify",
   public_key_match: "Public key vs. APK pin",
-  schema: "Bundle schema",
-  expiry: "Bundle expiry",
+  schema: "Threat Domain List format",
+  expiry: "Threat Domain List expiry",
 };
 async function fetchRuleDiagnostic(): Promise<DiagnosticResult> {
   const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/guarddog/rules/diagnostic`, { headers: { "Accept": "application/json" } });
@@ -145,9 +146,9 @@ function DiagnosticSection() {
   const allPassed = diag.data?.checks.every((c) => c.passed) ?? false;
 
   return (
-    <Section title="Rule Bundle Delivery" testID="support-rule-diagnostic-section" defaultOpen={true}>
+    <Section title="Threat Domain List Delivery" testID="support-rule-diagnostic-section" defaultOpen={true}>
       <Body style={s.detail}>
-        End-to-end verification of the backend rule bundle signing pipeline. Every check must pass for native protection to start on a device.
+        End-to-end check of how ApolloSG builds and signs its Threat Domain List. Every check must pass for website protection to start on a phone. A list with 0 entries is valid.
       </Body>
       {diag.isLoading ? <Body>Running diagnostic checks…</Body> : diag.isError ? (
         <View style={{ gap: spacing.xs }}>

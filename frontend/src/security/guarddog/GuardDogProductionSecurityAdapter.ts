@@ -4,15 +4,16 @@ import type { EnforcementEvidence, PlatformCapabilityProfile } from "@/src/secur
 import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, RuleBundleStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
+import { notAcceptedSentence, threatDomainListStatus } from "@/src/domain/threatDomainList";
 import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
 import { getGuardDogProductionConfig } from "./GuardDogProductionConfig";
 
-type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; productionAuthority?: boolean; bundleVersion?: number | null };
+type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; productionAuthority?: boolean; bundleVersion?: number | null; threatDomainEntryCount?: number | null };
 
-/** Thrown when the native GuardDog validator rejects a rule bundle. */
+/** Thrown when this phone's native validator doesn't accept the Threat Domain List. `reason` is the native code. */
 class RuleBundleRejectedError extends Error {
   constructor(readonly reason: string) {
-    super(`Rule bundle rejected by native validator: ${reason}`);
+    super(notAcceptedSentence(reason));
     this.name = "RuleBundleRejectedError";
   }
 }
@@ -30,9 +31,8 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   /**
    * Call refreshGuardDogProductionRules and CHECK the native result.
    *
-   * The native method returns JSON: `{"accepted":true,...}` or `{"accepted":false,"reason":"..."}`.
-   * Previously the JS adapter only caught thrown exceptions, silently ignoring a returned rejection.
-   * This method parses the result and throws a descriptive error when the bundle is rejected.
+   * The native method returns JSON: `{"accepted":true,...,"entryCount":n}` or `{"accepted":false,"reason":"..."}`.
+   * A Threat Domain List with zero entries comes back accepted — it is a valid list, never a failure.
    */
   private async refreshAndVerify(): Promise<void> {
     const resultStr = await this.mod().refreshGuardDogProductionRules();
@@ -74,16 +74,20 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   }
   async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
     catch (error) {
-      // Surface the specific rejection reason rather than a generic "couldn't read" message.
+      // A Threat Domain List problem says what it is — it is never reported as a missing permission.
       const rejection = this.lastRefreshRejection;
-      const reason = rejection
-        ? `Rule bundle rejected by native validator (${rejection}). Ensure the backend signing key matches the pinned key in this build.`
-        : error instanceof Error && error.message ? error.message : "the reason could not be determined";
-      return [{ id: "site_guard", title: "Website protection", status: "permission_required",
-        detail: `Production protection is not active (${reason}).` }];
+      const reason = rejection ? notAcceptedSentence(rejection)
+        : error instanceof Error && error.message ? error.message : "ApolloSG couldn't tell why.";
+      return [{ id: "site_guard", title: "Website protection", status: "inactive",
+        detail: `Website protection isn't on yet. ${reason}` }];
     } }
   async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
-    catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. ApolloSG did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
+    catch (error) {
+      const degradedReason = error instanceof Error ? error.message : "ApolloSG couldn't get its Threat Domain List.";
+      // The runtime's own state is still readable without a current list: report what it actually says
+      // (requested or not, running or not) rather than assuming protection had been turned on.
+      try { return { ...await this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()), degradedReason }; }
+      catch { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. ApolloSG did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason, visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } } }
   async analyseURL(url: string) { await this.ensureConfigured(); return this.json<NativeUrlAnalysis>(this.mod().analyzeGuardDogProductionUrl(url)); }
   analyseDomain(domain: string) { return this.analyseURL(`https://${domain}/`); }
   blockDestination(): Promise<BlockResult> { return Promise.resolve({ verified: false, method: "none", detail: "Production rules are server-managed; manual blocking is unavailable.", adapterLabel: this.label, blockedAt: null, evidence: null }); }
@@ -104,8 +108,8 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     if (!preCheck.ruleExpiresAt || Date.parse(preCheck.ruleExpiresAt) <= Date.now()) {
       const rejection = this.lastRefreshRejection;
       const detail = rejection
-        ? `The backend delivered a rule bundle but the device rejected it (reason: ${rejection}). This can happen when the bundle signature doesn't match the pinned key, or the bundle version was rolled back.`
-        : `The device has no current rule bundle. The refresh may have failed silently — check network connectivity to the rule delivery backend and verify EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL is correct.`;
+        ? `${notAcceptedSentence(rejection)} Website protection can't start until it has a list it can trust.`
+        : "ApolloSG couldn't get its Threat Domain List, so website protection can't start yet. Check this phone is online, then try again.";
       throw new Error(detail);
     }
     return this.json<ProtectionStatus>(this.mod().startGuardDogProduction());
@@ -125,7 +129,9 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     sdkVersion: "guarddog-production-authority", capabilityVersion: "1", networkFiltering: "partial", packetVisibility: "partial", dnsVisibility: "partial",
     processAttribution: "none", appAttribution: "none", domainVisibility: "partial", localBlocking: "partial", backgroundProtection: "full",
     offlineProtection: "partial", realTimeEvents: "partial", scope: ["dns:ipv4-udp-53", "ip:controlled-/32", "ip:website-gate-sinkhole-/32"] }); }
-  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { await this.ensureConfigured(); return parseGuardDogEvidence(this.mod().getGuardDogProductionEvidence()); }
+  // Evidence and DNS threat observations are read from the runtime's own inboxes. Neither depends on the
+  // Threat Domain List, so a list problem never stops them being read.
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return parseGuardDogEvidence(this.mod().getGuardDogProductionEvidence()); }
   async acknowledgeEnforcementEvidence(evidenceIds: string[]) {
     const result = await this.json<{ persistenceError?: string | null }>(this.mod().acknowledgeGuardDogProductionEvidence(JSON.stringify(evidenceIds)));
     if (result.persistenceError) throw new Error(result.persistenceError);
@@ -134,7 +140,6 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   // ── DNS Threat Observations (separate from enforcement evidence) ──────────
   async getDnsThreatObservations(): Promise<DnsThreatObservation[]> {
     // A failed read is NOT "no threats observed" — it propagates so the caller can report the gap.
-    await this.ensureConfigured();
     return JSON.parse(this.mod().getGuardDogDnsThreatObservations());
   }
   async acknowledgeDnsThreatObservations(ids: string[]): Promise<void> {
@@ -142,46 +147,33 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   }
 
   // ── Private DNS / DoH gap detection ──────────────────────────────────────
+  // Android's own setting, read directly. It has nothing to do with the Threat Domain List, so a list
+  // problem never turns this into "couldn't read".
   async getPrivateDnsStatus(): Promise<PrivateDnsStatus> {
-    try { await this.ensureConfigured(); return JSON.parse(this.mod().getGuardDogPrivateDnsStatus()); }
+    try { return JSON.parse(this.mod().getGuardDogPrivateDnsStatus()); }
     catch (error) {
-      // Unobservable, not "off": Apollo states that it could not read the setting and why.
+      // Unobservable, not "off" and not "not in use": Apollo states that it could not read the setting and why.
       const reason = error instanceof Error && error.message ? error.message : "the reason could not be determined";
-      return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable",
+      return { privateDnsActive: false, privateDnsServer: null, mode: "unknown", modeSource: null, bypassLevel: "unobservable", chromeDoH: "unobservable",
         explanation: `Apollo couldn't read this device's Private DNS setting (${reason}). This is not a confirmation that Private DNS is off.` };
     }
   }
 
-  // ── Security rule state ───────────────────────────────────────────────────
+  // ── Threat Domain List state ──────────────────────────────────────────────
   // Read from the production runtime's own status. A failed read is reported as unknown — never as
-  // "rules are current" — and the expiry the runtime reports is the only thing that decides currency.
+  // "current" — and the expiry the runtime reports is the only thing that decides currency. A list with
+  // zero entries is current like any other.
   async getRuleBundleStatus(): Promise<RuleBundleStatus> {
     try {
       await this.ensureConfigured();
       const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
-      const expiresAt = status.ruleExpiresAt ?? null;
-      if (!expiresAt) {
-        const rejection = this.lastRefreshRejection;
-        const detail = rejection
-          ? `ApolloSG's backend delivered a rule bundle but the device's native validator rejected it (${rejection}). The signing key in this build may not match the backend's signing key, or the bundle version may conflict with a previously accepted version.`
-          : "Apollo's protection reported no expiry for its security rules, so their age could not be confirmed.";
-        return { observable: true, current: null, expiresAt: null, detail };
-      }
-      const live = Date.parse(expiresAt) > Date.now();
-      const authority = status.productionAuthority === true;
-      return { observable: true, current: live && authority, expiresAt,
-        detail: live && authority
-          ? `Apollo's security rules are current and valid until ${new Date(expiresAt).toLocaleString()}.`
-          : !authority
-            ? "Apollo's protection is not running on its production rules."
-            : `Apollo's security rules expired on ${new Date(expiresAt).toLocaleString()} and have not been refreshed.` };
+      return threatDomainListStatus(status, this.lastRefreshRejection);
     } catch (error) {
       const rejection = this.lastRefreshRejection;
-      const reason = rejection
-        ? `native validator rejected the rule bundle (${rejection})`
-        : error instanceof Error && error.message ? error.message : "the reason could not be determined";
-      return { observable: true, current: null, expiresAt: null,
-        detail: `ApolloSG couldn't establish current security rules (${reason}). This is not a confirmation that they are current.` };
+      const reason = rejection ? notAcceptedSentence(rejection)
+        : `ApolloSG couldn't check its Threat Domain List just now${error instanceof Error && error.message ? ` (${error.message})` : ""}.`;
+      return { observable: true, current: null, expiresAt: null, entryCount: null,
+        detail: `${reason} This isn't a confirmation that it's current.` };
     }
   }
 

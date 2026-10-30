@@ -68,7 +68,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
   const ruleBundle = securityAdapter.getRuleBundleStatus
     ? await securityAdapter.getRuleBundleStatus().catch(() => ({
         observable: true, current: null, expiresAt: null,
-        detail: "Apollo couldn't read the state of its security rules. This is not a confirmation that they are current.",
+        detail: "Apollo couldn't read the state of its Threat Domain List. This isn't a confirmation that it's current.",
       }))
     : null;
   // Gate 8 (Account Breach): fetch backend configuration status. Failure → unavailable, never running.
@@ -77,8 +77,15 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
   const desiredOn = desiredSetting === true;
   let decision = decideSiteRecovery(desiredOn, protection, permissions);
   if (decision === "start_now") {
-    await securityAdapter.startProtection();
+    // A start that fails (for example, no Threat Domain List it can trust yet) only affects website
+    // protection: the reason stays on that reading and every other Gate still gets its fresh reading.
+    const startFailure = await securityAdapter.startProtection().then(() => null, (error: unknown) => {
+      const message = error instanceof Error && error.message ? error.message : "Website protection couldn't start.";
+      recordNativeFailure("startProtection", message);
+      return message;
+    });
     [capabilities, protection, permissions, network] = await Promise.all([securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus()]);
+    if (startFailure && !protection.operational) protection = { ...protection, degradedReason: startFailure };
     decision = decideSiteRecovery(desiredOn, protection, permissions);
   }
   const attempt = await pendingAttempt();

@@ -16,11 +16,14 @@ adb0b4ca0b8514c2a20a50671a79a4f10a701e5e196d48bd81d6557abcf86e88  ./guarddog-and
 5e5976bdfa85ba784ef994eda71bc79f7c43600699991de82a56698657f60e7a  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionRuntimeStateProvider.kt
 0d7f2b00f926ce2c45019fae00f7346dbc940999d05f24a2a11aa7a61cd65002  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/BundleVersionStore.kt
 7a79d00afc8d8c874a34a6ace1e5e4233279feb2c21b30da9080bb440ee516cb  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundle.kt
-16ff61450fe81ec0309eca47fce69a8886876ca72c29fb1c040bb06acc16b0b8  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt
+837efffb30ff625845f9f265287f4170b15fae746d6d26a521951eb24843d39b  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt
+99b53d46b02f2a5559bd1b7b3602e057767f19f6c2a8f81b61ac1ff22a030d65  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/CleanInstallZeroEntryTest.kt
 9d4383b8f1468a9e89861ef5bedb063ae0e0bd2dac5cca21d734e116f54b172a  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/GuardDogSDKEngineTest.kt
 282de4b7605e46587772eeb352205faef40fd7950bda5179135a1cac77e8a6d3  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/HostCanonicalizerParityTest.kt
 6d0e593ce4f2ecaded155ea80b8e88bc4d75dffc55646884e55916eec8da68fb  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/UrlSanitizerParityTest.kt
 aca2502d35a9e65f0264949d2c14bed840335287bb4fc90492d560eb2511adc7  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/BundleVersionStoreTest.kt
+a758bbfda37663556fbe9c3921d110d7a1bfb0577a7604c9ad08b97bf3837d74  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleValidatorTest.kt
+4db61c970449971d32ad5623015393dff3b1f4782c124543e58d40e19077b704  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/ThreatDomainListTestKit.kt
 8c5c6f27fe9467e5061acaa6589f67793cbe903f8b8f2cfd39b15184971df0e6  ./guarddog-android-sdk/guarddog-vpn/build.gradle.kts
 ff2fb7b3c264571d680e642e0a8d0ee4f5370d47e7fa3989ef944b64ffa4f743  ./guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml
 43fd87e5ec75bd3a4a30bb7cb388aa8cfaeca1dac4f77d62890fc68e0995798d  ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/BlockedFlowDeduper.kt
