@@ -4561,3 +4561,7 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 - Fix: `PreviewSimulation.retiredEventIds` (src/simulationContract.ts) — preview `["preview-mock-threat-001"]`
   (src/simulation/index.ts), production `[]` (src/simulationAbsent.ts); ApolloContext filters with it.
 - Verified locally: production check OK (zero markers), preview check OK (9/9 markers), GuardDog manifest OK, tsc clean.
+
+## USER PREFERENCE (2026-10-30)
+- The user asked for NO more enhancement suggestions. Do not add "Next Action Items" or feature ideas in summaries;
+  report only what was done and any steps the user must take.
