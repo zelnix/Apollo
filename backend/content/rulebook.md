@@ -2,7 +2,7 @@
 
 How a check moves through ApolloSG, the rules each part follows, when a check is settled, what sends it to the next step, and what information can be requested. Written from the code, word for word the same in the app (Settings → Rule book) and the admin portal.
 
-_Last reviewed against the code: 2026-10-29._
+_Last reviewed against the code: 2026-10-30._
 
 _Revision 2, 27 October 2026: rules corrected after the Rule Book review (rule classes, Possible Threat, TC FlyBy weak signals and verified checks, Magnum DI triggers and provider calls, ABN, ACN and licence numbers), with the second-round corrections the same day (LINK-11, CORR-08, text copied elsewhere, Magnum DI correcting a provisional concern). Status: approved by the owner, then the code was audited against it and brought into line the same day: both engines decide from each rule's class, so ROUTE and COVERAGE rules no longer make a Possible Threat; CORR-08 needs a harmful payload; a failed lookup never supplies a rule's evidence; TC FlyBy treats weak signals as weak; Magnum DI can't go below TC FlyBy's concern without resolving evidence; and ABN, ACN and licence numbers reach only their register question. The EXPLAIN class was added for Higgins' explanation rules, and each one was checked against the code._
 
@@ -210,6 +210,7 @@ The Site Gate has no catalogue rules of its own. Its blocking is ENFORCE: it blo
 - A number's risk score is a likelihood, never proof. On its own it can only raise a warning.
 - **Number reputation lookups:** a current saved score (24 hours) is used before a new lookup is paid for, for automatic and requested checks alike. If the live lookup fails, Apollo uses the number's last known score, says it is the result of its last check, and records the live lookup as not completed with how it failed. With no earlier score the number is unknown, never allowed.
 - **Calls Apollo screened:** the last 50 calls, for up to 30 days, kept on the phone only.
+- **Repeat Caller Alert:** a call from a number on the person's block list, or from a number this phone found high-risk or worth checking in the last 30 days, raises an alert. It is raised only after Android already has its screening answer, so it never delays or changes that answer. On a locked screen it says only that a repeat caller rang, without the number. When ApolloSG's notifications are off, the call's history says the alert wasn't shown. A later clean result clears a worth-checking finding, never a high-risk one.
 
 **Call Gate (iPhone)**
 - Apple lets no app screen calls as they arrive. When the person turns ApolloSG on under Settings › Phone › Call Blocking & Identification, iPhone blocks numbers on their block list, and numbers this phone looked up earlier and found high-risk still ring, with the label “Suspected scam”. Allowed numbers are never blocked or labelled. iPhone gives no per-call receipt, so nothing here is recorded as a confirmed block.
@@ -1280,6 +1281,7 @@ Each of these is replaced with "[credential redacted]" before anything leaves th
 - **Alert wording:** an alert says what was found in one short line from Higgins and names the item, for example "The Instagram link you sent has signs that need checking. Open ApolloSG to see what I found." It never carries the full explanation, which stays in the Threat Case unchanged. Encoded characters such as `&quot;`, `&amp;` and `&#39;` are decoded once, just before the phone shows the alert. The stored case and evidence are never changed.
 - **Send to family** (on every threat): one tap sends linked family in ApolloSG a short summary: the result, what happened, what to do and the website or number involved. "Share another way" opens the phone's share menu (a message, WhatsApp or an email), with the website written as example[.]com so it can't be tapped. The original message, its links and its pictures are never included. ApolloSG sends no email for this. Family can answer with a quick note ("I'm calling you now", "Don't do anything yet" or their own words, up to 140 characters); it shows on that threat on the person's phone and in Family responses.
 - **Clear Patrol history** (Settings) hides every record on the phone and on the server. Trusted links are kept.
+- **Cases an administrator removed stay removed.** When an administrator removes every case, each device drops its local copies of them, and a device that sends one of those cases again is acknowledged without it being stored, so a removed case can't come back.
 
 ---
 

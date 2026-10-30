@@ -1,0 +1,31 @@
+{
+  "description": "URL sanitization vectors shared by every GuardDog implementation. Each expected value is derived from the written rule (UrlSanitizer.kt header): only http and https are analyzable; the share-safe form is scheme://canonicalHost + path, with no userinfo, no port, no query and no fragment. The host follows host_vectors.json. sanitizedUrl/host null = not analyzable.",
+  "rule": "trim; scheme://authority path ?query #fragment; scheme lowercased and must be http or https; userinfo dropped; port must be digits and is dropped; bracketed IPv6 kept bracketed; host canonicalized; empty path becomes /; path otherwise kept exactly; query and fragment dropped",
+  "vectors": [
+    { "input": "https://example.com/", "analyzable": true, "sanitizedUrl": "https://example.com/", "host": "example.com" },
+    { "input": "https://Example.COM/Path/To", "analyzable": true, "sanitizedUrl": "https://example.com/Path/To", "host": "example.com" },
+    { "input": "HTTP://example.com", "analyzable": true, "sanitizedUrl": "http://example.com/", "host": "example.com" },
+    { "input": "  https://example.com/a  ", "analyzable": true, "sanitizedUrl": "https://example.com/a", "host": "example.com" },
+    { "input": "https://user:pw@example.com/login?token=SECRET#frag", "analyzable": true, "sanitizedUrl": "https://example.com/login", "host": "example.com" },
+    { "input": "https://example.com:8443/a/b", "analyzable": true, "sanitizedUrl": "https://example.com/a/b", "host": "example.com" },
+    { "input": "https://example.com:/a", "analyzable": true, "sanitizedUrl": "https://example.com/a", "host": "example.com" },
+    { "input": "https://example.com?q=1", "analyzable": true, "sanitizedUrl": "https://example.com/", "host": "example.com" },
+    { "input": "https://example.com#top", "analyzable": true, "sanitizedUrl": "https://example.com/", "host": "example.com" },
+    { "input": "https://example.com/a?b=c#d", "analyzable": true, "sanitizedUrl": "https://example.com/a", "host": "example.com" },
+    { "input": "https://example.com./a", "analyzable": true, "sanitizedUrl": "https://example.com/a", "host": "example.com" },
+    { "input": "https://bücher.example/kaufen", "analyzable": true, "sanitizedUrl": "https://xn--bcher-kva.example/kaufen", "host": "xn--bcher-kva.example" },
+    { "input": "http://192.168.0.1/admin", "analyzable": true, "sanitizedUrl": "http://192.168.0.1/admin", "host": "192.168.0.1" },
+    { "input": "https://[2001:DB8::1]:443/x", "analyzable": true, "sanitizedUrl": "https://[2001:db8::1]/x", "host": "[2001:db8::1]" },
+    { "input": "https://[2001:db8::1]/", "analyzable": true, "sanitizedUrl": "https://[2001:db8::1]/", "host": "[2001:db8::1]" },
+    { "input": "ftp://example.com/file", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "javascript:alert(1)", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "mailto:someone@example.com", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "example.com/path", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https:///path", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https://example.com:abc/", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https://[2001:db8::1/", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https://[2001:db8::1]x/", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https://exa mple.com/", "analyzable": false, "sanitizedUrl": null, "host": null },
+    { "input": "https://-bad.example/", "analyzable": false, "sanitizedUrl": null, "host": null }
+  ]
+}

@@ -4592,3 +4592,8 @@ Verdict: 3 blockers, 6 warnings, 8 manual checks.
 ## USER PREFERENCE (2026-10-30)
 - The user asked for NO more enhancement suggestions. Do not add "Next Action Items" or feature ideas in summaries;
   report only what was done and any steps the user must take.
+
+## Clean-install acceptance test script (2026-10-30)
+- Owner chose "A written test script only", shown in chat only (no file added). Re-verified in the new workspace: frontend node tests 1240/1240,
+  tsc clean, pytest test_guarddog_threat_domain_list 6/6, preview diagnostic = passed with 0 Threat Domain Entries (v9).
+  Native JVM tests not re-run here (no JDK/kotlinc in this workspace).
